@@ -5,7 +5,7 @@
 
 1. [Introduction](#introduction)
 2. [TTY Types](#tty-types)
-3. Read / Write Flow
+3. [TTY <-> UART](#tty-uart)
 4. Boot & Kernel Boot Command
 5. Mechanism of printk
 
@@ -30,8 +30,43 @@ ttyprintk         | Not really related to TTY. Redirect message to this file and
 tty               | (to be added)
 console           | (to be added)
 
+## <a name="tty-uart"></a> TTY <-> UART
 
-
-
-
+```mermaid |
+graph TD
+   a>TTY -> UART]
+   b(TTY Layer <br> e.g. tty_write)
+   c(Line Discipline Layer <br> e.g. n_tty_write)
+   d(UART Generic Layer <br> e.g. uart_write)
+   e(UART Driver Layer <br> e.g. serial8250_start_tx)
+   f(UART Driver ISR <br> e.g. serial8250_interrupt)
+   g(UART Port Handler <br> e.g. serial8250_default_handle_irq <br> ->mem_serial_out)
+   h>Output to Users]
+   
+   a-.-b
+   b-->c
+   c-->d
+   d-->e
+   e-.->|asynchronous|f
+   f-->g
+   g-.-h
+   
+   aa>UART -> TTY]
+   bb>Input from Users]
+   cc(UART Driver ISR <br> e.g. serial8250_interrupt)
+   dd(UART Port Handler <br> e.g. serial8250_default_handle_irq <br> ->mem_serial_in)
+   ee(UART Generic Layer <br> e.g. uart_insert_char)
+   ff(Line Discipline Layer <br> e.g. n_tty_receive_buf)
+   gg(TTY Layer <br> e.g. tty_read)
+   
+   aa-.-bb
+   bb-.-cc
+   cc-->dd
+   dd-.->|Below is data direction instead of code flow|ee
+   ee-.->ff
+   ff-.->|Ready for read|gg
+   
+   
+   
+```
 
