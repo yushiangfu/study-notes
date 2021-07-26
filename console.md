@@ -6,8 +6,10 @@
 1. [Introduction](#introduction)
 2. [TTY Types](#tty-types)
 3. [TTY <-> UART](#tty-uart)
-4. Boot & Kernel Boot Command
-5. Mechanism of printk
+4. [Boot Flow](#boot-flow)
+5. Kernel Boot Command (to be added)
+6. Mechanism of printk (to be added)
+7. Virtual UART (to be added)
 
 ## <a name="introduction"></a> Introduction
 
@@ -65,8 +67,34 @@ graph TD
    dd-.->|Below is data direction instead of code flow|ee
    ee-.->ff
    ff-.->|Ready for read|gg
-   
-   
-   
 ```
 
+## <a name="boot-flow"></a> Boot Flow
+```
+start_kernel()
+  └─ console_init()
+       └─ univ8250_console_init()
+   
+init calls
+  └─ chr_dev_init()
+       └─ tty_init()
+  └─ serial8250_init()
+  └─ dw8250_platform_driver_init()
+  └─ of_platform_serial_driver_init()
+```
+Here we list a few functions that are related to our topic and we'll introduce them one by one.
+
+```
+univ8250_console_init()
+  └─ serial8250_isa_init_ports(): initialize serial8250_ports[0~5]
+  └─ register_console(univ8250_console): fail to register because of -ENODEV returned from serial8250_console_setup()
+```
+(Should I introduct register_console first?)
+
+```
+tty_init()
+  └─ register character device for /dev/tty
+  └─ register character device for /dev/console
+```
+This function also registers character devices for /dev/tty0\~63, and also note that tty0 is handled separately from tty1\~63.
+Since any of them isn't in the root filesystem of OpenBMC, I'm not bothering to look into it.
