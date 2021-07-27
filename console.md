@@ -70,31 +70,54 @@ graph TD
 ```
 
 ## <a name="boot-flow"></a> Boot Flow
+Here we list a few functions that are related to our topic and we'll introduce them one by one.
 ```
-start_kernel()
-  └─ console_init()
-       └─ univ8250_console_init()
-   
 init calls
+  └─ of_platform_default_populate_ini()
   └─ chr_dev_init()
        └─ tty_init()
-  └─ serial8250_init()
-  └─ dw8250_platform_driver_init()
   └─ of_platform_serial_driver_init()
 ```
-Here we list a few functions that are related to our topic and we'll introduce them one by one.
 
-```
-univ8250_console_init()
-  └─ serial8250_isa_init_ports(): initialize serial8250_ports[0~5]
-  └─ register_console(univ8250_console): fail to register because of -ENODEV returned from serial8250_console_setup()
-```
-(Should I introduct register_console first?)
+- of_platform_default_populate_init
 
-```
-tty_init()
-  └─ register character device for /dev/tty
-  └─ register character device for /dev/console
-```
-This function also registers character devices for /dev/tty0\~63, and also note that tty0 is handled separately from tty1\~63.
-Since any of them isn't in the root filesystem of OpenBMC, I'm not bothering to look into it.
+  In this function, it adds lots of devices specified in DTS, which contains UART1 (serial0) and UART5 (serial4).
+  Later they are initialized and correspond to ttyS0 and ttyS4 separately.
+  
+  ```
+  of_platform_default_populate_init()
+    └─ add device ooo
+    └─ add device 1e783000.serial <-- serial0 in DTS
+    └─ add device 1e784000.serial <-- serial4 in DTS
+    └─ add device xxx
+  ```
+
+- tty_init
+
+  This function registers character devices for /dev/tty, /dev/console, and /dev/tty0~63 one after another.
+  Noet that /dev/tty0 is handled differently from other /dev/tty#.
+  However we won't look into any of them since they are not in the root fileysyste of OpenBMC.
+  
+  ```
+  tty_init()
+    └─ register character device for /dev/tty
+    └─ register character device for /dev/console
+  ```
+  
+- of_platform_serial_driver_init
+
+  It registers driver 'of_serial' and probes device '1e783000.serial' & '1e784000.serial' sequentially. Here we have to introduce the 'port' concept of uart.
+  Take AST2500 for example, it might be equipped with up to 5 regular UARTs (leave virtual UART alone).
+  Each UART component is regarded as 'port' in the code, e.g. ttyS4 is the port 5 of UART.
+  Back to the probe, it registers the UART port to the framework for each of the matched devices.
+
+  ```
+  of_platform_serial_driver_init()
+    └─ register driver 'of_serial'
+         └─ probe device 1e783000.serial
+              └─ set up the UART port and register it
+              └─ register console but fail (it's not our preferred console, which is set by kernel boot command)
+         └─ probe device 1e784000.serial
+              └─ set up the UART port and register it              
+              └─ register console and pass (preferred console)
+  ```
