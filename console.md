@@ -10,6 +10,7 @@
 4. [Boot Flow](#boot-flow)
 5. [Mechanism of printk](#mechanism-of-printk)
 6. [Kernel Boot Arguments](#kernel-boot-arguments)
+7. [Conclusion](#conclusion)
 
 
 ## <a name="introduction"></a> Introduction
@@ -161,7 +162,7 @@ graph TD
    e(console_unlock)
    
    a-->b
-   b-->c
+   b-->c 
    c-->d
    d-->e
 ```
@@ -200,13 +201,13 @@ param_setup_earlycon()
 So, based on the 'stdout-path' property, _early_init_dt_scan_chosen_stdout_ locates target node and knows it's 'compatible' property.
 ```
  chosen {
-     stdout-path = "/ahb/apb/serial@1e784000"; <--
+     stdout-path = "/ahb/apb/serial@1e784000"; <----------
      bootargs = "console=ttyS4,115200 earlycon";
  };
 ```
 ```
 serial@1e784000 {
-    compatible = "ns16550a"; <--
+    compatible = "ns16550a"; <----------
     reg = <0x1e784000 0x20>;
     reg-shift = <0x02>;
     interrupts = <0x0a>;
@@ -221,9 +222,26 @@ drivers/tty/serial/8250/8250_early.c:
 EARLYCON_DECLARE(uart8250, early_serial8250_setup);
 EARLYCON_DECLARE(uart, early_serial8250_setup);
 OF_EARLYCON_DECLARE(ns16550, "ns16550", early_serial8250_setup);
-OF_EARLYCON_DECLARE(ns16550a, "ns16550a", early_serial8250_setup); <--
+OF_EARLYCON_DECLARE(ns16550a, "ns16550a", early_serial8250_setup); <----------
 OF_EARLYCON_DECLARE(uart, "nvidia,tegra20-uart", early_serial8250_setup);
 OF_EARLYCON_DECLARE(uart, "snps,dw-apb-uart", early_serial8250_setup);
 ```
 Since the printk ring buffer is limited, the earlier we have console registered to display pending records, the lesser chance we suffer from message overwriting.
+
+### console=ttyS4,115200
+Parse the value, save to _console_cmdline_, and set preferred console which later affects the flow in _register_console_.
+```
+console_setup()
+  └─ parse the setting into, e.g. 'ttyS', '4', '115200'
+  └─ add_preferred_console(), save above info to console_cmdline, set preferred console
+```
+
+## <a name="conclusion"></a> Conclusion
+
+User space tasks interact with TTY devices to control message direction, 
+and the underlying destination can be local desktop application, remote machine, or serial port. 
+Meanwhile, logs emitted by kernel space threads or services are committed to the circular buffer, 
+which is further written out to each valid console if there's any.
+
+There are still other interesting topics worth digging into, such as pseudo TTY and serial over LAN. Hope this note helps, thanks!
 
