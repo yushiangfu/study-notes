@@ -1,5 +1,6 @@
 > Note: browser extension [GitHub + Mermaid](https://chrome.google.com/webstore/detail/github-%20-mermaid/goiiopgdnkogdbjmncgedmgpoajilohe?hl=en)
 > is needed to view the flow chart of mermaid syntax
+> Note: any suggestion or opinion is extremely welcome!
 
 ## Index
 
@@ -9,7 +10,7 @@
 4. [Boot Flow](#boot-flow)
 5. [Mechanism of printk](#mechanism-of-printk)
 6. [Kernel Boot Arguments](#kernel-boot-arguments)
-7. Virtual UART (to be added)
+
 
 ## <a name="introduction"></a> Introduction
 
@@ -177,4 +178,52 @@ console_unlock()
   └─ call_console_drivers(), write out the committed record to each registered console
 ```
 
+So, before registering any console, printk() can still work since it just commits the message into the ring buffer.
+Once there's an available console, all pending records are handled sequentially.
+
 ## <a name="kernel-boot-arguments"></a> Kernel Boot Arguments
+
+### earlycon
+
+In my runtime environment the kernel boot argument is specified in DTS, and let's introduce 'earlycon' and 'console=ttyS4,115200' in order.
+Function _param_setup_earlycon_ handles both 'earlycon' and 'console=', but we only focus on 'earlycon' here since the other one fails to find the matched entry.
+
+```
+param_setup_earlycon()
+  └─ if it's the case of 'earlycon'
+       └─ early_init_dt_scan_chosen_stdout()
+            └─ find target node in DTB
+            └─ traverse __earlycon_table and register early console if the matched one is found
+  └─ else (case of 'console=')
+       └─ (ignore)
+```
+So, based on the 'stdout-path' property, _early_init_dt_scan_chosen_stdout_ locates target node and knows it's 'compatible' property.
+```
+ chosen {
+     stdout-path = "/ahb/apb/serial@1e784000"; <--
+     bootargs = "console=ttyS4,115200 earlycon";
+ };
+```
+```
+serial@1e784000 {
+    compatible = "ns16550a"; <--
+    reg = <0x1e784000 0x20>;
+    reg-shift = <0x02>;
+    interrupts = <0x0a>;
+    clocks = <0x02 0x0f>;
+    no-loopback-test;
+    status = "okay";
+};
+```
+```
+drivers/tty/serial/8250/8250_early.c:
+
+EARLYCON_DECLARE(uart8250, early_serial8250_setup);
+EARLYCON_DECLARE(uart, early_serial8250_setup);
+OF_EARLYCON_DECLARE(ns16550, "ns16550", early_serial8250_setup);
+OF_EARLYCON_DECLARE(ns16550a, "ns16550a", early_serial8250_setup); <--
+OF_EARLYCON_DECLARE(uart, "nvidia,tegra20-uart", early_serial8250_setup);
+OF_EARLYCON_DECLARE(uart, "snps,dw-apb-uart", early_serial8250_setup);
+```
+Since the printk ring buffer is limited, the earlier we have console registered to display pending records, the lesser chance we suffer from message overwriting.
+
