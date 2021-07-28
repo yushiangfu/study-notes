@@ -1,5 +1,5 @@
 > Note: browser extension [GitHub + Mermaid](https://chrome.google.com/webstore/detail/github-%20-mermaid/goiiopgdnkogdbjmncgedmgpoajilohe?hl=en)
-> is needed to view the flow chart of mermaid syntax
+> is needed to view the flow chart of mermaid syntax  
 > Note: any suggestion or opinion is extremely welcome!
 
 ## Index
