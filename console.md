@@ -1,5 +1,5 @@
 > Note: browser extension [GitHub + Mermaid](https://chrome.google.com/webstore/detail/github-%20-mermaid/goiiopgdnkogdbjmncgedmgpoajilohe?hl=en)
-> is needed to view the flow chart of mermaid syntax  
+> is needed to view the flow chart of mermaid syntax.  
 > Note: any suggestion or opinion is extremely welcome!
 
 ## Index
@@ -21,6 +21,7 @@ which were composed of small screens and teletypewriters (TTY).
 Nowadays it has become legacy but we can still see it on common OS. 
 There are also pseudo TTYs shown when people access consoles in GUI desktop, or operate remote machines by SSH. 
 On embedded systems, it's common that developers type commands through serial port interface (UART).
+The following notes are based on OpenBMC@QEMU and Raspberry Pi 4.
 
 ## <a name="tty-types"></a> TTY Types
 Device Name       | Description
@@ -31,8 +32,8 @@ ttyS0 ~ n         | It means serial console and each represents one UART within 
 ttyAMA0 ~ n       | ARM serial console?
 ttyUSB0 ~ n       | Serial cable with USB interface. E.g. Plug in the USB-to-TTL cable to Raspberry Pi and you can see one
 ttyprintk         | Redirect message to this file and then it can be displayed by command 'dmesg'
-tty               | (to be added)
-console           | (to be added)
+tty               | Conceptually it's like a link that always points to the TTY device of current task
+console           | In terms of results, it represents the one specified by the kernel boot argument 'console=', which is ttyS4 in my case
 
 ## <a name="tty-uart"></a> TTY <-> UART
 
@@ -121,7 +122,7 @@ init calls
 
   This function registers character devices for /dev/tty, /dev/console, and /dev/tty0~63 one after another.
   Noet that /dev/tty0 is handled differently from other /dev/tty#.
-  However we won't look into any of them since they are not in the root fileysyste of OpenBMC.
+  However we won't look into any of them since they are not in the root file system of OpenBMC.
   
   ```
   tty_init()
