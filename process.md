@@ -2,6 +2,26 @@
 > is needed to view the flow chart of mermaid syntax.  
 > Note: any suggestion or opinion is extremely welcome!
 
+## Index
+
+1. [Strace](#strace)
+1. [Signal](#signal)
+
+## <a name="strace"></a> Strace
+Utility *strace* is a user space tool that can be used to trace the issued syscall sequence of target process. 
+Below log is the trace output of the classic 'Hello, World!' test program and we can observe that lots of unrelated syscalls happen before printing our greetings. 
+Every forked task starts from the dynamic linker, e.g. /lib/ld-linux.so.3, which follows the naming convention of the shared library but is actually an executable. 
+It's responsible to load specified libraries into memory for the main task to use later, and that explains the list of unrelated syscalls in the log. 
+
+Common used options:
+```
+strace -p -f -o log.txt running_task
+-p: attach to target task
+-f: trace the forked or cloned tasks as well
+-o: save output to specified file
+```
+
+Log:
 ```
 execve("./a.out", ["./a.out"], [/* 15 vars */]) = 0
 └─ Triggered by parent process, e.g. bash
