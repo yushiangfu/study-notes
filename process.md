@@ -8,6 +8,7 @@
 1. [Signal](#signal)
 
 ## <a name="strace"></a> Strace
+
 Utility *strace* is a user space tool that can be used to trace the issued syscall sequence of target process. 
 Below log is the trace output of the classic 'Hello, World!' test program and we can observe that lots of unrelated syscalls happen before printing our greetings. 
 Every forked task starts from the dynamic linker, e.g. /lib/ld-linux.so.3, which follows the naming convention of the shared library but is actually an executable. 
@@ -81,4 +82,42 @@ write(1, "Hello, World!\n", 14)         = 14
 
 exit_group(0)                           = ?
 +++ exited with 0 +++
+```
+
+## <a name="signal"></a> Signal
+
+1. Tasks can receive signals and handle them accordingly.
+2. Signal handlers can be overwritten but SIGKILL is an exception, otherwise, tasks can opt to be indestructible!
+3. More or less we had the experience of sending signals, e.g. exit running task on bash foreground by Ctrl+C, or use utility *kill* to end target process.
+4. Utility *kill* is used to send specified signals to the target process, although most of the time it's SIGTERM or SIGKILL.
+
+```mermaid
+graph TD
+   a(Command: <br> 'kill' sends SIGTERM to target task)
+   b(__send_signal: <br> Kernel allocates sigqueue, <br> adds to the end of task pending list)
+   c(__send_signal: <br> Kernel sets the corresponding signal in task bitmap)
+   d(signal_wake_up_state: <br> Kernel sets the _TIF_SIGPENDING)
+   
+   a-->b
+   b-->c
+   c-->d
+```
+
+Every user space process enters kernel space on purpose or involuntarily (e.g. by interrupt), and pending signals are checked before tasks return to user space. 
+If \_TIF_SIGPENDING is set, kernel delivers the signal to the task by:
+1. Determine the next signal to handle and it's not guaranteed to correspond to the first sigqueue in the list.
+2. Clear that signal in task bitmap and remove related sigqueue from the list accordingly. 
+3. (Assume that signal has a decent signal handler) Fetch that handler info and prepare signal frame on user space stack. 
+4. Once the flow switches back to user space, it starts from the special frame to run handler and returns to the original process flow? 
+
+```mermaid
+graph TD
+   a(do_work_pending: <br> Handle pending signal if there's any)
+   b(__dequeue_signal: <br> Determine the signal to handle and dequeue the related sigqueue from list)
+   c(get_signal: <br> Fetch signal handler)
+   d(setup_frame: <br> Set up the special frame for later execution)
+   
+   a-->b
+   b-->c
+   c-->d
 ```
