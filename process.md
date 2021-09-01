@@ -4,8 +4,25 @@
 
 ## Index
 
-1. [Strace](#strace)
-1. [Signal](#signal)
+1. [Task State](#task-state)
+2. [Strace](#strace)
+3. [Signal](#signal)
+4. [Reference](#reference)
+
+## <a name="task-state"></a> Task State
+
+```
+[task_struct->state]
+TASK_RUNNING: task is running or waiting in the run queue.
+TASK_INTERRUPTIBLE: task waits somewhere for the target event to happen, and can receive the signals in the meantime.
+TASK_UNINTERRUPTIBLE: similar to the above except it can't receive the signal while sleeping. So if it hangs, it hangs...
+TASK_KILLABLE: similar to the above except it can still be killed.
+TASK_NEW: The forked task is in state until it's added to the run queue. (sched_fork)
+
+[task_struct->exit_state]
+EXIT_ZOMBIE: once a task exits, it becomes this state first and notifies the parent for farewell.
+EXIT_DEAD: either the child sets itself to this state (auto reap), or the parent will help set it.
+```
 
 ## <a name="strace"></a> Strace
 
@@ -69,7 +86,7 @@ mprotect(0x76f91000, 4096, PROT_READ)   = 0
 └─ Change some mappings to be read-only
 
 munmap(0x76f8c000, 6720)                = 0
-└─ Unload /etc/ld.so.cache into memory
+└─ Unload /etc/ld.so.cache from memory
 
 syscall_397(0x1, 0x76f390dc, 0x1800, 0x7ff, 0x7eee4a18, 0x7eee4b30) = 0
 ioctl(1, TCGETS, {B115200 opost isig icanon echo ...}) = 0
@@ -96,7 +113,7 @@ graph TD
    a(Command: <br> 'kill' sends SIGTERM to target task)
    b(__send_signal: <br> Kernel allocates sigqueue, <br> adds to the end of task pending list)
    c(__send_signal: <br> Kernel sets the corresponding signal in task bitmap)
-   d(signal_wake_up_state: <br> Kernel sets the _TIF_SIGPENDING)
+   d(complete_signal: <br> Kernel sets the _TIF_SIGPENDING)
    
    a-->b
    b-->c
@@ -121,3 +138,9 @@ graph TD
    b-->c
    c-->d
 ```
+
+## <a name="reference"></a> Reference
+
+[Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
+[TASK_KILLABLE](https://lwn.net/Articles/288056/)
+[Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
