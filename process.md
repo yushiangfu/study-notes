@@ -8,6 +8,7 @@
 2. [Strace](#strace)
 3. [Signal](#signal)
 4. [Reference](#reference)
+5. Ptrace (TBD)
 
 ## <a name="task-state"></a> Task State
 
@@ -125,7 +126,7 @@ If \_TIF_SIGPENDING is set, kernel delivers the signal to the task by:
 1. Determine the next signal to handle and it's not guaranteed to correspond to the first sigqueue in the list.
 2. Clear that signal in task bitmap and remove related sigqueue from the list accordingly. 
 3. (Assume that signal has a decent signal handler) Fetch that handler info and prepare signal frame on user space stack. 
-4. Once the flow switches back to user space, it starts from the special frame to run handler and returns to the original process flow? 
+4. Once the flow switches back to user space, it starts from the special frame to run handler and returns to the original process flow(?)
 
 ```mermaid
 graph TD
@@ -141,6 +142,8 @@ graph TD
 
 ## <a name="reference"></a> Reference
 
-[Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
-[TASK_KILLABLE](https://lwn.net/Articles/288056/)
-[Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
+1. [Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
+2. [TASK_KILLABLE](https://lwn.net/Articles/288056/)
+3. [Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
+4. [Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
+ 
