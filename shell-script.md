@@ -35,3 +35,12 @@ meta-alibaba/meta-thor/conf/machine
 $ echo ${cfg%%/*}
 meta-alibaba
 ```
+
+- sed
+
+Remove target path in $PATH
+```
+echo $PATH | sed -re "s#(^|:)$newpath(:|$)#\2#g;s#^:##"
+1. Remove 'newpath' from $PATH.
+2. If it's the first path in $PATH, remove the remaining colon as well.
+```
