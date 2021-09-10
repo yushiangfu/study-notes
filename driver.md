@@ -74,6 +74,11 @@ Please note that by default the debug log won't display during boot time, and we
 [    1.930167] 0x000000080000-0x0000004c0000 : "kernel"
 [    1.932337] 0x0000004c0000-0x000001c00000 : "rofs"
 [    1.934627] 0x000001c00000-0x000002000000 : "rwfs"
+
+▲ fmc: spi@1e620000/flash@0
+------------------------------------------------------------------------------------------
+▼ spi1: spi@1e630000/flash@0
+
 [    1.941091] aspeed-smc 1e630000.spi: Using 100 MHz SPI frequency
 [    1.942534] aspeed-smc 1e630000.spi: mx66l1g45g (131072 Kbytes)
 [    1.942806] aspeed-smc 1e630000.spi: CE0 window resized to 120MB (AST2500 HW quirk)
@@ -82,4 +87,14 @@ Please note that by default the debug log won't display during boot time, and we
 [    1.944715] aspeed-smc 1e630000.spi: CE0 window too small for chip 128MB
 [    1.945007] aspeed-smc 1e630000.spi: read control register: 203c0045
 [    1.947181] aspeed-smc 1e630000.spi: Calibration area too uniform, using low speed
+
+Code flow:
+[aspeed_smc_probe]
+    prepare controller
+    get 1st MEM resource and map it as registers
+    get 2nd MEM resource and map it as AHB base <- ?
+    [aspeed_smc_setup_flash]
+        for each flash connected to the controller (e.g. only 1)
+            prepare chip
+        
 ```
