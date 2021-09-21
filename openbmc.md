@@ -13,6 +13,36 @@ setup
 ```
 - Dependency (for bitbake obmc-phosphor-image)
 ```
+base.bbclass
+     inherit patch.bbclass
+     inherit staging.bbclass
+     inherit mirrors.bbclass
+     inherit utils.bbclass
+     inherit utility-tasks.bbclass
+     inherit metadata_scm.bbclass
+     inherit logging.bbclass
+     
+logging
+     (none)
+     
+metadata_scm.bbclass
+     (none)
+     
+utility-tasks.bbclass
+     (none)
+     
+utils.bbclass
+     (none)
+     
+mirrors.bbclass
+     (none)
+     
+staging.bbclass
+     (none)
+     
+patch.bbclass
+     inherit terminal.bbclass
+
 obmc-phosphor-image.bbclass
      inherit core-image.bbclass
      inherit obmc-phosphor-utils.bbclass
@@ -30,6 +60,9 @@ image.bbclass
      inherit image_types_wic.bbclass
      inherit rootfs-postcommands.bbclass
      inherit image-postinst-intercepts.bbclass
+     
+rootfs_rpm.bbclass
+     (none)
      
 image_types.bbclass
      inherit siteinfo.bbclass
