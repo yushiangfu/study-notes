@@ -100,7 +100,7 @@ features_check.bbclass
      (none)
 
 fontcache.bbclass
-     qemu.bbclass
+     inherit qemu.bbclass
 
 fs-uuid.bbclass
      (none)
@@ -533,7 +533,7 @@ useradd_base.bbclass
      (none)
 
 useradd.bbclass
-     inherit useradd_base
+     inherit useradd_base.bbclass
 
 utility-tasks.bbclass
      (none)
