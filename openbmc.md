@@ -23,7 +23,7 @@ autotools.bbclass
 autotools-brokensep.bbclass
      inherit autotools.bbclass
 
-base.bbclass
+[base.bbclass]
      inherit patch.bbclass
      inherit staging.bbclass
      inherit mirrors.bbclass
@@ -240,7 +240,7 @@ linux-yocto.inc
      inherit kernel.bbclass
      inherit kernel-yocto.bbclass
 
-logging.bbclass
+[logging.bbclass] prepare logging functions
      (none)
 
 manpages.bbclass
@@ -256,7 +256,7 @@ meson-routines.bbclass
 meta.bbclass
      (none)
 
-metadata_scm.bbclass
+[metadata_scm.bbclass] prepare SCM variables/functions for git/svn
      (none)
 
 mime.bbclass
@@ -265,7 +265,7 @@ mime.bbclass
 mime-xdg.bbclass
      (none)    
 
-mirrors.bbclass
+[mirrors.bbclass] prepare mirror list in case git repo fails and has to fallback
      (none)
 
 module-base.bbclass
@@ -354,7 +354,7 @@ openpower-occ-control.bbclass
 packagegroup.bbclass
      inherit allarch.bbclass
 
-patch.bbclass
+[patch.bbclass] prepare default do_patch()
      inherit terminal.bbclass
 
 perlnative.bbclass
@@ -488,7 +488,10 @@ skeleton-sdbus.bbclass
 socsec-sign.bbclass
      (none)
 
-staging.bbclass
+[staging.bbclass] prepare populate_sysroot(),
+                          do_populate_sysroot_setscene(),
+                          do_prepare_recipe_sysroot(),
+                          staging_taskhandler()
      (none)
 
 systemd.bbclass
@@ -497,7 +500,7 @@ systemd.bbclass
 systemd-boot-cfg.bbclass
      inherit fs-uuid.bbclass
 
-terminal.bbclass
+[terminal.bbclass] determine terminal for logging
      (none)
 
 texinfo.bbclas
@@ -535,10 +538,10 @@ useradd_base.bbclass
 useradd.bbclass
      inherit useradd_base.bbclass
 
-utility-tasks.bbclass
+[tility-tasks.bbclass] prepare do_listtasks()/do_clean()/do_checkuri()
      (none)
 
-utils.bbclass
+[utils.bbclass] prepare utility functions
      (none)    
 
 vala.bbclass
