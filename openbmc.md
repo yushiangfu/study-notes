@@ -1,5 +1,19 @@
 - 'setup' flow 
 
+Comparison
+```
+bitbake -b foo_1.0.bb <----- 'foo_1.0.bb' is the recipe name
+bitbake -b foo_1.0.bb -c clean <----- 'clean' is the task
+bitbake foo <----- 'foo' is the package or PROVIDES
+
+bitbake.conf: definen variables such as DEPENDS, WORKDIR
+local.conf: to govern the build behavior, e.g. BB_NUMBER_THREADS
+bblayers.conf: determine target layers by setting BBLAYERS
+layer.conf: each layer has one and it sets variables like BBPATH and BBFILES
+BBPATH: specify where to search .conf and .bbclass
+BBFILES: specify where to search .bb and .bbappend
+```
+
 What does it do when we _source ./setup romulus_?
 ```
 setup
