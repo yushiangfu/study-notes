@@ -6,10 +6,11 @@ bitbake -b foo_1.0.bb <----- 'foo_1.0.bb' is the recipe name
 bitbake -b foo_1.0.bb -c clean <----- 'clean' is the task
 bitbake foo <----- 'foo' is the package or PROVIDES
 
-bitbake.conf: definen variables such as DEPENDS, WORKDIR
-local.conf: to govern the build behavior, e.g. BB_NUMBER_THREADS
 bblayers.conf: determine target layers by setting BBLAYERS
+bitbake.conf: define variables such as DEPENDS, WORKDIR
 layer.conf: each layer has one and it sets variables like BBPATH and BBFILES
+local.conf: to govern the build behavior, e.g. BB_NUMBER_THREADS
+
 BBPATH: specify where to search .conf and .bbclass
 BBFILES: specify where to search .bb and .bbappend
 ```
@@ -247,7 +248,7 @@ lib_package.bbclass
 linux-dummy.bbclass
      (none)
 
-linux-kernel-base.bbclass
+[linux-kernel-base.bbclass] provide functions for parsing kernel version & module list?
      (none)
 
 linux-yocto.inc
