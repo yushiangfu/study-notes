@@ -4,11 +4,63 @@
 
 ## Index
 
-1. [Task State](#task-state)
-2. [Strace](#strace)
-3. [Signal](#signal)
-4. [Reference](#reference)
-5. Ptrace (TBD)
+- [Introduction](#introduction)
+- [Boot Up](#bootup)
+- [Task State](#task-state)
+- [Strace](#strace)
+- [Signal](#signal)
+- [Reference](#reference)
+- Ptrace (TBD)
+
+
+## <a name="introduction"></a> Introduction
+The process is a concept of running logic designed to fulfill the target purpose.
+It can be simple enough, such as the famous 'hello world' and contains only one thread printing the greeting string.
+The complicated process works as a group of multiple threads executing the assigned jobs to achieve its goal.
+In this document, I'd like to introduce the process from different perspectives.
+
+## <a name="bootup"></a> Boot Up
+When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
+The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
+Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
+Once the most fundamental infrastructures, such as memory and interrupt, are prepared, the running logic essentially becomes a kernel thread.
+To take advantage of multiple cores in the processor, the thread forks 'kernel_init' (PID = 1) and 'kthreadd' (PID = 2), and itself turns to an idle task.
+The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
+When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
+
+```
+           fork  +-------------+  transform   +------+  
+            +--> | kernel_init |  ----------> | init |  
+            |    +-------------+              +------+  
+  +-----+   |                                           
+  | ??? |----                                           
+  +-----+   |                                           
+            |    +------------+     fork +-------------+
+            +--> |  kthreadd  | ------>  |  kthread A  |
+           fork  +------------+    |     +-------------+
+                                   |                    
+                                   |fork +-------------+
+                                   +-->  |  kthread B  |
+                                   |     +-------------+
+                                   |                    
+                                   |fork +-------------+
+                                   +-->  |  kthread C  |
+                                         +-------------+
+```
+- Now we know why 'kthreadd' is the parent of the most kernel threads.
+```
+$ ps xao pid,ppid,comm | head
+    PID    PPID COMMAND
+      1       0 systemd
+      2       0 kthreadd
+      3       2 rcu_gp
+      4       2 rcu_par_gp
+      6       2 kworker/0:0H-events_highpri
+      9       2 mm_percpu_wq
+     10       2 rcu_tasks_rude_
+     11       2 rcu_tasks_trace
+     12       2 ksoftirqd/0
+```
 
 ## <a name="task-state"></a> Task State
 
