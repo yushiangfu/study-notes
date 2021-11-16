@@ -6,6 +6,7 @@
 
 - [Introduction](#introduction)
 - [Boot Up](#bootup)
+- [Tasks & Scheduler](#scheduler)
 - [Task State](#task-state)
 - [Strace](#strace)
 - [Signal](#signal)
@@ -14,8 +15,8 @@
 
 
 ## <a name="introduction"></a> Introduction
-The process is a concept of running logic designed to fulfill the target purpose.
-It can be simple enough, such as the famous 'hello world' and contains only one thread printing the greeting string.
+The 'process' is a concept of running logic designed to fulfill the target purpose.
+It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string.
 The complicated process works as a group of multiple threads executing the assigned jobs to achieve its goal.
 In this document, I'd like to introduce the process from different perspectives.
 
@@ -28,26 +29,28 @@ To take advantage of multiple cores in the processor, the thread forks 'kernel_i
 The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
 When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
 
+```                     
+                     PID=1                                       
+           fork  +-------------+  transform   +-----------------+
+            +--> | kernel_init |  ----------> | init or systemd |
+            |    +-------------+              +-----------------+
+  +-----+   |                                                    
+  | ??? |----                                                    
+  +-----+   |                                                    
+            |    +------------+     fork +-------------+         
+            +--> |  kthreadd  | ------>  |  kthread A  |         
+           fork  +------------+    |     +-------------+         
+                     PID=2         |                             
+                                   |fork +-------------+         
+                                   +-->  |  kthread B  |         
+                                   |     +-------------+         
+                                   |                             
+                                   |fork +-------------+         
+                                   +-->  |  kthread C  |         
+                                         +-------------+         
 ```
-           fork  +-------------+  transform   +------+  
-            +--> | kernel_init |  ----------> | init |  
-            |    +-------------+              +------+  
-  +-----+   |                                           
-  | ??? |----                                           
-  +-----+   |                                           
-            |    +------------+     fork +-------------+
-            +--> |  kthreadd  | ------>  |  kthread A  |
-           fork  +------------+    |     +-------------+
-                                   |                    
-                                   |fork +-------------+
-                                   +-->  |  kthread B  |
-                                   |     +-------------+
-                                   |                    
-                                   |fork +-------------+
-                                   +-->  |  kthread C  |
-                                         +-------------+
-```
-- Now we know why 'kthreadd' is the parent of the most kernel threads.
+Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
+The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
 ```
 $ ps xao pid,ppid,comm | head
     PID    PPID COMMAND
@@ -60,7 +63,20 @@ $ ps xao pid,ppid,comm | head
      10       2 rcu_tasks_rude_
      11       2 rcu_tasks_trace
      12       2 ksoftirqd/0
+     
+Note: PPID is parent PID
 ```
+
+## <a name="scheduler"></a> Tasks & Scheduler
+Before we start introducing the scheduler, let's clarify the below terms.
+- Process: refers to userspace utilities or applications, and it consists of at least one thread.
+- Thread: the fundamental execution unit within a process.
+- Kthread: kernel thread, and there's no process concept in kernel space.
+Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
+With that many processor cores, multiple tasks can physically run simultaneously to boot the performance and throughput.
+The scheduler has a few scheduling classes to satisfy all kinds of tasks, and each entity runs with a priority.
+Please note that the scheduler is not a process or thread, but a mechanism with its logic spread across the kernel flow.
+
 
 ## <a name="task-state"></a> Task State
 
