@@ -8,6 +8,8 @@
 - [Boot Up](#bootup)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
+- [Preemption](#preemption)
+- Ignore the below topics for now
 - [Task State](#task-state)
 - [Strace](#strace)
 - [Signal](#signal)
@@ -19,7 +21,26 @@
 The 'process' is a concept of running logic designed to fulfill the target purpose.
 It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string.
 The complicated process works as a group of multiple threads executing the assigned jobs to achieve its goal.
+Meanwhile, kernel threads are working in privilege space, managing system resources, and meeting requirements from userspace.
 In this document, I'd like to introduce the process from different perspectives.
+
+```                                                                 
+                                                                    
+                    process          process                        
+                 +-----------+    +-----------+                     
+                 | +-------+ |    | +-------+ |                     
+                 | |thread | |    | |thread | |                     
+                 | +-------+ |    | +-------+ |    -  -  -   -      
+                 |           |    | +-------+ |                     
+                 |           |    | |thread | |                     
+                 |           |    | +-------+ |                     
+ user space      +-----------+    +-----------+                     
+--------------------------------------------------------------------
+ kernel space                                                       
+               +-------+    +-------+    +-------+                  
+               |kthread|    |kthread|    |kthread|   - -- -  -      
+               +-------+    +-------+    +-------+                  
+```
 
 ## <a name="bootup"></a> Boot Up
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
@@ -144,33 +165,33 @@ Interrupts happen from time to time, and on its way back to executing the ordina
 The formal name is  'context switch,' which saves CPU registers of running task to memory and loads the register set of next candidate into CPU.
 Voila! Now the 'next task' becomes running and continues the logic where it stopped previously.
 ```      
-       CPU                          memory      
-+---------------+              +---------------+
-|  +---+ +---+  |              |               |
-|  |r0 | |r8 |  |              |               |
-|  +---+ +---+  |              |               |
-|  +---+ +---+  |              |               |
-|  |r1 | |r9 |  |              |               |
-|  +---+ +---+  |    save      +---------------+
-|  +---+ +---+  | ---------->  |  task A regs  |
-|  |r2 | |r10|  |              +---------------+
-|  +---+ +---+  |              |               |
-|  +---+ +---+  |              |               |
-|  |r3 | |r11|  |              |               |
-|  +---+ +---+  |              |               |
-|  +---+ +---+  |   restore    +---------------+
-|  |r4 | |r12|  | <----------  |  task B regs  |
-|  +---+ +---+  |              +---------------+
-|  +---+ +---+  |              |               |
-|  |r5 | |sp |  |              |               |
-|  +---+ +---+  |              |               |
-|  +---+ +---+  |              |               |
-|  |r6 | |lr |  |              |               |
-|  +---+ +---+  |              |               |
-|  +---+ +---+  |              |               |
-|  |r7 | |pc |  |              |               |
-|  +---+ +---+  |              |               |
-+---------------+              +---------------+
+                                               memory      
+                                          +---------------+
+                                          |               |
+                                          |               |
+            CPU                           |               |
++-------------------------+               |               |
+| +---+ +---+ +---+ +---+ |               |               |
+| |r0 | |r4 | |r8 | |r12| |     save      +---------------+
+| +---+ +---+ +---+ +---+ |  ---------->  |  task A regs  |
+| +---+ +---+ +---+ +---+ |               +---------------+
+| |r1 | |r5 | |r9 | |sp | |               |               |
+| +---+ +---+ +---+ +---+ |               |               |
+| +---+ +---+ +---+ +---+ |               |               |
+| |r2 | |r6 | |r10| |lr | |               |               |
+| +---+ +---+ +---+ +---+ |    restore    +---------------+
+| +---+ +---+ +---+ +---+ |  <----------  |  task B regs  |
+| |r3 | |r7 | |r11| |pc | |               +---------------+
+| +---+ +---+ +---+ +---+ |               |               |
++-------------------------+               |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          +---------------+
 ```
 
 ## <a name="fair-class"></a> Fair Class
@@ -188,12 +209,13 @@ By inspecting such rule, we can infer that:
 The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
 
 ```
-                                 +------+                          
-                                 | task |                          
-                                 +------+                          
-                                /        \                         
-                               /          \                        
-                        +------+          +------+                 
+  +-------+                                                        
+  |       |                      +------+                          
+  |  CPU  |                      | task |                          
+  | +------+                     +------+                          
+  +-|-task+|                    /        \                         
+    +------+                   /          \                        
+  running task          +------+          +------+                 
                         | task |          | task |                 
                         +------+          +------+                 
                          /\                    /\                  
@@ -210,6 +232,19 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
          the task with a 'nice' value of -19 stays left side longer
                       <-------------------------------             
 ```
+## <a name="preemption"></a> Preemption
+
+Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
+If it's the thread itself relinquishing the execution right early, we call it kindness. (Nope, there's no such saying)
+Otherwise, the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
+For example, if we run a process that loops infinitely after taking the 'newbie hacker 101' class, there's no way that system is affected by our intention.
+During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
+No matter how powerful our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our hacker spirit.
+This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
+The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
+Commonly speaking, when we talk about the feature preemption, it means the behavior in kernel space.
+As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
+
 
 ## <a name="task-state"></a> Task State
 
