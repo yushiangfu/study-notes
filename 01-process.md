@@ -7,6 +7,7 @@
 - [Introduction](#introduction)
 - [Boot Up](#bootup)
 - [Tasks & Scheduler](#scheduler)
+- [Fair Class](#fair-class)
 - [Task State](#task-state)
 - [Strace](#strace)
 - [Signal](#signal)
@@ -127,8 +128,9 @@ Individual core has its run queue, and it further divides into sub-queues of dif
 
 In the regard of class priority, stop > deadline > real time > fair > idle.
 The rule of selecting the next running task is:
-1. From high to low, walk through the scheduling classes and see which one has at least one qualified entity to run.
-2. Call scheduling class methods to select the best candidate within that class and remove it from sub run queue
+- Start from the high precedence class and check if it has at least one task to run.
+  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all
+- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue
 Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
 
 A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
@@ -171,6 +173,43 @@ Voila! Now the 'next task' becomes running and continues the logic where it stop
 +---------------+              +---------------+
 ```
 
+## <a name="fair-class"></a> Fair Class
+
+We mainly introduce this class since it covers most utilities, applications, and kernel threads.
+Instead of a conventional queue, it's a tree sorted by each entity's 'virtual runtime.'
+Because of much effort in maintaining this tree, selecting the next task equals finding the leftmost node.
+As its name 'virtual' hints, it relates to actual runtime but not the same. Priority matters when updating virtual ones.
+For example, assuming the given time slice is 10s by default, high-priority tasks might add only 5s to virtual runtime after using up all the 10s.
+In the meantime, low-priority tasks double the accounting after completely consuming 10s.
+By inspecting such rule, we can infer that:
+- Tasks with lower priority quickly move far from the leftmost node, which means it's hard to be the next running task.
+- Even though high-priority tasks increase virtual runtime slowly, it's still strictly increasing and won't always be the candidate.
+
+The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
+
+```
+                                 +------+                          
+                                 | task |                          
+                                 +------+                          
+                                /        \                         
+                               /          \                        
+                        +------+          +------+                 
+                        | task |          | task |                 
+                        +------+          +------+                 
+                         /\                    /\                  
+                        /  \                  /  \                 
+                 +------+   +------+   +------+   +------+         
+ next candidate  | task |   | task |   | task |   | task |         
+                 +------+   +------+   +------+   +------+         
+                                                                   
+                                                                   
+         the task with a 'nice' value of 20 moves rightward easily 
+                      ------------------------------->             
+                                                                   
+                                                                   
+         the task with a 'nice' value of -19 stays left side longer
+                      <-------------------------------             
+```
 
 ## <a name="task-state"></a> Task State
 
