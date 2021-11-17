@@ -72,11 +72,64 @@ Before we start introducing the scheduler, let's clarify the below terms.
 - Process: refers to userspace utilities or applications, and it consists of at least one thread.
 - Thread: the fundamental execution unit within a process.
 - Kthread: kernel thread, and there's no process concept in kernel space.
-Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
-With that many processor cores, multiple tasks can physically run simultaneously to boot the performance and throughput.
-The scheduler has a few scheduling classes to satisfy all kinds of tasks, and each entity runs with a priority.
-Please note that the scheduler is not a process or thread, but a mechanism with its logic spread across the kernel flow.
 
+Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
+With that many processor cores, multiple tasks can physically run simultaneously to boost performance and throughput.
+The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
+Please note the scheduler itself is not a process or thread but a mechanism with its implementation spread across the kernel flow.
+```
+                                                              +-------------------------------------------+
+                                                              |  +----+                                   |
+                                                              |  |  0 |                                   |
+               +--------+               +--------+            |  +----+     +------+     +------+         |
+               | core 0 |               | core 1 |            |  |  1 |-----| task |-----| task |         |
+               +--------+               +--------+            |  +----+     +------+     +------+         |
+                                                              |     -                                     |
+                                                             -|     -                                     |
+                run queue                run queue          / |     -                                     |
+            +---------------+        +---------------+     /  |     -                                     |
++------+    |  +---------+  |        |  +---------+  |    /   |     -                                     |
+| task |-------|  stop   |  |        |  |  stop   |  |   /    |  +----+     +------+                      |
++------+    |  |  class  |  |        |  |  class  |  |  /     |  | 99 |-----| task |                      |
+            |  +---------+  |        |  +---------+  | /      |  +----+     +------+                      |
++------+    |  |deadline |  |        |  |deadline |  |/       +-------------------------------------------+
+| ???? |-------|  class  |  |        |  |  class  |  /                                                     
++------+    |  +---------+  |        |  +---------+ /|                                                     
+            |  |real time|  |        |  |real time|/ |                                                     
+            |  |  class  |  |        |  |  class  |  |                                                     
+            |  +---------+  |        |  +---------+  |                                                     
+            |  |  fair   |  |        |  |  fair   |  |                                                     
+            |  |  class  |  |        |  |  class  |\ |                                                     
++------+    |  +---------+  |        |  +---------+ \|                                                     
+| task |-------|  idle   |  |        |  |  idle   |  \                                                     
++------+    |  |  class  |  |        |  |  class  |  |\       +-------------------------------------------+
+            |  +---------+  |        |  +---------+  | \      |                 +------+                  |
+            +---------------+        +---------------+  \     |                 | task |                  |
+                                                         \    |                 +------+                  |
+                                                          \   |                /        \                 |
+                                                           \  |               /          \                |
+                                                            \ |        +------+          +------+         |
+                                                             -|        | task |          | task |         |
+                                                              |        +------+          +------+         |
+                                                              |-        /\                    /\          |
+                                                              |        /  \                  /  \         |
+                                                              | +------+   +------+   +------+   +------+ |
+                                                              | | task |   | task |   | task |   | task | |
+                                                              | +------+   +------+   +------+   +------+ |
+                                                              +-------------------------------------------+
+```
+Individual core has its run queue, and it further divides into sub-queues of different scheduling classes.
+1. Stop class: it has only one task, which helps task migration between run queues.
+2. Deadline class: relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
+3. Real-time class: Tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
+4. Fair class: also known as Completely Fair Scheduler (CFS). The majority of system tasks belong to this class, and they will run sooner or later.
+5. Idle class: like stop class, it has precisely one task which assists in power saving.
+
+In the regard of class priority, stop > deadline > real time > fair > idle.
+The rule of selecting the next running task is:
+1. From high to low, walk through the scheduling classes and see which one has at least one qualified entity to run.
+2. Call scheduling class methods to select the best candidate within that class and remove it from sub run queue
+Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the condition met.
 
 ## <a name="task-state"></a> Task State
 
