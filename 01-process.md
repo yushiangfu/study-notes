@@ -238,14 +238,14 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
 ## <a name="preemption"></a> Preemption (optional)
 
 Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
-If it's the thread itself relinquishing the execution right early, we call it kindness. (Nope, there's no such saying)
-Otherwise, the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
-For example, if we run a process that loops infinitely after taking the 'newbie hacker 101' class, there's no way that system is affected by our intention.
+The thread itself might relinquish the execution right early.
+Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
+For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
 During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
-No matter how powerful our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our hacker spirit.
+No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
 This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
 The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
-Commonly speaking, when we talk about the feature preemption, it means the behavior in kernel space.
+Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
 As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
 
 ```
