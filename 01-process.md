@@ -1,23 +1,19 @@
-> Note: browser extension [GitHub + Mermaid](https://chrome.google.com/webstore/detail/github-%20-mermaid/goiiopgdnkogdbjmncgedmgpoajilohe?hl=en)
-> is needed to view the flow chart of mermaid syntax.  
-> Note: any suggestion or opinion is extremely welcome!
-
 ## Index
 
 - [Introduction](#introduction)
 - [Boot Up](#bootup)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
-- [Preemption](#preemption)
-- Ignore the below topics for now
+- [Preemption (optional)](#preemption)
+- [Task Creation](#task-creation)
 - [Task State](#task-state)
-- [Strace](#strace)
-- [Signal](#signal)
-- [Reference](#reference)
-- Ptrace (TBD)
-
+- [Strace (to be refined)](#strace)
+- [Signal (to be refined)](#signal)
+- [Reference (to be refined)](#reference)
+- Ptrace (to be added)
 
 ## <a name="introduction"></a> Introduction
+
 The 'process' is a concept of running logic designed to fulfill the target purpose.
 It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string.
 The complicated process works as a group of multiple threads executing the assigned jobs to achieve its goal.
@@ -25,7 +21,6 @@ Meanwhile, kernel threads are working in privilege space, managing system resour
 In this document, I'd like to introduce the process from different perspectives.
 
 ```                                                                 
-                                                                    
                     process          process                        
                  +-----------+    +-----------+                     
                  | +-------+ |    | +-------+ |                     
@@ -43,6 +38,7 @@ In this document, I'd like to introduce the process from different perspectives.
 ```
 
 ## <a name="bootup"></a> Boot Up
+
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
 The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
 Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
@@ -71,8 +67,10 @@ When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspac
                                    +-->  |  kthread C  |         
                                          +-------------+         
 ```
+
 Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
 The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
+
 ```
 $ ps xao pid,ppid,comm | head
     PID    PPID COMMAND
@@ -90,6 +88,7 @@ Note: PPID is parent PID
 ```
 
 ## <a name="scheduler"></a> Tasks & Scheduler
+
 Before we start introducing the scheduler, let's clarify the below terms.
 - Process: refers to userspace utilities or applications, and it consists of at least one thread.
 - Thread: the fundamental execution unit within a process.
@@ -99,6 +98,7 @@ Kernel refers to each thread or kthread as a task, and the process is just a col
 With that many processor cores, multiple tasks can physically run simultaneously to boost performance and throughput.
 The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
 Please note the scheduler itself is not a process or thread but a mechanism with its implementation spread across the kernel flow.
+
 ```
                                                               +-------------------------------------------+
                                                               |  +----+                                   |
@@ -140,6 +140,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
                                                               | +------+   +------+   +------+   +------+ |
                                                               +-------------------------------------------+
 ```
+
 Individual core has its run queue, and it further divides into sub-queues of different scheduling classes.
 1. Stop class: it has only one task, which helps task migration between run queues.
 2. Deadline class: relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
@@ -164,6 +165,7 @@ Many flag checking points exist somewhere inside the kernel, and one of them is 
 Interrupts happen from time to time, and on its way back to executing the ordinary task, it performs a task switch if that flag raises.
 The formal name is  'context switch,' which saves CPU registers of running task to memory and loads the register set of next candidate into CPU.
 Voila! Now the 'next task' becomes running and continues the logic where it stopped previously.
+
 ```      
                                                memory      
                                           +---------------+
@@ -225,14 +227,15 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
                  +------+   +------+   +------+   +------+         
                                                                    
                                                                    
-         the task with a 'nice' value of 20 moves rightward easily 
+         the task with a higher 'nice' value moves rightward easily 
                       ------------------------------->             
                                                                    
                                                                    
-         the task with a 'nice' value of -19 stays left side longer
+         the task with a lower 'nice' value stays left side longer
                       <-------------------------------             
 ```
-## <a name="preemption"></a> Preemption
+
+## <a name="preemption"></a> Preemption (optional)
 
 Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
 If it's the thread itself relinquishing the execution right early, we call it kindness. (Nope, there's no such saying)
@@ -245,20 +248,110 @@ The situation becomes complicated in kernel space since it's not always safe to 
 Commonly speaking, when we talk about the feature preemption, it means the behavior in kernel space.
 As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
 
+```
+ +--------------+    +--------------+    +--------------+                                   
+ |  user mode   |    | kernel mode  |    |interrupt mode|                                   
+ +--------------+    +--------------+    +--------------+                                   
+ my loop |                                                                                  
+         |                                                                                  
+         +-------------------> syscall                                                      
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         +--------------------------------------> timer interrupt                           
+                                                |                                           
+                                                |                                           
+           interrupt handler <------------------+                                           
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         |
+```
+
+The above diagram shows exceptions happen though we are just running a simple task.
+When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
+By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
+
+## <a name="task-creation"></a> Task Creation
+
+From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
+In contrast, tasks from the different groups have their resources exclusively. 
+Two syscalls, 'clone' and 'fork,' are provided to meet the individual requirement, and surprisingly they call to the same core function inside the kernel.
+The passed-in parameters determine whether the newly generated task shares the existing resource with its parent task or has its private copy.
+Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
+The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
+
+```
+           case 1                                 case 2                                   
+     task clones a task         |           task forks a task                              
+                                |                                                          
+                                |                                                          
++-------+  clone   +-------+    |    +-------+    fork      +-------+                      
+|thread |  ----->  |thread |    |    |thread |   ------>    |thread |                      
++-------+          +-------+    |    +-------+              +-------+                      
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--| memory space |--+       |       +--| memory space |    +--| memory space |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|  file table  |--+       |       +--|  file table  |    +--|  file table  |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
+      +--------------+                     +--------------+       +--------------+              
+```
 
 ## <a name="task-state"></a> Task State
 
-```
-[task_struct->state]
-TASK_RUNNING: task is running or waiting in the run queue.
-TASK_INTERRUPTIBLE: task waits somewhere for the target event to happen, and can receive the signals in the meantime.
-TASK_UNINTERRUPTIBLE: similar to the above except it can't receive the signal while sleeping. So if it hangs, it hangs...
-TASK_KILLABLE: similar to the above except it can still be killed.
-TASK_NEW: The forked task is in state until it's added to the run queue. (sched_fork)
+When a task is created but not yet added into any run queue, its has the state NEW.
+Once positioned in a run queue or selected to be run on CPU, state turns to RUNNING.
+If read or write operation involves longer waiting time, the task will temporarily wait in a queue with state set to INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
+- STATE_INTERRUPTIBLE: can receive signal
+- STATE_UNINTERRUPTIBLE: can't receive signal
+- STATE_KILLABLE: can receive 'kill' signal only
 
-[task_struct->exit_state]
-EXIT_ZOMBIE: once a task exits, it becomes this state first and notifies the parent for farewell.
-EXIT_DEAD: either the child sets itself to this state (auto reap), or the parent will help set it.
+```
+                                            run queue                                
+              +-------+    |                                                          
+              |       |    |                  +------+                                
+              |  CPU  |    |                  | task | state: RUNNING                 
+              | +------+   |                  +------+                                
+              +-|-task+|   |                 /        \                               
+ state: RUNNING +------+   |                /          \                              
+                    |      |         +------+          +------+                       
+               fork |      |         | task |          | task | state: RUNNING        
+                    v      |         +------+          +------+                       
+                +------+   |          /\                    /\                        
+     state: NEW | task |   |         /  \                  /  \                       
+                +------+   |  +------+   +------+   +------+   +------+               
+                           |  | task |   | task |   | task |   | task | state: RUNNING
+                           |  +------+   +------+   +------+   +------+               
+                           |                                                          
+   --------------------------------------------------------------------------------
+                                                                                     
+                                             wait queue                              
+                                                                                     
+                                 +--------------------------------+                  
+                                 | +------+                       |                  
+                                 | | task | state: INTERRUPTIBLE  |                  
+                                 | +------+                       |                  
+                                 | +------+                       |                  
+                                 | | task | state: UNINTERRUPTIBLE|                  
+                                 | +------+                       |                  
+                                 | +------+                       |                  
+                                 | | task | state: KILLABLE       |                  
+                                 | +------+                       |                  
+                                 +--------------------------------+                                    
 ```
 
 ## <a name="strace"></a> Strace
