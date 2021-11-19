@@ -1,16 +1,14 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Boot Up](#bootup)
+- [Boot Up Flow](#bootupflow)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
 - [Preemption (optional)](#preemption)
 - [Task Creation](#task-creation)
 - [Task State](#task-state)
-- [Strace (to be refined)](#strace)
-- [Signal (to be refined)](#signal)
-- [Reference (to be refined)](#reference)
-- Ptrace (to be added)
+- [To-Do List](#todolist)
+- [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
@@ -37,7 +35,7 @@ In this document, I'd like to introduce the process from different perspectives.
                +-------+    +-------+    +-------+                  
 ```
 
-## <a name="bootup"></a> Boot Up
+## <a name="bootup"></a> Boot Up Flow
 
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
 The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
@@ -469,10 +467,18 @@ graph TD
    c-->d
 ```
 
+## <a name="todolist"></a> To-Do List
+
+- Study ptrace mechanism and refine section 'strace.'
+- Study signal more and refine section 'signal.'
+- Introduce PID and TID.
+- Study namespace if OpenBMC kernel utilizes the feature.
+- Add more content to section 'boot up flow'
+
 ## <a name="reference"></a> Reference
 
-1. [Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
-2. [TASK_KILLABLE](https://lwn.net/Articles/288056/)
-3. [Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
-4. [Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
+- [P. Deshmukh, Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
+- [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
+- [G. Shaw, Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
+- [G. Maier, Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
  
