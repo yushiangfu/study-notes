@@ -1,3 +1,5 @@
+> Linux version 5.10.46
+
 ## Index
 
 - [Introduction](#introduction)
@@ -35,7 +37,7 @@ In this document, I'd like to introduce the process from different perspectives.
                +-------+    +-------+    +-------+                  
 ```
 
-## <a name="bootup"></a> Boot Up Flow
+## <a name="bootupflow"></a> Boot Up Flow
 
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
 The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
@@ -83,6 +85,19 @@ $ ps xao pid,ppid,comm | head
      12       2 ksoftirqd/0
      
 Note: PPID is parent PID
+```
+
+- Code flow
+
+```
++-----------+                                                    
+| rest_init |                                                    
++-----------+                                                    
+       |                                                         
+       |--- create a kernel thread running function 'kernel_init'
+       |                                                         
+       |                                                         
+       +--- create a kernel thread running function 'kthreadd'   
 ```
 
 ## <a name="scheduler"></a> Tasks & Scheduler
@@ -194,6 +209,31 @@ Voila! Now the 'next task' becomes running and continues the logic where it stop
                                           +---------------+
 ```
 
+- Code flow
+
+```
++----------------+                                                                        
+| pick_next_task |                                                                        
++----------------+                                                                        
+         |                                                                                
+         |--- // ignore the optimization part                                             
+         |                                                                                
+         |                                                                                
+         +--- for each scheduling class, call its ->pick_next_task, return the first found
+```
+
+```
++----------------+                                                                
+| context_switch |                                                                
++--------|-------+                                                                
+         |  +-----------+                                                         
+         +--| switch_to |                                                         
+            +-----------+                                                         
+                  |  +-------------+                                              
+                  +--| __switch_to | save current registers and load the next ones
+                     +-------------+                                              
+```
+
 ## <a name="fair-class"></a> Fair Class
 
 We mainly introduce this class since it covers most utilities, applications, and kernel threads.
@@ -231,6 +271,35 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
                                                                    
          the task with a lower 'nice' value stays left side longer
                       <-------------------------------             
+```
+
+- Code flow
+
+```
+ +-------------+                                                                                          
+ | update_curr |                                                                                          
+ +------|------+                                                                                          
+        |                                                                                                 
+        |-- calculate the delta runtime                                                                   
+        |                                                                                                 
+        |  +-----------------+                                                                            
+        +--| calc_delta_fair | calculate the adjusted runtime (vruntime)                                  
+        |  +-----------------+                                                                            
+        |                                                                                                 
+        +-- accumulate the vruntime into the task entity
+```
+
+```
++------------------+                                                                                          
+| __enqueue_entity |                                                                                          
++------------------+                                                                                          
+          |                                                                                                   
+          |                                                                                                   
+          |-- find the right place in the fair class queue (tree) by using 'vruntime' as key                  
+          |                                                                                                   
+          |   +--------------+                                                                                
+          +-- | rb_link_node | insert the task entity into the tree                                           
+              +--------------+                                                                                
 ```
 
 ## <a name="preemption"></a> Preemption (optional)
@@ -309,6 +378,26 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
       +--------------+                     +--------------+       +--------------+              
 ```
 
+- Code flow
+
+```
++----------+                                                                                                                      
+| sys_fork |---+                                                                                                                  
++----------+   |                                                                                                                  
++-----------+  |                                                                                                                  
+| sys_clone |--+                                                                                                                  
++-----------+  |                                                                                                                  
+               |  +--------------+                                                                                                
+               +--| kernel_clone |                                                                                                
+                  +--------------+                                                                                                
+                          |  +--------------+                                                                                     
+                          |--- copy_process | generate task structure, and either duplicate or share the resources with the parent
+                          |  +--------------+                                                                                     
+                          |  +------------------+                                                                                 
+                          +--| wake_up_new_task | add the newly generated task into a run queue                                   
+                             +------------------+                                                                                 
+```
+
 ## <a name="task-state"></a> Task State
 
 When a task is created but not yet added into any run queue, its has the state NEW.
@@ -319,7 +408,7 @@ If read or write operation involves longer waiting time, the task will temporari
 - STATE_KILLABLE: can receive 'kill' signal only
 
 ```
-                                            run queue                                
+                                             run queue                                
               +-------+    |                                                          
               |       |    |                  +------+                                
               |  CPU  |    |                  | task | state: RUNNING                 
@@ -350,6 +439,26 @@ If read or write operation involves longer waiting time, the task will temporari
                                  | | task | state: KILLABLE       |                  
                                  | +------+                       |                  
                                  +--------------------------------+                                    
+```
+
+- Code flow
+
+```
++------------+           
+| sched_fork |           
++------|-----+           
+       |  +-------------+
+       +--| state = NEW |
+          +-------------+                                                                
+```
+
+```
++------------------+            
+| wake_up_new_task |            
++---------|--------+            
+          |  +-----------------+
+          +--| state = RUNNING |
+             +-----------------+
 ```
 
 ## <a name="strace"></a> Strace
@@ -481,4 +590,5 @@ graph TD
 - [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
 - [G. Shaw, Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
 - [G. Maier, Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
+- [W. Shen, Understanding Linux Kernel Stack](https://wenboshen.org/posts/2015-12-18-kernel-stack.html)
  
