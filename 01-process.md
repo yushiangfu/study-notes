@@ -3,13 +3,11 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Boot Up Flow](#bootupflow)
+- [Boot Flow](#boot-flow)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
-- [Preemption (optional)](#preemption)
 - [Task Creation](#task-creation)
-- [Task State](#task-state)
-- [To-Do List](#todolist)
+- [Task States](#task-states)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -37,7 +35,7 @@ In this document, I'd like to introduce the process from different perspectives.
                +-------+    +-------+    +-------+                  
 ```
 
-## <a name="bootupflow"></a> Boot Up Flow
+## <a name="boot-flow"></a> Boot Flow
 
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
 The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
@@ -302,47 +300,6 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
               +--------------+                                                                                
 ```
 
-## <a name="preemption"></a> Preemption (optional)
-
-Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
-The thread itself might relinquish the execution right early.
-Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
-For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
-During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
-No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
-This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
-The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
-Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
-As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
-
-```
- +--------------+    +--------------+    +--------------+                                   
- |  user mode   |    | kernel mode  |    |interrupt mode|                                   
- +--------------+    +--------------+    +--------------+                                   
- my loop |                                                                                  
-         |                                                                                  
-         +-------------------> syscall                                                      
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         +--------------------------------------> timer interrupt                           
-                                                |                                           
-                                                |                                           
-           interrupt handler <------------------+                                           
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         |
-```
-
-The above diagram shows exceptions happen though we are just running a simple task.
-When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
-By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
-
 ## <a name="task-creation"></a> Task Creation
 
 From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
@@ -398,7 +355,7 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
                              +------------------+                                                                                 
 ```
 
-## <a name="task-state"></a> Task State
+## <a name="task-states"></a> Task States
 
 When a task is created but not yet added into any run queue, its has the state NEW.
 Once positioned in a run queue or selected to be run on CPU, state turns to RUNNING.
@@ -460,6 +417,59 @@ If read or write operation involves longer waiting time, the task will temporari
           +--| state = RUNNING |
              +-----------------+
 ```
+
+## <a name="reference"></a> Reference
+
+- [P. Deshmukh, Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
+- [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
+- [G. Shaw, Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
+- [G. Maier, Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
+- [W. Shen, Understanding Linux Kernel Stack](https://wenboshen.org/posts/2015-12-18-kernel-stack.html)
+
+<details>
+  <summary> Messy Notes </summary>
+  
+## <a name="preemption"></a> Preemption (optional)
+
+Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
+The thread itself might relinquish the execution right early.
+Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
+For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
+During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
+No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
+This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
+The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
+Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
+As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
+
+```
+ +--------------+    +--------------+    +--------------+                                   
+ |  user mode   |    | kernel mode  |    |interrupt mode|                                   
+ +--------------+    +--------------+    +--------------+                                   
+ my loop |                                                                                  
+         |                                                                                  
+         +-------------------> syscall                                                      
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         +--------------------------------------> timer interrupt                           
+                                                |                                           
+                                                |                                           
+           interrupt handler <------------------+                                           
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         |
+```
+
+The above diagram shows exceptions happen though we are just running a simple task.
+When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
+By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
+
 
 ## <a name="strace"></a> Strace
 
@@ -583,12 +593,5 @@ graph TD
 - Introduce PID and TID.
 - Study namespace if OpenBMC kernel utilizes the feature.
 - Add more content to section 'boot up flow'
-
-## <a name="reference"></a> Reference
-
-- [P. Deshmukh, Signals in Linux](https://towardsdatascience.com/signals-in-linux-b34cea8c5791)
-- [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
-- [G. Shaw, Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
-- [G. Maier, Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
-- [W. Shen, Understanding Linux Kernel Stack](https://wenboshen.org/posts/2015-12-18-kernel-stack.html)
- 
+  
+</details>
