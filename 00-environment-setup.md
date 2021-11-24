@@ -19,8 +19,13 @@ make -j`nproc`
 
 ### Prepare flash image and initramfs
 - You can download my pre-built ones.
-  - <a id="flash" href="https://github.com/yushiangfu/study-notes/raw/main/images/flash-romulus"> flash-romulus </a>
-  - <a id="initramfs" href="https://github.com/yushiangfu/study-notes/raw/main/images/initramfs-romulus"> initramfs-romulus </a>
+
+```
+cd linux
+wget https://github.com/yushiangfu/study-notes/raw/main/images/flash-romulus
+wget https://github.com/yushiangfu/study-notes/raw/main/images/initramfs-romulus
+```
+
 - Or prepare your own by building OpenBMC first.
 
 ```
@@ -30,7 +35,7 @@ TEMPLATECONF=meta-ibm/meta-romulus/conf . openbmc-env
 bitbake obmc-phosphor-image
 ```
 
-- After a decade, the images will be ready at the below paths.
+- After a decade, the images will be ready at the below paths. Copy them into the Linux folder.
 
 ```
 openbmc/build/tmp/deploy/images/romulus/flash-romulus
@@ -40,18 +45,15 @@ openbmc/build/tmp/deploy/images/romulus/obmc-phosphor-initramfs-romulus.cpio.xz
 ### Download QEMU
 
 ```
+cd linux
 wget https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm
 chmod +x qemu-system-arm
 ```
 
 ### Run QEMU
-- Replace the below arguments with your actual paths.
-  - -kernel 
-  - -dtb
-  - -initrd
-  - -drive
 
 ```
+cd linux
 ./qemu-system-arm \
     -M romulus-bmc \
     -nic user,hostfwd=::2222-:22 \
@@ -70,9 +72,17 @@ chmod +x qemu-system-arm
 # -S
 #     stop at the beginning
 #     you might remove it if using GDB isn't an option.
+```
 
+### Run GDB
 
 ```
+cd linux
+gdb-multiarch -s vmlinux
+(gdb) target remote :1234
+```
+
+Now it's showtime!
 
 ## <a name="reference"></a> Reference
 - [OpenBMC cheatsheet](https://github.com/openbmc/docs/blob/master/cheatsheet.md)
