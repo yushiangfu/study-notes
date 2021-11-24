@@ -18,7 +18,9 @@ make -j`nproc`
 ```
 
 ### Prepare flash image and initramfs
-- You can download my pre-built [flash image](images/flash-romulus) and [initramfs](images/initramfs-romulus).
+- You can download my pre-built ones.
+  - <a id="flash" href="https://github.com/yushiangfu/study-notes/raw/main/images/flash-romulus"> flash-romulus </a>
+  - <a id="initramfs" href="https://github.com/yushiangfu/study-notes/raw/main/images/initramfs-romulus"> initramfs-romulus </a>
 - Or prepare your own by building OpenBMC first.
 
 ```
