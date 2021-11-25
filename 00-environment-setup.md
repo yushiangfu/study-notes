@@ -65,13 +65,9 @@ cd linux
     -s \
     -S
 
-# hostfwd=::2222-:22
-#     map localhost:2222 to QEMU:22
-# -s
-#     wait for GDB connection on localhost:1234
-# -S
-#     stop at the beginning
-#     you might remove it if using GDB isn't an option.
+# hostfwd=::2222-:22    map localhost:2222 to QEMU:22
+# -s    wait for GDB connection on localhost:1234
+# -S    emulation stops at the beginning, and it usually works with GDB
 ```
 
 ### Run GDB
@@ -80,6 +76,18 @@ cd linux
 cd linux
 gdb-multiarch -s vmlinux
 (gdb) target remote :1234
+
+# -s    specify symbol file
+```
+
+### Transfer a File
+
+Sometimes it's helpful to copy a file into or from QEMU.
+
+```
+scp -P 2222 test-file root@localhost:/home/root
+
+# -P    specify which port to connect to on the remote system
 ```
 
 Now it's showtime!
