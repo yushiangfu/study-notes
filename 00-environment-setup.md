@@ -42,6 +42,22 @@ openbmc/build/tmp/deploy/images/romulus/flash-romulus
 openbmc/build/tmp/deploy/images/romulus/obmc-phosphor-initramfs-romulus.cpio.xz
 ```
 
+- Leave commit ID here for a record.
+
+```
+commit 5cc2f81c5b66da00cad24e18b0d23442af060c3f (HEAD -> master, origin/master, origin/HEAD)
+Author: Andrew Geissler <openbmcbump-github@yahoo.com>
+Date:   Fri Nov 19 19:10:18 2021 +0000
+
+    intel-ipmi-oem: srcrev bump c573390054..9e58cfe1ba
+    
+    Sujoy Ray (1):
+          SEL log Generator ID should Conform to IPMI Spec
+    
+    Change-Id: Icd80a93551de8c963c0528649058437719d1186f
+    Signed-off-by: Andrew Geissler <openbmcbump-github@yahoo.com>
+```
+
 ### Download QEMU
 
 ```
