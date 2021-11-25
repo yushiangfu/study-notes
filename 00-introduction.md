@@ -7,8 +7,8 @@
 ## <a name="introduction"></a> Introduction
 
 Hi there, I plan to start a project that contains all my summarized study notes of the Linux kernel.
-Rather than introducing how to operate like a geek through command line interface, it will be entirely talking about how each module works.
-Also, I found source is scary at first glance, and therefore much effort will be put on concept level.
+Instead of introducing how to operate like a geek through a command-line interface, it will discuss how each module works.
+Also, I found the source code in notes is scary at first glance, and therefore diagram and code flow will replace them.
 I sincerely hope that these tutorials can bridge the gap between academic books and modern kernel implementation.
 Any suggestion is highly welcome!
 
