@@ -1,7 +1,17 @@
 ## Index
 
+- [Terminology](#terminology)
 - [Introduction](#introduction)
 - [Boot Flow](#boot-flow)
+
+## <a name="terminology"></a> Terminology
+
+- Device tree source (DTS)
+   - It's a structured configuration that we use to control kernel behavior.
+- Device tree blob (DTB)
+   - The binary compiled from DTS
+   - The format that kernel parses from during boot flow.
+   
 
 ## <a name="introduction"></a> Introduction
 
@@ -28,6 +38,56 @@ Besides, the application's metadata is also generated dynamically in OS.
 ```
 
 ## <a name="boot-flow"></a> Boot Flow
+
+### Memblock Allocator
+
+Memblock allocator is the temporary memory management handling the add and reserve of memory blocks during boot time.
+First, in DTS/DTB, we specify the target memory region that we want the kernel to help manage and the kernel parses that config and passes to the memblock module.
+Then we reserve a few regions occupied by DTB, kernel, initramfs, and initial page table in case they got allocated for other purposes by accident.
+DTS/DTB also specified many ranges that needed to be added or reserved in the memblock allocator.
+Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good to go with these major regions saved in its static data structure.
+
+```                                               
+              +-----add------+                     
+              |              |                     
+                                                   
+   physical           +----reserve---+             
+   address            |              |             
+                                                   
+ 0x8000_0000  +--------------+                     
+              |              |                     
+              |       +--------------+  0x8000_4000
+              |       |  page table  |             
+              |       +--------------+  0x8000_8000
+              |              |                     
+              |       +--------------+  0x8010_0000
+              |       |    kernel    |             
+              |       +--------------+  0x80EF_7BA0
+              |              |                     
+              |       +--------------+  0x8800_0000
+              |       |  initramfs   |             
+              |       +--------------+  0x8810_C000
+              |       |      DTB     |             
+              |       +--------------+  0x8812_12B8
+              |              |                     
+              |       +--------------+  0x9600_0000
+              |       | video engine |             
+ 0x9800_0000  +-------+--------------+  0x9800_0000
+              |     flash    |                     
+ 0x9C00_0000  +-------+--------------+  0x9C00_0000
+              |       |   DMA/CMA    |             
+              |       +--------------+  0x9D00_0000
+              |       |     GFX      |             
+              |       +--------------+  0x9E00_0000
+              |              |                     
+ 0x9EF0_0000  +--------------+                     
+              |   coldfire   |                     
+ 0x9F00_0000  +--------------+                     
+              |     VGA      |                     
+ 0xA000_0000  +--------------+                     
+```
+
+- Code flow
 
 ```
 +------------+                                                                                                                          
