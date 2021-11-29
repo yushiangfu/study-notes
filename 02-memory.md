@@ -152,6 +152,27 @@ Introducing virtual space can solve this problem by consistently presenting the 
 Different DRAM positions only affect how the kernel maps its virtual address to the destination.
 The typical ratio between user and kernel space on ARM system is 3:1 or 2:2, and our study case uses the latter one.
 
+```                                                                                   
+                            physical space            virtual space                              
+                                                                                                 
+                          +----------------+        +----------------+                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |----------------| 0x7F00_0000, MODULES_VADDR
+ PHYS_OFFSET, 0x8000_0000 |----------------|        |----------------| 0x8000_0000, PAGE_OFFSET  
+                          |      DRAM      |        |                |                           
+                          |                |        |----------------| 0x9F00_0000, VMALLOC_START
+              0xA000_0000 |----------------|        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          |                |        |                |                           
+                          +----------------+        +----------------+                           
+```
 
 ```
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
