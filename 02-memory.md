@@ -11,7 +11,8 @@
 - Device tree blob (DTB)
    - The binary compiled from DTS
    - The format that kernel parses from during boot flow.
-   
+- Memory management unit (MMU)
+   - Once it's enabled, the address CPU handles become virtual, and it takes translation to get the physical address.
 
 ## <a name="introduction"></a> Introduction
 
@@ -90,53 +91,69 @@ Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good 
 - Code flow
 
 ```
-+------------+                                                                                                                          
-| setup_arch |                                                                                                                          
-+--|---------+                                                                                                                          
-   |    +-------------------+                                                                                                           
-   +--> | setup_machine_fdt | add memblock for the manageable region                             0x8000_0000 ~ 0xA000_0000, based on DTB
-   |    +-------------------+                                                                                                           
-   |                                                                                                                                    
-   +--> reserve memblock for DTB                                                                 0x8810_C000 ~ 0x8812_12B8              
-   |                                                                                                                                    
-   |    +-------------------+                                                                                                           
-   +--> | arm_memblock_init |                                                                                                           
-        +----|--------------+                                                                                                           
-             |                                                                                                                          
-             +--> reserve memblock for kernel                                                    0x8010_0000 ~ 0x80EF_7BA0              
-             |                                                                                                                          
-             |    +-----------------+                                                                                                   
-             +--> | arm_initrd_init | reserve memblock for initramfs                             0x8800_0000 ~ 0x8810_C000              
-             |    +-----------------+                                                                                                   
-             |    +-------------------------+                                                                                           
-             +--> | arm_mm_memblock_reserve | reserve memblock for the initial page table        0x8000_4000 ~ 0x8000_8000              
-             |    +-------------------------+                                                                                           
-             |    +----------------------------------+                                                                                  
-             +--> | early_init_fdt_scan_reserved_mem |                                                                                  
-             |    +--------|-------------------------+                                                                                  
-             |             |    +-------------------------+                                                                             
-             |             +--> | __fdt_scan_reserved_mem | add memblock for VGA                 0x9F00_0000 ~ 0xA000_0000, based on DTB
-             |             |    +-------------------------+                                                                             
-             |             |    +-------------------------+                                                                             
-             |             +--> | __fdt_scan_reserved_mem | add memblock for flash               0x9800_0000 ~ 0x9C00_0000, based on DTB
-             |             |    +-------------------------+                                                                             
-             |             |    +-------------------------+                                                                             
-             |             +--> | __fdt_scan_reserved_mem | add memblock for coldfire            0x9EF0_0000 ~ 0x0010_0000, based on DTB
-             |             |    +-------------------------+                                                                             
-             |             |    +-----------------------+                                                                               
-             |             +--> | fdt_init_reserved_mem | 1. reserve memblock for GFX            0x9D00_0000 ~ 0x9E00_0000, based on DTB
-             |                  +-----------------------+ 2. reserve memblock for video engine   0x9600_0000 ~ 0x9800_0000, based on DTB
-             |    +------------------------+                                                                                            
-             +--> | dma_contiguous_reserve | reserve memblock for the DMA/CMA                    0x9C00_0000 ~ 0x9D00_0000              
-                  +------------------------+                                                                                                  
++------------+                                                                                                                                            
+| setup_arch |                                                                                                                                            
++--|---------+                                                                                                                                            
+   |    +-------------------+                                                                                                                             
+   +--> | setup_machine_fdt | add memblock for the manageable region (0x8000_0000 ~ 0xA000_0000)                                                          
+   |    +-------------------+                                                                                                                             
+   |                                                                                                                                                      
+   +--> reserve memblock for DTB (0x8810_C000 ~ 0x8812_12B8)                                                                                              
+   |                                                                                                                                                      
+   |    +-------------------+                                                                                                                             
+   +--> | arm_memblock_init |                                                                                                                             
+        +----|--------------+                                                                                                                             
+             |                                                                                                                                            
+             +--> reserve memblock for kernel (0x8010_0000 ~ 0x80EF_7BA0)                                                                                 
+             |                                                                                                                                            
+             |    +-----------------+                                                                                                                     
+             +--> | arm_initrd_init | reserve memblock for initramfs (0x8800_0000 ~ 0x8810_C000)                                                          
+             |    +-----------------+                                                                                                                     
+             |    +-------------------------+                                                                                                             
+             +--> | arm_mm_memblock_reserve | reserve memblock for the initial page table (0x8000_4000 ~ 0x8000_8000)                                     
+             |    +-------------------------+                                                                                                             
+             |    +----------------------------------+                                                                                                    
+             +--> | early_init_fdt_scan_reserved_mem |                                                                                                    
+             |    +--------|-------------------------+                                                                                                    
+             |             |    +-------------------------+                                                                                               
+             |             +--> | __fdt_scan_reserved_mem | add memblock for VGA （0x9F00_0000 ~ 0xA000_0000）                                              
+             |             |    +-------------------------+                                                                                               
+             |             |    +-------------------------+                                                                                               
+             |             +--> | __fdt_scan_reserved_mem | add memblock for flash （0x9800_0000 ~ 0x9C00_0000）                                            
+             |             |    +-------------------------+                                                                                               
+             |             |    +-------------------------+                                                                                               
+             |             +--> | __fdt_scan_reserved_mem | add memblock for coldfire （0x9EF0_0000 ~ 0x0010_0000）                                         
+             |             |    +-------------------------+                                                                                               
+             |             |    +-----------------------+                                                                                                 
+             |             +--> | fdt_init_reserved_mem | 1. reserve memblock for GFX （0x9D00_0000 ~ 0x9E00_0000）                                         
+             |                  +-----------------------+ 2. print log                                                                                    
+             |                                                [    0.000000] Reserved memory: created CMA memory pool at 0x9d000000, size 16 MiB          
+             |                                                [    0.000000] OF: reserved mem: initialized node framebuffer, compatible id shared-dma-pool
+             |                                            3. reserve memblock for video engine （0x9600_0000 ~ 0x9800_0000）                                
+             |                                            4. print log                                                                                    
+             |                                                [    0.000000] Reserved memory: created CMA memory pool at 0x96000000, size 32 MiB          
+             |                                                [    0.000000] OF: reserved mem: initialized node jpegbuffer, compatible id shared-dma-pool 
+             |    +------------------------+                                                                                                              
+             +--> | dma_contiguous_reserve | 1. reserve memblock for the DMA/CMA （0x9C00_0000 ~ 0x9D00_0000）                                              
+                  +------------------------+ 2. print log                                                                                                 
+                                                 [    0.000000] cma: Reserved 16 MiB at 0x9c000000                                                        
 ```
 
+### Virtual Space
+
+So far, the memory blocks are all about physical addresses, but actually, we are running in virtual space already.
+The logic written in assembly code before entering 'start_kerner' sets up simple mapping for the kernel itself and enables MMU.
+
+Why do we need virtual space?
+All the physical addresses we've mentioned indicate their position on the bus, and it's totally up to hardware designers' preference to decide the layout.
+For example, on AST2500, physical address 0x0000_0000 maps to SPI flash and 0x8000_0000 maps to DRAM.
+Since the layout of DRAM differs from machine to machine, even with the same processor ARM, chip designers can still place DRAM at different bus addresses.
+Introducing virtual space can solve this problem by consistently presenting the same layout to running kernel and applications.
+Different DRAM positions only affect how the kernel maps its virtual address to the destination.
+The typical ratio between user and kernel space on ARM system is 3:1 or 2:2, and our study case uses the latter one.
+
+
 ```
-[    0.000000] Reserved memory: created CMA memory pool at 0x9d000000, size 16 MiB
-[    0.000000] OF: reserved mem: initialized node framebuffer, compatible id shared-dma-pool
-[    0.000000] Reserved memory: created CMA memory pool at 0x96000000, size 32 MiB
-[    0.000000] OF: reserved mem: initialized node jpegbuffer, compatible id shared-dma-pool
-[    0.000000] cma: Reserved 16 MiB at 0x9c000000
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
 [    0.000000] Consider using a HIGHMEM enabled kernel.
 [    0.000000] Zone ranges:
