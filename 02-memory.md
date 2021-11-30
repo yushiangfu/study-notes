@@ -6,13 +6,17 @@
 
 ## <a name="terminology"></a> Terminology
 
-- Device tree source (DTS)
+- Device Tree Source (DTS)
    - It's a structured configuration that we use to control kernel behavior.
-- Device tree blob (DTB)
+- Device Tree Blob (DTB)
    - The binary compiled from DTS
    - The format that kernel parses from during boot flow.
-- Memory management unit (MMU)
+- Memory Management Unit (MMU)
    - Once it's enabled, the address CPU handles become virtual, and it takes translation to get the physical address.
+- Table Look-aside Buffer (TLB)
+   - An hardware cache that helps speed up the translation of MMU.
+- Translation Table Base Register (TTBR)
+   - It tells MMU the physical address of the page table. Whenever a context switch happens, it changes accordingly as well.
 
 ## <a name="introduction"></a> Introduction
 
@@ -152,26 +156,34 @@ Introducing virtual space can solve this problem by consistently presenting the 
 Different DRAM positions only affect how the kernel maps its virtual address to the destination.
 The typical ratio between user and kernel space on ARM system is 3:1 or 2:2, and our study case uses the latter one.
 
-```                                                                                   
-                            physical space            virtual space                              
-                                                                                                 
-                          +----------------+        +----------------+                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |----------------| 0x7F00_0000, MODULES_VADDR
- PHYS_OFFSET, 0x8000_0000 |----------------|        |----------------| 0x8000_0000, PAGE_OFFSET  
-                          |      DRAM      |        |                |                           
-                          |                |        |----------------| 0x9F00_0000, VMALLOC_START
-              0xA000_0000 |----------------|        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          |                |        |                |                           
-                          +----------------+        +----------------+                           
+Here's how it works:
+1. CPU tries to access the virtual address
+2. MMU does the real translation work
+3. Check with TLB first since it's the cache
+4. If not hit, check with the page table pointed by TTBR and update to TLB
+Much knowledge and expertise lie here, such as L1 cache, L2 cache, i-cache, d-cache, synchronization, VIPT, etc...
+But I have no plan to delve into any of them at all.
+
+```                                                                                                                                                               
+                            physical space                           virtual space                              
+                                                                                                                
+                          +----------------+                       +----------------+                           
+                          |                |                       |                |                           
+                          |                |                       |                |                           
+                          |                |                       |                |                           
+                          |                |                       |                |                           
+                          |                |                       |                |                           
+                          |                |                       |                |                           
+                          |                |                       |----------------| 0x7F00_0000, MODULES_VADDR
+ PHYS_OFFSET, 0x8000_0000 |----------------|       +-----+         |----------------| 0x8000_0000, PAGE_OFFSET  
+                          |      DRAM      | <---- | MMU | <------ |                |                           
+                          |                |       +-----+         |----------------| 0x9F00_0000, VMALLOC_START
+              0xA000_0000 |----------------|        |   |          |                |                           
+                          |                |        v   v          |                |                           
+                          |                |  +-----+   +-------+  |                |                           
+                          |                |  | TLB |<--| page  |  |                |                           
+                          |                |  +-----+   | table |  |                |                           
+                          +----------------+            +-------+  +----------------+                                                                  
 ```
 
 ```
