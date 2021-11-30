@@ -157,14 +157,16 @@ Different DRAM positions only affect how the kernel maps its virtual address to 
 The typical ratio between user and kernel space on ARM system is 3:1 or 2:2, and our study case uses the latter one.
 
 Here's how it works:
-1. CPU tries to access the virtual address
-2. MMU does the real translation work
-3. Check with TLB first since it's the cache
-4. If not hit, check with the page table pointed by TTBR and update to TLB
+1. CPU tries to access the virtual address.
+2. MMU does the real translation work.
+3. Check with TLB first since it's the cache. If it hits, the job finishes.
+4. If not hit, check with the page table pointed by TTBR.
+5. And update TLB as well.
+
 Much knowledge and expertise lie here, such as L1 cache, L2 cache, i-cache, d-cache, synchronization, VIPT, etc...
 But I have no plan to delve into any of them at all.
 
-```                                                                                                                                                               
+```
                             physical space                           virtual space                              
                                                                                                                 
                           +----------------+                       +----------------+                           
@@ -174,17 +176,19 @@ But I have no plan to delve into any of them at all.
                           |                |                       |                |                           
                           |                |                       |                |                           
                           |                |                       |                |                           
-                          |                |                       |----------------| 0x7F00_0000, MODULES_VADDR
- PHYS_OFFSET, 0x8000_0000 |----------------|       +-----+         |----------------| 0x8000_0000, PAGE_OFFSET  
+                          |                |          2            |----------------| 0x7F00_0000, MODULES_VADDR
+ PHYS_OFFSET, 0x8000_0000 |----------------|       +-----+    1    |----------------| 0x8000_0000, PAGE_OFFSET  
                           |      DRAM      | <---- | MMU | <------ |                |                           
                           |                |       +-----+         |----------------| 0x9F00_0000, VMALLOC_START
-              0xA000_0000 |----------------|        |   |          |                |                           
+              0xA000_0000 |----------------|      3 |   | 4        |                |                           
                           |                |        v   v          |                |                           
                           |                |  +-----+   +-------+  |                |                           
                           |                |  | TLB |<--| page  |  |                |                           
-                          |                |  +-----+   | table |  |                |                           
-                          +----------------+            +-------+  +----------------+                                                                  
+                          |                |  +-----+ 5 | table |  |                |                           
+                          +----------------+            +-------+  +----------------+                           
 ```
+
+### Page Walk
 
 ```
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
