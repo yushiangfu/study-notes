@@ -188,7 +188,64 @@ But I have no plan to delve into any of them at all.
                           +----------------+            +-------+  +----------------+                           
 ```
 
-### Page Walk
+### Page Table
+
+The minimum mapped area in physical space is a 4K-sized page frame.
+But a page table isn't a structure that prepares an entry for each page frame.
+In my study case, it's a 2-level hierarchy, and 1st-level-table entry represents a 1M-sized section while 2nd-level-table entry means a 4K-size page frame.
+Rather than filling 256 (1M / 4K) entries with zero to set up an unmapped 1M-sized region, we merely provide a zero in that entry from the first level and save the space of the 2nd level table.
+
+```
+         1st level                                                2nd level              
+         PGD table                                                PTE table              
+                                                                                         
+         +-------+                                               ------------  --+       
+         |   PMD0|      PMD values                                 |PTE0  |      |       
+    PGD0 |  ------      case a: 0 if unmapped                      +------+      |       
+         |   PMD1|      case b: phy addr if it's an 1M mapping        -          |       
+         +-------+      case c: pointer to 2nd level                  -          |       
+         |   PMD0| ---+         if mapping size < 1M               +------+      |       
+    PGD1 |  ------    |                                            |PTE255|      |       
+         |   PMD1| -+ |                                          ------------    | for SW
+         +-------+  | |                                            |PTE0  |      |       
+             -      | |                                            +------+      |       
+             -      | |                                               -          |       
+             -      | |                                               -          |       
+             -      | |                                            +------+      |       
+         +-------+  | |                                            |PTE255|      |       
+         |   PMD0|  | |                                          ------------  --+       
+ PGD2047 |  ------  | +----------------------------------------->  |PTE0  |      |       
+         |   PMD1|  |                                              +------+      |       
+         +-------+  |                                                 -          |       
+                    |                                                 -          |       
+                    |                                              +------+      |       
+                    |                                              |PTE255|      |       
+                    |                                            ------------    | for HW
+                    +------------------------------------------->  |PTE0  |      |       
+                                                                   +------+      |       
+                                                                      -          |       
+                        PTE values                                    -          |       
+                        case a: 0 if unmapped                      +------+      |       
+                        case b: phy addr if it's a 4K mapping      |PTE255|      |       
+                                                                 ------------  --+       
+```
+
+Then with any given virtual address, we know how to do the 'page walk.'
+1. Start from the 1st-level page table assigned to the task.
+2. Use bit 20~31 as index to find the entry.
+   - The value means physical address if it's a section mapping.
+   - Otherwise it points to the 2nd-level table. (Assume it's our case)
+3. Use bit 0~11 as index to find the entry.
+4. Add the offset to the found pysicall address, and that's it!
+
+```                                   
+               bit 31       20 19   12 11        0 
+                  +-----------+-------+-----------+
+ virtual address  |  12 bits  |8 bits |  12 bits  |
+                  +-----------+-------+-----------+
+                    1st index             offset   
+                              2nd index            
+```
 
 ```
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
