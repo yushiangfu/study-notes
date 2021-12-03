@@ -3,6 +3,9 @@
 - [Terminology](#terminology)
 - [Introduction](#introduction)
 - [Boot Flow](#boot-flow)
+- [Memblock Allocator](#memblock-allocator)
+- [Virtual Space](#virtual-space)
+- [Page Table](#page-table)
 
 ## <a name="terminology"></a> Terminology
 
@@ -44,7 +47,16 @@ Besides, the application's metadata is also generated dynamically in OS.
 
 ## <a name="boot-flow"></a> Boot Flow
 
-### Memblock Allocator
+0. Set up barely enough mapping for the kernel to run normally.
+1. Add and reserve memory regions based on DTS/DTB, and then 'memblock allocator' works as the temporary memory management.
+      - Allocation becomes available, but no page or object concept here.
+2. Clear the page table and map the free regions from the above allocator.
+3. Keep those reserved areas and transfer available pages to the 'buddy system.'
+      - Page(s) allocation becomes available.
+4. Build 'kmem cache' to satisfy the request of a smaller-sized structure.
+      - Object(s) allocation becomes available.
+
+## <a name="memblock-allocator"></a> Memblock Allocator
 
 Memblock allocator is the temporary memory management handling the add and reserve of memory blocks during boot time.
 First, in DTS/DTB, we specify the target memory region that we want the kernel to help manage and the kernel parses that config and passes to the memblock module.
@@ -143,7 +155,7 @@ Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good 
                                                  [    0.000000] cma: Reserved 16 MiB at 0x9c000000                                                        
 ```
 
-### Virtual Space
+## <a name="virtual-space"></a> Virtual Space
 
 So far, the memory blocks are all about physical addresses, but actually, we are running in virtual space already.
 The logic written in assembly code before entering 'start_kerner' sets up simple mapping for the kernel itself and enables MMU.
@@ -188,7 +200,7 @@ But I have no plan to delve into any of them at all.
                           +----------------+            +-------+  +----------------+                           
 ```
 
-### Page Table
+## <a name="page-table"></a> Page Table
 
 The minimum mapped area in physical space is a 4K-sized page frame.
 But a page table isn't a structure that prepares an entry for each page frame.
@@ -230,13 +242,13 @@ Rather than filling 256 (1M / 4K) entries with zero to set up an unmapped 1M-siz
                                                                  ------------  --+       
 ```
 
-Then with any given virtual address, we know how to do the 'page walk.'
+Given a virtual address, we can do the 'page walk' by following the below steps:
 1. Start from the 1st-level page table assigned to the task.
-2. Use bit 20~31 as index to find the entry.
+2. Use bit 20~31 as the index to find the entry.
    - The value means physical address if it's a section mapping.
-   - Otherwise it points to the 2nd-level table. (Assume it's our case)
-3. Use bit 0~11 as index to find the entry.
-4. Add the offset to the found pysicall address, and that's it!
+   - Otherwise, it points to the 2nd-level table. (Assume it's our case)
+3. Use bit 0~11 as the index to find the entry.
+4. Add the offset to the found physical address, and that's it!
 
 ```                                   
                bit 31       20 19   12 11        0 
