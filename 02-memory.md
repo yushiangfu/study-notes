@@ -259,6 +259,18 @@ Given a virtual address, we can do the 'page walk' by following the below steps:
                               2nd index            
 ```
 
+Since the kernel is versatile and supports many processers, it designs a generic framework that can accommodate 5-level page tables.
+They are named PGD, P4D, PUD, PMD, PTE from top to bottom in the source code.
+Thankfully, AST2500@ARM utilizes only PGD, PMD, and PTE, and here's a brief introduction.
+- PGD
+   - represents 2M mapping
+   - one PGD consists of two PMDs in place
+- PMD
+   - represents 1M mapping or points to next level
+   - a.k.a. section
+- PTE
+   - represent 4K mapping
+
 ```
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
 [    0.000000] Consider using a HIGHMEM enabled kernel.
