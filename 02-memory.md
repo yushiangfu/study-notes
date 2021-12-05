@@ -202,44 +202,65 @@ But I have no plan to delve into any of them at all.
 
 ## <a name="page-table"></a> Page Table
 
-The minimum mapped area in physical space is a 4K-sized page frame.
-But a page table isn't a structure that prepares an entry for each page frame.
-In my study case, it's a 2-level hierarchy, and 1st-level-table entry represents a 1M-sized section while 2nd-level-table entry means a 4K-size page frame.
-Rather than filling 256 (1M / 4K) entries with zero to set up an unmapped 1M-sized region, we merely provide a zero in that entry from the first level and save the space of the 2nd level table.
+The minimum mapped area is a 4K-sized page frame.
+However, a page table isn't a structure that prepares an entry for each page frame but a multiple-level hierarchy that can support up to 5 levels.
+They are shown as the PGD, P4D, PUD, PMD, PTE from top to bottom in the source code.
+Thankfully, AST2500@ARM utilizes only PGD, PMD, and PTE, and here's a brief introduction.
+
+- PGD
+   - Represents a 2M mapping.
+   - One PGD consists of two PMDs in place.
+- PMD
+   - Represents a 1M mapping or points to the next level.
+   - a.k.a. section
+- PTE
+   - Represent a 4K mapping.
+
+Let's ignore PGD for simplicity and focus on a few possible combinations of PMD and PTE.
+
+- Case 1: PMD is zero (unmapped).
+- Case 2: PMD has a value (attribute determines the interpretation).
+   - Case 2.1: it's a physical address for 1M mapping.
+   - Case 2.2: it's a physical address that points to the 2nd level page table.
+      - Case 2.2.1: PTE is zero (unmapped).
+      - Case 2.2.2: it's a physical address for 4K mapping.
+
+As a result, we can save lots of 2nd level tables if they are section mapped or not mapped at all.
+Please note that every 2nd level table is for two PMDs.
 
 ```
-         1st level                                                2nd level              
-         PGD table                                                PTE table              
-                                                                                         
-         +-------+                                               ------------  --+       
-         |   PMD0|      PMD values                                 |PTE0  |      |       
-    PGD0 |  ------      case a: 0 if unmapped                      +------+      |       
-         |   PMD1|      case b: phy addr if it's an 1M mapping        -          |       
-         +-------+      case c: pointer to 2nd level                  -          |       
-         |   PMD0| ---+         if mapping size < 1M               +------+      |       
-    PGD1 |  ------    |                                            |PTE255|      |       
-         |   PMD1| -+ |                                          ------------    | for SW
-         +-------+  | |                                            |PTE0  |      |       
-             -      | |                                            +------+      |       
-             -      | |                                               -          |       
-             -      | |                                               -          |       
-             -      | |                                            +------+      |       
-         +-------+  | |                                            |PTE255|      |       
-         |   PMD0|  | |                                          ------------  --+       
- PGD2047 |  ------  | +----------------------------------------->  |PTE0  |      |       
-         |   PMD1|  |                                              +------+      |       
-         +-------+  |                                                 -          |       
-                    |                                                 -          |       
-                    |                                              +------+      |       
-                    |                                              |PTE255|      |       
-                    |                                            ------------    | for HW
-                    +------------------------------------------->  |PTE0  |      |       
-                                                                   +------+      |       
-                                                                      -          |       
-                        PTE values                                    -          |       
-                        case a: 0 if unmapped                      +------+      |       
-                        case b: phy addr if it's a 4K mapping      |PTE255|      |       
-                                                                 ------------  --+       
+        1st level                2nd level
+        PGD table                PTE table
+
+        +-------+               ------------  --+
+        |   PMD0|                 |PTE0  |      |
+   PGD0 |  ------                 +------+      |
+        |   PMD1|                    -          |
+        +-------+                    -          |
+        |   PMD0| ---+            +------+      |
+   PGD1 |  ------    |            |PTE255|      |
+        |   PMD1| -+ |          ------------    | for SW
+        +-------+  | |            |PTE0  |      |
+            -      | |            +------+      |
+            -      | |               -          |
+            -      | |               -          |
+            -      | |            +------+      |
+        +-------+  | |            |PTE255|      |
+        |   PMD0|  | |          ------------  --+
+PGD2047 |  ------  | +--------->  |PTE0  |      |
+        |   PMD1|  |              +------+      |
+        +-------+  |                 -          |
+                   |                 -          |
+                   |              +------+      |
+                   |              |PTE255|      |
+                   |            ------------    | for HW
+                   +----------->  |PTE0  |      |
+                                  +------+      |
+                                     -          |
+                                     -          |
+                                  +------+      |
+                                  |PTE255|      |
+                                ------------  --+    
 ```
 
 Given a virtual address, we can do the 'page walk' by following the below steps:
@@ -258,18 +279,6 @@ Given a virtual address, we can do the 'page walk' by following the below steps:
                     1st index             offset   
                               2nd index            
 ```
-
-Since the kernel is versatile and supports many processers, it designs a generic framework that can accommodate 5-level page tables.
-They are named PGD, P4D, PUD, PMD, PTE from top to bottom in the source code.
-Thankfully, AST2500@ARM utilizes only PGD, PMD, and PTE, and here's a brief introduction.
-- PGD
-   - represents 2M mapping
-   - one PGD consists of two PMDs in place
-- PMD
-   - represents 1M mapping or points to next level
-   - a.k.a. section
-- PTE
-   - represent 4K mapping
 
 ```
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
