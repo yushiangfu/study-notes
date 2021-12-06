@@ -16,7 +16,7 @@ The 'process' is a concept of running logic designed to fulfill the target purpo
 It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string.
 The complicated process works as a group of multiple threads executing the assigned jobs to achieve its goal.
 Meanwhile, kernel threads are working in privilege space, managing system resources, and meeting requirements from userspace.
-In this document, I'd like to introduce the process from different perspectives.
+I want to introduce the process from different perspectives in this document.
 
 ```                                                                 
                     process          process                        
@@ -102,11 +102,11 @@ Note: PPID is parent PID
 
 Before we start introducing the scheduler, let's clarify the below terms.
 - Process: refers to userspace utilities or applications, and it consists of at least one thread.
-- Thread: the fundamental execution unit within a process.
+- Thread: the fundamental execution unit within the process.
 - Kthread: kernel thread, and there's no process concept in kernel space.
 
 Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
-With that many processor cores, multiple tasks can physically run simultaneously to boost performance and throughput.
+Multiple tasks can physically run simultaneously to boost performance and throughput with that many processor cores.
 The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
 Please note the scheduler itself is not a process or thread but a mechanism with its implementation spread across the kernel flow.
 
@@ -152,18 +152,18 @@ Please note the scheduler itself is not a process or thread but a mechanism with
                                                               +-------------------------------------------+
 ```
 
-Individual core has its run queue, and it further divides into sub-queues of different scheduling classes.
-1. Stop class: it has only one task, which helps task migration between run queues.
-2. Deadline class: relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
-3. Real-time class: Tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
-4. Fair class: also known as Completely Fair Scheduler (CFS). The majority of system tasks belong to this class, and they will run sooner or later.
-5. Idle class: like stop class, it has precisely one task which assists in power saving.
+Individual core has its run queue, dividing into sub-queues of different scheduling classes.
+1. [Stop class] it has only one task, which helps task migration between run queues.
+2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
+3. [Real-time class] tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
+4. [Fair class] also known as Completely Fair Scheduler (CFS). Most system tasks belong to this class, and they will run sooner or later.
+5. [Idle class] like stop class, it has precisely one task which assists in power saving.
 
-In the regard of class priority, stop > deadline > real time > fair > idle.
+In the regard of class priority, stop > deadline > real-time > fair > idle.
 The rule of selecting the next running task is:
 - Start from the high precedence class and check if it has at least one task to run.
-  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all
-- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue
+  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all.
+- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue.
 Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
 
 A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
@@ -174,8 +174,8 @@ A few places in the kernel raise the flag of 'it is time to schedule again' when
 
 Many flag checking points exist somewhere inside the kernel, and one of them is hardware interrupt.
 Interrupts happen from time to time, and on its way back to executing the ordinary task, it performs a task switch if that flag raises.
-The formal name is  'context switch,' which saves CPU registers of running task to memory and loads the register set of next candidate into CPU.
-Voila! Now the 'next task' becomes running and continues the logic where it stopped previously.
+The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
+Voila! Now the 'next task' becomes running and continues the logic previously stopped.
 
 ```      
                                                memory      
@@ -241,8 +241,8 @@ As its name 'virtual' hints, it relates to actual runtime but not the same. Prio
 For example, assuming the given time slice is 10s by default, high-priority tasks might add only 5s to virtual runtime after using up all the 10s.
 In the meantime, low-priority tasks double the accounting after completely consuming 10s.
 By inspecting such rule, we can infer that:
-- Tasks with lower priority quickly move far from the leftmost node, which means it's hard to be the next running task.
-- Even though high-priority tasks increase virtual runtime slowly, it's still strictly increasing and won't always be the candidate.
+- Tasks with lower priority quickly move far from the leftmost node, making it hard to be the next running task.
+- Even though high-priority tasks increase virtual runtime slowly, it's still strictly growing and won't always be the candidate.
 
 The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
 
@@ -357,9 +357,10 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
 
 ## <a name="task-states"></a> Task States
 
-When a task is created but not yet added into any run queue, its has the state NEW.
-Once positioned in a run queue or selected to be run on CPU, state turns to RUNNING.
-If read or write operation involves longer waiting time, the task will temporarily wait in a queue with state set to INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
+When a task is created but not yet added to any run queue, it is NEW. 
+Once positioned in a run queue or selected to be run on CPU, the state turns to the RUNNING.
+If operations involve a longer waiting time, the task will temporarily wait in a queue with the task state set INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
+
 - STATE_INTERRUPTIBLE: can receive signal
 - STATE_UNINTERRUPTIBLE: can't receive signal
 - STATE_KILLABLE: can receive 'kill' signal only
