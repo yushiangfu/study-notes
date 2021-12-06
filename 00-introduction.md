@@ -9,16 +9,16 @@
 Hi there, I plan to start a project that contains all my summarized study notes of the Linux kernel.
 Instead of introducing how to operate like a geek through a command-line interface, it will discuss how each module works.
 Also, I found the source code in notes is scary at first glance, and therefore diagram and code flow will replace them.
-I sincerely hope that these tutorials can bridge the gap between academic books and modern kernel implementation.
+I sincerely hope these tutorials can bridge the gap between academic books and modern kernel implementation.
 Any suggestion is highly welcome!
 
-(Add link of each completed tutorial here later)
+(Add a link of each completed tutorial here later)
 
 ## <a name="setup"></a> Environment Setup
 
 For an apparent reason, it's inappropriate to use my working environment for the case study because no one can have the same setting except my colleagues.
 Raspberry Pi used to be an ideal option for its affordable price and not many model variants.
-However, frequently replacing the SD card merely to confirm code flow is so exhausting...
+However, frequently replacing the SD card merely to confirm code flow is exhausting...
 And then QEMU comes into my life! I strongly recommend using it for its free access and GDB support, which ideally suits my code tracing needs.
 
 ### Download Linux source code and build
