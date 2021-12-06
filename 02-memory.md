@@ -6,6 +6,7 @@
 - [Memblock Allocator](#memblock-allocator)
 - [Virtual Space](#virtual-space)
 - [Page Table](#page-table)
+- [Paging Init](#paging-init)
 
 ## <a name="terminology"></a> Terminology
 
@@ -15,9 +16,9 @@
    - The binary compiled from DTS
    - The format that kernel parses from during boot flow.
 - Memory Management Unit (MMU)
-   - Once it's enabled, the address CPU handles become virtual, and it takes translation to get the physical address.
+   - Once enabled, the address CPU handles become virtual, and it takes translation to get the physical address.
 - Table Look-aside Buffer (TLB)
-   - An hardware cache that helps speed up the translation of MMU.
+   - A hardware cache that helps speed up the translation of MMU.
 - Translation Table Base Register (TTBR)
    - It tells MMU the physical address of the page table. Whenever a context switch happens, it changes accordingly as well.
 
@@ -25,9 +26,9 @@
 
 Memory management is one of the kernel's most essential and fundamental infrastructures and is used to satisfy kernel space and user space requirements.
 So why does memory need to be managed?
-- If a simple logic runs without using any memory, we don't need the management.
+- If a simple logic runs without memory, we don't need the management.
 - If an application only writes data to a pre-defined area and doesn't exceed the boundary, we don't need the management.
-- If the system reaches financial freedom in terms of memory and the program won't consume them entirely before exiting, we don't need the management.
+- If the system reaches financial freedom in memory and the program won't consume them entirely before exiting, we don't need the management.
 
 Unfortunately, on a 32-bit machine, it supports up to 4 GB RAM only.
 Worst of all, dynamic memory allocation is so typical. Also, instead of one process, hundreds or thousands of them run altogether.
@@ -60,9 +61,9 @@ Besides, the application's metadata is also generated dynamically in OS.
 
 Memblock allocator is the temporary memory management handling the add and reserve of memory blocks during boot time.
 First, in DTS/DTB, we specify the target memory region that we want the kernel to help manage and the kernel parses that config and passes to the memblock module.
-Then we reserve a few regions occupied by DTB, kernel, initramfs, and initial page table in case they got allocated for other purposes by accident.
+Then we reserve a few areas occupied by DTB, kernel, initramfs, and initial page table in case they got allocated for other purposes by accident.
 DTS/DTB also specified many ranges that needed to be added or reserved in the memblock allocator.
-Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good to go with these major regions saved in its static data structure.
+Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good to go with these significant regions saved in its static data structure.
 
 ```                                               
               +-----add------+                     
@@ -117,42 +118,45 @@ Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good 
    +--> reserve memblock for DTB (0x8810_C000 ~ 0x8812_12B8)                                                                                              
    |                                                                                                                                                      
    |    +-------------------+                                                                                                                             
-   +--> | arm_memblock_init |                                                                                                                             
-        +----|--------------+                                                                                                                             
-             |                                                                                                                                            
-             +--> reserve memblock for kernel (0x8010_0000 ~ 0x80EF_7BA0)                                                                                 
-             |                                                                                                                                            
-             |    +-----------------+                                                                                                                     
-             +--> | arm_initrd_init | reserve memblock for initramfs (0x8800_0000 ~ 0x8810_C000)                                                          
-             |    +-----------------+                                                                                                                     
-             |    +-------------------------+                                                                                                             
-             +--> | arm_mm_memblock_reserve | reserve memblock for the initial page table (0x8000_4000 ~ 0x8000_8000)                                     
-             |    +-------------------------+                                                                                                             
-             |    +----------------------------------+                                                                                                    
-             +--> | early_init_fdt_scan_reserved_mem |                                                                                                    
-             |    +--------|-------------------------+                                                                                                    
-             |             |    +-------------------------+                                                                                               
-             |             +--> | __fdt_scan_reserved_mem | add memblock for VGA （0x9F00_0000 ~ 0xA000_0000）                                              
-             |             |    +-------------------------+                                                                                               
-             |             |    +-------------------------+                                                                                               
-             |             +--> | __fdt_scan_reserved_mem | add memblock for flash （0x9800_0000 ~ 0x9C00_0000）                                            
-             |             |    +-------------------------+                                                                                               
-             |             |    +-------------------------+                                                                                               
-             |             +--> | __fdt_scan_reserved_mem | add memblock for coldfire （0x9EF0_0000 ~ 0x0010_0000）                                         
-             |             |    +-------------------------+                                                                                               
-             |             |    +-----------------------+                                                                                                 
-             |             +--> | fdt_init_reserved_mem | 1. reserve memblock for GFX （0x9D00_0000 ~ 0x9E00_0000）                                         
-             |                  +-----------------------+ 2. print log                                                                                    
-             |                                                [    0.000000] Reserved memory: created CMA memory pool at 0x9d000000, size 16 MiB          
-             |                                                [    0.000000] OF: reserved mem: initialized node framebuffer, compatible id shared-dma-pool
-             |                                            3. reserve memblock for video engine （0x9600_0000 ~ 0x9800_0000）                                
-             |                                            4. print log                                                                                    
-             |                                                [    0.000000] Reserved memory: created CMA memory pool at 0x96000000, size 32 MiB          
-             |                                                [    0.000000] OF: reserved mem: initialized node jpegbuffer, compatible id shared-dma-pool 
-             |    +------------------------+                                                                                                              
-             +--> | dma_contiguous_reserve | 1. reserve memblock for the DMA/CMA （0x9C00_0000 ~ 0x9D00_0000）                                              
-                  +------------------------+ 2. print log                                                                                                 
-                                                 [    0.000000] cma: Reserved 16 MiB at 0x9c000000                                                        
+   |--> | arm_memblock_init |                                                                                                                             
+   |    +----|--------------+                                                                                                                             
+   |         |                                                                                                                                            
+   |         +--> reserve memblock for kernel (0x8010_0000 ~ 0x80EF_7BA0)                                                                                 
+   |         |                                                                                                                                            
+   |         |    +-----------------+                                                                                                                     
+   |         +--> | arm_initrd_init | reserve memblock for initramfs (0x8800_0000 ~ 0x8810_C000)                                                          
+   |         |    +-----------------+                                                                                                                     
+   |         |    +-------------------------+                                                                                                             
+   |         +--> | arm_mm_memblock_reserve | reserve memblock for the initial page table (0x8000_4000 ~ 0x8000_8000)                                     
+   |         |    +-------------------------+                                                                                                             
+   |         |    +----------------------------------+                                                                                                    
+   |         +--> | early_init_fdt_scan_reserved_mem |                                                                                                    
+   |         |    +--------|-------------------------+                                                                                                    
+   |         |             |    +-------------------------+                                                                                               
+   |         |             +--> | __fdt_scan_reserved_mem | add memblock for VGA （0x9F00_0000 ~ 0xA000_0000）                                              
+   |         |             |    +-------------------------+                                                                                               
+   |         |             |    +-------------------------+                                                                                               
+   |         |             +--> | __fdt_scan_reserved_mem | add memblock for flash （0x9800_0000 ~ 0x9C00_0000）                                            
+   |         |             |    +-------------------------+                                                                                               
+   |         |             |    +-------------------------+                                                                                               
+   |         |             +--> | __fdt_scan_reserved_mem | add memblock for coldfire （0x9EF0_0000 ~ 0x0010_0000）                                         
+   |         |             |    +-------------------------+                                                                                               
+   |         |             |    +-----------------------+                                                                                                 
+   |         |             +--> | fdt_init_reserved_mem | 1. reserve memblock for GFX （0x9D00_0000 ~ 0x9E00_0000）                                         
+   |         |                  +-----------------------+ 2. print log                                                                                    
+   |         |                                                [    0.000000] Reserved memory: created CMA memory pool at 0x9d000000, size 16 MiB          
+   |         |                                                [    0.000000] OF: reserved mem: initialized node framebuffer, compatible id shared-dma-pool
+   |         |                                            3. reserve memblock for video engine （0x9600_0000 ~ 0x9800_0000）                                
+   |         |                                            4. print log                                                                                    
+   |         |                                                [    0.000000] Reserved memory: created CMA memory pool at 0x96000000, size 32 MiB          
+   |         |                                                [    0.000000] OF: reserved mem: initialized node jpegbuffer, compatible id shared-dma-pool 
+   |         |    +------------------------+                                                                                                              
+   |         +--> | dma_contiguous_reserve | 1. reserve memblock for the DMA/CMA （0x9C00_0000 ~ 0x9D00_0000）                                              
+   |              +------------------------+ 2. print log                                                                                                 
+   |                                             [    0.000000] cma: Reserved 16 MiB at 0x9c000000                                                        
+   |    +-------------+                                                                                                                                   
+   +--> | paging init | we'll introduce this function later                                                                                               
+        +-------------+       
 ```
 
 ## <a name="virtual-space"></a> Virtual Space
@@ -163,9 +167,9 @@ The logic written in assembly code before entering 'start_kerner' sets up simple
 Why do we need virtual space?
 All the physical addresses we've mentioned indicate their position on the bus, and it's totally up to hardware designers' preference to decide the layout.
 For example, on AST2500, physical address 0x0000_0000 maps to SPI flash and 0x8000_0000 maps to DRAM.
-Since the layout of DRAM differs from machine to machine, even with the same processor ARM, chip designers can still place DRAM at different bus addresses.
+Since the position of DRAM differs from machine to machine, even with the same processor ARM, chip designers can still place DRAM at different bus addresses.
 Introducing virtual space can solve this problem by consistently presenting the same layout to running kernel and applications.
-Different DRAM positions only affect how the kernel maps its virtual address to the destination.
+Different DRAM positions affect how the kernel maps its virtual address to the destination.
 The typical ratio between user and kernel space on ARM system is 3:1 or 2:2, and our study case uses the latter one.
 
 Here's how it works:
@@ -208,10 +212,10 @@ They are shown as the PGD, P4D, PUD, PMD, PTE from top to bottom in the source c
 Thankfully, AST2500@ARM utilizes only PGD, PMD, and PTE, and here's a brief introduction.
 
 - PGD
-   - Represents a 2M mapping.
+   - It represents a 2M mapping.
    - One PGD consists of two PMDs in place.
 - PMD
-   - Represents a 1M mapping or points to the next level.
+   - It represents a 1M mapping or points to the next level.
    - a.k.a. section
 - PTE
    - Represent a 4K mapping.
@@ -221,7 +225,7 @@ Let's ignore PGD for simplicity and focus on a few possible combinations of PMD 
 - Case 1: PMD is zero (unmapped).
 - Case 2: PMD has a value (attribute determines the interpretation).
    - Case 2.1: it's a physical address for 1M mapping.
-   - Case 2.2: it's a physical address that points to the 2nd level page table.
+   - Case 2.2: it's a physical address pointing to the 2nd level page table.
       - Case 2.2.1: PTE is zero (unmapped).
       - Case 2.2.2: it's a physical address for 4K mapping.
 
@@ -239,7 +243,7 @@ Please note that every 2nd level table is for two PMDs.
         +-------+                    -          |
         |   PMD0| ---+            +------+      |
    PGD1 |  ------    |            |PTE255|      |
-        |   PMD1| -+ |          ------------    | for SW
+        |   PMD1| -+ |          ------------    | for SW (Linux) to check attributes
         +-------+  | |            |PTE0  |      |
             -      | |            +------+      |
             -      | |               -          |
@@ -253,7 +257,7 @@ PGD2047 |  ------  | +--------->  |PTE0  |      |
                    |                 -          |
                    |              +------+      |
                    |              |PTE255|      |
-                   |            ------------    | for HW
+                   |            ------------    | for HW (MMU) to look up
                    +----------->  |PTE0  |      |
                                   +------+      |
                                      -          |
@@ -268,7 +272,7 @@ Given a virtual address, we can do the 'page walk' by following the below steps:
 2. Use bit 20~31 as the index to find the entry.
    - The value means physical address if it's a section mapping.
    - Otherwise, it points to the 2nd-level table. (Assume it's our case)
-3. Use bit 0~11 as the index to find the entry.
+3. Use bit 12~19 as the index to find the entry.
 4. Add the offset to the found physical address, and that's it!
 
 ```                                   
@@ -279,6 +283,140 @@ Given a virtual address, we can do the 'page walk' by following the below steps:
                     1st index             offset   
                               2nd index            
 ```
+
+## <a name="paging-init"></a> Paging Init
+
+Knowing the necessity of virtual space and the hierarchy of page tables, we progress to introduce the flow of paging init.
+This logic prepares several mappings from managed memory to vmalloc, pkmap, fixmap, etc.
+Here's the list of them sorted in the order of ascending virtual address:
+
+- Module
+   - It's an area reserved for loaded modules.
+- Pkmap
+   - I don't know.
+- Kernel
+   - it further separates into executable and non-executable parts.
+- Manageable memory from added memblocks
+   - Exclude kernel since it has its mapping.
+   - Exclude 'flash,' coldfire,' and 'VGA' because of their 'no map' attribute specified in DTS.
+- DMA regions: 'video engine', 'DMA/CMA', and 'GFX'
+   - Though they are in manageable memory range, they get remapped with the DMA attribute.
+- Vmalloc area
+   - The memory from this region is guaranteed to be virtually consecutive.
+- DTB
+   - 2M-sized mapping for DTB
+- Fixmap
+   - I don't know.
+- Vector
+   - A table for exception handling
+
+```
+                                                                                              virtual                  
+                                                                                              address                  
+                                                                                                                       
+                                                                          +--------------+  0x7F00_0000, MOUDLES_VADDR 
+    physical                                                              |    module    |                             
+    address                                                               +--------------+  0x7FE0_0000                
+                                                                          |     pkmap    |                             
+  0x8000_0000  +------+--------------+   --+                +--           +--------------+  0x8000_0000, PAGE_OFFSET   
+               |      |  page table  |     |  map_kernel()  |             |   kernel-x   |                             
+  0x8000_4000  |      |       +      |     | <------------> |             +--------------+  0x80E0_0000                
+               |      |    kernel    |     |                |             |   kernel-nx  |                             
+  0x80F0_0000  |      +--------------+   --+                +--           +--------------+  0x80F0_0000                
+               |              |            |                |             |              |                             
+  0x8800_0000  |      +--------------+     |                |             |              |                             
+               |      |  initramfs   |     |                |             |              |                             
+  0x8810_C000  |      +--------------+     |                |             |              |                             
+               |      |      DTB     |     |  map_lowmem()  |             |              |                             
+  0x8812_12B8  |      +--------------+     | <------------> |             |              |                             
+               |              |            |                |             |              |                             
+  0x9600_0000  |      +--------------+     |                |     +--------------+       |  0x9600_0000                
+               |      | video engine |     |                |     | video engine |       |                             
+  0x9800_0000  +------+--------------+   --+                +--   +--------------+-------+  0x9800_0000                
+               |     flash    |                                                                                        
+  0x9C00_0000  +------+--------------+   --+                +--   +--------------+-------+  0x9C00_0000                
+               |      |   DMA/CMA    |     |                |     |    DMA/CMA   |       |                             
+  0x9D00_0000  |      +--------------+     |                |     +--------------+       |  0x9D00_0000                
+               |      |     GFX      |     |  map_lowmem()  |     |      GFX     |       |                             
+  0x9E00_0000  |      +--------------+     | <------------> |     +--------------+       |  0x9E00_0000                
+               |              |            |                |             |              |                             
+  0x9EE0_0000  |              |          --+                +--           +--------------+  0x9EE0_0000                
+               |              |                                                                                        
+  0x9EF0_0000  +--------------+                                                                                        
+               |   coldfire   |                                                                                        
+  0x9F00_0000  +--------------+                                           +--------------+  0x9F00_0000, VMALLOC_START 
+               |     VGA      |                                           |    vmalloc   |                             
+  0xA000_0000  +--------------+                                           |              |                             
+                                                                          |              |                             
+                                                                          |              |                             
+                                                                          +--------------+  0xFF80_0000, FDT_FIXED_BASE
+                                                                          |      DTB     |                             
+                                                                          +--------------+  0xFFA0_0000                
+                                                                                                                       
+                                                                          +--------------+  0xFFC8_0000, FIXADDR_START 
+                                                                          |    fixmap    |                             
+                                                                          +--------------+  0xFFF0_0000, FIXADDR_END   
+                                                                                                                       
+                                                                          +--------------+  0xFFFF_0000                
+                                                                          |    vector    |                             
+                                                                          +--------------+  0xFFFF_1000                                
+```
+
+- Code flow
+
+```
++-------------+                                                                                           
+| paging_init |                                                                                           
++---|---------+                                                                                           
+    |    +--------------------+                                                                           
+    +--> | prepare_page_table | reset all the mappings except the 1st memblock so the kernel can still run
+    |    +--------------------+                                                                           
+    |    +------------+                                                                                   
+    +--> | map_lowmem | map all the available memblocks but avoid kernel region                           
+    |    +------------+                                                                                   
+    |    +------------+                                                                                   
+    +--> | map_kernel |  map kernel for its executable and non-executable parts separately                
+    |    +------------+                                                                                   
+    |    +----------------------+                                                                         
+    +--> | dma_contiguous_remap | remap DMA regions: video engine, DMA/CMA, and GFX                       
+    |    +----------------------+                                                                         
+    |    +-----------------------+                                                                        
+    +--> | early_fixmap_shutdown | map 'fixmap'                                                           
+    |    +-----------------------+                                                                        
+    |    +-----------------+                                                                              
+    +--> | devicemaps_init | map other regions: vmalloc, DTB, vector, etc                                 
+    |    +-----------------+                                                                              
+    |    +-----------+                                                                                    
+    +--> | kmap_init | map 'kmap'                                                                        
+    |    +-----------+                                                                                    
+    |    +--------------+                                                                                 
+    +--> | bootmem_init | we'll introduce this function later                                             
+         +--------------+                                                                                 
+```
+
+### Node and Zone
+
+Before introducing the function _bootmem_init_, let's talk about node and zone first.
+So for multiple processors sharing the memory that isn't closer to any CPU, we call this memory a 'node,' which is typical.
+Rumor has those large systems that I've never seen one by myself have multiple 'nodes,' and each CPU has its preferred one.
+Accessing nearby memory costs less time while visiting remote ones takes longer.
+Here are the formal names for the above two designs, and our study case belongs to the first one.
+
+- UMA
+   - Uniform Memory Access
+   - There's only node 0
+- NUMA
+   - Non-Uniform Memory Access
+   - Multiple nodes exist
+
+
+
+### Vmalloc area
+   - Memory from this region is guaranteed to be virtually consecutive.
+### Fixmap
+   - I don't know.
+
+
 
 ```
 [    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
