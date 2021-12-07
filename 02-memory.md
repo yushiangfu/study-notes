@@ -16,12 +16,6 @@
 - Device Tree Blob (DTB)
    - The binary compiled from DTS
    - The format that kernel parses from during boot flow.
-- Memory Management Unit (MMU)
-   - Once enabled, the address CPU handles become virtual, and it takes translation to get the physical address.
-- Table Look-aside Buffer (TLB)
-   - A hardware cache that helps speed up the translation of MMU.
-- Translation Table Base Register (TTBR)
-   - It tells MMU the physical address of the page table. Whenever a context switch happens, it changes accordingly as well.
 
 ## <a name="introduction"></a> Introduction
 
@@ -173,6 +167,14 @@ Introducing virtual space can solve this problem by consistently presenting the 
 Different DRAM positions affect how the kernel maps its virtual address to the destination.
 The typical ratio between user and kernel space on ARM system is 3:1 or 2:2, and our study case uses the latter one.
 
+Involved hardware components:
+- Memory Management Unit (MMU)
+   - Once enabled, the address CPU handles become virtual, and it takes translation to get the physical address.
+- Table Look-aside Buffer (TLB)
+   - A hardware cache that helps speed up the translation of MMU.
+- Translation Table Base Register (TTBR)
+   - It tells MMU the physical address of the page table. Whenever a context switch happens, it changes accordingly as well.
+
 Here's how it works:
 1. CPU tries to access the virtual address.
 2. MMU does the real translation work.
@@ -297,10 +299,11 @@ Here's the list of them sorted in the order of ascending virtual address:
    - I don't know.
 - Kernel
    - it further separates into executable and non-executable parts.
-- Manageable memory from added memblocks
+- Manageable memory
    - Exclude kernel since it has its mapping.
    - Exclude 'flash,' coldfire,' and 'VGA' because of their 'no map' attribute specified in DTS.
-- DMA regions: 'video engine', 'DMA/CMA', and 'GFX'
+- DMA regions
+   - 'video engine', 'DMA/CMA', and 'GFX'
    - Though they are in manageable memory range, they get remapped with the DMA attribute.
 - Vmalloc area
    - The memory from this region is guaranteed to be virtually consecutive.
