@@ -7,6 +7,7 @@
 - [Virtual Space](#virtual-space)
 - [Page Table](#page-table)
 - [Paging Init](#paging-init)
+- [Node and Zone](#node-and-zone)
 
 ## <a name="terminology"></a> Terminology
 
@@ -394,10 +395,10 @@ Here's the list of them sorted in the order of ascending virtual address:
          +--------------+                                                                                 
 ```
 
-### Node and Zone
+## <a name="node-and-zone"></a> Node and Zone
 
 Before introducing the function _bootmem_init_, let's talk about node and zone first.
-So for multiple processors sharing the memory that isn't closer to any CPU, we call this memory a 'node,' which is typical.
+For multiple processors sharing the memory that doesn't serve a specific CPU, we call this memory a 'node,' and it's the typical structure on most devices.
 Rumor has those large systems that I've never seen one by myself have multiple 'nodes,' and each CPU has its preferred one.
 Accessing nearby memory costs less time while visiting remote ones takes longer.
 Here are the formal names for the above two designs, and our study case belongs to the first one.
@@ -409,6 +410,60 @@ Here are the formal names for the above two designs, and our study case belongs 
    - Non-Uniform Memory Access
    - Multiple nodes exist
 
+Each node consists of a few zones that serve different purposes.
+
+- DMA zone
+   - Some old fashion devices have limitations that can only access memory below a specific threshold, and the memory range below this line is the DMA zone.
+   - Let's ignore this one since it got disabled in our study case. Hooray!
+- Normal zone
+   - AST2500 adopts ARM32, which supports up to 4G of user and kernel space combined.
+   - Though it's 2G/2G for user/kernel space in our case, 3G/1G is also pervasive.
+   - It's pretty straightforward that we can't map more than 2G into kernel space, and it's even less since Linux reserves some virtual ranges for other usages.
+   - These direct-mapped page frames belong to 'DMA' or 'normal' zones.
+- Highmem zone
+   - If we ask the kernel to manage much memory more than it can accommodate, it falls into 'highmem.'
+   - This zone might be empty if we disable the CONFIG_HIGHMEM or provide not much DRAM for memory management.
+   - Our case is kind of tricky. With enabled config and enough memory, kernel forcibly drops highmem because of the VIPT cache type. No idea why.
+   - Relative to highmem, we call the 'DMA' and 'normal' zones together as lowmem.
+
+Function _bootmem_init_ initializes the node and zone structure,  and in our study case, it's one node and two zones (normal + empty highmem).
+
+```
++--------------+                                                                                                                               
+| bootmem_init |                                                                                                                               
++---|----------+                                                                                                                               
+    |    +-----------------+                                                                                                                   
+    +--> | zone_sizes_init |                                                                                                                   
+         +----|------------+                                                                                                                   
+              |    +----------------+                                                                                                          
+              +--> | free_area_init |                                                                                                          
+                   +---|------------+                                                                                                          
+                       |                                                                                                                       
+                       +--> print log                                                                                                          
+                       |        [    0.000000]   Normal   [mem 0x0000000080000000-0x000000009eefffff]                                          
+                       |        [    0.000000]   HighMem  empty                                                                                
+                       |        [    0.000000] Movable zone start for each node                                                                
+                       |        [    0.000000] Early memory node ranges                                                                        
+                       |        [    0.000000]   node   0: [mem 0x0000000080000000-0x0000000097ffffff]                                         
+                       |        [    0.000000]   node   0: [mem 0x0000000098000000-0x000000009bffffff]                                         
+                       |        [    0.000000]   node   0: [mem 0x000000009c000000-0x000000009edfffff]                                         
+                       |                                                                                                                       
+                       |    +---------------------+                                                                                            
+                       +--> | free_area_init_node |                                                                                            
+                            +-----|---------------+                                                                                            
+                                  |                                                                                                            
+                                  |--> set up the node                                                                                         
+                                  |                                                                                                            
+                                  +--> print log                                                                                               
+                                  |        [    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000009edfffff]                     
+                                  |                                                                                                            
+                                  |    +--------------------+                                                                                  
+                                  |--> | alloc_node_mem_map | prepare 'struct page' array and each represents its corresponding '4K page frame'
+                                  |    +--------------------+                                                                                  
+                                  |    +---------------------+                                                                                 
+                                  +--> | free_area_init_core | set up zones                                                                    
+                                       +---------------------+                                                                                 
+```
 
 
 ### Vmalloc area
