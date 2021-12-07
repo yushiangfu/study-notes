@@ -154,6 +154,15 @@ Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good 
         +-------------+       
 ```
 
+- Related APIs
+
+```
+memblock_add():      add memblock
+memblock_reserve():  reserve memblock
+memblock_alloc():    alllocate space from memblock, and it's actually a wrapper of memblock_reserve()
+memblock_free():     return allocated space to memblock
+```
+
 ## <a name="virtual-space"></a> Virtual Space
 
 So far, the memory blocks are all about physical addresses, but actually, we are running in virtual space already.
@@ -477,23 +486,9 @@ Function _bootmem_init_ initializes the node and zone structure,  and in our stu
 
 
 ```
-[    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
-[    0.000000] Consider using a HIGHMEM enabled kernel.
-[    0.000000] Zone ranges:
-[    0.000000]   Normal   [mem 0x0000000080000000-0x000000009eefffff]
-[    0.000000]   HighMem  empty
-[    0.000000] Movable zone start for each node
-[    0.000000] Early memory node ranges
-[    0.000000]   node   0: [mem 0x0000000080000000-0x0000000097ffffff]
-[    0.000000]   node   0: [mem 0x0000000098000000-0x000000009bffffff]
-[    0.000000]   node   0: [mem 0x000000009c000000-0x000000009edfffff]
-[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000009edfffff]
-[    0.000000] CPU: All CPU(s) started in SVC mode.
+
 [    0.000000] percpu: Embedded 16 pages/cpu s35148 r8192 d22196 u65536
 [    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 125476
-[    0.000000] Kernel command line: console=ttyS4,115200 earlycon
-[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes, linear)
-[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
 [    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
 [    0.000000] Memory: 354620K/505856K available (9216K kernel code, 805K rwdata, 2192K rodata, 1024K init, 185K bss, 85700K reserved, 65536K cma-reserved, 0K highmem
 )
