@@ -8,6 +8,8 @@
 - [Page Table](#page-table)
 - [Paging Init](#paging-init)
 - [Node and Zone](#node-and-zone)
+- [Per-CPU Area](#per-cpu-area)
+- [Zone List & Page Set](#page-set)
 
 ## <a name="terminology"></a> Terminology
 
@@ -434,9 +436,16 @@ Each node consists of a few zones that serve different purposes.
    - These direct-mapped page frames belong to 'DMA' or 'normal' zones.
 - Highmem zone
    - If we ask the kernel to manage much memory more than it can accommodate, it falls into 'highmem.'
+   - Relative to highmem, we call the 'DMA' and 'normal' zones together as lowmem.
    - This zone might be empty if we disable the CONFIG_HIGHMEM or provide not much DRAM for memory management.
    - Our case is kind of tricky. With enabled config and enough memory, kernel forcibly drops highmem because of the VIPT cache type. No idea why.
-   - Relative to highmem, we call the 'DMA' and 'normal' zones together as lowmem.
+
+- Related kernel log
+
+```
+[    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
+[    0.000000] Consider using a HIGHMEM enabled kernel.
+```
 
 Function _bootmem_init_ initializes the node and zone structure,  and in our study case, it's one node and two zones (normal + empty highmem).
 
@@ -477,6 +486,113 @@ Function _bootmem_init_ initializes the node and zone structure,  and in our stu
                                        +---------------------+                                                                                 
 ```
 
+## <a name="per-cpu-area"></a> Per-CPU Area
+
+When multiple processors try to access the same variable in memory, we can say it's a 'critical region,' and therefore synchronization issue raises the concern. 
+We utilize different locks to protect the 'critical region,' but then congestion problems arise. 
+One way to solve the synchronization and congestion is to prepare a copy for each CPU, and that's the concept of the percpu variable. 
+The kernel includes a list of such variables between the symbol '\_\_per_cpu_start' and '\_\_per_cpu_end,' which occupies 35148 bytes in my case. 
+Each processor in the system has its percpu area, a.k.a. unit, which consists of three chunks: 'static,' 'dynamic,' and 'reserved.' 
+During boot flow, the kernel allocates the space from memblock for the percpu area and copies percpu variables into the 'static' chunk of each unit.
+
+- E.g., case of two processors.
+
+```
+                                      +------------+           
+                                      |            | |         
++------------+                        |            | |         
+|            |             +------->  |   static   | |         
+|            |             |          |            | |         
+|   kernel   |             |          |            | |         
+|            |             |          +------------+ | for CPU0
+|            |             |          |  reserved  | |         
+|            |             |          +------------+ |         
+|+------------+            |          |            | |         
+||           ||            |          |  dynanmic  | |         
+||           ||            |          |            |           
+||   static  ||   ---------+      ----------------------       
+||           ||            |          |            |           
+||           ||            |          |            | |         
+|+------------+            +------->  |   static   | |         
++------------+                        |            | |         
+                                      |            | |         
+                                      +------------+ | for CPU1
+                                      |  reserved  | |         
+                                      +------------+ |         
+                                      |            | |         
+                                      |  dynanmic  | |         
+                                      |            | |         
+                                      +------------+           
+```
+
+- Code flow
+
+```
++--------------+                                                                                    
+| start_kernel |                                                                                    
++---|----------+                                                                                    
+    |      +------------+                                                                           
+    +----> | setup_arch |                                                                           
+    |      +------------+                                                                           
+    |      +---------------------+                                                                  
+    |----> | setup_per_cpu_areas |                                                                  
+    |      +-----|---------------+                                                                  
+    |            |      +------------------------+                                                  
+    |            +----> | pcpu_embed_first_chunk |                                                  
+    |                   +------------------------+                                                  
+    |                    1. determine the size of each chunk (static/reserved/dynamic)              
+    |                    2. allocate space from memblock                                            
+    |                    3. print log                                                               
+    |                        [    0.000000] percpu: Embedded 16 pages/cpu s35148 r8192 d22196 u65536
+    |                                                                                               
+    |      +---------------------+                                                                  
+    +----> | build_all_zonelists | we'll introduce it later                                         
+           +---------------------+                                                                                                                                 
+```
+
+## <a name="page-set"></a> Zone List & Page Set
+
+As we mentioned in the above sections, a few zones exist, such as 'DMA,' 'normal,' and 'highmem.' 
+Once the primary memory management (buddy system) is ready, we can specify which zone is the allocation source. 
+But if that zone fails to fulfill the request, should we stop right away or turn to other zones? 
+The fallback sequence, a.k.a. zone list, positions them in the order of 'highmem,' 'normal,' and then 'DMA.' 
+That's because the lower zone can always meet the requirement of the higher one. 
+Back to reality, we will ignore this because there's only one functional zone: 'normal' in our study case.
+
+The pageset is the page cache of the buddy system, and parameters 'high' and 'batch' control its behavior. 
+When the cached pages are more than 'high,' return the 'batch' pages to the buddy system. 
+At this stage, it has 'high = 0' and 'batch = 1,' which means it stocks nothing but behaves as a portal.
+
+- Code flow
+
+```
++---------------------+                                                                       
+| build_all_zonelists |                                                                       
++-----|---------------+                                                                       
+      |    +--------------------------+                                                       
+      |--> | build_all_zonelists_init |                                                       
+      |    +------|-------------------+                                                       
+      |           |    +-----------------------+                                              
+      |           +--> | __build_all_zonelists | build zone list, but not much of our business
+      |           |    +-----------------------+                                              
+      |           |                                                                           
+      |           +--> initialize percpu pageset but they cache nothing at the moment         
+      |                                                                                       
+      +--> print log                                                                          
+               [    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 125476   
+```
+
+- Explanation of 'Total pages: 125476'
+
+   - DTS/DTB assigns 0x8000_0000 to 0xA000_0000 for kernel to manage
+   - Because of VIPT cache type (so what?), the kernel ignores the range it can't accommodate directly, 0x9EE0_0000 to 0xA000_0000.
+   - Now the manageable memory is of size 0x9EE0_0000 - 0x8000_0000 = 0x1EE0_0000.
+   - Size 0x1EE0_0000 bytes means there are 0x1_EE00 page frames lies within.
+   - The size of 'struct page' is 0x20 bytes and we need prepare one for each page frame: 0x20 * 0x1_EE00 = 0x3D_C000　bytes.
+   - We need to reserve up 0x3D_C000 as the array of 'struct page,' meaning we'll use 0x3DC page frames to contain it.
+   - Manageable page frames (0x1_EE00) minus those (0x3DC) reserved for the array. We still got 125476 pages left.
+   - Nice!
+
 
 ### Vmalloc area
    - Memory from this region is guaranteed to be virtually consecutive.
@@ -487,7 +603,7 @@ Function _bootmem_init_ initializes the node and zone structure,  and in our stu
 
 ```
 
-[    0.000000] percpu: Embedded 16 pages/cpu s35148 r8192 d22196 u65536
+
 [    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 125476
 [    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
 [    0.000000] Memory: 354620K/505856K available (9216K kernel code, 805K rwdata, 2192K rodata, 1024K init, 185K bss, 85700K reserved, 65536K cma-reserved, 0K highmem
