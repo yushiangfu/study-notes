@@ -449,8 +449,37 @@ Each node consists of a few zones that serve different purposes.
 ```
 
 Function _bootmem_init_ initializes the node and zone structure, and in our study case, it's one node and two zones (normal + empty highmem).
-As a matter of fact, these unremarkable structures are buddy system with no page frames to spare.
-To represent each page frame, kernel generates an array of 'struct page' and behaves as handle for their corresponding page frames.
+These unremarkable structures are buddy systems with no page frames to spare.
+The kernel then generates an array of 'struct page,' and each entity behaves as a handle for their corresponding page frame.
+
+```
+    physical                                        
+    address                                         
+                                                    
+  0x8000_0000  +------------+                       
+               | page frame | <-----+   +--------+  
+  0x8000_1000  +------------+       --- | struct |  
+               | page frame | <---+     |  page  |  
+  0x8000_2000  +------------+     -     +--------+  
+                     -            +---- | struct |  
+                     -                  |  page  |  
+                     -                  +--------+  
+                     -                      -       
+                     -                      -       
+                     -                      -       
+                     -                      -       
+                     -                      -       
+                     -                      -       
+                     -                  +--------+  
+                     -            +---- | struct |  
+  0x9EDF_F000  +------------+     -     |  page  |  
+               | page frame | <---+     +--------+  
+  0x9EE0_0000  +------------+                       
+                                                    
+               unit: 4k bytes         unit: 20 bytes
+```
+
+- Code flow
 
 ```
 +--------------+                                                                                                                               
@@ -597,21 +626,77 @@ At this stage, it has 'high = 0' and 'batch = 1,' which means it stocks nothing 
    - Manageable page frames (0x1_EE00) minus those (0x3DC) reserved for the array. We still got 125476 pages left.
    - Nice!
 
-## <a name="buddy=system"></a> Buddy System
+## <a name="buddy-system"></a> Buddy System
 
-Finally we've reached the well known memory management, buddy system!
-Right now, we have a working memblock allocator, its management data, and the array of 'struct page.'
-Each 'struct page' 
-When kernel finishes adding and reserving the main region based on DTS/DTB, memblock allocator is ready to work as a temporary memory management.
-It supports basic functions such as space allocation and return but it has to scan the region to meet the request and vulnerable toward memory fragmentation.
-Buddy system solves these delimas by:
-- Group free and consecutive 'struct page' to avoid scan, at least not much scan compared to memblock allocator.
-- Whenever it gets a returned page(s), check if its 'buddy' exists and combine to a larger group if available.
+Finally, we've reached the well-known memory management buddy system!
+Right now, we have a working memblock allocator and an array of *struct page*s, and the buddy system (node/zone/pageset). 
+Kernel labels the *struct page* as 'reserved' if the corresponding page frame is in the *reserved* or *nomap* region. 
+Those free page frames are 'freed' to the buddy system as if the memblock allocator previously borrowed them. 
+Unlike the 'region' concept, the buddy system regards the DRAM as a long array of page frames and utilizes the handles to manage them. 
+Those free *struct pages* stay in one of the many linked lists of a zone while reserved and allocated ones are somewhere else.
 
 
+Memblock allocator supports essential functions such as space allocation and return. 
+But the drawbacks are also obvious: it has to scan the region to find the qualified-sized area, and it's vulnerable to memory fragmentation. 
+Buddy system solves these dilemmas by:
+- Group free and consecutive struct pages to avoid scan, at least not much scan compared to its predecessor.
+- Whenever it gets the returned page(s), check if its 'buddy' exists and merge to a larger group if feasible.
 
+```
+                                      'highmem' zone                                                     
+     +---------------------------------------------------------------------------------+                 
+     |                                                                                 |                 
+     |                            'normal' zone                                        |                 
++---------------------------------------------------------------------------------+    |                 
+|                                                                                 |    |                 
+|            +-+      +------+         +------+         +------+                  |    |                 
+|   order 0  | |------|struct|  ------ |struct|  ------ |struct|      - - - - -   |    |                 
+|            +-+      | page |         | page |         | page |                  |    |                 
+|                     +------+         +------+         +------+                  |    |                 
+|                      1 page                                                     |    |                -
+|                                                                                 |    |                 
+|                      +------+         +------+         +------+                 |    |                 
+|            +-+      +------+|        +------+|        +------+|                 |    |                 
+|   order 1  | |------|struct|| ------ |struct|| ------ |struct||     - - - - -   |    |                 
+|            +-+      | page-|+        | page-|+        | page-|+                 |    |                 
+|                     +------+         +------+         +------+                  |    |                 
+|                      2 pages                                                    |    |                 
+|                                                                                 |    |                 
+|                        +------+         +------+         +------+               |    |                 
+|                       +------+|        +------+|        +------+|               |    |                 
+|                      +------+||       +------+||       +------+||               |    |                 
+|            +-+      +------+||+      +------+||+      +------+||+               |    |                 
+|   order 2  | |------|struct||+------ |struct||+------ |struct||+    - - - - -   |    |                 
+|            +-+      | page-|+        | page-|+        | page-|+                 |    |                 
+|      -              +------+         +------+         +------+                  |    |                 
+|      -               4 pages                                                    |    |                 
+|      -                                                                          |    |                 
+|      -                                                                          |    |                 
+|            +-+                                                                  |    |                 
+|   order 10 | |----- 1024 pages ----- 1024 pages ----- 1024 pages    - - - - -   |----+                 
+|            +-+                                                                  |                      
+|                                                                                 |                      
++---------------------------------------------------------------------------------+                      
+```
 
+Buddy system:
+- For the first linked list, each connected unit is one page, and they might just come from the pageset or be assigned to the pageset later.
+- A unit is a group of 2^order page(s), and the order is up to ten by default.
+- Each zone has its linked list of each order, except there is no page in the 'highmem' zone in our case.
 
+Let's think about a scenario in the buddy system that receives a memory request of (zone='normal', order='one').
+- Firstly, it goes to the corresponding list, removes one unit, and passes it to the caller. 
+- If the list of order one is empty, it then turns to order two and splits a unit into two pages + two pages.
+- Returns any to fulfill the request, and puts the other onto the order one list. 
+- What if order two is also empty? It will further look help from order three and separate it into two pages + two pages + four pages. 
+- After delivering the two pages to the client, place the other two units back to their corresponding linked lists. 
+- If there's a following request aiming for order zero or one, we can guarantee that the four pages still sit tight and meet greater demands later, if any. 
+- It's clear that even the request is of size 512 pages or 1024 pages, we can swiftly inspect those linked lists instead of traversing the whole area. 
+- Ok, back to the example that two pages + four pages stay put there. 
+- Once the borrowed two pages come back, we first check if its buddy remains without being lent out. 
+- Assuming the buddy exists, merge them into a two-page unit, and check again if a buddy of the newly combined page group stays. 
+- Merge them into eight pages if feasible. 
+- Iteratively perform these steps up to order ten and hang it back, which the buddy system utilizes to suppress memory fragmentation.
 
 
 
