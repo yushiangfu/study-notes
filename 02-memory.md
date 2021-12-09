@@ -9,7 +9,8 @@
 - [Paging Init](#paging-init)
 - [Node and Zone](#node-and-zone)
 - [Per-CPU Area](#per-cpu-area)
-- [Zone List & Page Set](#page-set)
+- [Zone List](#zone-list)
+- [Buddy System](#buddy-system)
 
 ## <a name="terminology"></a> Terminology
 
@@ -447,7 +448,9 @@ Each node consists of a few zones that serve different purposes.
 [    0.000000] Consider using a HIGHMEM enabled kernel.
 ```
 
-Function _bootmem_init_ initializes the node and zone structure,  and in our study case, it's one node and two zones (normal + empty highmem).
+Function _bootmem_init_ initializes the node and zone structure, and in our study case, it's one node and two zones (normal + empty highmem).
+As a matter of fact, these unremarkable structures are buddy system with no page frames to spare.
+To represent each page frame, kernel generates an array of 'struct page' and behaves as handle for their corresponding page frames.
 
 ```
 +--------------+                                                                                                                               
@@ -500,11 +503,11 @@ During boot flow, the kernel allocates the space from memblock for the percpu ar
 ```
                                       +------------+           
                                       |            | |         
-+------------+                        |            | |         
-|            |             +------->  |   static   | |         
+                                      |            | |         
++------------+             +------->  |   static   | |         
 |            |             |          |            | |         
-|   kernel   |             |          |            | |         
-|            |             |          +------------+ | for CPU0
+|            |             |          |            | |         
+|   kernel   |             |          +------------+ | for CPU0
 |            |             |          |  reserved  | |         
 |            |             |          +------------+ |         
 |+------------+            |          |            | |         
@@ -514,15 +517,15 @@ During boot flow, the kernel allocates the space from memblock for the percpu ar
 ||           ||            |          |            |           
 ||           ||            |          |            | |         
 |+------------+            +------->  |   static   | |         
+|            |                        |            | |         
 +------------+                        |            | |         
-                                      |            | |         
                                       +------------+ | for CPU1
                                       |  reserved  | |         
                                       +------------+ |         
                                       |            | |         
                                       |  dynanmic  | |         
                                       |            | |         
-                                      +------------+           
+                                      +------------+                
 ```
 
 - Code flow
@@ -550,7 +553,7 @@ During boot flow, the kernel allocates the space from memblock for the percpu ar
            +---------------------+                                                                                                                                 
 ```
 
-## <a name="page-set"></a> Zone List & Page Set
+## <a name="zone-list"></a> Zone List
 
 As we mentioned in the above sections, a few zones exist, such as 'DMA,' 'normal,' and 'highmem.' 
 Once the primary memory management (buddy system) is ready, we can specify which zone is the allocation source. 
@@ -559,7 +562,8 @@ The fallback sequence, a.k.a. zone list, positions them in the order of 'highmem
 That's because the lower zone can always meet the requirement of the higher one. 
 Back to reality, we will ignore this because there's only one functional zone: 'normal' in our study case.
 
-The pageset is the page cache of the buddy system, and parameters 'high' and 'batch' control its behavior. 
+The component 'pageset' has its debut in function build_all_zonelist.
+It's a percpu variable working as the page cache of the buddy system, and parameters 'high' and 'batch' control its behavior. 
 When the cached pages are more than 'high,' return the 'batch' pages to the buddy system. 
 At this stage, it has 'high = 0' and 'batch = 1,' which means it stocks nothing but behaves as a portal.
 
@@ -588,10 +592,30 @@ At this stage, it has 'high = 0' and 'batch = 1,' which means it stocks nothing 
    - Because of VIPT cache type (so what?), the kernel ignores the range it can't accommodate directly, 0x9EE0_0000 to 0xA000_0000.
    - Now the manageable memory is of size 0x9EE0_0000 - 0x8000_0000 = 0x1EE0_0000.
    - Size 0x1EE0_0000 bytes means there are 0x1_EE00 page frames lies within.
-   - The size of 'struct page' is 0x20 bytes and we need prepare one for each page frame: 0x20 * 0x1_EE00 = 0x3D_C000　bytes.
+   - The size of 'struct page' is 0x20 bytes and we need prepare one for each page frame: 0x20 * 0x1_EE00 = 0x3D_C000 bytes.
    - We need to reserve up 0x3D_C000 as the array of 'struct page,' meaning we'll use 0x3DC page frames to contain it.
    - Manageable page frames (0x1_EE00) minus those (0x3DC) reserved for the array. We still got 125476 pages left.
    - Nice!
+
+## <a name="buddy=system"></a> Buddy System
+
+Finally we've reached the well known memory management, buddy system!
+Right now, we have a working memblock allocator, its management data, and the array of 'struct page.'
+Each 'struct page' 
+When kernel finishes adding and reserving the main region based on DTS/DTB, memblock allocator is ready to work as a temporary memory management.
+It supports basic functions such as space allocation and return but it has to scan the region to meet the request and vulnerable toward memory fragmentation.
+Buddy system solves these delimas by:
+- Group free and consecutive 'struct page' to avoid scan, at least not much scan compared to memblock allocator.
+- Whenever it gets a returned page(s), check if its 'buddy' exists and combine to a larger group if available.
+
+
+
+
+
+
+
+
+
 
 
 ### Vmalloc area
@@ -604,8 +628,7 @@ At this stage, it has 'high = 0' and 'batch = 1,' which means it stocks nothing 
 ```
 
 
-[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 125476
-[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+
 [    0.000000] Memory: 354620K/505856K available (9216K kernel code, 805K rwdata, 2192K rodata, 1024K init, 185K bss, 85700K reserved, 65536K cma-reserved, 0K highmem
 )
 ```
