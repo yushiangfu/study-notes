@@ -11,6 +11,7 @@
 - [Per-CPU Area](#per-cpu-area)
 - [Zone List](#zone-list)
 - [Buddy System](#buddy-system)
+- [Kmem Cache](#kmem-cache)
 
 ## <a name="terminology"></a> Terminology
 
@@ -160,10 +161,11 @@ Lastly, the kernel reserves an area for DMA/CMA, and then the allocator is good 
 - Related APIs
 
 ```
-memblock_add():      add memblock
-memblock_reserve():  reserve memblock
-memblock_alloc():    alllocate space from memblock, and it's actually a wrapper of memblock_reserve()
-memblock_free():     return allocated space to memblock
+memblock_add()       add memblock
+memblock_reserve()   reserve memblock
+memblock_alloc()     alllocate space from memblock, and it's actually a wrapper of memblock_reserve()
+memblock_free()      return allocated space to memblock
+memblock_dump_all()  add 'memblock=debug' to the bootargs can see the detailed log, but somehow it stuck not long after printing a few lines
 ```
 
 ## <a name="virtual-space"></a> Virtual Space
@@ -685,22 +687,107 @@ Buddy system:
 - Each zone has its linked list of each order, except there is no page in the 'highmem' zone in our case.
 
 Let's think about a scenario in the buddy system that receives a memory request of (zone='normal', order='one').
-- Firstly, it goes to the corresponding list, removes one unit, and passes it to the caller. 
-- If the list of order one is empty, it then turns to order two and splits a unit into two pages + two pages.
-- Returns any to fulfill the request, and puts the other onto the order one list. 
-- What if order two is also empty? It will further look help from order three and separate it into two pages + two pages + four pages. 
-- After delivering the two pages to the client, place the other two units back to their corresponding linked lists. 
-- If there's a following request aiming for order zero or one, we can guarantee that the four pages still sit tight and meet greater demands later, if any. 
-- It's clear that even the request is of size 512 pages or 1024 pages, we can swiftly inspect those linked lists instead of traversing the whole area. 
-- Ok, back to the example that two pages + four pages stay put there. 
-- Once the borrowed two pages come back, we first check if its buddy remains without being lent out. 
-- Assuming the buddy exists, merge them into a two-page unit, and check again if a buddy of the newly combined page group stays. 
-- Merge them into eight pages if feasible. 
-- Iteratively perform these steps up to order ten and hang it back, which the buddy system utilizes to suppress memory fragmentation.
+1. Firstly, it goes to the corresponding list, removes one unit, and passes it to the caller. 
+2. If the list of order one is empty, it then turns to order two and splits a unit into two pages + two pages.
+3. Returns any to fulfill the request and puts the other onto the order one list. 
+4. What if order two is also empty? It will further look help from order three and separate it into two pages + two pages + four pages. 
+5. After delivering the two pages to the client, place the other two units back to their corresponding linked lists. 
+6. If there's a following request aiming for order zero or one, we can guarantee that the four pages still sit tight and meet greater demands later, if any. 
+7. It's clear that even the request is of size 512 pages or 1024 pages, we can swiftly inspect those linked lists instead of traversing the whole area. 
+8. Ok, back to the example that two pages + four pages stay put there. 
+11. Once the borrowed two pages come back, we first check if its buddy remains without being lent out. 
+12. Assuming the buddy exists, merge them into a four-page unit, and check again if a buddy of the newly combined page group stays. 
+13. Merge them into eight pages if feasible. 
+14. Iteratively perform these steps up to order ten and hang it back. That's how the buddy system works to suppress memory fragmentation.
 
+- Code flow
 
+```
++--------------+                                                                                                                 
+| start_kernel |                                                                                                                 
++---|----------+                                                                                                                 
+    |    +---------------------+                                                                                                 
+    +--> | build_all_zonelists |                                                                                                 
+    |    +---------------------+                                                                                                 
+    |    +---------+                                                                                                             
+    +--> | mm_init |                                                                                                             
+         +--|------+                                                                                                             
+            |    +----------+                                                                                                    
+            |--> | mem_init |                                                                                                    
+            |    +--|-------+                                                                                                    
+            |       |    +-------------------+                                                                                   
+            |       |--> | memblock_free_all |                                                                                   
+            |       |    +-------------------+                                                                                   
+            |       |      1. for those lowmem page frames in reserved or nomap regions, label their 'struct page' as 'reserved.'
+            |       |      2. for those lowmem free page frames, add their 'struct page' to buddy system.                        
+            |       |                                                                                                            
+            |       |    +----------------+                                                                                      
+            |       +--> | free_highpages | similar to above, except it's for highmem, which we don't have                       
+            |            +----------------+                                                                                      
+            |    +---------------------+                                                                                         
+            |--> | mem_init_print_info | print log                                                                               
+            |    +---------------------+     [    0.000000] Memory: 354620K/505856K available (9216K kernel code, 805K rwdata, \ 
+            |                                               2192K rodata, 1024K init, 185K bss, 85700K reserved, \               
+            |                                               65536K cma-reserved, 0K highmem                                      
+            |    +-----------------+                                                                                             
+            +--> | kmem_cache_init | we'll introduce this later                                                                  
+                 +-----------------+                                                                                             
+```
 
+Explanation:
+- 354620K/505856K available
+   - 354620K = total (505856K) - CMA (65536K) - reserved (85700K)
+   - 505856K = 0x1EE00000 = 0x9EE0_0000 - 0x8000_0000, which is the lowmem range that buddy system manages.
+- 85700K reserved
+   - It's not practical to precisely know all the usages of memblock allocation, and let's focus on those with a size greater than or equal to 4K.
+   - The below requests sum up to 0x53b0754. It's around 85698K and very close to the real one (85700K).
+      - page table (0x4000)
+      - kernel (0xDF_7BA0)
+      - initramfs (0x10_C000)
+      - DTB (0x1_52B8)
+      - flash (0x400_0000)
+      - a few 2nd level page tables (0x1000 * 35 = 0x2_3000)
+      - vector (0x2000)
+      - zero page (0x1000)
+      - *struct page* array (0x3E_0000)
+      - FDT (0x1_B8FC)
+      - percpu area (0x1000 + 0x1000 + 0x1_0000 = 0x1_2000)
+      - dentry cache (0x4_0000)
+      - inode cache (0x2_0000)
+- 65536K cma-reserved
+   - 65536K = 0x400_0000 = video engine (0x200_0000) + DMA/CMA (0x100_0000) + GFX (0x100_0000)
+- For *kernel code*, *rwdata*, *rodata*, *init*, *bss*, please refer to the below diagram for kernel layout.
+   - Especially note that *init text* and *init data* only work in boot time and will get freed later.
 
+```
+                                            +-   +--------------+  0x8010_0000
+                                            |    |  kernel code |             
+    virtual                                 |    +--------------+  0x80A0_0000
+    address                                 |    |    rodata    |             
+               |              |             |    +--------------+  0x80C2_4000
+               |              |             |                                 
+  0x8010_0000  |--------------|  -+         |    +--------------+  0x80D3_0768
+               |    kernel    |   |---------|    |   init text  |             
+  0x80EF_7BA0  |--------------|  -+         |    +--------------+  0x80D0_0000
+               |              |             |    |   init data  |             
+               |              |             |    +--------------+  0x80E0_0000
+                                            |    |    rwdata    |             
+                                            |    +--------------+  0x80EC_96FC
+                                            |    |      bss     |             
+                                            +-   +--------------+  0x80EF_7B20
+```
+
+## <a name="kmem-cache"></a> Kmem Cache
+
+With buddy system and per-CPU pageset ready, every subsystem and driver freely allocate and free pages without worrying cause fragmentation. 
+But the truth is the 4K page frame is too large for our regular use, and there's no way I allocate one page simply for a 0x20-bytes structure. 
+Kmem cache solves this problem by dividing the space within a page frame into multiple objects of the same size. 
+We can regard it as an object array, but it's more like a linked list in implementation to avoid traversing a free entity. 
+By default kernel prepares a number of generic kmem caches with different sizes: 0x40, 0x80, 0xC0, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000 bytes. 
+As you can see, two of them are 1-page-sized and 2-page-sized objects, so why not allocate from the buddy system? I don't know why. 
+Each subsystem or driver can also prepare its kmem cache to better cater to its request. 
+We can configure which implementation to use from three options: slab, slob, slub. 
+They are suitable for different memory footprints requirements, and our study case chooses slub.
 
 
 ### Vmalloc area
@@ -710,10 +797,4 @@ Let's think about a scenario in the buddy system that receives a memory request 
 
 
 
-```
 
-
-
-[    0.000000] Memory: 354620K/505856K available (9216K kernel code, 805K rwdata, 2192K rodata, 1024K init, 185K bss, 85700K reserved, 65536K cma-reserved, 0K highmem
-)
-```
