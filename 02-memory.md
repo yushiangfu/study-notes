@@ -784,16 +784,63 @@ But the truth is the 4K page frame is too large for our regular use, and there's
 Kmem cache solves this problem by dividing the space within a page frame into multiple objects of the same size. 
 We can regard it as an object array, but it's more like a linked list in implementation to avoid traversing a free entity. 
 By default kernel prepares a number of generic kmem caches with different sizes: 0x40, 0x80, 0xC0, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000 bytes. 
-As you can see, two of them are 1-page-sized and 2-page-sized objects, so why not allocate from the buddy system? I don't know why. 
+As you can see, two of them are 1-page-sized and 2-page-sized objects, so why not allocate from the buddy system? I don't know. 
 Each subsystem or driver can also prepare its kmem cache to better cater to its request. 
 We can configure which implementation to use from three options: slab, slob, slub. 
-They are suitable for different memory footprints requirements, and our study case chooses slub.
+They are suitable for different memory footprints requirements, and just for the record our study case chooses slub.
 
+```
+  page                     page           
+  frame                    frame          
+                                          
++-+-+-------+            +-+-+-------+    
+| | |tmp ptr| --+        | | |tmp ptr| --+
+| | +-------+   |        | | +-------+   |
+| |  0x40 |     -        | |  0x80 |     |
+| +-+-------+ <-+        | |     | |     -
+| | |tmp ptr| --+        | +-+-------+ <-+
+| | +-------+   |        | | |tmp ptr| --+
+| |  0x40 |     -        | | +-------+   |
+| +-+-------+ <-+        | |  0x80 |     |
+| | |tmp ptr| --+        | |     | |     -
+| | +-------+   |        | +-------+   <-+
+| |  0x40 |     -        |       |      - 
+| +-------+   <-+        |   -   |      - 
+|       |      -         |   -   |      - 
+|   -   |      -         |   -   |     --+
+|   -   |      -         |   -   |       |
+|   -   |     --+        |   -   |       |
+|   -   |       |        |       |       -
+|       |       -        | +-+-------+ <-+
+| +-+-------+ <-+        | | |tmp ptr|    
+| | |tmp ptr|            | | +-------+    
+| | +-------+            | |  0x80 |      
+| |  0x40 |              | |     | |      
++-+-------+              +-+-------+      
+```
 
-### Vmalloc area
-   - Memory from this region is guaranteed to be virtually consecutive.
-### Fixmap
-   - I don't know.
+- Related APIs
+
+```
+__kmem_cache_create()   create
+kmem_cache_alloc()      allocate
+kmem_cache_free()       free
+```
+
+## <a name="reference"></a> Reference
+
+- [W. Mauerer, Professional Linux Kernel Architecture](https://www.google.com/books/edition/Professional_Linux_Kernel_Architecture/-6zvRFEfQ24C?hl=en&gbpv=0)
+
+<details>
+  <summary> Messy Notes </summary>
+
+## To-Do List
+
+- vmalloc area
+- fixmap
+- Add 'when does *pageset* works normally
+- before remapping lowmem, why can memblock allocator work?
+- free of *init text* and *init data*
 
 
 
