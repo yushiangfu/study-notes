@@ -476,10 +476,9 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
 
 ## <a name="todolist"></a> To-Do List
 
-- Study ptrace mechanism and refine section 'strace.'
-- Study signal more and refine section 'signal.'
-- Introduce PID and TID.
+- Introduce PID, TID, and PGID
 - Study namespace if OpenBMC kernel utilizes the feature.
 - Add more content to section 'boot up flow'
+- Introduct job control, session (process group)
   
 </details>
