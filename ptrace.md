@@ -43,6 +43,46 @@ graph TD
    c-->d
 ```
 
+- Signals on ARM
+   - arch/arm/include/uapi/asm/signal.h
+   
+| Name      | Number | Note 1                   | Note 2 |
+| ---       | ---    | ---                      | ---    |
+| SIGHUP    | 1      | hangup                   |        |
+| SIGINT    | 2      | interrupt                |        |
+| SIGQUIT   | 3      | quit                     |        |
+| SIGILL    | 4      | illegal                  |        |
+| SIGTRAP   | 5      | trap                     |        |
+| SIGABRT   | 6      | abort                    |        |
+| SIGIOT    | 6      | input/output trap        |        |
+| SIGBUS    | 7      | bus error                |        |
+| SIGFPE    | 8      | floating point exception |        |
+| SIGKILL   | 9      | kill                     |        |
+| SIGUSR1   | 10     | user-defined conditions  |        |
+| SIGSEGV   | 11     | segmentation violation   |        |
+| SIGUSR2   | 12     | user-defined conditions  |        |
+| SIGPIPE   | 13     | pipe                     |        |
+| SIGALRM   | 14     | alarm                    |        |
+| SIGTERM   | 15     | termination              |        |
+| SIGSTKFLT | 16     | stack fault              |        |
+| SIGCHLD   | 17     | child                    |        |
+| SIGCONT   | 18     | continue                 |        |
+| SIGSTOP   | 19     | stop                     |        |
+| SIGTSTP   | 20     | terminal stop            |        |
+| SIGTTIN   | 21     | tty in                   |        |
+| SIGTTOU   | 22     | tty out                  |        |
+| SIGURG    | 23     | urgent                   |        |
+| SIGXCPU   | 24     | exceeds CPU              |        |
+| SIGXFSZ   | 25     | exceeds file size        |        |
+| SIGVTALRM | 26     | virtual alarm            |        |
+| SIGPROF   | 27     | profiling                |        |
+| SIGWINCH  | 28     | window change            |        |
+| SIGIO     | 29     | input/output             |        |
+| SIGPOLL   | SIGIO  | poll                     |        |
+| SIGPWR    | 30     | power failure            |        |
+| SIGSYS    | 31     | syscall                  |        |
+| SIGUNUSED | 31     | unused                   |        |
+
 ## <a name="ptrace"></a> Ptrace
 
 (TBD)
