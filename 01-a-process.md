@@ -481,4 +481,44 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
 - Add more content to section 'boot up flow'
 - Introduct job control, session (process group)
   
+```
+                                                                                         
+                         task_struct                                                     
+                     +-----------------+                                                 
+                     |       pid       | task id, a.k.a. thread id in user space         
+                     |                 |                                                 
+                     |      tgid       | thread group id, a.k.a. process id in user space
+                     |                 |                                                 
+       +---------------- thread_pid    |                                                 
+       |             |                 |                                                 
+       |             | pid_links[PID]  | list node                                       
+       |             |                 |                                                 
+       |        +------pid_links[TGID] | list node                                       
+       |        |    |                 |                                                 
+       |        |    | pid_links[PGID]---list node-------------+                         
+       v        |    |                 |                       |                         
+                |  +---pid_links[SID]  | list node             |                         
+  struct pid    |  | |                 |                       |      struct pid         
++-------------+ |  | |     signal   --------> signal_struct    |    +-------------+      
+| tasks[PID]  | |  | +-----------------+      +------------+   |    | tasks[PID]  |      
+|             | |  |                          | pids[PID]  |   |    |             |      
+| tasks[TGID] --+  |                          |            |   |    | tasks[TGID] |      
+|             | <--|----------------------------pids[TGID] |   |    |             |      
+| tasks[PGID] |    |                          |            |   +------tasks[PGID] |      
+|             |    |                          | pids[PGID]------->  |             |      
+| tasks[SID]  |    |                          |            |        | tasks[SID]  |      
++-------------+    |                +-----------pids[SID]  |        +-------------+      
+                   |                |         +------------+                             
+                   |     struct pid v                                                    
+                   |   +-------------+                                                   
+                   |   | tasks[PID]  | list head                                         
+                   |   |             |                                                   
+                   |   | tasks[TGID] | list head                                         
+                   |   |             |                                                   
+                   |   | tasks[PGID] | list head                                         
+                   |   |             |                                                   
+                   +-----tasks[SID]  | list head                                         
+                       +-------------+                                                   
+```
+  
 </details>
