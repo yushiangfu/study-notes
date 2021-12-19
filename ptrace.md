@@ -89,7 +89,7 @@ Then further sets the bit in bitmap so that it's one way for the target task to 
                                         offset = 1                   
 ```
 
-- Code flow of signal sending
+- Code flow of sending a signal
 
 ```
  +------------+                                                                                             
@@ -119,26 +119,60 @@ Then further sets the bit in bitmap so that it's one way for the target task to 
           +-----------------+ 
 ```
 
-Every user space process enters kernel space on purpose or involuntarily (e.g. by interrupt), and pending signals are checked before tasks return to user space. 
-If \_TIF_SIGPENDING is set, kernel delivers the signal to the task by:
-1. Determine the next signal to handle and it's not guaranteed to correspond to the first sigqueue in the list.
-2. Clear that signal in task bitmap and remove related sigqueue from the list accordingly. 
-3. (Assume that signal has a decent signal handler) Fetch that handler info and prepare signal frame on user space stack. 
-4. Once the flow switches back to user space, it starts from the special frame to run handler and returns to the original process flow(?)
+Every user space process enters kernel space on purpose or involuntarily (e.g., by interrupt) and checks pending signals before the task returns to userspace.
+If pending signals exist, the kernel handles the signal on behalf of the task by:
+1. Determine the appropriate signal to operate, and it's not guaranteed to be the first sigqueue in the list.
+2. Clear that signal in task bitmap and release the related sigqueue from the list accordingly.
+3. (Assume that signal has a decent handler) Fetch that handler information and prepare signal frame on userspace stack.
+4. Once the flow switches back to USR mode, it starts from that frame to execute the handler.
+5. When the handler finishes, it returns to the previous frame as if the signal handler is the function we were calling just now.
 
-```mermaid
-graph TD
-   a(do_work_pending: <br> Handle pending signal if there's any)
-   b(__dequeue_signal: <br> Determine the signal to handle and dequeue the related sigqueue from list)
-   c(get_signal: <br> Fetch signal handler)
-   d(setup_frame: <br> Set up the special frame for later execution)
-   
-   a-->b
-   b-->c
-   c-->d
+- Figure
+
+```
+ USR       |      SVC                           
+ mode      |      mode                          
+           |                                    
+           |                                    
+  |        |                                    
+  |        |                                    
+  v        |                                    
+  ------------------>                           
+           |        |                           
+           |        |                           
+           |++      v                           
+  <---------||-------                           
+  |        |++                                  
+  |        |  check if the pending signal exists
+  v        |                                         
 ```
 
+- Code flow of receiving a signal
 
+```
++-----------------+                                                                                   
+| do_work_pending |                                                                                   
++----|------------+                                                                                   
+     |                                                                                                
+     |---> if need re-schedule                                                                        
+     |                                                                                                
+     |          +----------+                                                                          
+     |          | schedule |                                                                          
+     |          +----------+                                                                          
+     |                                                                                                
+     +---> else                                                                                       
+                                                                                                      
+                +-----------+                                                                         
+                | do_signal |                                                                         
+                +--|--------+                                                                         
+                   |     +------------+                                                               
+                   +---> | get_signal |  1. determine which signal to handle                          
+                   |     +------------+  2. free its sigqueue and clear the bit on bitmap             
+                   |                                                                                  
+                   |     +---------------+                                                            
+                   +---> | handle_signal |  prepare the frame in the user stack for the signal handler
+                         +---------------+                                                            
+```
 
 ## <a name="ptrace"></a> Ptrace
 
