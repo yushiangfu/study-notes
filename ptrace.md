@@ -7,21 +7,116 @@
 
 ## <a name="signal"></a> Signal
 
-1. Tasks can receive signals and handle them accordingly.
-2. Signal handlers can be overwritten but SIGKILL is an exception, otherwise, tasks can opt to be indestructible!
-3. More or less we had the experience of sending signals, e.g. exit running task on bash foreground by Ctrl+C, or use utility *kill* to end target process.
-4. Utility *kill* is used to send specified signals to the target process, although most of the time it's SIGTERM or SIGKILL.
+Tasks can accept signals and trigger the corresponding actions or ignore them (except *SIGKILL* and *SIGSTOP*). 
+It can be that a task sends the signal to another task, or the kernel itself sends it because of some triggered exceptions. 
+Working in the shell environment, more or less, we have the experience of pressing *Ctrl C* or *Ctrl Z* to interrupt or stop the task. 
+They are the shortcuts prepared by shell and eventually send signal *SIGINT* or *SIGTSTP* to the foreground task. 
+The utility *kill*, which has a scary name, is another tool that helps us send various signals to target tasks, though mainly *SIGKILL* in my usage.
 
-```mermaid
-graph TD
-   a(Command: <br> 'kill' sends SIGTERM to target task)
-   b(__send_signal: <br> Kernel allocates sigqueue, <br> adds to the end of task pending list)
-   c(__send_signal: <br> Kernel sets the corresponding signal in task bitmap)
-   d(complete_signal: <br> Kernel sets the _TIF_SIGPENDING)
+- Signals on ARM
+   - arch/arm/include/uapi/asm/signal.h
    
-   a-->b
-   b-->c
-   c-->d
+| Name      | Number | Note 1                   | Note 2 |        
+| ---       | ---    | ---                      | ---    |    
+| SIGHUP    | 1      | hangup                   |        |    
+| SIGINT    | 2      | interrupt                | shell: 'Ctrl C' |    
+| SIGQUIT   | 3      | quit                     |        |    
+| SIGILL    | 4      | illegal                  |        |    
+| SIGTRAP   | 5      | trap                     |        |    
+| SIGABRT   | 6      | abort                    |        |    
+| SIGIOT    | 6      | input/output trap        |        |    
+| SIGBUS    | 7      | bus error                |        |    
+| SIGFPE    | 8      | floating point exception |        |
+| SIGKILL   | 9      | kill                     | handled by kernel |
+| SIGUSR1   | 10     | user-defined conditions  |        |    
+| SIGSEGV   | 11     | segmentation violation   |        |    
+| SIGUSR2   | 12     | user-defined conditions  |        |    
+| SIGPIPE   | 13     | pipe                     |        |    
+| SIGALRM   | 14     | alarm                    |        |    
+| SIGTERM   | 15     | termination              |        |    
+| SIGSTKFLT | 16     | stack fault              |        |    
+| SIGCHLD   | 17     | child                    |        |    
+| SIGCONT   | 18     | continue                 |        |    
+| SIGSTOP   | 19     | stop                     | handled by kernel |
+| SIGTSTP   | 20     | terminal stop            | shell: 'Ctrl Z' |
+| SIGTTIN   | 21     | tty in                   |        |    
+| SIGTTOU   | 22     | tty out                  |        |    
+| SIGURG    | 23     | urgent                   |        |    
+| SIGXCPU   | 24     | exceeds CPU              |        |    
+| SIGXFSZ   | 25     | exceeds file size        |        |    
+| SIGVTALRM | 26     | virtual alarm            |        |    
+| SIGPROF   | 27     | profiling                |        |    
+| SIGWINCH  | 28     | window change            |        |    
+| SIGIO     | 29     | input/output             |        |    
+| SIGPOLL   | SIGIO  | poll                     |        |    
+| SIGPWR    | 30     | power failure            |        |    
+| SIGSYS    | 31     | syscall                  |        |    
+| SIGUNUSED | 31     | unused                   |        |    
+
+There are a few signal-related fields in *task_struct*. Here we are introducing the *pending.list* and *pending.signal*. 
+When somewhere sends a signal to the target task, the kernel helps allocate and set up the *sigqueue*. 
+Appending the *sigqueue* to the task if it's an independent one, or another list inside *signal_struct* if the task belongs to a task group. 
+Then further sets the bit in bitmap so that it's one way for the target task to check pending signals.
+
+- Figure
+
+```
+                          signal_struct                              
+                        +----------------+                           
+                        |                |                           
+                        |                |                           
+                        | shared_pending |       sigqueue    sigqueue
+                        |   +--------+   |        +----+      +----+ 
+                        |   |  list <|----------> |    |<---->|    | 
+                        |   |        |   |        +----+      +----+ 
+                  +---> |   | signal |   |                           
+ task_struct      |     |   +--------+   |                           
++------------+    |     +----------------+                           
+|   signal -------+                                                  
+|            |                                                       
+|  pending   |         sigqueue    sigqueue                          
+| +--------+ |          +----+      +----+                           
+| |  list <|----------> |    |<---->|    |                           
+| |        | |          +----+      +----+                           
+| | signal-|------+                                                  
+| +--------+ |    |                                                  
++------------+    |     +--+--+       +--+       +--+                
+                  +---- |63|62| -   - |30| -   - | 0|                
+                 bitmap +--+--+       +--+       +--+                
+                                      for        for                 
+                                     SIGSYS     SIGHUP               
+                                                                     
+                                        offset = 1                   
+```
+
+- Code flow of signal sending
+
+```
+ +------------+                                                                                             
+ | sys_kernel |                                                                                             
+ +------------+                                                                                             
+        -                                                                                                   
+        -  (many functions in between)                                                                      
+        -                                                                                                   
+        v                                                                                                   
++---------------+                                                                                           
+| __send_signal |                                                                                           
++---|-----------+                                                                                           
+    |     +----------------+                                                                                
+    |---> | prepare_signal | decide if to ignore the signal                                                 
+    |     +----------------+                                                                                
+    |                                                                                                       
+    |---> determine where to append the signal (for a task or the group)                                    
+    |                                                                                                       
+    |---> return if it's already pending                                                                    
+    |                                                                                                       
+    |---> prepare 'sigqueue' and append it to the list                                                      
+    |                                                                                                       
+    |---> raise the corresponding bit in the bitmap                                                         
+    |                                                                                                       
+    |     +-----------------+                                                                               
+    +---> | complete_signal | if the target task is running, kick it back to the kernel to handle the signal
+          +-----------------+ 
 ```
 
 Every user space process enters kernel space on purpose or involuntarily (e.g. by interrupt), and pending signals are checked before tasks return to user space. 
@@ -43,45 +138,7 @@ graph TD
    c-->d
 ```
 
-- Signals on ARM
-   - arch/arm/include/uapi/asm/signal.h
-   
-| Name      | Number | Note 1                   | Note 2 |
-| ---       | ---    | ---                      | ---    |
-| SIGHUP    | 1      | hangup                   |        |
-| SIGINT    | 2      | interrupt                |        |
-| SIGQUIT   | 3      | quit                     |        |
-| SIGILL    | 4      | illegal                  |        |
-| SIGTRAP   | 5      | trap                     |        |
-| SIGABRT   | 6      | abort                    |        |
-| SIGIOT    | 6      | input/output trap        |        |
-| SIGBUS    | 7      | bus error                |        |
-| SIGFPE    | 8      | floating point exception |        |
-| SIGKILL   | 9      | kill                     |        |
-| SIGUSR1   | 10     | user-defined conditions  |        |
-| SIGSEGV   | 11     | segmentation violation   |        |
-| SIGUSR2   | 12     | user-defined conditions  |        |
-| SIGPIPE   | 13     | pipe                     |        |
-| SIGALRM   | 14     | alarm                    |        |
-| SIGTERM   | 15     | termination              |        |
-| SIGSTKFLT | 16     | stack fault              |        |
-| SIGCHLD   | 17     | child                    |        |
-| SIGCONT   | 18     | continue                 |        |
-| SIGSTOP   | 19     | stop                     |        |
-| SIGTSTP   | 20     | terminal stop            |        |
-| SIGTTIN   | 21     | tty in                   |        |
-| SIGTTOU   | 22     | tty out                  |        |
-| SIGURG    | 23     | urgent                   |        |
-| SIGXCPU   | 24     | exceeds CPU              |        |
-| SIGXFSZ   | 25     | exceeds file size        |        |
-| SIGVTALRM | 26     | virtual alarm            |        |
-| SIGPROF   | 27     | profiling                |        |
-| SIGWINCH  | 28     | window change            |        |
-| SIGIO     | 29     | input/output             |        |
-| SIGPOLL   | SIGIO  | poll                     |        |
-| SIGPWR    | 30     | power failure            |        |
-| SIGSYS    | 31     | syscall                  |        |
-| SIGUNUSED | 31     | unused                   |        |
+
 
 ## <a name="ptrace"></a> Ptrace
 
