@@ -1,4 +1,4 @@
-> Linux version 5.10.46
+> Linux version 5.15.0
 
 ## Index
 
@@ -476,32 +476,32 @@ Then further sets the bit in bitmap so that it's one way for the target task to 
 - Figure
 
 ```
-                          signal_struct                              
-                        +----------------+                           
-                        |                |                           
-                        |                |                           
-                        | shared_pending |       sigqueue    sigqueue
-                        |   +--------+   |        +----+      +----+ 
-                        |   |  list <|----------> |    |<---->|    | 
-                        |   |        |   |        +----+      +----+ 
-                  +---> |   | signal |   |                           
- task_struct      |     |   +--------+   |                           
-+------------+    |     +----------------+                           
-|   signal -------+                                                  
-|            |                                                       
-|  pending   |         sigqueue    sigqueue                          
-| +--------+ |          +----+      +----+                           
-| |  list <|----------> |    |<---->|    |                           
-| |        | |          +----+      +----+                           
-| | signal-|------+                                                  
-| +--------+ |    |                                                  
-+------------+    |     +--+--+       +--+       +--+                
-                  +---- |63|62| -   - |30| -   - | 0|                
-                 bitmap +--+--+       +--+       +--+                
-                                      for        for                 
-                                     SIGSYS     SIGHUP               
-                                                                     
-                                        offset = 1                   
+                          signal_struct                                          
+                        +----------------+                                       
+                        |                |                                       
+                        |                |                                       
+                        | shared_pending |     sigqueue  sigqueue                
+                        |   +--------+   |      +----+    +----+                 
+                        |   |  list<-|--------> |    |<-->|    |                 
+                        |   |        |   |      +----+    +----+                 
+                  +---> |   | signal |-------+                                   
+ task_struct      |     |   +--------+   |   |                                   
++------------+    |     +----------------+   |     +--+--+       +--+       +--+ 
+|   signal -------+                          +---- |63|62| -   - |30| -   - | 0| 
+|            |                              bitmap +--+--+       +--+       +--+ 
+|  pending   |       sigqueue  sigqueue                          for        for  
+| +--------+ |        +----+    +----+                          SIGSYS     SIGHUP
+| |  list <|--------> |    |<-->|    |                                           
+| |        | |        +----+    +----+                             offset = 1    
+| | signal-|------+                                                              
+| +--------+ |    |                                                              
++------------+    |     +--+--+       +--+       +--+                            
+                  +---- |63|62| -   - |30| -   - | 0|                            
+                 bitmap +--+--+       +--+       +--+                            
+                                      for        for                             
+                                     SIGSYS     SIGHUP                           
+                                                                                 
+                                        offset = 1                                             
 ```
 
 - Code flow of sending a signal
@@ -575,7 +575,7 @@ If pending signals exist, the kernel handles the signal on behalf of the task by
      |          | schedule |                                                                          
      |          +----------+                                                                          
      |                                                                                                
-     +---> else                                                                                       
+     +---> elif at least one pending signal                                                           
                                                                                                       
                 +-----------+                                                                         
                 | do_signal |                                                                         
@@ -586,7 +586,7 @@ If pending signals exist, the kernel handles the signal on behalf of the task by
                    |                                                                                  
                    |     +---------------+                                                            
                    +---> | handle_signal |  prepare the frame in the user stack for the signal handler
-                         +---------------+                                                            
+                         +---------------+                                                                                                               
 ```
 
 ## <a name="reference"></a> Reference
