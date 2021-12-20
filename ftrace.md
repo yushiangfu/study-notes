@@ -29,6 +29,10 @@ cd /sys/kernel/debug/tracing
 ```
 root@romulus:/sys/kernel/debug/tracing# cat available_tracers
 function_graph function nop
+
+# nop           : trace nothing
+# function      : show all the executed function names
+# function_graph: show all the executed function names with indentation
 ```
 
 - Show the current tracer
@@ -58,17 +62,56 @@ cat trace
 echo > trace
 ```
 
+- Play with function filter, e.g. sys_open
+
+```
+echo sys_open >> set_ftrace_filter # append function onto allowlist
+echo sys_open >> set_ftrace_notrace # append function onto blocklist
+cat available_filter_functions # list all the available functions
+
+```
+
+- Specify the PID of the task we have an interest in
+
+```
+echo $$ > set_ftrace_pid
+```
+
 ## <a name="scenario"></a> Scenario
 
 - Trace a sequence of commands
 
 ```
+#!/bin/sh
+
+cd /sys/kernel/debug/tracing
 echo 0 > tracing_on
 echo function_graph > current_tracer
 echo 1 > tracing_on
-run our test code
+
+# run our test code
+
 echo 0 > tracing_on
 cat trace
+```
+
+- Trace a specific task
+
+```
+#!/bin/sh
+
+cd /sys/kernel/debug/tracing
+echo 0 > tracing_on
+echo function_graph > current_tracer
+echo $$ > set_ftrace_pid
+echo 1 > tracing_on
+
+exec $*
+
+# assume we save the script as 'trace.sh' and are going to try it on 'ls'
+# sh trace.sh ls
+# cd /sys/kernel/debug/tracing
+# cat trace
 ```
 
 
