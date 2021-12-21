@@ -581,12 +581,20 @@ If pending signals exist, the kernel handles the signal on behalf of the task by
                 | do_signal |                                                                         
                 +--|--------+                                                                         
                    |     +------------+                                                               
-                   +---> | get_signal |  1. determine which signal to handle                          
-                   |     +------------+  2. free its sigqueue and clear the bit on bitmap             
+                   +---> | get_signal |                                                               
+                   |     +--|---------+                                                               
+                   |        |     +----------------+                                                  
+                   |        |---> | dequeue_signal | 1. determine which signal to handle              
+                   |        |     +----------------+ 2. free its sigqueue and clear the bit on bitmap 
+                   |        |                                                                         
+                   |        +---> if current task is a tracee                                         
                    |                                                                                  
+                   |                   +---------------+                                              
+                   |                   | ptrace_signal | notify tracer of the signal receiving        
+                   |                   +---------------+                                              
                    |     +---------------+                                                            
                    +---> | handle_signal |  prepare the frame in the user stack for the signal handler
-                         +---------------+                                                                                                               
+                         +---------------+                        
 ```
 
 ## <a name="reference"></a> Reference
