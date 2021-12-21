@@ -1,12 +1,61 @@
 ## Index
 
-- [Ptrace](#ptrace)
+- [Introduction](#introduction)
+- [Ptrace Options](#ptrace-options)
 - [Strace](#strace)
 - [Reference](#reference)
 
-## <a name="ptrace"></a> Ptrace
+## <a name="introduction"></a> Introduction
 
-(TBD)
+System call *ptrace* can attach or seize target task and check the signal it receives, the syscall it utilizes, and any other information, even register values. 
+Other than peeking the register or memory content, *ptrace* can also overwrite them. 
+Utilities *gdb* and *strace* are fantastic tools that build upon *ptrace* and help resolve issues.
+
+## <a name="ptrace-options"></a> Ptrace Options
+
+Although *ptrace* has a bunch of options that we can use, it's too many for me and I will just mention a few that *strace* utilizes in its default behavior.
+- PTRACE_SEIZE
+- PTRACE_INTERRUPT
+- PTRACE_GETREGS
+- PTRACE_LISTEN
+- PTRACE_SYSCALL
+- PTRACE_GETSIGINFO
+- PTRACE_GETEVENTMSG
+
+### PTRACE_SEIZE
+
+- Code flow
+
+```
++------------+                                                                  
+| sys_ptrace |                                                                  
++--|---------+                                                                  
+   |                                                                            
+   |--> if request == TRACEME                                                   
+   |                                                                            
+   |        +----------------+                                                  
+   |        | ptrace_traceme |                                                  
+   |        +----------------+                                                  
+   |                                                                            
+   |--> else if request == ATTACH or SEIZE                                      
+   |                                                                            
+   |        +---------------+                                                   
+   |        | ptrace_attach |                                                   
+   |        +---------------+                                                   
+   |                                                                            
+   +--> else                                                                    
+                                                                                
+            +-------------+                                                     
+            | arch_ptrace |                                                     
+            +---|---------+                                                     
+                |                                                               
+                |--> handle architecture-dependent requests                     
+                |                                                               
+                |    +----------------+                                         
+                +--> | ptrace_request | handle architecture-independent requests
+                     +----------------+                                         
+```
+
 
 ## <a name="strace"></a> Strace
 
