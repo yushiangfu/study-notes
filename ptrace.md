@@ -15,7 +15,9 @@ Utilities *gdb* and *strace* are fantastic tools that build upon *ptrace* and he
 
 Although *ptrace* has a bunch of options that we can use, it's too many for me and I will just mention a few that *strace* utilizes in its default behavior.
 - PTRACE_SEIZE
+   - Label target task as tracee and become its temporary parent.
 - PTRACE_INTERRUPT
+   - Stop the tracee.
 - PTRACE_GETREGS
 - PTRACE_LISTEN
 - PTRACE_SYSCALL
@@ -27,33 +29,36 @@ Although *ptrace* has a bunch of options that we can use, it's too many for me a
 - Code flow
 
 ```
-+------------+                                                                  
-| sys_ptrace |                                                                  
-+--|---------+                                                                  
-   |                                                                            
-   |--> if request == TRACEME                                                   
-   |                                                                            
-   |        +----------------+                                                  
-   |        | ptrace_traceme |                                                  
-   |        +----------------+                                                  
-   |                                                                            
-   |--> else if request == ATTACH or SEIZE                                      
-   |                                                                            
-   |        +---------------+                                                   
-   |        | ptrace_attach |                                                   
-   |        +---------------+                                                   
-   |                                                                            
-   +--> else                                                                    
-                                                                                
-            +-------------+                                                     
-            | arch_ptrace |                                                     
-            +---|---------+                                                     
-                |                                                               
-                |--> handle architecture-dependent requests                     
-                |                                                               
-                |    +----------------+                                         
-                +--> | ptrace_request | handle architecture-independent requests
-                     +----------------+                                         
++------------+                                                                                             
+| sys_ptrace |                                                                                             
++--|---------+                                                                                             
+   |                                                                                                       
+   |--> if request == PTRACE_TRACEME                                                                       
+   |                                                                                                       
+   |        +----------------+                                                                             
+   |        | ptrace_traceme | current task labels itself as tracee                                        
+   |        +----------------+                                                                             
+   |                                                                                                       
+   |--> else if request == PTRACE_ATTACH or PTRACE_SEIZE                                                   
+   |                                                                                                       
+   |        +---------------+                                                                              
+   |        | ptrace_attach | current task labels target task as tracee                                    
+   |        +---------------+                                                                              
+   |                                                                                                       
+   +--> else                                                                                               
+                                                                                                           
+            +-------------+                                                                                
+            | arch_ptrace |                                                                                
+            +---|---------+                                                                                
+                |                                                                                          
+                |--> handle architecture-dependent requests    e.g. PTRACE_GETREGS                         
+                |                                                                                          
+                |    +----------------+                                                                    
+                +--> | ptrace_request | handle architecture-independent requests    e.g. PTRACE_INTERRUPT  
+                     +----------------+                                                  PTRACE_LISTEN     
+                                                                                         PTRACE_SYSCALL    
+                                                                                         PTRACE_GETSIGINFO 
+                                                                                         PTRACE_GETEVENTMSG                          
 ```
 
 
