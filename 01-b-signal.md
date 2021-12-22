@@ -58,7 +58,35 @@ The utility *kill*, which has a scary name, is another tool that helps us send v
 
 ## <a name="task-and-group"></a> Task & Group
 
-(TBD)
+- Figure
+
+```
+                          signal_struct         +---------+      +---------+
+                        +----------------+      | pending |      | pending |
+                        | shared_pending | <--> | signal  | <--> | signal  |
+                        +----------------+      +---------+      +---------+
+                                                                            
+                             ^      ^                                       
+                             |      |                                       
+ pid = n                     |      |                    pid = n + 1        
+ tgid = n   task_struct      |      |      task_struct   tgid = n           
+            +---------+      |      |      +---------+                      
+            |  signal--------+      +--------signal  |                      
+            |         |                    |         |                      
+            | sighand--------+      +--------sighand |                      
+            |         |      |      |      |         |                      
+            | blocked |      v      v      | blocked |                      
+            |         |                    |         |                      
+            | pending |   sighand_struct   | pending |                      
+            +---------+   +------------+   +---------+                      
+                          | action[64] |                                    
+                          +------------+                                    
+                                                                            
+                          e.g.                                              
+                          action[SIGHUP  - 1] = ignore                      
+                          action[SIGUSR1 - 1] = default                     
+                          action[SIGUSR2 - 1] = registered handler          
+```
 
 ## <a name="send-and-receive"></a> Sending & Receiving
 
