@@ -50,6 +50,36 @@
  0xFFFF_12AC  +------------------------+                                                                 
 ```
 
+- Flow
+
+```
+                      +------------+                  
+               +---   | vector_swi |   ---+           
+               |      +------------+      |           
+ isn't traced  |                          |  is traced
+               |                          |           
+               |                          |           
+               |                          v           
+               |               +---------------------+
+               |               | syscall_trace_enter |
+               |               +---------------------+
+               |                          |           
+               v                          v           
+      +----------------+          +----------------+  
+      | invoke_syscall |          | invoke_syscall |  
+      +----------------+          +----------------+  
+               |                          |           
+               |                          v           
+               |                +--------------------+
+               |                | syscall_trace_exit |
+               |                +--------------------+
+               |                          |           
+               v                          v           
+     +------------------+        +------------------+ 
+     | ret_fast_syscall |        | ret_slow_syscall | 
+     +------------------+        +------------------+ 
+```
+
 ## <a name="reference"></a> Reference
 
 [H. Nandish, Software Interrupt routine on ARM](https://lnxblog.github.io/2019/07/06/swi-routine-arm.html)
