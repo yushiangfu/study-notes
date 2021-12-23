@@ -58,7 +58,51 @@ The utility *kill*, which has a scary name, is another tool that helps us send v
 
 ## <a name="task-and-group"></a> Task & Group
 
-- Figure
+There's only one task for the traditional single-threaded process, and everything is simple.
+It gets its signal-related fields and shares with nobody.
+- *signal*
+   - Signals sent from the kernel of other tasks, such as utility *kill*, come to here pending eventually.
+- *sighand*
+   - A list of handlers for each signal can be *ignore*, *default*,' or registered handler.
+- blocked
+   - Each task can modify this bitmap to indicate which signals it will block.
+- *pending*
+   - For ptrace mechanism.
+
+When it comes to multi-threaded processes, tasks share the same *signal_struct* and *sighand_struct* because of the flags passed to the syscall *clone*.
+That's why some manuals mention that *signals* and *handlers* are process-wide because they are two of the shared resource among threads.
+
+- Figure - single-threaded process
+
+```
+                          signal_struct         +---------+      +---------+
+                        +----------------+      | pending |      | pending |
+                        | shared_pending | <--> | signal  | <--> | signal  |
+                        +----------------+      +---------+      +---------+
+                                                                            
+                             ^                                              
+                             |                                              
+ pid = n                     |                                              
+ tgid = n   task_struct      |                                              
+            +---------+      |                                              
+            |  signal--------+                                              
+            |         |                                                     
+            | sighand--------+                                              
+            |         |      |                                              
+            | blocked |      v                                              
+            |         |                                                     
+            | pending |   sighand_struct                                    
+            +---------+   +------------+                                    
+                          | action[64] |                                    
+                          +------------+                                    
+                                                                            
+                          e.g.                                              
+                          action[SIGHUP  - 1] = ignore                      
+                          action[SIGUSR1 - 1] = default                     
+                          action[SIGUSR2 - 1] = registered handler          
+```
+
+- Figure - multi-threaded process
 
 ```
                           signal_struct         +---------+      +---------+
@@ -90,40 +134,32 @@ The utility *kill*, which has a scary name, is another tool that helps us send v
 
 ## <a name="send-and-receive"></a> Sending & Receiving
 
-There are a few signal-related fields in *task_struct*. Here we are introducing the *pending.list* and *pending.signal*. 
-When somewhere sends a signal to the target task, the kernel helps allocate and set up the *sigqueue*. 
-Appending the *sigqueue* to the task if it's an independent one, or another list inside *signal_struct* if the task belongs to a task group. 
-Then further sets the bit in bitmap so that it's one way for the target task to check pending signals.
+The pending signal list consists of the *list* for *sigqueue* and the 64-bit bitmap *signal*. 
+Not that important, but please note an offset between signal number and bitmap position, e.g., SIGHUP has the number 1 but corresponds to bit 0. 
+When somewhere sends a signal to the target task, the kernel helps allocate and set up the *sigqueue* and append it to the list. 
+They are not guaranteed to be processed in the order of *first in first out* because synchronous-type signals might involve. 
+Then further sets the bit in bitmap so that it's an easy way to determine if a task can handle the signal by checking it *blocked* bitmap.
 
-- Figure
+- Figure - signal structure
 
 ```
-                          signal_struct                                          
-                        +----------------+                                       
-                        |                |                                       
-                        |                |                                       
-                        | shared_pending |     sigqueue  sigqueue                
-                        |   +--------+   |      +----+    +----+                 
-                        |   |  list<-|--------> |    |<-->|    |                 
-                        |   |        |   |      +----+    +----+                 
-                  +---> |   | signal |-------+                                   
- task_struct      |     |   +--------+   |   |                                   
-+------------+    |     +----------------+   |     +--+--+       +--+       +--+ 
-|   signal -------+                          +---- |63|62| -   - |30| -   - | 0| 
-|            |                              bitmap +--+--+       +--+       +--+ 
-|  pending   |       sigqueue  sigqueue                          for        for  
-| +--------+ |        +----+    +----+                          SIGSYS     SIGHUP
-| |  list <|--------> |    |<-->|    |                                           
-| |        | |        +----+    +----+                             offset = 1    
-| | signal-|------+                                                              
-| +--------+ |    |                                                              
-+------------+    |     +--+--+       +--+       +--+                            
-                  +---- |63|62| -   - |30| -   - | 0|                            
-                 bitmap +--+--+       +--+       +--+                            
-                                      for        for                             
-                                     SIGSYS     SIGHUP                           
-                                                                                 
-                                        offset = 1                                             
+  signal_struct                                          
++----------------+                                       
+|                |                                       
+|                |                                       
+| shared_pending |     sigqueue  sigqueue                
+|   +--------+   |      +----+    +----+                 
+|   |  list <|--------> |    |<-->|    |                 
+|   |        |   |      +----+    +----+                 
+|   | signal-|-------+                                   
+|   +--------+   |   |                                   
++----------------+   |     +--+--+       +--+       +--+ 
+                     +---- |63|62| -   - |30| -   - | 0| 
+                    bitmap +--+--+       +--+       +--+ 
+                                         for        for  
+                                        SIGSYS     SIGHUP
+                                                         
+                                           offset = 1                                           
 ```
 
 - Code flow of sending a signal
@@ -156,13 +192,17 @@ Then further sets the bit in bitmap so that it's one way for the target task to 
           +-----------------+ 
 ```
 
-Every user space process enters kernel space on purpose or involuntarily (e.g., by interrupt) and checks pending signals before the task returns to userspace.
-If pending signals exist, the kernel handles the signal on behalf of the task by:
+Every user space task enters kernel space on purpose or involuntarily (e.g., by interrupt) and checks pending signals before the task return to userspace. 
+If pending signals exist, the kernel handles them on behalf of the task by:
 1. Determine the appropriate signal to operate, and it's not guaranteed to be the first sigqueue in the list.
 2. Clear that signal in task bitmap and release the related sigqueue from the list accordingly.
-3. (Assume that signal has a decent handler) Fetch that handler information and prepare signal frame on userspace stack.
-4. Once the flow switches back to USR mode, it starts from that frame to execute the handler.
+3. (Assume that signal has a decent handler) Fetch that handler information and prepare the frame for the handler on the userspace stack.
+4. Once the flow switches back to user mode, it starts from that frame to execute the handler.
 5. When the handler finishes, it returns to the kernel-mode through *sys_sigreturn*, set up in *handle_signal()*.
+6. If we perform the signal handler in the syscall path, some syscalls might return the interrupt error EINT, and the task needs to retry.
+
+For the case of a multi-threaded process, anyone can help dequeue the pending signal and call the handler on its way back to userspace. 
+Therefore we have no idea which task will be the next one that consumes signal before coming back.
 
 - Figure
 
