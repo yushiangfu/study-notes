@@ -8,25 +8,31 @@
 ## <a name="introduction"></a> Introduction
 
 System call *ptrace* can attach or seize target task and check the signal it receives, the syscall it utilizes, and any other information, even register values. 
-Other than peeking the register or memory content, *ptrace* can also overwrite them. 
+Besides peeking the register or memory content, *ptrace* can also overwrite them. 
 Utilities *gdb* and *strace* are fantastic tools that build upon *ptrace* and help resolve issues.
 
 ## <a name="ptrace-options"></a> Ptrace Options
 
-Although *ptrace* has a bunch of options that we can use, it's too many for me and I will just mention a few that *strace* utilizes in its default behavior.
+Although *ptrace* has many options that we can use, it's too many for me, and I will mention a few that *strace* utilizes in its default behavior.
 - PTRACE_SEIZE
-   - Label target task as tracee and become its temporary parent.
+   - Label target task as tracee and become its temporary parent, but won't stop the tracee from running.
 - PTRACE_INTERRUPT
    - Stop the tracee.
 - PTRACE_GETREGS
+   - Copy *pt_regs* into userspace. When the task switches from USR to SVC mode, its then-registers save into *pt_regs*.
 - PTRACE_LISTEN
-- PTRACE_SYSCALL
+   - Listen for events, but I failed and didn't know why.
 - PTRACE_GETSIGINFO
+   - By default, tracee notifies tracer on dequeuing a signal, and this option shows the signal info before handling it.
 - PTRACE_GETEVENTMSG
+   - When *syscall* and *clone* happen, kernel saves the corresponding event to the *tasks->ptrace_message*, and this option can retrieve it.
+- PTRACE_SYSCALL
+   - Label *TIF_SYSCALL_TRACE* in *thread_info* so the tracee notifies tracer on syscall entry and exit.
 
-### PTRACE_SEIZE
+Options _TRACEME/ATTACH/SEIZE_ serve a similar purpose: establish the connection between tracee/tracer and set the related field in _task_struct_. 
+The difference between them is that TRACEME is from tracee's perspective while the other two are from the tracer's point of view.
 
-- Code flow
+- Code flow - sys_ptrace
 
 ```
 +------------+                                                                                             
@@ -61,15 +67,42 @@ Although *ptrace* has a bunch of options that we can use, it's too many for me a
                                                                                          PTRACE_GETEVENTMSG                          
 ```
 
+- Code flow - sys_ptrace
+
+```
++---------------------+                                                                                           
+| syscall_trace_enter | eventually calls ptrace_stop()                                                            
++---------------------+                                                                                           
+           |                                                                                                      
+           v                                                                                                      
+      +---------+                                                                                                 
+      | sys_xxx |                                                                                                 
+      +---------+                                                                                                 
+           |                                                                                                      
+           v                                                                                                      
+ +--------------------+                                                                                           
+ | syscall_trace_exit | eventually calls ptrace_stop()                                                            
+ +--------------------+                                                                                           
+                                       +-------------+                                                            
+                                       | ptrace_stop |                                                            
+                                       +---|---------+                                                            
+                                           |    +--------------------------+                                      
+                                           |--> | do_notify_parent_cldstop | send SIGCHLD to tracer and wake it up
+                                           |    +--------------------------+                                      
+                                           |    +--------------------+                                            
+                                           +--> | freezable_schedule | tracee stops                               
+                                                +--------------------+                                            
+```
 
 ## <a name="strace"></a> Strace
 
-Utility *strace* is a user space tool that can be used to trace the issued syscall sequence of target process. 
-Below log is the trace output of the classic 'Hello, World!' test program and we can observe that lots of unrelated syscalls happen before printing our greetings. 
-Every forked task starts from the dynamic linker, e.g. /lib/ld-linux.so.3, which follows the naming convention of the shared library but is actually an executable. 
-It's responsible to load specified libraries into memory for the main task to use later, and that explains the list of unrelated syscalls in the log. 
+Utility _strace_ is a userspace tool that traces the issued syscall sequence of the target process. 
+Below log is the _strace_ output of the classic 'Hello, World!' program, and we can observe that lots of unrelated syscalls happen before printing our greetings. 
+Every forked task starts from the dynamic linker, e.g.,_/lib/ld-linux.so.3_, following the naming convention of the shared library but is an executable. 
+It's responsible for loading specified libraries into memory for the main task to use later, which explains the list of unrelated syscalls in the log.
 
-Common used options:
+- Common options
+
 ```
 strace -p -f -o log.txt running_task
 -p: attach to target task
@@ -77,7 +110,8 @@ strace -p -f -o log.txt running_task
 -o: save output to specified file
 ```
 
-Log:
+- Log
+
 ```
 execve("./a.out", ["./a.out"], [/* 15 vars */]) = 0
 └─ Triggered by parent process, e.g. bash
