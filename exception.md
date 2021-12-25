@@ -80,6 +80,28 @@
      +------------------+        +------------------+ 
 ```
 
+- Figure
+
+```
+  low addr  +--+-----------+        
+            |  |thread_info|        
+            |  +-----------+        
+        ^   |           |           
+        |   |           |           
+        |   |           |           
+        |   |           |           
+        |   |           |           
+        |   +-----------+           
+        |   |           |           
+        |   |           |           
+ stack  |   |           |           
+            |  +-----------+        
+            |  |  pt_regs  |        
+            |  +-----------+        
+            |  |  reserved | 8 bytes
+ high addr  +--+-----------+        
+```
+
 ## <a name="reference"></a> Reference
 
 [H. Nandish, Software Interrupt routine on ARM](https://lnxblog.github.io/2019/07/06/swi-routine-arm.html)
