@@ -67,31 +67,38 @@ The difference between them is that TRACEME is from tracee's perspective while t
                                                                                          PTRACE_GETEVENTMSG                          
 ```
 
-- Code flow - sys_ptrace
+- Code flow - entry and exit of syscall
 
 ```
-+---------------------+                                                                                           
-| syscall_trace_enter | eventually calls ptrace_stop()                                                            
-+---------------------+                                                                                           
-           |                                                                                                      
-           v                                                                                                      
-      +---------+                                                                                                 
-      | sys_xxx |                                                                                                 
-      +---------+                                                                                                 
-           |                                                                                                      
-           v                                                                                                      
- +--------------------+                                                                                           
- | syscall_trace_exit | eventually calls ptrace_stop()                                                            
- +--------------------+                                                                                           
-                                       +-------------+                                                            
-                                       | ptrace_stop |                                                            
-                                       +---|---------+                                                            
-                                           |    +--------------------------+                                      
-                                           |--> | do_notify_parent_cldstop | send SIGCHLD to tracer and wake it up
-                                           |    +--------------------------+                                      
-                                           |    +--------------------+                                            
-                                           +--> | freezable_schedule | tracee stops                               
-                                                +--------------------+                                            
+                       +------------+                                                                                                              
+                +---   | vector_swi |   ---+                                                                                                       
+                |      +------------+      |                                                                                                       
+  isn't traced  |                          |  is traced                                                                                            
+                |                          |                                                                                                       
+                |                          |                                                                                                       
+                |                          v                                                                                                       
+                |               +---------------------+                                                                                            
+                |               | syscall_trace_enter |  eventually calls ptrace_stop()                                                            
+                |               +---------------------+                                                                                            
+                |                          |                                                                                                       
+                v                          v                                                                                                       
+       +----------------+          +----------------+                                                                                              
+       | invoke_syscall |          | invoke_syscall |                                                                                              
+       +----------------+          +----------------+                                                                                              
+                |                          |                                                                                                       
+                |                          v                                                                                                       
+                |                +--------------------+                                                                                            
+                |                | syscall_trace_exit |  eventually calls ptrace_stop()                                                            
+                |                +--------------------+                                                                                            
+                |                          |                            +-------------+                                                            
+                v                          v                            | ptrace_stop |                                                            
+      +------------------+        +------------------+                  +---|---------+                                                            
+      | ret_fast_syscall |        | ret_slow_syscall |                      |    +--------------------------+                                      
+      +------------------+        +------------------+                      |--> | do_notify_parent_cldstop | send SIGCHLD to tracer and wake it up
+                                                                            |    +--------------------------+                                      
+                                                                            |    +--------------------+                                            
+                                                                            +--> | freezable_schedule | tracee stops                               
+                                                                                 +--------------------+
 ```
 
 ## <a name="strace"></a> Strace
