@@ -3,12 +3,69 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Registers](#registers)
 - [Vector Table](#vector-table)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+A userspace program may contain hundreds or thousands of instructions that manipulate processor registers and system memory. 
+Instead of simple operation, usually, applications need to send the request to the kernel for other system-level services run in another CPU mode. 
+External hardware like timer triggers interrupts in the meantime, and the CPU enters the corresponding processor mode for further handling. 
+These are called _USER_, _SUPERVISOR_, and _INTERRUPT_ modes respectively on ARM processors and there are also _ABORT_, _UNDEFINED_, and _FIQ_ modes. 
+Though it's highly related to architecture design, other processors have a similar concept of the exception mechanism.
+
+## <a name="registers"></a> Registers
+
+On 32-bit ARM, there are thirteen generic registers (r0 ~ r12), the stack pointer (r13 or sp), link register (r14 or lr), and the program counter (pc).
+- r# - serves general purposes such as mathematic operation and memory access.
+- sp - points to the current stack. (Each CPU mode has its banked sp)
+- lr - stores the return address in conventional function calling or CPU mode switch. (Each CPU mode has its banked lr)
+- pc - the processor fetches the instruction from where pc points.
+- cpsr - current program status register
+- spsr - saved program status register
+
+Let's compare the steps between function calling and mode switch:
+- function calling
+  - _lr_ saves the return address 
+  - _pc_ jumps to target function
+  - _sp_ adjusts to lower address if stack growth direction is downward.
+- mode switch
+  - backup _cpsr_ to banked _spsr_ (processor behavior)
+  - backup _pc_ to banked _lr_ (processor behavior)
+  - meanwhile, banked _sp_ points to the stack prepared for the switched mode
+
+There are still numerous registers and co-processors, but we won't delve into them.
+
+- Figure - mode switch
+
+```
+    User               Supervisor
+                                 
+ +--------+                      
+ |   r0   |                      
+ +--------+                      
+      -                          
+      -                          
+      -                          
+      -                          
+      -                          
+ +--------+                      
+ |  r12   |                      
+ +--------+            +--------+
+ |   sp   |            | sp_svc |
+ +--------+            +--------+
+ |   lr   |     +-->   | lr_svc |
+ +--------+     |      +--------+
+ |   pc   |  ---|                
+ +--------+                      
+                                 
+ +--------+                      
+ |  cpsr  |  ---|                
+ +--------+     |      +--------+
+                +-->   |spsr_svc|
+                       +--------+
+```
 
 ## <a name="vector-table"></a> Vector Table
 
@@ -48,36 +105,6 @@
  0xFFFF_1000  +------------------------+                                                  
               |     __stubs_start      | the address of vector_swi is saved at 0xFFFF_1000
  0xFFFF_12AC  +------------------------+                                                                 
-```
-
-- Flow
-
-```
-                      +------------+                  
-               +---   | vector_swi |   ---+           
-               |      +------------+      |           
- isn't traced  |                          |  is traced
-               |                          |           
-               |                          |           
-               |                          v           
-               |               +---------------------+
-               |               | syscall_trace_enter |
-               |               +---------------------+
-               |                          |           
-               v                          v           
-      +----------------+          +----------------+  
-      | invoke_syscall |          | invoke_syscall |  
-      +----------------+          +----------------+  
-               |                          |           
-               |                          v           
-               |                +--------------------+
-               |                | syscall_trace_exit |
-               |                +--------------------+
-               |                          |           
-               v                          v           
-     +------------------+        +------------------+ 
-     | ret_fast_syscall |        | ret_slow_syscall | 
-     +------------------+        +------------------+ 
 ```
 
 - Figure
