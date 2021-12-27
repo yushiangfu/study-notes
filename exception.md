@@ -26,16 +26,14 @@ On 32-bit ARM, there are thirteen generic registers (r0 ~ r12), the stack pointe
 - spsr - saved program status register
 
 Let's compare the steps between function calling and mode switch:
-- function calling
-  - _lr_ saves the return address 
-  - _pc_ jumps to target function
-  - _sp_ adjusts to lower address if stack growth direction is downward.
-- mode switch
-  - backup _cpsr_ to banked _spsr_ (processor behavior)
-  - backup _pc_ to banked _lr_ (processor behavior)
-  - meanwhile, banked _sp_ points to the stack prepared for the switched mode
+| function calling              | mode switch                          |
+| ---                           | ---                                  |
+|                               | banked _spsr_ saves _cpsr_           |
+| _lr_ saves the return address | banked _lr_ saves the return address |
+| _pc_ jumps to function        | _pc_ jumps to vector table           |
+| _sp_ adjusts to lower address | banked _sp_ replaces _sp_            |
 
-There are still numerous registers and co-processors, but we won't delve into them.
+The left-hand steps are software instructions, while the right-hand side ones are hardware (processor) behaviors.
 
 - Figure - mode switch
 
@@ -53,9 +51,9 @@ There are still numerous registers and co-processors, but we won't delve into th
  +--------+                      
  |  r12   |                      
  +--------+            +--------+
- |   sp   |            | sp_svc |
+ |   sp   |            | sp_svc | banked register
  +--------+            +--------+
- |   lr   |     +-->   | lr_svc |
+ |   lr   |     +-->   | lr_svc | banked register
  +--------+     |      +--------+
  |   pc   |  ---|                
  +--------+                      
@@ -63,13 +61,17 @@ There are still numerous registers and co-processors, but we won't delve into th
  +--------+                      
  |  cpsr  |  ---|                
  +--------+     |      +--------+
-                +-->   |spsr_svc|
+                +-->   |spsr_svc| banked register
                        +--------+
 ```
 
 ## <a name="vector-table"></a> Vector Table
 
-(TBD)
+The kernel allocates two pages during boot time, copies the vector table from the kernel section, and sets up the mapping. 
+Whenever an exception happens, the processor automatically has the _pc_ point to the corresponding entry in the vector table, located at 0xFFFF_0000. 
+Ignore the _kuser helper_ part in the below figure because I haven't looked into it yet.
+
+- Figure - vector table in memory
 
 ```                                                                                                                      
  virtual addr                                                                             
@@ -107,6 +109,26 @@ There are still numerous registers and co-processors, but we won't delve into th
  0xFFFF_12AC  +------------------------+                                                                 
 ```
 
+- Code flow
+
+```
++-------------+                                                                                  
+| paging_init |                                                                                  
++---|---------+                                                                                  
+    |    +-----------------+                                                                     
+    +--> | devicemaps_init |                                                                     
+         +----|------------+                                                                     
+              |                                                                                  
+              |--> allocate two page frames                                                      
+              |                                                                                  
+              |    +-----------------+                                                           
+              |--> | early_trap_init | copy vector table and kuser helper to that allocated space
+              |    +-----------------+                                                           
+              |    +----------------+                                                            
+              +--> | create_mapping | specify the virtual address started from 0xFFFF_0000       
+                   +----------------+                                                            
+```
+
 - Figure
 
 ```
@@ -127,6 +149,30 @@ There are still numerous registers and co-processors, but we won't delve into th
             |  +-----------+        
             |  |  reserved | 8 bytes
  high addr  +--+-----------+        
+```
+
+- Figure
+
+```
+               stacks              
+                                   
+               +-----+             
+               | irq | 3 bytes     
+               +-----+             
+               | abt | 3 bytes     
+   CPU0        +-----+             
+               | und | 3 bytes     
+               +-----+             
+               | fiq | 3 bytes     
+-----------------------------------
+               | irq | 3 bytes     
+               +-----+             
+               | abt | 3 bytes     
+   CPU1        +-----+             
+               | und | 3 bytes     
+               +-----+             
+               | fiq | 3 bytes     
+               +-----+             
 ```
 
 ## <a name="reference"></a> Reference
