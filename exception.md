@@ -65,6 +65,49 @@ The left-hand steps are software instructions, while the right-hand side ones ar
                        +--------+
 ```
 
+Every exception has its banked stack pointer, and kernel prepares stack space for IRQ/ABT/UND/FIQ, 12 bytes each. 
+Like a signal triggers the signal handler, interrupt also behaves the same except the handler works in kernel space. 
+Interrupt service routine (ISR) is the formal name, but how can it perform the complicated logic in such a small space? It doesn't. 
+Kernel quickly switches to SVC mode for ISR after a few simple register operations executed in that exception mode.
+
+- Code flow
+
+```
++------------+                
+| setup_arch |                
++--|---------+                
+   |    +-----------------+   
+   +--> | setup_processor |   
+        +----|------------+   
+             |    +----------+
+             +--> | cpu_init | prepare stack space for irq/abt/und/fiq for one processor
+                  +----------+
+```
+
+- Figure
+
+```
+               stacks                                                     
+                                     +-- irq[0] = r0                      
+               +-----+               |                                    
+               | irq | 4 bytes * 3 --|-- irq[1] = lr_irq, backup of pc    
+               +-----+               |                                    
+               | abt |               +-- irq[2] = spsr_irq, backup of cpsr
+   CPU0        +-----+                                                    
+               | und |                                                    
+               +-----+                                                    
+               | fiq |                                                    
+-----------------------------------                                       
+               | irq |                                                    
+               +-----+                                                    
+               | abt |                                                    
+   CPU1        +-----+                                                    
+               | und |                                                    
+               +-----+                                                    
+               | fiq |                                                    
+               +-----+                                                             
+```
+
 ## <a name="vector-table"></a> Vector Table
 
 The kernel allocates two pages during boot time, copies the vector table from the kernel section, and sets up the mapping. 
@@ -149,30 +192,6 @@ Ignore the _kuser helper_ part in the below figure because I haven't looked into
             |  +-----------+        
             |  |  reserved | 8 bytes
  high addr  +--+-----------+        
-```
-
-- Figure
-
-```
-               stacks              
-                                   
-               +-----+             
-               | irq | 3 bytes     
-               +-----+             
-               | abt | 3 bytes     
-   CPU0        +-----+             
-               | und | 3 bytes     
-               +-----+             
-               | fiq | 3 bytes     
------------------------------------
-               | irq | 3 bytes     
-               +-----+             
-               | abt | 3 bytes     
-   CPU1        +-----+             
-               | und | 3 bytes     
-               +-----+             
-               | fiq | 3 bytes     
-               +-----+             
 ```
 
 ## <a name="reference"></a> Reference
