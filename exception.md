@@ -173,6 +173,8 @@ Ignore the _kuser helper_ part in the below figure because I haven't looked into
                    +----------------+                                                            
 ```
 
+### IRQ Entry
+
 These _vector_xxx_ are the entry points for each exception, and let's take _vector_irq_ for example since many of them share the same logic in initial handling.
 
 - Code flow
@@ -275,6 +277,65 @@ These _vector_xxx_ are the entry points for each exception, and let's take _vect
             |    +-----------------+                     
             +--> | handle_arch_irq | e.g. avic_handle_irq
                  +-----------------+                     
+```
+
+### Syscall Entry
+
+Numerous cases switch CPU mode from USR to SVC, but instruction SWI is the only way userspace tasks can initiate. 
+System call (syscall) works on top of that instruction: applications prepare the arguments and issue SWI, and then the operating system will fulfill the request. 
+Common syscalls in the life cycle of a task are:
+sys_fork/sys_clone: by which the parent task gives birth to a child task. 
+sys_mmap/sys_mprotect: memory mapping operation, such as library loading and heap preparation. 
+sys_write: to write data somewhere or print the message to the console. 
+sys_exit: ready to leave and notify its parent of the resource release.
+
+Simply speaking, entering SVC mode through the SWI exception leads to the regular syscall routine or architecture-specific ones. 
+The code flow changes a little bit if tracers enable syscall tracing, but we've introduced that on its page and will not focus on that here. 
+You can refer to the below path for supported syscalls on processor ARM.
+
+```
+arch/arm/include/generated/calls-eabi.S
+```
+
+- Code flow
+
+```
++------------+                                                                                      
+| vector_swi |                                                                                      
++--|---------+                                                                                      
+   |                                                                                                
+   |--> store registers to stack for later restore                                                  
+   |                                                                                                
+   |                                +-------------+                                                 
+   |--> if we are traceing syscall  | __sys_trace |                                                 
+   |                                +-------------+                                                 
+   |                                                                                                
+   |--> call one of the below functions based on syscall#                                           
+   |                                                                                                
+   |        +----------------+                                                                      
+   |        | invoke_syscall | regular syscall (syscall# < 444, or 0 ~ 440 to be precise)           
+   |        +----------------+                                                                      
+   |        +-------------+                                                                         
+   |        | arm_syscall | arch-specific syscall (syscall# >= 0xF_0000)                            
+   |        +-------------+                                                                         
+   |        +----------------+                                                                      
+   |        | sys_ni_syscall | return error                                                         
+   |        +----------------+                                                                      
+   |    +--------------------+                                                                      
+   +--> | __ret_fast_syscall |                                                                      
+        +----|---------------+                                                                      
+             |                                                                                      
+             |-> re-check if we are tracing syscall                                                 
+             |                                                                                      
+             |        +-------------------+                                                         
+             |        | fast_work_pending |                                                         
+             |        +-------------------+                                                         
+             |                                                                                      
+             +--> else                                                                              
+                                                                                                    
+                      +-------------------+                                                         
+                      | restore_user_regs | restore registers from stack and switch back to USR mode
+                      +-------------------+                                                         
 ```
 
 - Figure
