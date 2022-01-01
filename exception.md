@@ -118,39 +118,39 @@ Ignore the _kuser helper_ part in the below figure because I haven't looked into
 - Figure - vector table in memory
 
 ```                                                                                                                      
- virtual addr                                                                               
-                                                                                            
- 0xFFFF_0000  +--------------------------+                                                  
-              |    goto vector_rst       |  \                                               
- 0xFFFF_0004  +--------------------------+   -                                              
-              |    goto vector_und       |   |                                              
- 0xFFFF_0008  +--------------------------+   |                                              
-              |    goto vector_swi       |   |                                              
- 0xFFFF_000C  +--------------------------+   |                                              
-              |    goto vector_pabt      |   |                                              
- 0xFFFF_0010  +--------------------------+   | vector                                       
-              |    goto vector_dabt      |   | table                                        
- 0xFFFF_0014  +--------------------------+   |                                              
-              |    goto vector_addrexcptn|   |                                              
- 0xFFFF_0018  +--------------------------+   |                                              
-              |    goto vector_irq       |   |                                              
- 0xFFFF_001C  +--------------------------+   -                                              
-              |    goto vector_fiq       |  /                                               
- 0xFFFF_0020  +--------------------------+                                                  
-                                                                                            
- 0xFFFF_0F60  +--------------------------+                                                  
-              | __kuser_helper_start     |  \                                               
- 0xFFFF_0FA0  +--------------------------+   |                                              
-              | __kuser_memory_barrier   |   |                                              
- 0xFFFF_0FC0  +--------------------------+   |                                              
-              | __kuser_cmpxchg          |   | kuser                                        
- 0xFFFF_0FE0  +--------------------------+   | helpers                                      
-              |   HW TLS instruction     |   |                                              
- 0xFFFF_0FFC  +--------------------------+   |                                              
-              | __kuser_helper_version   |  /                                               
- 0xFFFF_1000  +--------------------------+                                                  
-              |     __stubs_start        | the address of vector_swi is saved at 0xFFFF_1000
- 0xFFFF_12AC  +--------------------------+                                                  
+ virtual addr                                                                                                                                                           
+                                                                                                                                                                        
+ 0xFFFF_0000  +--------------------------+                                                                                                          
+              |    goto vector_rst       |  \           - no idea                                                                                       
+ 0xFFFF_0004  +--------------------------+   -                                                                                                           
+              |    goto vector_und       |   |          - undefined instruction, has similar logic to vector_irq in the initial handling                      
+ 0xFFFF_0008  +--------------------------+   |                                                                                                          
+              |    goto vector_swi       |   |          - software interrupt, the only legit method for userspace task to enter SVC mode                 
+ 0xFFFF_000C  +--------------------------+   |                                                                                                             
+              |    goto vector_pabt      |   |          - prefetch abort, has similar logic to vector_irq in the initial handling                      
+ 0xFFFF_0010  +--------------------------+   | vector                                                                                                  
+              |    goto vector_dabt      |   | table    - data abort, has similar logic to vector_irq in the initial handling                            
+ 0xFFFF_0014  +--------------------------+   |                                                                                                             
+              |    goto vector_addrexcptn|   |          - no idea, it's an endless loop                                                                   
+ 0xFFFF_0018  +--------------------------+   |                                                                                                                
+              |    goto vector_irq       |   |          - interrupt request, jump to respective handling based on the CPU mode when exception happens
+ 0xFFFF_001C  +--------------------------+   -                                                                                                              
+              |    goto vector_fiq       |  /           - fast interrupt request, has similar logic to vector_irq in the initial handling                    
+ 0xFFFF_0020  +--------------------------+                                                                                                              
+                                                                                                                                              
+ 0xFFFF_0F60  +--------------------------+                                                                                                             
+              | __kuser_helper_start     |  \                                                                                                         
+ 0xFFFF_0FA0  +--------------------------+   |                                                                                                       
+              | __kuser_memory_barrier   |   |                                                                                                          
+ 0xFFFF_0FC0  +--------------------------+   |                                                                                                         
+              | __kuser_cmpxchg          |   | kuser     
+ 0xFFFF_0FE0  +--------------------------+   | helpers   
+              |   HW TLS instruction     |   |           
+ 0xFFFF_0FFC  +--------------------------+   |           
+              | __kuser_helper_version   |  /            
+ 0xFFFF_1000  +--------------------------+               
+              |     __stubs_start        | the address of vector_swi is saved at 0xFFFF_1000                                                           
+ 0xFFFF_12AC  +--------------------------+                                                                                                 
 ```
 
 - Code flow
@@ -173,9 +173,7 @@ Ignore the _kuser helper_ part in the below figure because I haven't looked into
                    +----------------+                                                            
 ```
 
-Take _vector_irq_,_vector_pabt_,_vector_dabt_, _vector_und_ have similar logic at the beginning, and let's take _vector_irq_ for example:
-- After _pc_ moves to _vector_irq_ from vector table, kernel saves current _r0_, _lr_irq_, and _spsr_irq_ to the small stack.
-- Determine which mode we came from by checking _spsr_irq_ and going to either *__irq_usr* or *__irq_sve*.
+These _vector_xxx_ are the entry points for each exception, and let's take _vector_irq_ for example since many of them share the same logic in initial handling.
 
 - Code flow
 
