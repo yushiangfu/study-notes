@@ -68,7 +68,8 @@ The left-hand steps are software instructions, while the right-hand side ones ar
 Every exception has its banked stack pointer, and kernel prepares stack space for IRQ/ABT/UND/FIQ, 12 bytes each. 
 Like a signal triggers the signal handler, interrupt also behaves the same except the handler works in kernel space. 
 Interrupt service routine (ISR) is the formal name, but how can it perform the complicated logic in such a small space? It doesn't. 
-Kernel quickly switches to SVC mode for ISR after a few simple register operations executed in that exception mode.
+Kernel quickly switches to SVC mode for ISR after a few simple register operations executed in that exception mode..
+Let's introduce the vector table first in the next section.
 
 - Code flow
 
@@ -88,11 +89,11 @@ Kernel quickly switches to SVC mode for ISR after a few simple register operatio
 
 ```
                stacks                                                     
-                                     +-- irq[0] = r0                      
+                                     +-- irq[0] = for r0                      
                +-----+               |                                    
-               | irq | 4 bytes * 3 --|-- irq[1] = lr_irq, backup of pc    
+               | irq | 4 bytes * 3 --|-- irq[1] = for lr_irq (backup of pc)
                +-----+               |                                    
-               | abt |               +-- irq[2] = spsr_irq, backup of cpsr
+               | abt |               +-- irq[2] = for spsr_irq, (backup of cpsr)
    CPU0        +-----+                                                    
                | und |                                                    
                +-----+                                                    
@@ -117,39 +118,39 @@ Ignore the _kuser helper_ part in the below figure because I haven't looked into
 - Figure - vector table in memory
 
 ```                                                                                                                      
- virtual addr                                                                             
-                                                                                          
- 0xFFFF_0000  +------------------------+                                                  
-              |    goto vector_rst     |  \                                               
- 0xFFFF_0004  +------------------------+   -                                              
-              |    goto vector_und     |   |                                              
- 0xFFFF_0008  +------------------------+   |                                              
-              |    goto vector_swi     |   |                                              
- 0xFFFF_000C  +------------------------+   |                                              
-              |    goto vector_pabt    |   |                                              
- 0xFFFF_0010  +------------------------+   | vector                                       
-              |    goto vector_dabt    |   | table                                        
- 0xFFFF_0014  +------------------------+   |                                              
-              |    goto vector_xxx     |   |                                              
- 0xFFFF_0018  +------------------------+   |                                              
-              |    goto vector_irq     |   |                                              
- 0xFFFF_001C  +------------------------+   -                                              
-              |    goto vector_fiq     |  /                                               
- 0xFFFF_0020  +------------------------+                                                  
-                                                                                          
- 0xFFFF_0F60  +------------------------+                                                  
-              | __kuser_helper_start   |  \                                               
- 0xFFFF_0FA0  +------------------------+   |                                              
-              | __kuser_memory_barrier |   |                                              
- 0xFFFF_0FC0  +------------------------+   |                                              
-              | __kuser_cmpxchg        |   | kuser                                        
- 0xFFFF_0FE0  +------------------------+   | helpers                                      
-              |   HW TLS instruction   |   |                                              
- 0xFFFF_0FFC  +------------------------+   |                                              
-              | __kuser_helper_version |  /                                               
- 0xFFFF_1000  +------------------------+                                                  
-              |     __stubs_start      | the address of vector_swi is saved at 0xFFFF_1000
- 0xFFFF_12AC  +------------------------+                                                                 
+ virtual addr                                                                               
+                                                                                            
+ 0xFFFF_0000  +--------------------------+                                                  
+              |    goto vector_rst       |  \                                               
+ 0xFFFF_0004  +--------------------------+   -                                              
+              |    goto vector_und       |   |                                              
+ 0xFFFF_0008  +--------------------------+   |                                              
+              |    goto vector_swi       |   |                                              
+ 0xFFFF_000C  +--------------------------+   |                                              
+              |    goto vector_pabt      |   |                                              
+ 0xFFFF_0010  +--------------------------+   | vector                                       
+              |    goto vector_dabt      |   | table                                        
+ 0xFFFF_0014  +--------------------------+   |                                              
+              |    goto vector_addrexcptn|   |                                              
+ 0xFFFF_0018  +--------------------------+   |                                              
+              |    goto vector_irq       |   |                                              
+ 0xFFFF_001C  +--------------------------+   -                                              
+              |    goto vector_fiq       |  /                                               
+ 0xFFFF_0020  +--------------------------+                                                  
+                                                                                            
+ 0xFFFF_0F60  +--------------------------+                                                  
+              | __kuser_helper_start     |  \                                               
+ 0xFFFF_0FA0  +--------------------------+   |                                              
+              | __kuser_memory_barrier   |   |                                              
+ 0xFFFF_0FC0  +--------------------------+   |                                              
+              | __kuser_cmpxchg          |   | kuser                                        
+ 0xFFFF_0FE0  +--------------------------+   | helpers                                      
+              |   HW TLS instruction     |   |                                              
+ 0xFFFF_0FFC  +--------------------------+   |                                              
+              | __kuser_helper_version   |  /                                               
+ 0xFFFF_1000  +--------------------------+                                                  
+              |     __stubs_start        | the address of vector_swi is saved at 0xFFFF_1000
+ 0xFFFF_12AC  +--------------------------+                                                  
 ```
 
 - Code flow
@@ -170,6 +171,112 @@ Ignore the _kuser helper_ part in the below figure because I haven't looked into
               |    +----------------+                                                            
               +--> | create_mapping | specify the virtual address started from 0xFFFF_0000       
                    +----------------+                                                            
+```
+
+Take _vector_irq_,_vector_pabt_,_vector_dabt_, _vector_und_ have similar logic at the beginning, and let's take _vector_irq_ for example:
+- After _pc_ moves to _vector_irq_ from vector table, kernel saves current _r0_, _lr_irq_, and _spsr_irq_ to the small stack.
+- Determine which mode we came from by checking _spsr_irq_ and going to either *__irq_usr* or *__irq_sve*.
+
+- Code flow
+
+```
++------------+                                                     
+| vector_irq |                                                     
++--|---------+                                                     
+   |                                                               
+   |---> save r0, lr_irq, spsr_irq to irq stack (size: 4 bytes * 3)
+   |                                                               
+   |---> switch to SVC mode                                        
+   |                                                               
+   |---> determine which mode we comes from                        
+   |                                                               
+   |---> save irq stack address to r0                              
+   |                                                               
+   |---> if we were at USR mode                                    
+   |                                                               
+   |         +-----------+                                         
+   |         | __irq_usr |                                         
+   |         +-----------+                                         
+   |                                                               
+   +---> elif we were at SVC mode                                  
+                                                                   
+             +-----------+                                         
+             | __irq_svc |                                         
+             +-----------+                                                                                                                     
+```
+
+- Code flow of ___irq_usr_
+
+```
++-----------+                                                                                                          
+| __irq_usr |                                                                                                          
++--|--------+                                                                                                          
+   |    +-----------+                                                                                                  
+   +--> | usr_entry | store r0 ~ r12, sp_usr, lr_usr, old pc to sp_svc                                                 
+   |    +-----------+                                                                                                  
+   |    +-------------+                                                                                                
+   |--> | irq_handler |                                                                                                
+   |    +---|---------+                                                                                                
+   |        |    +-----------------+                                                                                   
+   |        +--> | handle_arch_irq | e.g. avic_handle_irq                                                              
+   |             +-----------------+                                                                                   
+   |    +-----------------+                                                                                            
+   |--> | get_thread_info | get thread_info                                                                            
+   |    +-----------------+                                                                                            
+   |    +----------------------+                                                                                       
+   +--> | ret_to_user_from_irq |                                                                                       
+        +-----|----------------+                                                                                       
+              |                                                                                                        
+              |--> check thread_info->flags to see if there's pending work                                             
+              |                                                                                                        
+              |--> if there is                                                                                         
+              |                                                                                                        
+              |        +-------------------+                                                                           
+              |        | slow_work_pending |                                                                           
+              |        +----|--------------+                                                                           
+              |             |    +-----------------+                                                                   
+              |             |--> | do_work_pending | schedule or handle signal based the flags                         
+              |             |    +-----------------+                                                                   
+              |             |                                                                                          
+              |             |--> if everything's fine                                                                  
+              |             |                                                                                          
+              |             |        +-----------------+                                                               
+              |             |        | no_work_pending | restore registers for USR mode, and switch to it              
+              |             |        +-----------------+                                                               
+              |             |                                                                                          
+              |             +--> else (syscall needs restart)                                                          
+              |                                                                                                        
+              |                      +---------------+                                                                 
+              |                      | local_restart | handle syscall, restore registers for USR mode, and switch to it
+              |                      +---------------+                                                                 
+              |                                                                                                        
+              +--> else                                                                                                
+                       +-----------------+                                                                             
+                       | no_work_pending | restore registers for USR mode, and switch to it                            
+                       +-----------------+                                                                             
+```
+
+- Code flow of ___irq_svc_
+
+```
++-----------+                                            
+| __irq_svc |                                            
++--|--------+                                            
+   |    +-----------+                                    
+   |--> | svc_entry |                                    
+   |    +--|--------+                                    
+   |       |                                             
+   |       |--> save registers to stack for later restore
+   |       |                                             
+   |       |    +-----------------+                      
+   |       +--> | get_thread_info | get thread_info      
+   |            +-----------------+                      
+   |    +-------------+                                  
+   +--> | irq_handler |                                  
+        +---|---------+                                  
+            |    +-----------------+                     
+            +--> | handle_arch_irq | e.g. avic_handle_irq
+                 +-----------------+                     
 ```
 
 - Figure
