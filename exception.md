@@ -1,4 +1,4 @@
-> Study case: Linux version 5.10.46 on OpenBMC
+> Study case: Linux version 5.15.0 on OpenBMC
 
 ## Index
 
@@ -68,8 +68,31 @@ The left-hand steps are software instructions, while the right-hand side ones ar
 Every exception has its banked stack pointer, and kernel prepares stack space for IRQ/ABT/UND/FIQ, 12 bytes each. 
 Like a signal triggers the signal handler, interrupt also behaves the same except the handler works in kernel space. 
 Interrupt service routine (ISR) is the formal name, but how can it perform the complicated logic in such a small space? It doesn't. 
-Kernel quickly switches to SVC mode for ISR after a few simple register operations executed in that exception mode..
+Kernel quickly switches to SVC mode for ISR after a few simple register operations executed in that exception mode.
+In our study case, each task has its own space of two-page size used when running kernel logic, and the userspace stack exists if it's an application. 
 Let's introduce the vector table first in the next section.
+
+- Figure
+
+```
+     low addr  +--+-----------+                
+               |  |thread_info|                
+               |  +-----------+                
+           ^   |  |0x57AC6E9D | stack end magic
+           |   |  +-----------+                
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   +-----------+                   
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   |  +-----------+                
+           |   |  |  pt_regs  |                
+ stack  ---+   |  +-----------+                
+               |  |  reserved | 8 bytes        
+    high addr  +--+-----------+                    
+```
 
 - Code flow
 
@@ -336,28 +359,6 @@ arch/arm/include/generated/calls-eabi.S
                       +-------------------+                                                         
                       | restore_user_regs | restore registers from stack and switch back to USR mode
                       +-------------------+                                                         
-```
-
-- Figure
-
-```
-  low addr  +--+-----------+        
-            |  |thread_info|        
-            |  +-----------+        
-        ^   |           |           
-        |   |           |           
-        |   |           |           
-        |   |           |           
-        |   |           |           
-        |   +-----------+           
-        |   |           |           
-        |   |           |           
- stack  |   |           |           
-            |  +-----------+        
-            |  |  pt_regs  |        
-            |  +-----------+        
-            |  |  reserved | 8 bytes
- high addr  +--+-----------+        
 ```
 
 ## <a name="reference"></a> Reference
