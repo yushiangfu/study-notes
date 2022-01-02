@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Registers](#registers)
 - [Vector Table](#vector-table)
+- [To-Do List](#to-do-list)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -360,6 +361,12 @@ arch/arm/include/generated/calls-eabi.S
                       | restore_user_regs | restore registers from stack and switch back to USR mode
                       +-------------------+                                                         
 ```
+
+## <a name="to-do-list"></a> To-Do List
+
+- Add introduction of core dump
+- Demonstrate how the stack works in function calls
+- Compare the difference between ret_fast_syscall and ret_slow_syscall
 
 ## <a name="reference"></a> Reference
 
