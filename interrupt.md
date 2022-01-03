@@ -4,8 +4,9 @@
 
 - [Introduction](#introduction)
 - [Boot Flow](#boot-flow)
-- [ISR Registration](#isr-registration)
-- [ISR Execution](#isr-execution)
+- [IRQ Registration](#irq-registration)
+- [IRQ Execution](#irq-execution)
+- [Software IRQ](#software-irq)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -160,7 +161,7 @@ Then the data specified in DTS instructs the kernel to execute the below three i
       +--> print "i2c controller registered, irq 17"
 ```
 
-## <a name="isr-registration"></a> ISR Registration
+## <a name="irq-registration"></a> IRQ Registration
 
 If a device emits an interrupt for an event, its driver will prepare the ISR and register to that interrupt number. 
 In most cases, a handler is enough to process the event, but some drivers will instead have the kthread ready for handling. 
@@ -239,7 +240,7 @@ We traverse and fetch the target IRQ descriptor by the hardware IRQ.
                                 hwirq                                                             
 ```
 
-## <a name="isr-execution"></a> ISR Execution
+## <a name="irq-execution"></a> IRQ Execution
 
 We've learned from the _Exception_ chapter that interruptions will cause the CPU to switch to IRQ mode and jump to the corresponding routine in the vector table. 
 Whether it switches from _USR_ or _SVC_ mode, it ultimately leads to _handle_arch_irq_, which points to _avic_handle_irq_ during initialization.
@@ -299,6 +300,48 @@ If a driver chooses a kthread over a handler to help process the event, **irq_de
                                     +-------------------+                      
                                     | __irq_wake_thread |                      
                                     +-------------------+                      
+```
+
+## <a name="software-irq"></a> Software IRQ
+
+Software IRQ is similar to its hardware version, except software triggers the interrupt and handles it appropriately. 
+It's a fixed table shown below, and each index corresponds to an action or NULL. 
+Subsystems like timer, network, and scheduler, register these actions in the boot-up flow, and then somewhere trigger them in runtime if necessary.
+
+| Index            | Action                | Note                           |
+| ---              | ---                   |---                             |
+| HI_SOFTIRQ       | tasklet_hi_action     | (TBD)                          |
+| TIMER_SOFTIRQ    | run_timer_softirq     | (TBD)                          |
+| NET_TX_SOFTIRQ   | net_tx_action         | (TBD)                          |
+| NET_RX_SOFTIRQ   | net_rx_action         | (TBD)                          |
+| BLOCK_SOFTIRQ    | blk_done_softirq      | (TBD)                          |
+| IRQ_POLL_SOFTIRQ | irq_poll_softirq      | config is disabled             |
+| TASKLET_SOFTIRQ  | tasklet_action        | (TBD)                          |
+| SCHED_SOFTIRQ    | run_rebalance_domains | help balance the load among rq |
+| HRTIMER_SOFTIRQ  | hrtimer_run_softirq   | (TBD)                          |
+| RCU_SOFTIRQ      | rcu_core_si           | (TBD)                          |
+
+```
+open_softirq(index, action): register the action for an index
+raise_softirq(index): ensure the task 'ksoftirqd/#' is active to handle the request
+```
+
+Each processor has its **ksoftirqd**, and we can discern that by checking its tailing number, e.g., **ksoftirqd/1** runs only on the run queue of processor one. 
+Function **spawn_ksoftirqd** is responsible for initializing the per-CPU task.
+
+```
+  +-------------+                                                                                                 
+  | kernel_init |                                                                                                 
+  +-------------+                                                                                                 
+         -                                                                                                        
+         -                                                                                                        
+         v                                                                                                        
++-----------------+                                                                                               
+| spawn_ksoftirqd |                                                                                               
++----|------------+                                                                                               
+     |    +--------------------------------+                                                                      
+     +--> | smpboot_register_percpu_thread | argument softirq_threads is a structure containing ksoftirqd routines
+          +--------------------------------+                                                                      
 ```
 
 ## <a name="to-do-list"></a> To-Do List
