@@ -5,6 +5,8 @@
 - [Introduction](#introduction)
 - [Boot Flow](#boot-flow)
 - [ISR Registration](#isr-registration)
+- [ISR Execution](#isr-execution)
+- [To-Do List](#to-do-list)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -198,8 +200,9 @@ If kthread isn't an option to the drivers, there are two typical wrappers for us
                    +-----------------+                                                    
 ```
 
-We can inspect the information of all registered interrupts through the proc file.
-Not sure about the real meaning of HW IRQ, but the kernel reads it from DTS/DTB and translates it by domain methods to the (global) interrupt number.
+We can inspect the information of all registered interrupts through the proc file. 
+The hardware IRQ is the number from the interrupt controller perspective, while the regular interrupt number is the virtual one.
+We traverse and fetch the target IRQ descriptor by the hardware IRQ.
 
 ```                                                                                        
  root@romulus:~# cat /proc/interrupts                                                             
@@ -208,7 +211,7 @@ Not sure about the real meaning of HW IRQ, but the kernel reads it from DTS/DTB 
   20:       6383      AVIC        2 Edge      eth0                   ftgmac100_interrupt          
   21:          0      AVIC        5 Edge      aspeed_vhub            ast_vhub_irq                 
   22:          0      AVIC       25 Edge      aspeed gfx             aspeed_gfx_irq_handler       
-  23:          0      AVIC        7 Edge      aspeed-video           (threadfn = aspeed_video_irq)
+  23:          0      AVIC        7 Edge      aspeed-video           irq_default_primary_handler (threadfn = aspeed_video_irq)
   32:          0      AVIC        9 Edge      ttyS0                  serial8250_interrupt         
   33:        922      AVIC       10 Edge      ttyS4                  serial8250_interrupt         
   34:          0      AVIC        8 Edge      ipmi-bt-host, ttyS5    bt_bmc_irq                   
@@ -236,8 +239,72 @@ Not sure about the real meaning of HW IRQ, but the kernel reads it from DTS/DTB 
                                 hwirq                                                             
 ```
 
+## <a name="isr-execution"></a> ISR Execution
 
+We've learned from the _Exception_ chapter that interruptions will cause the CPU to switch to IRQ mode and jump to the corresponding routine in the vector table. 
+Whether it switches from _USR_ or _SVC_ mode, it ultimately leads to _handle_arch_irq_, which points to _avic_handle_irq_ during initialization.
 
+```
++------------+                                                                             
+| vector_irq |                                                                             
++------------+                                                                             
+      -                                                                                    
+      -                                                                                    
+      v                                                                                    
++-----------------+                                                                        
+| avic_handle_irq |                                                                        
++----|------------+                                                                        
+     |                                                                                     
+     +--> endless loop                                                                     
+                                                                                           
+              check register if there's any pending interrupt                              
+                                                                                           
+              exit loop if there's none                                                    
+                                                                                           
+              +-------------------+                                                        
+              | handle_domain_irq |                                                        
+              +----|--------------+                                                        
+                   |                                                                       
+                   |--> fetch target irq descriptor by hw irq                              
+                   |                                                                       
+                   |    +-----------------+                                                
+                   +--> | handle_irq_desc |                                                
+                        +----|------------+                                                
+                             |    +-------------------------+                              
+                             +--> | generic_handle_irq_desc |                              
+                                  +------|------------------+                              
+                                         |                                                 
+                                         +--> call desc->handle_irq, e.g., handle_level_irq
+                                              which is installed by domain->map()          
+```
+
+Commonly speaking, the action->handler plays the role of ISR as we know it. 
+If a driver chooses a kthread over a handler to help process the event, **irq_default_primary_handler** will be the default handler for later kthread wake up.
+
+```
++------------------+                                                           
+| handle_level_irq |                                                           
++----|-------------+                                                           
+     |    +------------------+                                                 
+     +--> | handle_irq_event |                                                 
+          +----|-------------+                                                 
+               |    +-------------------------+                                
+               +--> | handle_irq_event_percpu |                                
+                    +------|------------------+                                
+                           |                                                   
+                           |--> action->handler, e.g., serial8250_interrupt
+                           |                                                   
+                           +--> if there's kthread prepared during registration
+                                                                               
+                                    +-------------------+                      
+                                    | __irq_wake_thread |                      
+                                    +-------------------+                      
+```
+
+## <a name="to-do-list"></a> To-Do List
+
+- Why are there duplicated hardware IRQs?
+- Why handle_level_irq is used to handle 'edge' type interrupt?
 
 ## <a name="reference"></a> Reference
 
