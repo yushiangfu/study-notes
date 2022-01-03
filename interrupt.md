@@ -4,7 +4,7 @@
 
 - [Introduction](#introduction)
 - [Boot Flow](#boot-flow)
-- [ISR Registration](#isr-registeration)
+- [ISR Registration](#isr-registration)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -160,6 +160,81 @@ Then the data specified in DTS instructs the kernel to execute the below three i
 
 ## <a name="isr-registration"></a> ISR Registration
 
+If a device emits an interrupt for an event, its driver will prepare the ISR and register to that interrupt number. 
+In most cases, a handler is enough to process the event, but some drivers will instead have the kthread ready for handling. 
+The primary registration function is *__setup_irq*, responsible for installing the _descriptor_'s _action_. 
+If kthread isn't an option to the drivers, there are two typical wrappers for use:
+
+- _request_irq_: register handler to the interrupt number, it then generates the action to contain handler, and install it to irq descriptor.
+- _devm_request_irq_: similar to the above, except it belongs to devise resource and will be freed if kernel releases the device.
+
+
+
+```
+      +-------------+                                                                     
++-----| request_irq | register ISR to an interrupt                                        
+|     +-------------+                                                                     
+|                                                                                         
+|     +------------------+                                                                
+| +---| devm_request_irq | register ISR to an interrupt, and treat it as a device resource
+| |   +------------------+                                                                
+| |                                                                                       
+| |   +--------------+                                                                    
++---->| __setup_irq  |                                                                    
+      +---|----------+                                                                    
+          |                                                                               
+          |--> if thread function is provided                                             
+          |                                                                               
+          |        +------------------+                                                   
+          |        | setup_irq_thread | create a kthread to help handle this interrupt    
+          |        +------------------+                                                   
+          |                                                                               
+          |--> install irq action to irq descriptor                                       
+          |                                                                               
+          +--> if kthread is generated                                                    
+                                                                                          
+                   +-----------------+                                                    
+                   | wake_up_process |                                                    
+                   +-----------------+                                                    
+```
+
+We can inspect the information of all registered interrupts through the proc file.
+Not sure about the real meaning of HW IRQ, but the kernel reads it from DTS/DTB and translates it by domain methods to the (global) interrupt number.
+
+```                                                                                        
+ root@romulus:~# cat /proc/interrupts                                                             
+            CPU0                                                                                  
+  18:    3968106      AVIC       16 Edge      FTTMR010-TIMER1        fttmr010_timer_interrupt     
+  20:       6383      AVIC        2 Edge      eth0                   ftgmac100_interrupt          
+  21:          0      AVIC        5 Edge      aspeed_vhub            ast_vhub_irq                 
+  22:          0      AVIC       25 Edge      aspeed gfx             aspeed_gfx_irq_handler       
+  23:          0      AVIC        7 Edge      aspeed-video           (threadfn = aspeed_video_irq)
+  32:          0      AVIC        9 Edge      ttyS0                  serial8250_interrupt         
+  33:        922      AVIC       10 Edge      ttyS4                  serial8250_interrupt         
+  34:          0      AVIC        8 Edge      ipmi-bt-host, ttyS5    bt_bmc_irq                   
+  35:        214     dummy        1 Edge      1e78a080.i2c-bus       aspeed_i2c_bus_irq           
+  36:        214     dummy        2 Edge      1e78a0c0.i2c-bus       aspeed_i2c_bus_irq           
+  37:        214     dummy        3 Edge      1e78a100.i2c-bus       aspeed_i2c_bus_irq           
+  38:        214     dummy        4 Edge      1e78a140.i2c-bus       aspeed_i2c_bus_irq           
+  39:        214     dummy        5 Edge      1e78a180.i2c-bus       aspeed_i2c_bus_irq           
+  40:        214     dummy        6 Edge      1e78a1c0.i2c-bus       aspeed_i2c_bus_irq           
+  41:        214     dummy        7 Edge      1e78a300.i2c-bus       aspeed_i2c_bus_irq           
+  42:        214     dummy        8 Edge      1e78a340.i2c-bus       aspeed_i2c_bus_irq           
+  43:        214     dummy        9 Edge      1e78a380.i2c-bus       aspeed_i2c_bus_irq           
+  44:        214     dummy       10 Edge      1e78a3c0.i2c-bus       aspeed_i2c_bus_irq           
+  45:        652     dummy       11 Edge      1e78a400.i2c-bus       aspeed_i2c_bus_irq           
+  46:        216     dummy       12 Edge      1e78a440.i2c-bus       aspeed_i2c_bus_irq           
+  47:          0  1e780000.gpio  74 Edge      checkstop              gpio_keys_gpio_isr           
+  48:          0  1e780000.gpio 135 Edge      id-button              gpio_keys_gpio_isr           
+  49:          0  1e780000.gpio  67 Edge      gpiolib                gpio_sysfs_irq               
+  50:          0  1e780000.gpio  73 Edge      gpiolib                gpio_sysfs_irq               
+ Err:          0                                                                                  
+ ----        ---  -------------  +- ----      ----------------       ------------------           
+ irq#       stat      chip       |  trigger        action         ISR, just for reference         
+                      name       |   type           name                                          
+                                 v                                                                
+                                hwirq                                                             
+```
 
 
 
