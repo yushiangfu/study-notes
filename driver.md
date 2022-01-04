@@ -4,6 +4,7 @@
 
 - [Introduction](#introduction)
 - [Device Tree](#device-tree)
+- [Device and Driver Match](#device-and-driver-match)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -55,13 +56,88 @@ platform_get_resource(pdev, IORESOURCE_MEM, 1); // access the MEM type resource 
 platform_get_resource(pdev, IORESOURCE_IRQ, 0); // access the IRQ type resource with index = 0
 ```
 
-If many DTS and DTSI files involve in the DTB complication, that might makes it difficult to know whether a device is enabled or disabled eventually.
-Utility **dtc** can construct the DTS from DTB and give us a quick inspection without the need to boot up target system.
+If many DTS and DTSI files are involved in the DTB complication, it might be challenging to know whether a device is enabled or disabled eventually. 
+Utility **dtc** can construct the DTS from DTB and give us a quick inspection without booting up the target system.
 
 ```
 dtc -I dtb -O dts bcm2711-rpi-4-b.dtb           # construct dts from dtb
 dtc -I fs -O dts /sys/firmware/devicetree/base  # construct dts from filesystem (not that useful to me)
 ```
+
+- List of devices added from DTB in function **of_platform_default_populate_init**
+
+```
+[    0.180038] device: 'ahb': device_add
+[    0.198481] device: '1e620000.spi': device_add
+[    0.203438] device: '1e630000.spi': device_add
+[    0.204606] device: '1e6c2000.copro-interrupt-controller': device_add
+[    0.205406] device: '1e660000.ethernet': device_add
+[    0.206037] device: '1e6a0000.usb-vhub': device_add
+[    0.206468] device: 'ahb:apb': device_add
+[    0.207725] device: '1e6e2000.syscon': device_add
+[    0.209195] device: '1e6e207c.silicon-id': device_add
+[    0.209675] device: '1e6e2080.pinctrl': device_add
+[    0.210556] device: 'platform:1e6e2080.pinctrl--platform:1e6a0000.usb-vhub': device_add
+[    0.211799] device: 'platform:1e6e2080.pinctrl--platform:1e660000.ethernet': device_add
+[    0.212234] device: 'platform:1e6e2080.pinctrl--platform:1e630000.spi': device_add
+[    0.219286] device: '1e6e2078.hwrng': device_add
+[    0.220000] device: '1e6e6000.display': device_add
+[    0.220521] device: '1e6e9000.adc': device_add
+[    0.221058] device: '1e700000.video': device_add
+[    0.221494] device: '1e720000.sram': device_add
+[    0.224925] device: '1e780000.gpio': device_add
+[    0.226185] device: '1e782000.timer': device_add
+[    0.226842] device: '1e783000.serial': device_add
+[    0.227221] device: 'platform:1e6e2080.pinctrl--platform:1e783000.serial': device_add
+[    0.228314] device: '1e784000.serial': device_add
+[    0.228824] device: '1e785000.watchdog': device_add
+[    0.230142] device: '1e785020.watchdog': device_add
+[    0.230842] device: '1e786000.pwm-tacho-controller': device_add
+[    0.231402] device: 'platform:1e6e2080.pinctrl--platform:1e786000.pwm-tacho-controller': device_add
+[    0.233039] device: '1e787000.serial': device_add
+[    0.233714] device: '1e789000.lpc': device_add
+[    0.234579] device: '1e789080.lpc-ctrl': device_add
+[    0.235052] device: '1e789098.reset-controller': device_add
+[    0.235502] device: 'platform:1e789098.reset-controller--platform:1e783000.serial': device_add
+[    0.236189] device: '1e7890a0.lhc': device_add
+[    0.236727] device: '1e789140.ibt': device_add
+[    0.237134] device: 'ahb:apb:bus@1e78a000': device_add
+[    0.237557] device: 'platform:1e6e2080.pinctrl--platform:ahb:apb:bus@1e78a000': device_add
+[    0.238347] device: '1e78a080.i2c-bus': device_add
+[    0.238912] device: '1e78a0c0.i2c-bus': device_add
+[    0.239235] device: 'platform:1e6e2080.pinctrl--platform:1e78a0c0.i2c-bus': device_add
+[    0.240138] device: '1e78a100.i2c-bus': device_add
+[    0.240517] device: 'platform:1e6e2080.pinctrl--platform:1e78a100.i2c-bus': device_add
+[    0.241372] device: '1e78a140.i2c-bus': device_add
+[    0.241701] device: 'platform:1e6e2080.pinctrl--platform:1e78a140.i2c-bus': device_add
+[    0.242752] device: '1e78a180.i2c-bus': device_add
+[    0.243082] device: 'platform:1e6e2080.pinctrl--platform:1e78a180.i2c-bus': device_add
+[    0.244224] device: '1e78a1c0.i2c-bus': device_add
+[    0.244661] device: 'platform:1e6e2080.pinctrl--platform:1e78a1c0.i2c-bus': device_add
+[    0.245651] device: '1e78a300.i2c-bus': device_add
+[    0.246012] device: 'platform:1e6e2080.pinctrl--platform:1e78a300.i2c-bus': device_add
+[    0.246913] device: '1e78a340.i2c-bus': device_add
+[    0.247237] device: 'platform:1e6e2080.pinctrl--platform:1e78a340.i2c-bus': device_add
+[    0.248209] device: '1e78a380.i2c-bus': device_add
+[    0.248543] device: 'platform:1e6e2080.pinctrl--platform:1e78a380.i2c-bus': device_add
+[    0.249513] device: '1e78a3c0.i2c-bus': device_add
+[    0.249877] device: 'platform:1e6e2080.pinctrl--platform:1e78a3c0.i2c-bus': device_add
+[    0.251000] device: '1e78a400.i2c-bus': device_add
+[    0.251382] device: 'platform:1e6e2080.pinctrl--platform:1e78a400.i2c-bus': device_add
+[    0.252276] device: '1e78a440.i2c-bus': device_add
+[    0.252613] device: 'platform:1e6e2080.pinctrl--platform:1e78a440.i2c-bus': device_add
+[    0.253403] device: 'leds': device_add
+[    0.254278] device: 'platform:1e780000.gpio--platform:leds': device_add
+[    0.254838] device: 'gpio-fsi': device_add
+[    0.256303] device: 'platform:1e780000.gpio--platform:gpio-fsi': device_add
+[    0.256757] device: 'gpio-keys': device_add
+[    0.257201] device: 'platform:1e780000.gpio--platform:gpio-keys': device_add
+[    0.257606] device: 'iio-hwmon-battery': device_add
+```
+
+## <a name="device-and-driver-match"></a> Device and Driver Match
+
+(TBD)
 
 ## <a name="to-do-list"></a> To-Do List
 
