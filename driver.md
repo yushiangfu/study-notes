@@ -1,52 +1,79 @@
-> Note: browser extension [GitHub + Mermaid](https://chrome.google.com/webstore/detail/github-%20-mermaid/goiiopgdnkogdbjmncgedmgpoajilohe?hl=en)
-> is needed to view the flow chart of mermaid syntax.  
-> Note: any suggestion or opinion is extremely welcome!
+> Study case: Linux version 5.15.0 on OpenBMC
 
 ## Index
 
-1. [DTS](#dts)
+- [Introduction](#introduction)
+- [Device Tree](#device-tree)
+- [To-Do List](#to-do-list)
+- [Reference](#reference)
 
-## <a name="dts"></a> DTS
+## <a name="introduction"></a> Introduction
 
-- DTS: **d**evice **t**ree **s**ource
-- DTSI: **d**evice **t**ree **s**ource to be **i**ncluded
-- DTB: **d**evice **t**ree **b**lob
+A system consists of numerous hardware components, from IP within the chip, such as timer, UART, to external devices on board, e.g., USB gadget or the PCIe card. 
+By default, kernel compiles in lots of drivers, and all we have to do is provide the list of devices that we need the kernel to help register. 
+Whenever kernel adds a device or a driver, they probe each other to see if there's a match.
 
-DTS is the text file describing device information of the SoC and is compiled into DTB for the kernel to parse and register a bunch of devices. 
-Like C language headers, information in DTS can be separated into DTSI as a module, and included by other DTS.
-I'm using OpenBMC kernel for my study reference and the corresponding DTS is 
+## <a name="device-tree"></a> Device Tree
+
+Device tree source (DTS) is the text file describing the list of devices of the SoC and gets compiled into Device tree blob (DTB). 
+The kernel will know where to find them in memory for parsing and sequentially registering devices on the list. 
+There are also DTS files for inclusion only (DTSI), which helps avoid content duplication.
 
 ```
-arch/arm/boot/dts/aspeed-g5.dtsi <---------- base
-arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts <---------- change, e.g. change device status from 'disabled' to 'okay'
-arch/arm/boot/dts/openbmc-flash-layout.dtsi <---------- partition layout in SPI flash
+arch/arm/boot/dts/aspeed-g5.dtsi            : base; list of supported components in processor 'apeed'
+arch/arm/boot/dts/openbmc-flash-layout.dtsi : partition layout in SPI flash
+arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts: overwrite; specially tailored for machine 'romulus'
 ```
 
-DTS format
+DTS files arrange devices in a hierarchy structure, and each parent can have a few properties and child nodes. 
+Property **#address-cells** and **size-cells** in parent node specify how to interpret property **reg** of children. 
+The most common node properties are the register base and hardware interrupt number, and the kernel will regard them as device resources when parsing.
+
 ```
     ahb {
         compatible = "simple-bus";
-        #address-cells = <1>; <---------- size of 'address': 1 dword (4 bytes)
-        #size-cells = <1>; <---------- size of 'size': 1 dword (4 bytes), with these two fields we then know how to parse below property 'reg'
-        ranges;
+        #address-cells = <1>;   // 1 dword (4 bytes)
+        #size-cells = <1>;      // 1 dword (4 bytes)
+        ranges;                 // so we interpret child node's reg as < 1 dword addr + 1 dword size, and so on >
 
         fmc: spi@1e620000 {
-            reg = < 0x1e620000 0xc4 <---------- 1. address = 0x1e620000, size = 0xc4
-                0x20000000 0x10000000 >; <---------- 2. address = 0x20000000, size = 0x10000000
-            #address-cells = <1>; 
+            reg = < 0x1e620000 0xc4             // a. 1 dword addr (0x1e620000) + 1 dword size (0xc4)
+                0x20000000 0x10000000 >;        // b. 1 dword addr (0x20000000) + 1 dword size (0x10000000)
+            #address-cells = <1>;              
             #size-cells = <0>; 
             compatible = "aspeed,ast2500-fmc";
             clocks = <&syscon ASPEED_CLK_AHB>;
             status = "disabled";
-            interrupts = <19>; <---------- 3. interrupt number
-          
-Above 1/2/3 will be registered as device resources for later use in probe function by:
-platform_get_resource(pdev, IORESOURCE_MEM, 0); // access the 1st MEM type resource
-platform_get_resource(pdev, IORESOURCE_MEM, 1); // access the 2nd MEM type resource
-platform_get_resource(pdev, IORESOURCE_IRQ, 0); // access the 1st IRQ type resouroce
+            interrupts = <19>;                  // c. hardware irq
 ```
 
+The kernel will add resources for the above item a, b, and c. So the driver can later access them by the usage:
 
+```
+platform_get_resource(pdev, IORESOURCE_MEM, 0); // access the MEM type resource with index = 0
+platform_get_resource(pdev, IORESOURCE_MEM, 1); // access the MEM type resource with index = 1
+platform_get_resource(pdev, IORESOURCE_IRQ, 0); // access the IRQ type resource with index = 0
+```
+
+If many DTS and DTSI files involve in the DTB complication, that might makes it difficult to know whether a device is enabled or disabled eventually.
+Utility **dtc** can construct the DTS from DTB and give us a quick inspection without the need to boot up target system.
+
+```
+dtc -I dtb -O dts bcm2711-rpi-4-b.dtb           # construct dts from dtb
+dtc -I fs -O dts /sys/firmware/devicetree/base  # construct dts from filesystem (not that useful to me)
+```
+
+## <a name="to-do-list"></a> To-Do List
+
+(None)
+
+## <a name="reference"></a> Reference
+
+(None)
+
+<details>
+  <summary> Messy Notes </summary>
+    
 To debug init calls, we add _initcall_debug_ to _bootargs_ in DTS.
 
 ```
@@ -98,3 +125,5 @@ Code flow:
             prepare chip
         
 ```
+    
+</details>
