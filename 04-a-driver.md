@@ -207,7 +207,7 @@ The rest is similar to the driver registration, except it traverses drivers with
                           |        +--> | klist_add_tail | append the device to the device list of bus         
                           |             +----------------+                                                     
                           |    +------------------+                                                            
-                          +--> | bus_probe_device | traverse each driver and call its probe(), see if any match
+                          +--> | bus_probe_device | traverse each driver and try to match, call driver->probe() if matched
                                +------------------+                                                            
 ```
 
