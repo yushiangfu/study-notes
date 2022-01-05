@@ -4,7 +4,7 @@
 
 - [Introduction](#introduction)
 - [Device Tree](#device-tree)
-- [Device and Driver Match](#device-and-driver-match)
+- [Driver and Device Registration](#driver-and-device-registration)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -135,9 +135,81 @@ dtc -I fs -O dts /sys/firmware/devicetree/base  # construct dts from filesystem 
 [    0.257606] device: 'iio-hwmon-battery': device_add
 ```
 
-## <a name="device-and-driver-match"></a> Device and Driver Match
+## <a name="driver-and-device-registration"></a> Driver and Device Registration
 
-(TBD)
+Before introducing driver and device, let's talk about the **bus** first. 
+We can regard the **bus** as a collection of devices and drivers, and there are numerous buses in the system.
+
+```
+                  subsys_private        +-------+      +-------+               
+ bus_type        +---------------+      | dev A |      | dev B |               
+   +---+         | klist_devices <----->+-------+<----->-------+               
+   | p---------> |               |                                             
+   +---+         | klist_drivers <----->+-------+<----->-------<----->+-------+
+                 +---------------+      | drv C |      | drv D |      | drv E |
+                                        +-------+      +-------+      +-------+
+```
+
+```
+root@romulus:/sys/bus# ls
+clockevents   cpu           fsi           i2c           media         nvmem         serio         usb
+clocksource   edac          gpio          iio           mmc           platform      soc           w1
+container     event_source  hid           mdio_bus      mmc_rpmb      sdio          spi           workqueue
+```
+
+When registering a driver, it must specify the bus type so the kernel knows where to append the driver structure. 
+Function **paltform_driver_register** is the helper that selects the bus **platform** automatically.
+
+```
++--------------------------+                                                        
+| platform_driver_register |                                                        
++------|-------------------+                                                        
+       |                                                                            
+       |--> driver bus = platform_bus_type                                          
+       |                                                                            
+       |    +-----------------+                                                     
+       +--> | driver_register |                                                     
+            +----|------------+                                                     
+                 |                                                                  
+                 |--> determine which bus to register the driver                    
+                 |                                                                  
+                 |    +----------------+                                            
+                 +--> | klist_add_tail | append the driver to the driver list of bus
+                      +----------------+                                            
+```
+
+The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
+The rest is similar to the driver registration, except it traverses drivers within the bus to probe the device sequentially to see if there's a match.
+
+```
++---------------------------------+                                                                            
+| of_platform_device_create_pdata |                                                                            
++--------|------------------------+                                                                            
+         |    +-----------------+                                                                              
+         |--> | of_device_alloc | prepare the structure of the device and resources                            
+         |    +-----------------+                                                                              
+         |                                                                                                     
+         |--> set bus = platform_bus_type                                                                      
+         |                                                                                                     
+         |    +---------------+                                                                                
+         +--> | of_device_add |                                                                                
+              +---|-----------+                                                                                
+                  |    +------------+                                                                          
+                  +--> | device_add |                                                                          
+                       +--|---------+                                                                          
+                          |    +----------------+                                                              
+                          |--> | bus_add_device |                                                              
+                          |    +---|------------+                                                              
+                          |        |                                                                           
+                          |        |--> determine which bus to register the device                             
+                          |        |                                                                           
+                          |        |    +----------------+                                                     
+                          |        +--> | klist_add_tail | append the device to the device list of bus         
+                          |             +----------------+                                                     
+                          |    +------------------+                                                            
+                          +--> | bus_probe_device | traverse each driver and call its probe(), see if any match
+                               +------------------+                                                            
+```
 
 ## <a name="to-do-list"></a> To-Do List
 
