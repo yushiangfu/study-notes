@@ -60,8 +60,8 @@ If many DTS and DTSI files are involved in the DTB complication, it might be cha
 Utility **dtc** can construct the DTS from DTB and give us a quick inspection without booting up the target system.
 
 ```
-dtc -I dtb -O dts bcm2711-rpi-4-b.dtb           # construct dts from dtb
-dtc -I fs -O dts /sys/firmware/devicetree/base  # construct dts from filesystem (not that useful to me)
+dtc -I dtb -O dts arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb  # construct dts from dtb
+dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts from filesystem (not that useful to me)
 ```
 
 - List of devices added from DTB in function **of_platform_default_populate_init**
@@ -213,7 +213,7 @@ The rest is similar to the driver registration, except it traverses drivers with
 
 ## <a name="to-do-list"></a> To-Do List
 
-(None)
+- Add pinctrl related stuff when registering device
 
 ## <a name="reference"></a> Reference
 
