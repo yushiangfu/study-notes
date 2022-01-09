@@ -8,6 +8,7 @@
 - [Fair Class](#fair-class)
 - [Task Creation](#task-creation)
 - [Task States](#task-states)
+- [To-Do List](#to-do-list)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -419,6 +420,14 @@ If operations involve a longer waiting time, the task will temporarily wait in a
              +-----------------+
 ```
 
+## <a name="to-do-list"></a> To-Do List
+
+- Introduce PID, TID, and PGID
+- Study namespace if OpenBMC kernel utilizes the feature.
+- Add more content to section 'boot up flow'
+- Introduct job control, session (process group)
+- sys_exit() and sys_exit_group() in pthread case
+
 ## <a name="reference"></a> Reference
 
 - [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
@@ -473,12 +482,7 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
 
 
 
-## <a name="todolist"></a> To-Do List
 
-- Introduce PID, TID, and PGID
-- Study namespace if OpenBMC kernel utilizes the feature.
-- Add more content to section 'boot up flow'
-- Introduct job control, session (process group)
   
 ```
                                                                                          
