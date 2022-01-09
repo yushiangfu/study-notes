@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Operation](#operation)
 - [Scenario](#scenario)
+- [To-Do List](#to-do-list)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -114,6 +115,9 @@ exec $*
 # cat trace
 ```
 
+## <a name="to-do-list"></a> To-Do List
+
+- Study /sys/kernel/debug/dynamic_debug/control
 
 ## <a name="reference"></a> Reference
 
