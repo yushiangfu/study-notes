@@ -50,6 +50,108 @@ static struct platform_driver aspeed_g5_pinctrl_driver = {
                 };
 ```
 
+- Code flow
+
+```
++-------------------------+                                                                  
+| aspeed_g5_pinctrl_probe |                                                                  
++------|------------------+                                                                  
+       |                                                                                     
+       |--> reassign the number of each pin in aspeed_g5_pins                                
+       |                                                                                     
+       |    +----------------------+                                                         
+       +--> | aspeed_pinctrl_probe |                                                         
+            +-----|----------------+                                                         
+                  |    +-----------------------+                                             
+                  |--> | syscon_node_to_regmap | get scu register base address               
+                  |    +-----------------------+                                             
+                  |    +------------------+                                                  
+                  +--> | pinctrl_register | set up pin device and register all the pins to it
+                       +------------------+                                                  
+```
+
+```
++------------------+                                                    
+| pinctrl_register |                                                    
++----|-------------+                                                    
+     |    +-------------------------+                                   
+     +--> | pinctrl_init_controller |                                   
+          +------|------------------+                                   
+                 |                                                      
+                 |--> allocate and set up pinctrl dev                   
+                 |                                                      
+                 |    +-----------------------+                         
+                 +--> | pinctrl_register_pins |                         
+                      +-----|-----------------+                         
+                            |                                           
+                            +--> for each pin                           
+                                                                        
+                                     +--------------------------+       
+                                     | pinctrl_register_one_pin |       
+                                     +------|-------------------+       
+                                            |                           
+                                            |--> allocate pin descriptor
+                                            |                           
+                                            +--> add to pinctrl dev     
+```
+
+```
++------------------------------------+                                                                     
+| pinconf_generic_dt_node_to_map_all | save mux/configs info of one DT node to map                         
++--------|---------------------------+                                                                     
+         |    +--------------------------------+                                                           
+         +--> | pinconf_generic_dt_node_to_map |                                                           
+              +-------|------------------------+                                                           
+                      |    +-----------------------------------+                                           
+                      |--> | pinconf_generic_dt_subnode_to_map |                                           
+                      |    +--------|--------------------------+                                           
+                      |             |                                                                      
+                      |             |--> get property 'function'                                           
+                      |             |                                                                      
+                      |             |    +---------------------------------+                               
+                      |             |--> | pinconf_generic_parse_dt_config |                               
+                      |             |    +---------------------------------+                               
+                      |             |                                                                      
+                      |             +--> for each string in property (one string in our case)              
+                      |                                                                                    
+                      |                      if property 'function' exists                                 
+                      |                                                                                    
+                      |                          +---------------------------+                             
+                      |                          | pinctrl_utils_add_map_mux | save mux info in map        
+                      |                          +---------------------------+                             
+                      |                                                                                    
+                      |                      if pinconf node has config(s)                                 
+                      |                                                                                    
+                      |                          +-------------------------------+                         
+                      |                          | pinctrl_utils_add_map_configs | save configs info in map
+                      |                          +-------------------------------+                         
+                      |                                                                                    
+                      +-->  apply the same logic to the child nodes (no child in our case)                 
+```
+
+```
++----------------------+                                                                                    
+| dt_to_map_one_config | save info to map, add to pinctrl and pinctrl_maps (global)                         
++-----|----------------+                                                                                    
+      |                                                                                                     
+      |--> get pinctrl dev                                                                                  
+      |                                                                                                     
+      |--> call ->dt_node_to_map()                                                                          
+      |          +------------------------------------+                                                     
+      |    e.g., | pinconf_generic_dt_node_to_map_all | save mux/configs info of one DT node to map         
+      |          +------------------------------------+                                                     
+      |                                                                                                     
+      |    +-------------------------+                                                                      
+      +--> | dt_remember_or_free_map |                                                                      
+           +------|------------------+                                                                      
+                  |                                                                                         
+                  |--> set up dt_map and add to pinctrl                                                     
+                  |                                                                                         
+                  |    +----------------------------+                                                       
+                  +--> |  pinctrl_register_mappings | set up maps_node and register to pinctrl_maps (global)
+                       +----------------------------+                                                       
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 (None)
