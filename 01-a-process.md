@@ -6,8 +6,9 @@
 - [Boot Flow](#boot-flow)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
-- [Task Creation](#task-creation)
 - [Task States](#task-states)
+- [Task Creation](#task-creation)
+- [Task Termination](#task-termination)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -301,61 +302,6 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
               +--------------+                                                                                
 ```
 
-## <a name="task-creation"></a> Task Creation
-
-From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
-In contrast, tasks from the different groups have their resources exclusively. 
-Two syscalls, 'clone' and 'fork,' are provided to meet the individual requirement, and surprisingly they call to the same core function inside the kernel.
-The passed-in parameters determine whether the newly generated task shares the existing resource with its parent task or has its private copy.
-Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
-The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
-
-```
-           case 1                                 case 2                                   
-     task clones a task         |           task forks a task                              
-                                |                                                          
-                                |                                                          
-+-------+  clone   +-------+    |    +-------+    fork      +-------+                      
-|thread |  ----->  |thread |    |    |thread |   ------>    |thread |                      
-+-------+          +-------+    |    +-------+              +-------+                      
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--| memory space |--+       |       +--| memory space |    +--| memory space |         
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--|  file table  |--+       |       +--|  file table  |    +--|  file table  |         
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
-      +--------------+                     +--------------+       +--------------+              
-```
-
-- Code flow
-
-```
-+----------+                                                                                                                      
-| sys_fork |---+                                                                                                                  
-+----------+   |                                                                                                                  
-+-----------+  |                                                                                                                  
-| sys_clone |--+                                                                                                                  
-+-----------+  |                                                                                                                  
-               |  +--------------+                                                                                                
-               +--| kernel_clone |                                                                                                
-                  +--------------+                                                                                                
-                          |  +--------------+                                                                                     
-                          |--- copy_process | generate task structure, and either duplicate or share the resources with the parent
-                          |  +--------------+                                                                                     
-                          |  +------------------+                                                                                 
-                          +--| wake_up_new_task | add the newly generated task into a run queue                                   
-                             +------------------+                                                                                 
-```
-
 ## <a name="task-states"></a> Task States
 
 When a task is created but not yet added to any run queue, it is NEW. 
@@ -420,13 +366,164 @@ If operations involve a longer waiting time, the task will temporarily wait in a
              +-----------------+
 ```
 
+## <a name="task-creation"></a> Task Creation
+
+From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
+In contrast, tasks from the different groups have their resources exclusively. 
+Two syscalls, 'clone' and 'fork,' are provided to meet the individual requirement, and surprisingly they call to the same core function inside the kernel.
+The passed-in parameters determine whether the newly generated task shares the existing resource with its parent task or has its private copy.
+Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
+The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
+
+```
+           case 1                                 case 2                                   
+     task clones a task         |           task forks a task                              
+                                |                                                          
+                                |                                                          
++-------+  clone   +-------+    |    +-------+    fork      +-------+                      
+|thread |  ----->  |thread |    |    |thread |   ------>    |thread |                      
++-------+          +-------+    |    +-------+              +-------+                      
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--| memory space |--+       |       +--| memory space |    +--| memory space |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|  file table  |--+       |       +--|  file table  |    +--|  file table  |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
+      +--------------+                     +--------------+       +--------------+              
+```
+
+- Code flow
+
+```
++----------+                                                                                                                      
+| sys_fork |---+                                                                                                                  
++----------+   |                                                                                                                  
++-----------+  |                                                                                                                  
+| sys_clone |--+                                                                                                                  
++-----------+  |                                                                                                                  
+               |  +--------------+                                                                                                
+               +--| kernel_clone |                                                                                                
+                  +--------------+                                                                                                
+                          |  +--------------+                                                                                     
+                          |--- copy_process | generate task structure, and either duplicate or share the resources with the parent
+                          |  +--------------+                                                                                     
+                          |  +------------------+                                                                                 
+                          +--| wake_up_new_task | add the newly generated task into a run queue                                   
+                             +------------------+                                                                                 
+```
+
+## <a name="task-termination"></a> Task Termination
+
+When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
+But it's a bit different when it comes to thread group cases:
+- Non-leader threads behave similarly as the case of the single-thread process. The flow goes to **sys_exit**, and it releases resources after notifying the tracer and parent.
+- Thread group leader starts from **sys_group_exit**, which sets the SIGKILL bit of other threads before unleashing resource.
+
+That's why the leader thread terminates other threads when it exists first, but not vice versa. 
+Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
+
+```
+              process                 
+           +------------+             
+           |   leader   |             
+           | +--------+ |             
++----------- | thread | sys_gorup_exit
+|  |       | +--------+ |             
+|  |       | +--------+ |             
+|  +-------> | thread | sys_exit      
+| sys_clone| +--------+ |             
+|          | +--------+ |             
++----------> | thread | sys_exit      
+  sys_clone| +--------+ |             
+           +------------+             
+```
+
+```
++----------+                                                                                                                         
+| sys_exit |                                                                                                                         
++--|-------+                                                                                                                         
+   |    +---------+                                                                                                                  
+   +--> | do_exit |                                                                                                                  
+        +--|------+                                                                                                                  
+           |    +--------------+                                                                                                     
+           |--> | ptrace_event | notify tracer of the exit                                                                           
+           |    +--------------+                                                                                                     
+           |    +--------------+                                                                                                     
+           |--> | exit_signals |                                                                                                     
+           |    +---|----------+                                                                                                     
+           |        |                                                                                                                
+           |        |--> label EXITING on the task                                                                                   
+           |        |                                                                                                                
+           |        |    +--------------------------+                                                                                
+           |        +--> | retarget_shared_pending  | ask other threads in the group to take of pending signals of the current thread
+           |             +--------------------------+                                                                                
+           |                                                                                                                         
+           |--> set exit code of the task                                                                                            
+           |                                                                                                                         
+           |    +-------------+                                                                                                      
+           |--> | exit_notify |                                                                                                      
+           |    +---|---------+                                                                                                      
+           |        |    +------------------------+                                                                                  
+           |        +--> | forget_original_parent | ask reaper (init or systemd) to take care of the children                        
+           |        |    +------------------------+                                                                                  
+           |        |                                                                                                                
+           |        |--> set task exit state to ZOMBIE                                                                               
+           |        |                                                                                                                
+           |        |--> notify parent of the exist                                                                                  
+           |        |                                                                                                                
+           |        +--> if auto reap (either task isn't the group leader, or the parent doesn't care)                               
+           |                                                                                                                         
+           |                 change task exit state to DEAD                                                                          
+           |                                                                                                                         
+           |                 +--------------+                                                                                        
+           |                 | release_task |                                                                                        
+           |                 +--------------+                                                                                        
+           |                                                                                                                         
+           |    +--------------+                                                                                                     
+           +--> | do_task_dead | schedule to let other task run                                                                      
+                +--------------+                                                                                                     
+```
+
+```
++----------------+                                                                                                                         
+| sys_exit_group |                                                                                                                         
++---|------------+                                                                                                                         
+    |    +---------------+                                                                                                                 
+    +--> | do_group_exit |                                                                                                                 
+         +---|-----------+                                                                                                                 
+             |                                                                                                                             
+             |--> if thread group is exiting                                                                                               
+             |                                                                                                                             
+             |        get exit code from signal struct                                                                                     
+             |                                                                                                                             
+             |--> else                                                                                                                     
+             |                                                                                                                             
+             |        set exit code and GROPU_EXIT flag in signal struct                                                                   
+             |                                                                                                                             
+             |        +-------------------+                                                                                                
+             |        | zap_other_threads | for each other thread in the group, set SIGKILL bit and wake up the thread to face the bad news
+             |        +-------------------+                                                                                                
+             |                                                                                                                             
+             |    +---------+                                                                                                              
+             +--> | do_exit |                                                                                                              
+                  +---------+                                                                                                              
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 - Introduce PID, TID, and PGID
 - Study namespace if OpenBMC kernel utilizes the feature.
 - Add more content to section 'boot up flow'
 - Introduct job control, session (process group)
-- sys_exit() and sys_exit_group() in pthread case
 
 ## <a name="reference"></a> Reference
 
