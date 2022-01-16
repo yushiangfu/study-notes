@@ -351,6 +351,56 @@ static struct platform_driver aspeed_g5_pinctrl_driver = {
     +--> add 'setting' to 'state'                                                                                             
 ```
 
+```
+#define B14 0
+SSSF_PIN_DECL(B14, GPIOA0, MAC1LINK, SIG_DESC_SET(SCU80, 0));
+```
+
+```
+// MAC1LINK
+static const struct aspeed_sig_desc sig_descs_MAC1LINK_MAC1LINK[] = {
+    { ASPEED_IP_SCU, SCU80, BIT_MASK(0), 1, 0 }
+};
+static const struct aspeed_sig_expr sig_exprs_MAC1LINK_MAC1LINK = {
+    .signal = "MAC1LINK",
+    .function = "MAC1LINK",
+    .ndescs = ARRAY_SIZE(sig_descs_MAC1LINK_MAC1LINK),
+    .descs = &sig_descs_MAC1LINK_MAC1LINK[0],
+};
+static const struct aspeed_sig_expr *sig_exprs_MAC1LINK_MAC1LINK[] = {
+    &sig_exprs_MAC1LINK_MAC1LINK, NULL
+};
+static const struct aspeed_sig_expr *
+sig_exprs_0_MAC1LINK[ARRAY_SIZE(sig_exprs_MAC1LINK_MAC1LINK)]
+__attribute__((alias(istringify(sig_exprs_MAC1LINK_MAC1LINK))));
+
+// GPIOA0
+static const struct aspeed_sig_desc sig_descs_GPIOA0_GPIOA0[] = {
+};
+static const struct aspeed_sig_expr sig_exprs_GPIOA0_GPIOA0 = {
+    .signal = "GPIOA0",
+    .function = "GPIOA0",
+    .ndescs = ARRAY_SIZE(sig_descs_GPIOA0_GPIOA0),
+    .descs = &sig_descs_GPIOA0_GPIOA0[0],
+};
+static const struct aspeed_sig_expr *sig_exprs_GPIOA0_GPIOA0[] = {
+    &sig_exprs_GPIOA0_GPIOA0, NULL
+};
+static const struct aspeed_sig_expr *
+sig_exprs_0_GPIOA0[ARRAY_SIZE(sig_exprs_GPIOA0_GPIOA0)]
+__attribute__((alias(istringify(sig_exprs_GPIOA0_GPIOA0))));
+
+// Both
+static const struct aspeed_sig_expr **pin_exprs_0[] = {
+    sig_exprs_0_MAC1LINK, sig_exprs_0_GPIOA0, NULL
+};
+static const struct aspeed_pin_desc pin_0 = {
+    "0", &pin_exprs_0[0]
+};
+static const int group_pins_MAC1LINK[] = { 0 };
+static const char *func_groups_MAC1LINK[] = { "MAC1LINK" };
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 - Introduce GPIO and multi-function with their priority
