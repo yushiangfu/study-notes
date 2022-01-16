@@ -179,7 +179,15 @@ static struct platform_driver aspeed_g5_pinctrl_driver = {
     |                      | dt_to_map_one_config | save info to map, add to pinctrl and pinctrl_maps (global)
     |                      +----------------------+                                                           
     |                                                                                                         
-    +--> return if the device needs no pinctrl                                                                
+    |--> return if the device needs no pinctrl (most cases)                                                   
+    |                                                                                                         
+    |--> for each dev-name-matched map in pinctrl_maps                                                        
+    |                                                                                                         
+    |        +-------------+                                                                                  
+    |        | add_setting | ensure 'state' exists and set up 'setting' based on 'map', and add to 'state'    
+    |        +-------------+                                                                                  
+    |                                                                                                         
+    +--> add pinctrl to pinctrl_list     
 ```
 
 ```
@@ -269,6 +277,78 @@ static struct platform_driver aspeed_g5_pinctrl_driver = {
                  |        +-----------------------+                                                 
                  |                                                                                  
                  +--> update pinctrl state                                                          
+```
+
+```
++-----------------------+                                  
+| pinmux_map_to_setting |                                  
++-----|-----------------+                                  
+      |                                                    
+      |--> get pinmux_ops from pinctrl dev                 
+      |                                                    
+      |--> save index of function name to 'setting'        
+      |                                                    
+      |--> call pinmux_ops->get_function_groups()          
+      |          +-----------------------------+           
+      |--> e.g., | aspeed_pinmux_get_fn_groups | get groups
+      |          +-----------------------------+           
+      |                                                    
+      +--> save index of group name to 'setting'           
+```
+
+```
++------------------------+                                                        
+| pinconf_map_to_setting |                                                        
++-----|------------------+                                                        
+      |                                                                           
+      |--> if type is PIN                                                         
+      |                                                                           
+      |        +-------------------+                                              
+      |        | pin_get_from_name |                                              
+      |        +-------------------+                                              
+      |                                                                           
+      |        save pin number in 'setting'                                       
+      |                                                                           
+      |--> else if type is GROUP                                                  
+      |                                                                           
+      |        +----------------------------+                                     
+      |        | pinctrl_get_group_selector | get pin number of matched group name
+      |        +----------------------------+                                     
+      |                                                                           
+      |        save pin number in 'setting'                                       
+      |                                                                           
+      +--> copy config info from 'map' to 'setting'                               
+```
+
+```                                                                                                                    
++-------------+                                                                                                               
+| add_setting | ensure 'state' exists and set up 'setting' based on 'map', and add to 'state'                                 
++---|---------+                                                                                                               
+    |    +------------+                                                                                                       
+    |--> | find_state | find the state in pinctrl based on the map name                                                       
+    |    +------------+                                                                                                       
+    |                                                                                                                         
+    |--> if not found                                                                                                         
+    |                                                                                                                         
+    |         +--------------+                                                                                                
+    |         | create_state | create 'state' and add to pinctrl                                                              
+    |         +--------------+                                                                                                
+    |                                                                                                                         
+    |--> allocate and set up 'setting'                                                                                        
+    |                                                                                                                         
+    |--> if map type is MUX_GROUP                                                                                             
+    |                                                                                                                         
+    |        +-----------------------+                                                                                        
+    |        | pinmux_map_to_setting | save indexes of function and group name to 'setting'                                   
+    |        +-----------------------+                                                                                        
+    |                                                                                                                         
+    |--> else if map type is CONFIGS_PIN or CONFIGS_GROUP                                                                     
+    |                                                                                                                         
+    |        +------------------------+                                                                                       
+    |        | pinconf_map_to_setting | save pin number of matched name to 'setting', copy config info from 'map' to 'setting'
+    |        +------------------------+                                                                                       
+    |                                                                                                                         
+    +--> add 'setting' to 'state'                                                                                             
 ```
 
 ## <a name="to-do-list"></a> To-Do List
