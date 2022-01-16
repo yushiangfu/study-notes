@@ -11,7 +11,7 @@
 
 Generic purpose input-output (GPIO) can work as output to control target device or as input to receive signals from outside. 
 In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
-Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function.
+Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
 
 ## <a name="boot-flow"></a> Boot Flow
 
@@ -152,9 +152,128 @@ static struct platform_driver aspeed_g5_pinctrl_driver = {
                        +----------------------------+                                                       
 ```
 
+```
++----------------+                                                                                            
+| create_pinctrl |                                                                                            
++---|------------+                                                                                            
+    |                                                                                                         
+    |--> allocate pinctrl                                                                                     
+    |                                                                                                         
+    |    +-------------------+                                                                                
+    |--> | pinctrl_dt_to_map |                                                                                
+    |    +----|--------------+                                                                                
+    |         |                                                                                               
+    |         +--> for each state ('default', 'init', 'sleep', 'idle')                                        
+    |                                                                                                         
+    |                  get property from DT                                                                   
+    |                                                                                                         
+    |                  return if not found                                                                    
+    |                                                                                                         
+    |                  for each config                                                                        
+    |                                                                                                         
+    |                      +-------------------------+                                                        
+    |                      | of_find_node_by_phandle | find target node by config (handle)                    
+    |                      +-------------------------+                                                        
+    |                                                                                                         
+    |                      +----------------------+                                                           
+    |                      | dt_to_map_one_config | save info to map, add to pinctrl and pinctrl_maps (global)
+    |                      +----------------------+                                                           
+    |                                                                                                         
+    +--> return if the device needs no pinctrl                                                                
+```
+
+```
++-----------------------+                                                                                                             
+| pinmux_enable_setting |                                                                                                             
++-----|-----------------+                                                                                                             
+      |                                                                                                                               
+      |--> get pinctrl ops from pinctrl dev                                                                                           
+      |                                                                                                                               
+      |--> get pinmux ops from pinctrl dev                                                                                            
+      |                                                                                                                               
+      |--> if pinctrl_ops->get_group_pins is prepared                                                                                 
+      |                                                                                                                               
+      |        all pinctrl_ops->get_group_pins()                                                                                      
+      |              +-------------------------------+                                                                                
+      |        e.g., | aspeed_pinctrl_get_group_pins | get a group of pins                                                            
+      |              +-------------------------------+                                                                                
+      |                                                                                                                               
+      |--> for each pin in group                                                                                                      
+      |                                                                                                                               
+      |        +-------------+                                                                                                        
+      |        | pin_request |                                                                                                        
+      |        +---|---------+                                                                                                        
+      |            |                                                                                                                  
+      |            +--> get pin desc from pinctrl dev                                                                                 
+      |                                                                                                                               
+      |                 update owner of the pin desc                                                                                  
+      |                                                                                                                               
+      |                 call pinmux_ops->gpio_request_enable()                                                                        
+      |                       +----------------------------+                                                                          
+      |                 e.g., | aspeed_gpio_request_enable | disable all other high priority functions, so it's now a regular gpio pin
+      |                       +----------------------------+                                                                          
+      |                                                                                                                               
+      |    call pinmux_ops->set_mux()                                                                                                 
+      +-->       +-----------------------+                                                                                            
+           e.g., | aspeed_pinmux_set_mux | disable higher priority functions, and enable mux                                          
+                 +-----------------------+                                                                                            
+```
+
+```
++-----------------------+                                                                              
+| pinconf_apply_setting |                                                                              
++-----|-----------------+                                                                              
+      |                                                                                                
+      |--> if setting type is PIN                                                                      
+      |                                                                                                
+      |        call ops->pin_config_set()                                                              
+      |              +-----------------------+                                                         
+      |        e.g., | aspeed_pin_config_set | for each config, update register based on config and map
+      |              +-----------------------+                                                         
+      |                                                                                                
+      +--> if setting type is GROUP                                                                    
+                                                                                                       
+               call ops->pin_config_group_set()                                                        
+                     +-----------------------------+                                                   
+               e.g., | aspeed_pin_config_group_set | get a group of pins and config them               
+                     +-----------------------------+                                                   
+```
+
+```
++----------------------+                                                                            
+| pinctrl_select_state |                                                                            
++-----|----------------+                                                                            
+      |                                                                                             
+      |--> return if it's already the specified state                                               
+      |                                                                                             
+      |    +----------------------+                                                                 
+      +--> | pinctrl_commit_state |                                                                 
+           +-----|----------------+                                                                 
+                 |                                                                                  
+                 |--> if pinctrl has old state                                                      
+                 |                                                                                  
+                 |        +------------------------+                                                
+                 |        | pinmux_disable_setting |                                                
+                 |        +------------------------+                                                
+                 |                                                                                  
+                 |--> for each setting on new state                                                 
+                 |                                                                                  
+                 |        +-----------------------+                                                 
+                 |        | pinmux_enable_setting | request pin(s) and set mux to enable the setting
+                 |        +-----------------------+                                                 
+                 |                                                                                  
+                 |--> for each setting on new state                                                 
+                 |                                                                                  
+                 |        +-----------------------+                                                 
+                 |        | pinconf_apply_setting | configure pin(s)                                
+                 |        +-----------------------+                                                 
+                 |                                                                                  
+                 +--> update pinctrl state                                                          
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
-(None)
+- Introduce GPIO and multi-function with their priority
 
 ## <a name="reference"></a> Reference
 
