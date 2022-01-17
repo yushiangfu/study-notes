@@ -214,6 +214,7 @@ The rest is similar to the driver registration, except it traverses drivers with
 ## <a name="to-do-list"></a> To-Do List
 
 - Add pinctrl related stuff when registering device
+- Introduce cdev & bdev
 
 ## <a name="reference"></a> Reference
 
