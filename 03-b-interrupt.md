@@ -349,6 +349,8 @@ Function **spawn_ksoftirqd** is responsible for initializing the per-CPU task.
 - Why are there duplicated hardware IRQs?
 - Why handle_level_irq is used to handle 'edge' type interrupt?
 - Complete software IRQ table
+- Introduce IRQ domain
+- Introduce IPI
 
 ## <a name="reference"></a> Reference
 
