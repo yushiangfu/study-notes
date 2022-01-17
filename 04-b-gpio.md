@@ -3,6 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
+- [GPIO](#gpio)
 - [Boot Flow](#boot-flow)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
@@ -12,6 +13,38 @@
 Generic purpose input-output (GPIO) can work as output to control target device or as input to receive signals from outside. 
 In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
 Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
+
+## <a name="gpio"></a> GPIO
+
+After kernel adds GPIO device based on device tree initializes the GPIO driver and, probe function triggers because the property **compatible** matches.
+
+- Device descriptor in DTS
+
+```
+gpio@1e780000 {                  
+    #gpio-cells = <0x02>;                  
+    gpio-controller;                  
+    compatible = "aspeed,ast2500-gpio"; <========== match
+    reg = <0x1e780000 0x200>;                  
+    interrupts = <0x14>;                  
+    gpio-ranges = <0x0d 0x00 0x00 0xe8>; <========== <pinctrl_phandle gpio_offset pin_offset pin#>
+    clocks = <0x02 0x1a>;                  
+    interrupt-controller;                  
+    #interrupt-cells = <0x02>;                  
+    gpio-line-names = [00 63 66 61 6d 2d 72 65 73 65 74 00 00 00 00 00 66 73 69 2d 6d 75 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 66 73 69 2d 65 6e 61
+    phandle = <0x29>; 
+```
+
+- Table in driver
+
+```
+static const struct of_device_id aspeed_gpio_of_table[] = {
+    { .compatible = "aspeed,ast2400-gpio", .data = &ast2400_config, },
+    { .compatible = "aspeed,ast2500-gpio", .data = &ast2500_config, }, <========== match
+    { .compatible = "aspeed,ast2600-gpio", .data = &ast2600_config, },
+    {}
+};
+```
 
 ## <a name="boot-flow"></a> Boot Flow
 
@@ -352,8 +385,44 @@ static struct platform_driver aspeed_g5_pinctrl_driver = {
 ```
 
 ```
-#define B14 0
-SSSF_PIN_DECL(B14, GPIOA0, MAC1LINK, SIG_DESC_SET(SCU80, 0));
+              ball          function1                         
+                |               |                             
+                |               |                             
+ #define B14 0  v               v                             
+ SSSF_PIN_DECL(B14, GPIOA0, MAC1LINK, SIG_DESC_SET(SCU80, 0));
+                       ^                         ^            
+                       |                         |            
+                       |                         |            
+                     GPIO                     setting         
+                                                for           
+                                             function1                             
+```
+
+```
+                                                          setting          
+                                                            for            
+                               function1                 function1         
+                                   |                         |             
+                                   |                         |             
+                                   v                         v             
+ SIG_EXPR_LIST_DECL_SINGLE(D13, SPI1CS1, SPI1CS1, SIG_DESC_SET(SCU80, 15));
+ SIG_EXPR_LIST_DECL_SINGLE(D13, TIMER3, TIMER3, SIG_DESC_SET(SCU80, 2));   
+                                   ^                         ^             
+                                   |                         |             
+                                   |                         |             
+                               function2                  setting          
+                                                            for            
+                       (high prio)                       function2         
+           ball         function1                                          
+             |              |                                              
+             |              |                                              
+             v              v                                              
+ PIN_DECL_2(D13, GPIOA2, SPI1CS1, TIMER3);                                 
+                    ^                ^                                     
+                    |                |                                     
+                    |                |                                     
+                  GPIO           function2                                 
+              (lowest prio)      (low prio)                                
 ```
 
 ```
@@ -401,11 +470,48 @@ static const int group_pins_MAC1LINK[] = { 0 };
 static const char *func_groups_MAC1LINK[] = { "MAC1LINK" };
 ```
 
+```
++-------------------+                                                                  
+| pinctrl_bind_pins |                                                                  
++----|--------------+                                                                  
+     |                                                                                 
+     |--> allocate dev_pin_info for device                                             
+     |                                                                                 
+     |    +------------------+                                                         
+     |--> | devm_pinctrl_get |                                                         
+     |    +----|-------------+                                                         
+     |         |                                                                       
+     |         |--> allocate pinctrl                                                   
+     |         |                                                                       
+     |         |    +-------------+                                                    
+     |         |--> | pinctrl_get |                                                    
+     |         |    +---|---------+                                                    
+     |         |        |    +--------------+                                          
+     |         |        |--> | find_pinctrl | get pinctrl if it exists already         
+     |         |        |    +--------------+                                          
+     |         |        |    +----------------+                                        
+     |         |        +--> | create_pinctrl | set up pinctrl, add map to pinctrl_maps
+     |         |             +----------------+                                        
+     |         |    +------------+                                                     
+     |         +--> | devres_add | add pinctrl to device as resource                   
+     |              +------------+                                                     
+     |                                                                                 
+     |--> get 'default' state                                                          
+     |                                                                                 
+     |--> get 'init' state (it's ok not to specify this in dts)                        
+     |                                                                                 
+     |    +----------------------+                                                     
+     +--> | pinctrl_select_state | ensure pinctrl is in the specified state            
+          +----------------------+                                                     
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 - Introduce GPIO and multi-function with their priority
 
 ## <a name="reference"></a> Reference
+
+- [Linux kernel GPIO user space interface](https://embeddedbits.org/new-linux-kernel-gpio-user-space-interface/)
 
 (None)
 
