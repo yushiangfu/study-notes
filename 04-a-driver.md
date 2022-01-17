@@ -161,25 +161,29 @@ When registering a driver, it must specify the bus type so the kernel knows wher
 Function **paltform_driver_register** is the helper that selects the bus **platform** automatically.
 
 ```
-+--------------------------+                                                        
-| platform_driver_register |                                                        
-+------|-------------------+                                                        
-       |                                                                            
-       |--> driver bus = platform_bus_type                                          
-       |                                                                            
-       |    +-----------------+                                                     
-       +--> | driver_register |                                                     
-            +----|------------+                                                     
-                 |                                                                  
-                 |--> determine which bus to register the driver                    
-                 |                                                                  
-                 |    +----------------+                                            
-                 +--> | klist_add_tail | append the driver to the driver list of bus
-                      +----------------+                                            
+ +--------------------------+                                                        
+ | platform_driver_register |                                                        
+ +------|-------------------+                                                        
+        |                                                                            
+        |--> driver bus = platform_bus_type                                          
+        |                                                                            
+        |    +-----------------+                                                     
+        +--> | driver_register |                                                     
+             +----|------------+                                                     
+                  |                                                                  
+                  |--> determine which bus to register the driver                    
+                  |                                                                  
+                  |    +----------------+                                            
+                  +--> | klist_add_tail | append the driver to the driver list of bus
+                       +----------------+                                            
+                  |    +---------------+                                             
+                  +--> | driver_attach | probe each device in bus to find the match  
+                       +---------------+                                                                                     
 ```
 
 The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
-The rest is similar to the driver registration, except it traverses drivers within the bus to probe the device sequentially to see if there's a match.
+The rest is similar to the driver registration.
+It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
 
 ```
 +---------------------------------+                                                                            
