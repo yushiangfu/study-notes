@@ -20,19 +20,23 @@ Pin control (pinctrl) is the mechanism implemented in the kernel to properly con
 The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
 
 ```
-   user             +------+ e.g. /dev/gpiochip0                                                              
-   -----------------|-cdev-|------------------        +--                                                     
-   kernel           +------+                          |   static const struct file_operations gpio_fileops = {
-                        |                             |       .release = gpio_chrdev_release,                 
-                        v                             |       .open = gpio_chrdev_open,                       
-              |--  +---------+                        |       .poll = lineinfo_watch_poll,                    
-     generic  |    | gpiolib | ---------------------- |       .read = lineinfo_watch_read,                    
-              +--  +---------+                        |       .owner = THIS_MODULE,                           
-                        |                             |       .llseek = no_llseek,                            
-                        v                             |       .unlocked_ioctl = gpio_ioctl,                   
-              |--  +--------+                         |   };                                                  
-    specific  |    | driver |                         +--                                                     
- e.g. aspeed  +--  +--------+                                                                                 
+                                                +--
+                                                |   static const struct file_operations gpio_fileops = {
+                                                |       .release = gpio_chrdev_release,
+                                                |       .open = gpio_chrdev_open,
+  user             +------+ e.g. /dev/gpiochip0 |       .poll = lineinfo_watch_poll,
+  -----------------| cdev |------------------   |       .read = lineinfo_watch_read,
+  kernel           +------+                     |       .owner = THIS_MODULE,
+                       |                        |       .llseek = no_llseek,
+                       v                        |       .unlocked_ioctl = gpio_ioctl,
+             |--  +---------+                   |   };
+    generic  |    | gpiolib |                   +--
+             +--  +---------+
+                       |
+                       v
+             |--  +--------+
+   specific  |    | driver |
+e.g. aspeed  +--  +--------+                                                                              
 ```
 
 Nothing worths mentioning from the function **gpiolib_dev_init** in our study case. 
@@ -214,6 +218,65 @@ Here's the example of a flow chart showing how the code switches from generic la
 ```
 
 ## <a name="gpio-pin-control"></a> GPIO Pin Control
+
+Some GPIO pins are multi-functional; they can have one or two extra functionality through proper settings. 
+For kernel to ensure these functions work as expected, it introduces the pin control (pinctrl) mechanism to set the required registers beforehand automatically. 
+Let say I2C channels one and two are born to be I2C channels, and pinctrl is unnecessary before they work. 
+However, I2C channel three is different, and proper settings are essential.
+
+```
+i2c-bus@c0 {
+    #address-cells = <0x01>;
+    #size-cells = <0x00>;
+    #interrupt-cells = <0x01>;
+    reg = <0xc0 0x40>;
+    compatible = "aspeed,ast2500-i2c-bus";
+    clocks = <0x02 0x1a>;
+    resets = <0x02 0x07>;
+    bus-frequency = <0x186a0>;
+    interrupts = <0x02>;
+    interrupt-parent = <0x1c>;
+    pinctrl-names = "default";
+    pinctrl-0 = <0x1d>; <========== refer to phandle 0x1d
+    status = "okay";
+};
+```
+
+And descriptor with phandle 0x1d is:
+
+```
+i2c3_default {      
+    function = "I2C3";
+    groups = "I2C3";
+    phandle = <0x1d>;
+};
+```
+
+From file **drivers/pinctrl/aspeed/pinctrl-aspeed-g5.c** we have the below definition:
+
+```                                                                                                
+ #define I2C3_DESC   SIG_DESC_SET(SCU90, 16) <========== setting to enable multi-function of the below pins
+                                                                                                           
+                                                                                                           
+                          ball       setting                                                               
+                            |           |                                                                  
+ #define A11 128            v           v                                                                  
+ SIG_EXPR_LIST_DECL_SINGLE(A11, SCL3, I2C3, I2C3_DESC);                                                    
+ PIN_DECL_1(A11, GPIOQ0, SCL3);   ^              ^                                                         
+                    ^      ^      |              |                                                         
+                    |      |   signal         setting                                                      
+                  gpio     |                                                                               
+               (low prio)  |                                                                               
+                           |                                                                               
+                         func1                                                                             
+                      (high prio)                                                                          
+                                                                                                           
+ #define A10 129                                                                                           
+ SIG_EXPR_LIST_DECL_SINGLE(A10, SDA3, I2C3, I2C3_DESC);                                                    
+ PIN_DECL_1(A10, GPIOQ1, SDA3);                                                                            
+                                                                                                           
+ FUNC_GROUP_DECL(I2C3, A11, A10) <========== declare A11, A10 as group I2C3                                
+```
 
 The pinctrl driver and the device in DTS/DTB fit each other because their property 'compatible' hold the same value (**aspeed,ast2500-pinctrl**). 
 Then the match triggers probe function **aspeed_g5_pinctrl_probe** for further structure allocation and set up.
