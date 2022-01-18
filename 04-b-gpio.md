@@ -3,8 +3,9 @@
 ## Index
 
 - [Introduction](#introduction)
-- [GPIO](#gpio)
-- [Boot Flow](#boot-flow)
+- [GPIO Lib](#gpio-lib)
+- [GPIO Chip Driver](#gpio-chip-driver)
+- [GPIO Pin Control](#gpio-pin-control)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -14,9 +15,53 @@ Generic purpose input-output (GPIO) can work as output to control target device 
 In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
 Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
 
-## <a name="gpio"></a> GPIO
+## <a name="gpio-lib"></a> GPIO Lib
 
-After kernel adds GPIO device based on device tree initializes the GPIO driver and, probe function triggers because the property **compatible** matches.
+The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
+
+```
+   user             +------+ e.g. /dev/gpiochip0                                                              
+   -----------------|-cdev-|------------------        +--                                                     
+   kernel           +------+                          |   static const struct file_operations gpio_fileops = {
+                        |                             |       .release = gpio_chrdev_release,                 
+                        v                             |       .open = gpio_chrdev_open,                       
+              |--  +---------+                        |       .poll = lineinfo_watch_poll,                    
+     generic  |    | gpiolib | ---------------------- |       .read = lineinfo_watch_read,                    
+              +--  +---------+                        |       .owner = THIS_MODULE,                           
+                        |                             |       .llseek = no_llseek,                            
+                        v                             |       .unlocked_ioctl = gpio_ioctl,                   
+              |--  +--------+                         |   };                                                  
+    specific  |    | driver |                         +--                                                     
+ e.g. aspeed  +--  +--------+                                                                                 
+```
+
+Nothing worths mentioning from the function **gpiolib_dev_init** in our study case. 
+Just note that once **gpiolib_initialized** becomes true, the subsequent GPIO chip driver registration will set up the cdev file operations during initialization.
+
+```
++------------------+                                                                                 
+| gpiolib_dev_init |                                                                                 
++----|-------------+                                                                                 
+     |    +--------------+                                                                           
+     |--> | bus_register | register 'gpio_bus_type'                                                  
+     |    +--------------+                                                                           
+     |    +-----------------+                                                                        
+     |--> | driver_register | register 'gpio_stub_drv' (not important in our case)                   
+     |    +-----------------+                                                                        
+     |    +---------------------+                                                                    
+     |--> | alloc_chrdev_region | reserve a range (256) of minor numbers for gpio character devices  
+     |    +---------------------+                                                                    
+     |                                                                                               
+     |--> gpiolib_initialized = true                                                                 
+     |                                                                                               
+     |    +---------------------+                                                                    
+     +--> | gpiochip_setup_devs | register each gpiochip dev in 'gpio_devices' (empty in in our case)
+          +---------------------+                                                                    
+```
+
+## <a name="gpio-chip-driver"></a> GPIO Chip Driver
+
+After kernel adds GPIO device based on device tree and initializes the GPIO driver, probe function triggers because the property **compatible** matches.
 
 - Device descriptor in DTS
 
@@ -24,14 +69,44 @@ After kernel adds GPIO device based on device tree initializes the GPIO driver a
 gpio@1e780000 {                  
     #gpio-cells = <0x02>;                  
     gpio-controller;                  
-    compatible = "aspeed,ast2500-gpio"; <========== match
+    compatible = "aspeed,ast2500-gpio";     <========== match
     reg = <0x1e780000 0x200>;                  
     interrupts = <0x14>;                  
-    gpio-ranges = <0x0d 0x00 0x00 0xe8>; <========== <pinctrl_phandle gpio_offset pin_offset pin#>
+    gpio-ranges = <0x0d 0x00 0x00 0xe8>;    <========== interpret as <pinctrl_phandle gpio_offset pin_offset pin#>
     clocks = <0x02 0x1a>;                  
     interrupt-controller;                  
     #interrupt-cells = <0x02>;                  
-    gpio-line-names = [00 63 66 61 6d 2d 72 65 73 65 74 00 00 00 00 00 66 73 69 2d 6d 75 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 66 73 69 2d 65 6e 61
+    gpio-line-names = [...
+                       63 66 61 6d 2d 72 65 73 65 74 00 \               <========== GPIO_A0, "cfam-reset"
+                       ... \
+                       66 73 69 2d 6d 75 78 00 \                        <========== GPIO_A6, "fsi-mux"
+                       ... \
+                       66 73 69 2d 65 6e 61 62 6c 65 00 \               <========== GPIO_D0, "fsi-enable"
+                       ... \
+                       6e 69 63 5f 66 75 6e 63 5f 6d 6f 64 65 30 00 \   <========== GPIO_D3, "nic_func_mode0"
+                       6e 69 63 5f 66 75 6e 63 5f 6d 6f 64 65 31 00 \   <========== GPIO_D4, "nic_func_mode1"
+                       ... \
+                       ... \
+                       70 6f 77 65 72 2d 62 75 74 74 6f 6e 00 \         <========== GPIO_I3, "power-button"
+                       ... \
+                       63 68 65 63 6b 73 74 6f 70 00 \                  <========== GPIO_J2, "checkstop"
+                       ... \
+                       6c 65 64 2d 66 61 75 6c 74 00 \                  <========== GPIO_N2, "led-fault"
+                       ... \
+                       6c 65 64 2d 69 64 65 6e 74 69 66 79 00 \         <========== GPIO_N4, "led-identify"
+                       ... \
+                       69 64 2d 62 75 74 74 6f 6e 00 \                  <========== GPIO_Q7, "id-button"
+                       ... \
+                       66 73 69 2d 74 72 61 6e 73 00 \                  <========== GPIO_R2, "fsi-trans"
+                       ... \
+                       6c 65 64 2d 70 6f 77 65 72 00 \                  <========== GPIO_R5, "led-power"
+                       ... \
+                       73 65 71 5f 63 6f 6e 74 00 \                     <========== GPIO_S7, "seq_cont"
+                       ... \
+                       66 73 69 2d 63 6c 6f 63 6b 00 \                  <========== GPIO_AA0, "fsi-clock"
+                       ... \
+                       66 73 69 2d 64 61 74 61 00 \                     <========== GPIO_AA2, "fsi-data"
+                       ...];
     phandle = <0x29>; 
 ```
 
@@ -46,16 +121,106 @@ static const struct of_device_id aspeed_gpio_of_table[] = {
 };
 ```
 
-## <a name="boot-flow"></a> Boot Flow
+The probe function allocates vendor-specific structure, installs regular GPIO operations, and sets up the IRQ chip since it's also an interrupt controller. 
+Then it calls **devm_gpiochip_add_data** to connect the generic layer (GPIO Lib) to the specific driver (Aspeed).
+
+```
++-------------------+                                                                                                    
+| aspeed_gpio_probe |                                                                                                    
++----|--------------+                                                                                                    
+     |                                                                                                                   
+     |--> set up 'aspeed_gpio' and install gpio chip operations (in, out, get, set, ...)                                 
+     |                                                                                                                   
+     |--> set up 'irq_chip' of 'aspeed_gpio' if device tree specifies the irq#                                           
+     |                                                                                                                   
+     |    +------------------------+                                                                                     
+     +--> | devm_gpiochip_add_data |   <========== connect the generic layer (gpio lib) to specific driver (aspeed)     
+          +-----|------------------+                                                                                     
+                |    +---------------------------------+                                                                 
+                +--> | devm_gpiochip_add_data_with_key |                                                                 
+                     +--------|------------------------+                                                                 
+                              |    +----------------------------+                                                        
+                              +--> | gpiochip_add_data_with_key |                                                        
+                                   +------|---------------------+                                                        
+                                          |                                                                              
+                                          |--> set up 'gpio device'                                                      
+                                          |                                                                              
+                                          |--> allocate 'descriptor' for each GPIO line                                  
+                                          |                                                                              
+                                          |    +---------------------+                                                   
+                                          |--> | gpiodev_add_to_list | add 'gpio device' to the 'gpio_devices' list      
+                                          |    +---------------------+                                                   
+                                          |    +-----------------+                                                       
+                                          |--> | of_gpiochip_add | add pin range and set hog (default gpio behavior)     
+                                          |    +-----------------+                                                       
+                                          |    +----------------------+                                                  
+                                          |--> | gpiochip_add_irqchip | set up target 'irq desc' based on the 'gpio chip'
+                                          |    +----------------------+                                                  
+                                          |                                                                              
+                                          |--> if gpiolib_initialized is set (yes, in gpio lib init)                     
+                                          |                                                                              
+                                          |    +--------------------+                                                    
+                                          +--> | gpiochip_setup_dev | register cdev                                      
+                                               +--------------------+                                                    
+```
+
+At the moment, we have the complete GPIO framework, and userspace utilities can send requests through the char device.
+
+```
+root@romulus:~# gpiodetect
+gpiochip0 [1e780000.gpio] (232 lines)
+
+root@romulus:~# gpioinfo 0 | head
+gpiochip0 - 232 lines:
+        line   0:      unnamed       unused   input  active-high 
+        line   1: "cfam-reset"       unused   input  active-high 
+        line   2:      unnamed       unused   input  active-high 
+        line   3:      unnamed       unused   input  active-high 
+        line   4:      unnamed       kernel   input  active-high [used]
+        line   5:      unnamed       kernel   input  active-high [used]
+        line   6:    "fsi-mux"       unused  output  active-high 
+        line   7:      unnamed       unused   input  active-high 
+        line   8:      unnamed       unused   input  active-high 
+
+root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
+0
+
+root@romulus:~# gpioset 0 2=1   # set value to gpio chip '0' line '2' to '1'
+
+root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
+1
+
+root@romulus:~# gpiomon 0 2     # monitor value change on gpio chip '0' line '2'
+```
+
+Here's the example of a flow chart showing how the code switches from generic layer (GPIO Lib) to chip vendor (Aspeed) implementation.
+
+```
+                                            |                                   
+                                   gpio lib | aspeed driver                     
+                                            |                                   
++----------------------+                    |                                   
+| gpiod_request_commit |                    |                                   
++-----|----------------+                    |                                   
+      |                                     |                                   
+      |--> gc->request() -------------------|--- e.g., aspeed_gpio_request      
+      |                                     |                                   
+      |    +---------------------+          |                                   
+      +--> | gpiod_get_direction |          |                                   
+           +-----|---------------+          |                                   
+                 |                          |                                   
+                 +--> gc->get_direction() --|--- e.g., aspeed_gpio_get_direction
+                                            |                                   
+```
+
+## <a name="gpio-pin-control"></a> GPIO Pin Control
 
 The pinctrl driver and the device in DTS/DTB fit each other because their property 'compatible' hold the same value (**aspeed,ast2500-pinctrl**). 
 Then the match triggers probe function **aspeed_g5_pinctrl_probe** for further structure allocation and set up.
 
-- Driver
-
 ```
 static const struct of_device_id aspeed_g5_pinctrl_of_match[] = {
-    { .compatible = "aspeed,ast2500-pinctrl", },
+    { .compatible = "aspeed,ast2500-pinctrl", }, <========== match
     /*
      * The aspeed,g5-pinctrl compatible has been removed the from the
      * bindings, but keep the match in case of old devicetrees.
@@ -63,24 +228,14 @@ static const struct of_device_id aspeed_g5_pinctrl_of_match[] = {
     { .compatible = "aspeed,g5-pinctrl", },
     { },
 };
-
-static struct platform_driver aspeed_g5_pinctrl_driver = {
-    .probe = aspeed_g5_pinctrl_probe,
-    .driver = {
-        .name = "aspeed-g5-pinctrl",
-        .of_match_table = aspeed_g5_pinctrl_of_match,
-    },
-};
 ```
 
-- Device
-
 ```
-                pinctrl: pinctrl@80 {
-                    compatible = "aspeed,ast2500-pinctrl";
-                    reg = <0x80 0x18>, <0xa0 0x10>;
-                    aspeed,external-nodes = <&gfx>, <&lhc>;
-                };
+pinctrl@80 {
+    compatible = "aspeed,ast2500-pinctrl"; <========== match
+    reg = <0x80 0x18 0xa0 0x10>;
+    aspeed,external-nodes = <0x08 0x09>;
+    phandle = <0x0d>;
 ```
 
 - Code flow
@@ -512,7 +667,3 @@ static const char *func_groups_MAC1LINK[] = { "MAC1LINK" };
 ## <a name="reference"></a> Reference
 
 - [Linux kernel GPIO user space interface](https://embeddedbits.org/new-linux-kernel-gpio-user-space-interface/)
-
-(None)
-
-
