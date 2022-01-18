@@ -278,16 +278,55 @@ From file **drivers/pinctrl/aspeed/pinctrl-aspeed-g5.c** we have the below defin
  FUNC_GROUP_DECL(I2C3, A11, A10) <========== declare A11, A10 as group I2C3                                
 ```
 
-The pinctrl driver and the device in DTS/DTB fit each other because their property 'compatible' hold the same value (**aspeed,ast2500-pinctrl**). 
-Then the match triggers probe function **aspeed_g5_pinctrl_probe** for further structure allocation and set up.
+In the above declaration, ball **A11** can only be function 1 (SCL3, high priority) or other (GPIO, low priority). 
+In some cases, it equips two extra functions instead of one. 
+The I2C channel nine is an excellent example of this illustration.
+
+```
+ #define I2C9_DESC   SIG_DESC_SET(SCU90, 22) <========== setting to enable multi-function of the below pins                 
+                                                                                                                            
+                               signal                                                                                       
+                                  |             settings to enable this function                                            
+                          ball    |  function   +--------+                                                                  
+                            |     |     |       |        |                                                                  
+ #define C14 4              v     v     v       v        v                                                                  
+ SIG_EXPR_LIST_DECL_SINGLE(C14, SCL9, I2C9, I2C9_DESC, COND1);                                                              
+ SIG_EXPR_LIST_DECL_SINGLE(C14, TIMER5, TIMER5, SIG_DESC_SET(SCU80, 4), COND1);                                             
+                            ^     ^     ^                  ^              ^                                                 
+                            |     |     |                  |              |                                                 
+                          ball    |  function              +--------------+                                                 
+                                  |                        settings to enable this function                                 
+                               signal                                                                                       
+                                                                                                                            
+                         func1                                                                                              
+                      (high prio)                                                                                           
+                           |                                                                                                
+                           v                                                                                                
+ PIN_DECL_2(C14, GPIOA4, SCL9, TIMER5);                                                                                     
+                    ^             ^                                                                                         
+                    |             |                                                                                         
+                  other         func2                                                                                       
+              (lowest prio)   (low prio)                                                                                    
+                                                                                                                            
+ FUNC_GROUP_DECL(TIMER5, C14);    <========== declare that group 'TIMER5' contains ball 'C14'                               
+                                                                                                                            
+ #define A13 5                                                                                                              
+ SIG_EXPR_LIST_DECL_SINGLE(A13, SDA9, I2C9, I2C9_DESC, COND1);                                                              
+ SIG_EXPR_LIST_DECL_SINGLE(A13, TIMER6, TIMER6, SIG_DESC_SET(SCU80, 5), COND1);                                             
+ PIN_DECL_2(A13, GPIOA5, SDA9, TIMER6);                                                                                     
+                                                                                                                            
+ FUNC_GROUP_DECL(TIMER6, A13);    <========== declare that group 'TIMER6' contains ball 'A13'                               
+                                                                                                                            
+ FUNC_GROUP_DECL(I2C9, C14, A13); <========== declare that group 'I2C9' contains ball 'C14' and 'A13'                       
+```
+
+It's ok not to expand the above macro into scary expressions and complicated definitions. 
+Knowing these relations between pins and functions is enough, and let's turn to the pinctrl initialization during kernel boot up. 
+Pinctrl also has its descriptor in the device tree and triggers the probing after matching the driver.
 
 ```
 static const struct of_device_id aspeed_g5_pinctrl_of_match[] = {
     { .compatible = "aspeed,ast2500-pinctrl", }, <========== match
-    /*
-     * The aspeed,g5-pinctrl compatible has been removed the from the
-     * bindings, but keep the match in case of old devicetrees.
-     */
     { .compatible = "aspeed,g5-pinctrl", },
     { },
 };
@@ -301,7 +340,7 @@ pinctrl@80 {
     phandle = <0x0d>;
 ```
 
-- Code flow
+(TBD, is a pinctrl device necessary for pin control during driver and device registrations?)
 
 ```
 +-------------------------+                                                                  
@@ -320,6 +359,9 @@ pinctrl@80 {
                   +--> | pinctrl_register | set up pin device and register all the pins to it
                        +------------------+                                                  
 ```
+
+<details>
+  <summary> Other code tracing </summary>
 
 ```
 +------------------+                                                    
@@ -344,63 +386,6 @@ pinctrl@80 {
                                             |--> allocate pin descriptor
                                             |                           
                                             +--> add to pinctrl dev     
-```
-
-```
-+------------------------------------+                                                                     
-| pinconf_generic_dt_node_to_map_all | save mux/configs info of one DT node to map                         
-+--------|---------------------------+                                                                     
-         |    +--------------------------------+                                                           
-         +--> | pinconf_generic_dt_node_to_map |                                                           
-              +-------|------------------------+                                                           
-                      |    +-----------------------------------+                                           
-                      |--> | pinconf_generic_dt_subnode_to_map |                                           
-                      |    +--------|--------------------------+                                           
-                      |             |                                                                      
-                      |             |--> get property 'function'                                           
-                      |             |                                                                      
-                      |             |    +---------------------------------+                               
-                      |             |--> | pinconf_generic_parse_dt_config |                               
-                      |             |    +---------------------------------+                               
-                      |             |                                                                      
-                      |             +--> for each string in property (one string in our case)              
-                      |                                                                                    
-                      |                      if property 'function' exists                                 
-                      |                                                                                    
-                      |                          +---------------------------+                             
-                      |                          | pinctrl_utils_add_map_mux | save mux info in map        
-                      |                          +---------------------------+                             
-                      |                                                                                    
-                      |                      if pinconf node has config(s)                                 
-                      |                                                                                    
-                      |                          +-------------------------------+                         
-                      |                          | pinctrl_utils_add_map_configs | save configs info in map
-                      |                          +-------------------------------+                         
-                      |                                                                                    
-                      +-->  apply the same logic to the child nodes (no child in our case)                 
-```
-
-```
-+----------------------+                                                                                    
-| dt_to_map_one_config | save info to map, add to pinctrl and pinctrl_maps (global)                         
-+-----|----------------+                                                                                    
-      |                                                                                                     
-      |--> get pinctrl dev                                                                                  
-      |                                                                                                     
-      |--> call ->dt_node_to_map()                                                                          
-      |          +------------------------------------+                                                     
-      |    e.g., | pinconf_generic_dt_node_to_map_all | save mux/configs info of one DT node to map         
-      |          +------------------------------------+                                                     
-      |                                                                                                     
-      |    +-------------------------+                                                                      
-      +--> | dt_remember_or_free_map |                                                                      
-           +------|------------------+                                                                      
-                  |                                                                                         
-                  |--> set up dt_map and add to pinctrl                                                     
-                  |                                                                                         
-                  |    +----------------------------+                                                       
-                  +--> |  pinctrl_register_mappings | set up maps_node and register to pinctrl_maps (global)
-                       +----------------------------+                                                       
 ```
 
 ```
@@ -440,7 +425,153 @@ pinctrl@80 {
     |                                                                                                         
     +--> add pinctrl to pinctrl_list     
 ```
+  
+```
++----------------------+                                                                                    
+| dt_to_map_one_config | save info to map, add to pinctrl and pinctrl_maps (global)                         
++-----|----------------+                                                                                    
+      |                                                                                                     
+      |--> get pinctrl dev                                                                                  
+      |                                                                                                     
+      |--> call ->dt_node_to_map()                                                                          
+      |          +------------------------------------+                                                     
+      |    e.g., | pinconf_generic_dt_node_to_map_all | save mux/configs info of one DT node to map         
+      |          +------------------------------------+                                                     
+      |                                                                                                     
+      |    +-------------------------+                                                                      
+      +--> | dt_remember_or_free_map |                                                                      
+           +------|------------------+                                                                      
+                  |                                                                                         
+                  |--> set up dt_map and add to pinctrl                                                     
+                  |                                                                                         
+                  |    +----------------------------+                                                       
+                  +--> |  pinctrl_register_mappings | set up maps_node and register to pinctrl_maps (global)
+                       +----------------------------+                                                       
+```
+  
+```
++------------------------------------+                                                                     
+| pinconf_generic_dt_node_to_map_all | save mux/configs info of one DT node to map                         
++--------|---------------------------+                                                                     
+         |    +--------------------------------+                                                           
+         +--> | pinconf_generic_dt_node_to_map |                                                           
+              +-------|------------------------+                                                           
+                      |    +-----------------------------------+                                           
+                      |--> | pinconf_generic_dt_subnode_to_map |                                           
+                      |    +--------|--------------------------+                                           
+                      |             |                                                                      
+                      |             |--> get property 'function'                                           
+                      |             |                                                                      
+                      |             |    +---------------------------------+                               
+                      |             |--> | pinconf_generic_parse_dt_config |                               
+                      |             |    +---------------------------------+                               
+                      |             |                                                                      
+                      |             +--> for each string in property (one string in our case)              
+                      |                                                                                    
+                      |                      if property 'function' exists                                 
+                      |                                                                                    
+                      |                          +---------------------------+                             
+                      |                          | pinctrl_utils_add_map_mux | save mux info in map        
+                      |                          +---------------------------+                             
+                      |                                                                                    
+                      |                      if pinconf node has config(s)                                 
+                      |                                                                                    
+                      |                          +-------------------------------+                         
+                      |                          | pinctrl_utils_add_map_configs | save configs info in map
+                      |                          +-------------------------------+                         
+                      |                                                                                    
+                      +-->  apply the same logic to the child nodes (no child in our case)                 
+```
 
+```                                                                                                                    
++-------------+                                                                                                               
+| add_setting | ensure 'state' exists and set up 'setting' based on 'map', and add to 'state'                                 
++---|---------+                                                                                                               
+    |    +------------+                                                                                                       
+    |--> | find_state | find the state in pinctrl based on the map name                                                       
+    |    +------------+                                                                                                       
+    |                                                                                                                         
+    |--> if not found                                                                                                         
+    |                                                                                                                         
+    |         +--------------+                                                                                                
+    |         | create_state | create 'state' and add to pinctrl                                                              
+    |         +--------------+                                                                                                
+    |                                                                                                                         
+    |--> allocate and set up 'setting'                                                                                        
+    |                                                                                                                         
+    |--> if map type is MUX_GROUP                                                                                             
+    |                                                                                                                         
+    |        +-----------------------+                                                                                        
+    |        | pinmux_map_to_setting | save indexes of function and group name to 'setting'                                   
+    |        +-----------------------+                                                                                        
+    |                                                                                                                         
+    |--> else if map type is CONFIGS_PIN or CONFIGS_GROUP                                                                     
+    |                                                                                                                         
+    |        +------------------------+                                                                                       
+    |        | pinconf_map_to_setting | save pin number of matched name to 'setting', copy config info from 'map' to 'setting'
+    |        +------------------------+                                                                                       
+    |                                                                                                                         
+    +--> add 'setting' to 'state'                                                                                             
+```
+  
+```
++------------------------+                                                        
+| pinconf_map_to_setting |                                                        
++-----|------------------+                                                        
+      |                                                                           
+      |--> if type is PIN                                                         
+      |                                                                           
+      |        +-------------------+                                              
+      |        | pin_get_from_name |                                              
+      |        +-------------------+                                              
+      |                                                                           
+      |        save pin number in 'setting'                                       
+      |                                                                           
+      |--> else if type is GROUP                                                  
+      |                                                                           
+      |        +----------------------------+                                     
+      |        | pinctrl_get_group_selector | get pin number of matched group name
+      |        +----------------------------+                                     
+      |                                                                           
+      |        save pin number in 'setting'                                       
+      |                                                                           
+      +--> copy config info from 'map' to 'setting'                               
+```
+  
+</details>
+  
+```
++----------------------+                                                                            
+| pinctrl_select_state |                                                                            
++-----|----------------+                                                                            
+      |                                                                                             
+      |--> return if it's already the specified state                                               
+      |                                                                                             
+      |    +----------------------+                                                                 
+      +--> | pinctrl_commit_state |                                                                 
+           +-----|----------------+                                                                 
+                 |                                                                                  
+                 |--> if pinctrl has old state                                                      
+                 |                                                                                  
+                 |        +------------------------+                                                
+                 |        | pinmux_disable_setting |                                                
+                 |        +------------------------+                                                
+                 |                                                                                  
+                 |--> for each setting on new state                                                 
+                 |                                                                                  
+                 |        +-----------------------+                                                 
+                 |        | pinmux_enable_setting | request pin(s) and set mux to enable the setting
+                 |        +-----------------------+                                                 
+                 |                                                                                  
+                 |--> for each setting on new state                                                 
+                 |                                                                                  
+                 |        +-----------------------+                                                 
+                 |        | pinconf_apply_setting | configure pin(s)                                
+                 |        +-----------------------+                                                 
+                 |                                                                                  
+                 +--> update pinctrl state                                                          
+```
+  
 ```
 +-----------------------+                                                                                                             
 | pinmux_enable_setting |                                                                                                             
@@ -496,110 +627,6 @@ pinctrl@80 {
                      +-----------------------------+                                                   
                e.g., | aspeed_pin_config_group_set | get a group of pins and config them               
                      +-----------------------------+                                                   
-```
-
-```
-+----------------------+                                                                            
-| pinctrl_select_state |                                                                            
-+-----|----------------+                                                                            
-      |                                                                                             
-      |--> return if it's already the specified state                                               
-      |                                                                                             
-      |    +----------------------+                                                                 
-      +--> | pinctrl_commit_state |                                                                 
-           +-----|----------------+                                                                 
-                 |                                                                                  
-                 |--> if pinctrl has old state                                                      
-                 |                                                                                  
-                 |        +------------------------+                                                
-                 |        | pinmux_disable_setting |                                                
-                 |        +------------------------+                                                
-                 |                                                                                  
-                 |--> for each setting on new state                                                 
-                 |                                                                                  
-                 |        +-----------------------+                                                 
-                 |        | pinmux_enable_setting | request pin(s) and set mux to enable the setting
-                 |        +-----------------------+                                                 
-                 |                                                                                  
-                 |--> for each setting on new state                                                 
-                 |                                                                                  
-                 |        +-----------------------+                                                 
-                 |        | pinconf_apply_setting | configure pin(s)                                
-                 |        +-----------------------+                                                 
-                 |                                                                                  
-                 +--> update pinctrl state                                                          
-```
-
-```
-+-----------------------+                                  
-| pinmux_map_to_setting |                                  
-+-----|-----------------+                                  
-      |                                                    
-      |--> get pinmux_ops from pinctrl dev                 
-      |                                                    
-      |--> save index of function name to 'setting'        
-      |                                                    
-      |--> call pinmux_ops->get_function_groups()          
-      |          +-----------------------------+           
-      |--> e.g., | aspeed_pinmux_get_fn_groups | get groups
-      |          +-----------------------------+           
-      |                                                    
-      +--> save index of group name to 'setting'           
-```
-
-```
-+------------------------+                                                        
-| pinconf_map_to_setting |                                                        
-+-----|------------------+                                                        
-      |                                                                           
-      |--> if type is PIN                                                         
-      |                                                                           
-      |        +-------------------+                                              
-      |        | pin_get_from_name |                                              
-      |        +-------------------+                                              
-      |                                                                           
-      |        save pin number in 'setting'                                       
-      |                                                                           
-      |--> else if type is GROUP                                                  
-      |                                                                           
-      |        +----------------------------+                                     
-      |        | pinctrl_get_group_selector | get pin number of matched group name
-      |        +----------------------------+                                     
-      |                                                                           
-      |        save pin number in 'setting'                                       
-      |                                                                           
-      +--> copy config info from 'map' to 'setting'                               
-```
-
-```                                                                                                                    
-+-------------+                                                                                                               
-| add_setting | ensure 'state' exists and set up 'setting' based on 'map', and add to 'state'                                 
-+---|---------+                                                                                                               
-    |    +------------+                                                                                                       
-    |--> | find_state | find the state in pinctrl based on the map name                                                       
-    |    +------------+                                                                                                       
-    |                                                                                                                         
-    |--> if not found                                                                                                         
-    |                                                                                                                         
-    |         +--------------+                                                                                                
-    |         | create_state | create 'state' and add to pinctrl                                                              
-    |         +--------------+                                                                                                
-    |                                                                                                                         
-    |--> allocate and set up 'setting'                                                                                        
-    |                                                                                                                         
-    |--> if map type is MUX_GROUP                                                                                             
-    |                                                                                                                         
-    |        +-----------------------+                                                                                        
-    |        | pinmux_map_to_setting | save indexes of function and group name to 'setting'                                   
-    |        +-----------------------+                                                                                        
-    |                                                                                                                         
-    |--> else if map type is CONFIGS_PIN or CONFIGS_GROUP                                                                     
-    |                                                                                                                         
-    |        +------------------------+                                                                                       
-    |        | pinconf_map_to_setting | save pin number of matched name to 'setting', copy config info from 'map' to 'setting'
-    |        +------------------------+                                                                                       
-    |                                                                                                                         
-    +--> add 'setting' to 'state'                                                                                             
 ```
 
 ```
