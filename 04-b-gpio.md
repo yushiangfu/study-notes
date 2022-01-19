@@ -325,6 +325,8 @@ Knowing these relations between pins and functions is enough, and let's turn to 
 Pinctrl also has its descriptor in the device tree and triggers the probing after matching the driver.
 
 ```
+Driver:
+
 static const struct of_device_id aspeed_g5_pinctrl_of_match[] = {
     { .compatible = "aspeed,ast2500-pinctrl", }, <========== match
     { .compatible = "aspeed,g5-pinctrl", },
@@ -333,6 +335,8 @@ static const struct of_device_id aspeed_g5_pinctrl_of_match[] = {
 ```
 
 ```
+DTS:
+
 pinctrl@80 {
     compatible = "aspeed,ast2500-pinctrl"; <========== match
     reg = <0x80 0x18 0xa0 0x10>;
@@ -340,7 +344,7 @@ pinctrl@80 {
     phandle = <0x0d>;
 ```
 
-(TBD, is a pinctrl device necessary for pin control during driver and device registrations?)
+It's better to register pinctrl device first, otherwise devices that need pinctrl will have to defer to a later probe.
 
 ```
 +-------------------------+                                                                  
@@ -387,6 +391,136 @@ pinctrl@80 {
                                             |                           
                                             +--> add to pinctrl dev     
 ```
+  
+```
+              ball          function1                         
+                |               |                             
+                |               |                             
+ #define B14 0  v               v                             
+ SSSF_PIN_DECL(B14, GPIOA0, MAC1LINK, SIG_DESC_SET(SCU80, 0));
+                       ^                         ^            
+                       |                         |            
+                       |                         |            
+                     GPIO                     setting         
+                                                for           
+                                             function1                             
+```
+
+```
+                                                          setting          
+                                                            for            
+                               function1                 function1         
+                                   |                         |             
+                                   |                         |             
+                                   v                         v             
+ SIG_EXPR_LIST_DECL_SINGLE(D13, SPI1CS1, SPI1CS1, SIG_DESC_SET(SCU80, 15));
+ SIG_EXPR_LIST_DECL_SINGLE(D13, TIMER3, TIMER3, SIG_DESC_SET(SCU80, 2));   
+                                   ^                         ^             
+                                   |                         |             
+                                   |                         |             
+                               function2                  setting          
+                                                            for            
+                       (high prio)                       function2         
+           ball         function1                                          
+             |              |                                              
+             |              |                                              
+             v              v                                              
+ PIN_DECL_2(D13, GPIOA2, SPI1CS1, TIMER3);                                 
+                    ^                ^                                     
+                    |                |                                     
+                    |                |                                     
+                  GPIO           function2                                 
+              (lowest prio)      (low prio)                                
+```
+
+```
+// MAC1LINK
+static const struct aspeed_sig_desc sig_descs_MAC1LINK_MAC1LINK[] = {
+    { ASPEED_IP_SCU, SCU80, BIT_MASK(0), 1, 0 }
+};
+static const struct aspeed_sig_expr sig_exprs_MAC1LINK_MAC1LINK = {
+    .signal = "MAC1LINK",
+    .function = "MAC1LINK",
+    .ndescs = ARRAY_SIZE(sig_descs_MAC1LINK_MAC1LINK),
+    .descs = &sig_descs_MAC1LINK_MAC1LINK[0],
+};
+static const struct aspeed_sig_expr *sig_exprs_MAC1LINK_MAC1LINK[] = {
+    &sig_exprs_MAC1LINK_MAC1LINK, NULL
+};
+static const struct aspeed_sig_expr *
+sig_exprs_0_MAC1LINK[ARRAY_SIZE(sig_exprs_MAC1LINK_MAC1LINK)]
+__attribute__((alias(istringify(sig_exprs_MAC1LINK_MAC1LINK))));
+
+// GPIOA0
+static const struct aspeed_sig_desc sig_descs_GPIOA0_GPIOA0[] = {
+};
+static const struct aspeed_sig_expr sig_exprs_GPIOA0_GPIOA0 = {
+    .signal = "GPIOA0",
+    .function = "GPIOA0",
+    .ndescs = ARRAY_SIZE(sig_descs_GPIOA0_GPIOA0),
+    .descs = &sig_descs_GPIOA0_GPIOA0[0],
+};
+static const struct aspeed_sig_expr *sig_exprs_GPIOA0_GPIOA0[] = {
+    &sig_exprs_GPIOA0_GPIOA0, NULL
+};
+static const struct aspeed_sig_expr *
+sig_exprs_0_GPIOA0[ARRAY_SIZE(sig_exprs_GPIOA0_GPIOA0)]
+__attribute__((alias(istringify(sig_exprs_GPIOA0_GPIOA0))));
+
+// Both
+static const struct aspeed_sig_expr **pin_exprs_0[] = {
+    sig_exprs_0_MAC1LINK, sig_exprs_0_GPIOA0, NULL
+};
+static const struct aspeed_pin_desc pin_0 = {
+    "0", &pin_exprs_0[0]
+};
+static const int group_pins_MAC1LINK[] = { 0 };
+static const char *func_groups_MAC1LINK[] = { "MAC1LINK" };
+```
+  
+</details>
+
+When drivers and devices are busy matching each other, the pinctrl mechanism goes before the probing function to ensure the device is ready. 
+As we mentioned earlier that I2C channel three needs pin control on **I2C3** for its default state. 
+The below **create_pinctrl** looks into the device tree for the pinctrl properties, and later **pinctrl_select_state** operates on corresponding settings.
+
+```
++-------------------+                                                                  
+| pinctrl_bind_pins |                                                                  
++----|--------------+                                                                  
+     |                                                                                 
+     |--> allocate dev_pin_info for device                                             
+     |                                                                                 
+     |    +------------------+                                                         
+     |--> | devm_pinctrl_get |                                                         
+     |    +----|-------------+                                                         
+     |         |                                                                       
+     |         |--> allocate pinctrl                                                   
+     |         |                                                                       
+     |         |    +-------------+                                                    
+     |         |--> | pinctrl_get |                                                    
+     |         |    +---|---------+                                                    
+     |         |        |    +--------------+                                          
+     |         |        |--> | find_pinctrl | get pinctrl if it exists already         
+     |         |        |    +--------------+                                          
+     |         |        |    +----------------+                                        
+     |         |        +--> | create_pinctrl | set up pinctrl, add map to pinctrl_maps
+     |         |             +----------------+                                        
+     |         |    +------------+                                                     
+     |         +--> | devres_add | add pinctrl to device as resource                   
+     |              +------------+                                                     
+     |                                                                                 
+     |--> get 'default' state                                                          
+     |                                                                                 
+     |--> get 'init' state (it's ok not to specify this in dts)                        
+     |                                                                                 
+     |    +----------------------+                                                     
+     +--> | pinctrl_select_state | ensure pinctrl is in the specified state            
+          +----------------------+                                                     
+```
+
+<details>
+  <summary> Other code tracing </summary>
 
 ```
 +----------------+                                                                                            
@@ -538,8 +672,6 @@ pinctrl@80 {
       +--> copy config info from 'map' to 'setting'                               
 ```
   
-</details>
-  
 ```
 +----------------------+                                                                            
 | pinctrl_select_state |                                                                            
@@ -629,130 +761,11 @@ pinctrl@80 {
                      +-----------------------------+                                                   
 ```
 
-```
-              ball          function1                         
-                |               |                             
-                |               |                             
- #define B14 0  v               v                             
- SSSF_PIN_DECL(B14, GPIOA0, MAC1LINK, SIG_DESC_SET(SCU80, 0));
-                       ^                         ^            
-                       |                         |            
-                       |                         |            
-                     GPIO                     setting         
-                                                for           
-                                             function1                             
-```
-
-```
-                                                          setting          
-                                                            for            
-                               function1                 function1         
-                                   |                         |             
-                                   |                         |             
-                                   v                         v             
- SIG_EXPR_LIST_DECL_SINGLE(D13, SPI1CS1, SPI1CS1, SIG_DESC_SET(SCU80, 15));
- SIG_EXPR_LIST_DECL_SINGLE(D13, TIMER3, TIMER3, SIG_DESC_SET(SCU80, 2));   
-                                   ^                         ^             
-                                   |                         |             
-                                   |                         |             
-                               function2                  setting          
-                                                            for            
-                       (high prio)                       function2         
-           ball         function1                                          
-             |              |                                              
-             |              |                                              
-             v              v                                              
- PIN_DECL_2(D13, GPIOA2, SPI1CS1, TIMER3);                                 
-                    ^                ^                                     
-                    |                |                                     
-                    |                |                                     
-                  GPIO           function2                                 
-              (lowest prio)      (low prio)                                
-```
-
-```
-// MAC1LINK
-static const struct aspeed_sig_desc sig_descs_MAC1LINK_MAC1LINK[] = {
-    { ASPEED_IP_SCU, SCU80, BIT_MASK(0), 1, 0 }
-};
-static const struct aspeed_sig_expr sig_exprs_MAC1LINK_MAC1LINK = {
-    .signal = "MAC1LINK",
-    .function = "MAC1LINK",
-    .ndescs = ARRAY_SIZE(sig_descs_MAC1LINK_MAC1LINK),
-    .descs = &sig_descs_MAC1LINK_MAC1LINK[0],
-};
-static const struct aspeed_sig_expr *sig_exprs_MAC1LINK_MAC1LINK[] = {
-    &sig_exprs_MAC1LINK_MAC1LINK, NULL
-};
-static const struct aspeed_sig_expr *
-sig_exprs_0_MAC1LINK[ARRAY_SIZE(sig_exprs_MAC1LINK_MAC1LINK)]
-__attribute__((alias(istringify(sig_exprs_MAC1LINK_MAC1LINK))));
-
-// GPIOA0
-static const struct aspeed_sig_desc sig_descs_GPIOA0_GPIOA0[] = {
-};
-static const struct aspeed_sig_expr sig_exprs_GPIOA0_GPIOA0 = {
-    .signal = "GPIOA0",
-    .function = "GPIOA0",
-    .ndescs = ARRAY_SIZE(sig_descs_GPIOA0_GPIOA0),
-    .descs = &sig_descs_GPIOA0_GPIOA0[0],
-};
-static const struct aspeed_sig_expr *sig_exprs_GPIOA0_GPIOA0[] = {
-    &sig_exprs_GPIOA0_GPIOA0, NULL
-};
-static const struct aspeed_sig_expr *
-sig_exprs_0_GPIOA0[ARRAY_SIZE(sig_exprs_GPIOA0_GPIOA0)]
-__attribute__((alias(istringify(sig_exprs_GPIOA0_GPIOA0))));
-
-// Both
-static const struct aspeed_sig_expr **pin_exprs_0[] = {
-    sig_exprs_0_MAC1LINK, sig_exprs_0_GPIOA0, NULL
-};
-static const struct aspeed_pin_desc pin_0 = {
-    "0", &pin_exprs_0[0]
-};
-static const int group_pins_MAC1LINK[] = { 0 };
-static const char *func_groups_MAC1LINK[] = { "MAC1LINK" };
-```
-
-```
-+-------------------+                                                                  
-| pinctrl_bind_pins |                                                                  
-+----|--------------+                                                                  
-     |                                                                                 
-     |--> allocate dev_pin_info for device                                             
-     |                                                                                 
-     |    +------------------+                                                         
-     |--> | devm_pinctrl_get |                                                         
-     |    +----|-------------+                                                         
-     |         |                                                                       
-     |         |--> allocate pinctrl                                                   
-     |         |                                                                       
-     |         |    +-------------+                                                    
-     |         |--> | pinctrl_get |                                                    
-     |         |    +---|---------+                                                    
-     |         |        |    +--------------+                                          
-     |         |        |--> | find_pinctrl | get pinctrl if it exists already         
-     |         |        |    +--------------+                                          
-     |         |        |    +----------------+                                        
-     |         |        +--> | create_pinctrl | set up pinctrl, add map to pinctrl_maps
-     |         |             +----------------+                                        
-     |         |    +------------+                                                     
-     |         +--> | devres_add | add pinctrl to device as resource                   
-     |              +------------+                                                     
-     |                                                                                 
-     |--> get 'default' state                                                          
-     |                                                                                 
-     |--> get 'init' state (it's ok not to specify this in dts)                        
-     |                                                                                 
-     |    +----------------------+                                                     
-     +--> | pinctrl_select_state | ensure pinctrl is in the specified state            
-          +----------------------+                                                     
-```
+</details>
 
 ## <a name="to-do-list"></a> To-Do List
 
-- Introduce GPIO and multi-function with their priority
+(TBD)
 
 ## <a name="reference"></a> Reference
 
