@@ -215,6 +215,23 @@ It doesn't matter whether the driver or device registers first. Both flows will 
                                +------------------+                                                            
 ```
 
+Both **driver_attach** and **bus_probe_device** are not directly but eventually go to **really_probe**, which triggers the driver defined probe function
+
+```
++--------------+                                                                            
+| really_probe |                                                                            
++---|----------+                                                                            
+    |    +-------------------+                                                              
+    |--> | pinctrl_bind_pins | switch pins to the expected state before probing if necessary
+    |    +-------------------+                                                              
+    |    +-------------------+                                                              
+    |--> | call_driver_probe | call bus->probe or driver->probe (most cases)                
+    |    +-------------------+                                                              
+    |    +--------------+                                                                   
+    +--> | driver_bound | attach the device to the driver, but not vice versa               
+         +--------------+ (one driver might take care of multiple similar devices)          
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 - Add pinctrl related stuff when registering device
