@@ -519,6 +519,32 @@ The below **create_pinctrl** looks into the device tree for the pinctrl properti
           +----------------------+                                                     
 ```
 
+```
+                +----------------+                  +----------------------+
+                |can be 'default'|                  |nri1_default {        |
+                |       'init'   |                  |    function = "NRI1";|
+                |       'sleep'  |                  |    groups = "NRI1";  |
+                |       'idle'   |                  |    phandle = <0x17>; |
+                +----------------+                  |};                    |
+                                                    +----------------------+
+                       state                                                
+ serial@1e783000 {       |                          config                  
+     ...                 v                             |                    
+     pinctrl-names = "default";                        v                    
+     pinctrl-0 = <0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17>;                 
+ };                                               ^                         
+                                                  |                         
+                                               config                       
+                                                                            
+                                      +-----------------------+             
+                                      |ndcd1_default {        |             
+                                      |    function = "NDCD1";|             
+                                      |    groups = "NDCD1";  |             
+                                      |    phandle = <0x16>;  |             
+                                      |};                     |             
+                                      +-----------------------+             
+```
+
 <details>
   <summary> Other code tracing </summary>
 
