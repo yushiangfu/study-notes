@@ -3,7 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Network Layers](#network-layer)
+- [Network Layers & Families](#network-layer-and-families)
 - [Syscalls](#syscalls)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
@@ -12,7 +12,7 @@
 
 (TBD)
 
-## <a name="network-layers"></a> Network Layers
+## <a name="network-layers-and-families"></a> Network Layers & Families
 
 The server and client models are the most common in our daily network environment. 
 The providers build a machine, or a bunch of them, to wait for the client-side requests and either serve or drop it. 
@@ -26,6 +26,23 @@ Let's start from the server-side and break the network stack into four implement
   - Route a packet to the destination, or split a packet into smaller sizes if necessary.
 - Physical layer
   - Works on the data sending and receiving without any idea of the big picture.
+
+The four-layers framework kernel implementation can accommodate the most common protocols in our daily lives. 
+Well-known protocols such as TCP, UDP, IP, ICMP come from the same network family. 
+Their IPv6 versions get grouped in another family. 
+Netlink, a message exchange method between user and kernel space, is also a network family.
+
+```
+# Check how many network families the kernel supports
+root@romulus:~# dmesg | grep family
+[    0.156635] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.411547] NET: Registered PF_INET protocol family
+[    0.435757] NET: Registered PF_UNIX/PF_LOCAL protocol family <========== no idea yet
+[    0.525302] NET: Registered PF_ALG protocol family           <========== no idea yet
+[    2.908709] NET: Registered PF_INET6 protocol family
+[    2.931712] NET: Registered PF_PACKET protocol family        <========== no idea yet
+
+```
 
 ## <a name="syscalls"></a> Syscalls
 
@@ -70,7 +87,7 @@ int socket(int domain, int type, int protocol);
 
 Function **socket** takes three arguments: domain, type, and protocol.
 - **domain**
-  - It suffices to know that well-known protocols such as TCP, UDP, IP, ICMP belong to the family AF_INET, a.k.a. **IPv4 Internet Protocol**.
+  - It's the network family we mentioned above.
 - type
   - Usually, the type is either TCP (SOCK_STREAM) or UDP (SOCK_DGRAM) in the above family.
 - protocol
