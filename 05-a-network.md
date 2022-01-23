@@ -78,7 +78,7 @@ Either side can **close()** this connection, and the other side will process the
    close()                close()   
 ```
 
-### socket
+### socket()
 
 ```
 prototype:
@@ -92,6 +92,106 @@ Function **socket** takes three arguments: domain, type, and protocol.
   - Usually, the type is either TCP (SOCK_STREAM) or UDP (SOCK_DGRAM) in the above family.
 - protocol
   - With the family **IPv4 Internet Protocol** and type TCP or UDP selected, this field can only be IP whether the caller specifies it or not.
+
+```
++------------+                                                                                              
+| sys_socket |                                                                                              
++--|---------+                                                                                              
+   |    +--------------+                                                                                    
+   +--> | __sys_socket |                                                                                    
+        +---|----------+                                                                                    
+            |    +-------------+                                                                            
+            |--> | sock_create |                                                                            
+            |    +---|---------+                                                                            
+            |        |    +---------------+                                                                 
+            |        +--> | __sock_create |                                                                 
+            |             +---------------+                                                                 
+            |                 |   +------------+                                                            
+            |                 |-->| sock_alloc | allocate socket                                            
+            |                 |   +------------+                                                            
+            |                 |                                                                             
+            |                 +--> call family->create()                                                    
+            |                            +-------------+                                                    
+            |                      e.g., | inet_create | install family operations to socket and call protocol->init()
+            |                            +-------------+                                                    
+            |    +-------------+                                                                            
+            +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table          
+                 +-------------+                                                                            
+```
+
+### bind()
+
+The caller will prepare the address structure, and it's optional to specify the port. 
+The **bind** function will further check if the specified port is available or prepare a valid one if the caller hasn't set it.
+
+```
++----------+                                                               
+| sys_bind |                                                               
++--|-------+                                                               
+   |    +------------+                                                     
+   +--> | __sys_bind |                                                     
+        +--|---------+                                                     
+           |    +---------------------+                                    
+           |--> | sockfd_lookup_light | get socket by file descriptor      
+           |    +---------------------+                                    
+           |    +---------------------+                                    
+           |--> | move_addr_to_kernel | copy data from user to kernel space
+           |    +---------------------+                                    
+           |                                                               
+           +--> call ->bind()                                              
+                      +-----------+                                        
+                e.g., | inet_bind | bind address to a port                 
+                      +-----------+                                        
+```
+
+### listen()
+
+In TCP design, the socket has different states indicating its current status. 
+The function **listen** will change the socket state accordingly and add it to the hash table, waiting for the client to connect. 
+We can use the utility **netstat** to display system socket status, and I guess the information comes from the hash table.
+
+```
++------------+                                                                                                    
+| sys_listen |                                                                                                    
++--|---------+                                                                                                    
+   |    +--------------+                                                                                          
+   +--> | __sys_listen |                                                                                          
+        +---|----------+                                                                                          
+            |    +---------------------+                                                                          
+            |--> | sockfd_lookup_light | get socket by file descriptor                                            
+            |    +---------------------+                                                                          
+            |                                                                                                     
+            +--> call ->listen()                                                                                  
+                       +-------------+                                                                            
+                 e.g., | inet_listen | set socket state to 'LISTEN' and add it to hash table wating for connection
+                       +-------------+                                                                            
+```
+
+### connect()
+
+They call this function with server address information on the client side to build the packet and send it to the destination. 
+In TCP design, re-sending is possible if the sender receives no response from the target in a specified interval. 
+The server determines whether to accept the packet, and the client socket will change the socket state to CONNECTED after learning the acceptance from the server.
+
+```
++-------------+                                                                                                                
+| sys_connect |                                                                                                                
++---|---------+                                                                                                                
+    |    +---------------+                                                                                                     
+    +--> | __sys_connect |                                                                                                     
+         +---|-----------+                                                                                                     
+             |    +---------------------+                                                                                      
+             |--> | move_addr_to_kernel | copy data from user to kernel space                                                  
+             |    +---------------------+                                                                                      
+             |    +--------------------+                                                                                       
+             +--> | __sys_connect_file |                                                                                       
+                  +----|---------------+                                                                                       
+                       |                                                                                                       
+                       +--> call ->->connect()                                                                                 
+                                  +---------------------+                                                                      
+                            e.g., | inet_stream_connect | build socket buffer (skb), send out, chagne socket state to CONNECTED after get accepted
+                                  +---------------------+    
+```
 
 ## <a name="to-do-list"></a> To-Do List
 
