@@ -4,7 +4,8 @@
 
 - [Introduction](#introduction)
 - [Network Layers & Families](#network-layer-and-families)
-- [Syscalls](#syscalls)
+- [Application Layer](#application-layer)
+- [Transport Layer](#transport-layer)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -44,7 +45,9 @@ root@romulus:~# dmesg | grep family
 
 ```
 
-## <a name="syscalls"></a> Syscalls
+We will introduce how the network works in Linux based on the below combination of TCP and IP (INET family), the so-called TCP/IP model.
+
+## <a name="application-layer"></a> Application Layer
 
 Both the client and server sides call **socket()** to get the handle. 
 The server side alone calls **bind()** to relate the socket handle to its network address and then calls **listen()** to standby. 
@@ -189,9 +192,66 @@ The server determines whether to accept the packet, and the client socket will c
                        |                                                                                                       
                        +--> call ->->connect()                                                                                 
                                   +---------------------+                                                                      
-                            e.g., | inet_stream_connect | build socket buffer (skb), send out, chagne socket state to CONNECTED after get accepted
+                            e.g., | inet_stream_connect | build socket buffer (skb), send out, wait for acception, change state to CONNECTED
                                   +---------------------+    
 ```
+
+### accept()
+
+Like the function **connect()** waits for acceptance, function **accept()** waits for connection. 
+It will prepare another file descriptor, socket, file for the connection.
+
+```
++------------+                                                                                                        
+| sys_accept |                                                                                                        
++--|---------+                                                                                                        
+   |    +----------------+                                                                                            
+   +--> | __sys_accept4  |                                                                                            
+        +---|------------+                                                                                            
+            |    +--------------------+                                                                               
+            +--> | __sys_accept4_file |                                                                               
+                 +----|---------------+                                                                               
+                      |    +-----------------------+                                                                  
+                      +--> | __get_unused_fd_flags | get an valid file descriptor                                     
+                           +-----|-----------------+                                                                  
+                                 |    +-----------+                                                                   
+                                 |--> | do_accept |                                                                   
+                                 |    +--|--------+                                                                   
+                                 |       |    +----------------+                                                      
+                                 |       |--> | sock_from_file | get socket from file                                 
+                                 |       |    +----------------+                                                      
+                                 |       |    +------------+                                                          
+                                 |       |--> | sock_alloc | allocate socket for the connection                       
+                                 |       |    +------------+                                                          
+                                 |       |    +-----------------+                                                     
+                                 |       |--> | sock_alloc_file | allocate file for the connection                    
+                                 |       |    +-----------------+                                                     
+                                 |       |                                                                            
+                                 |       |--> call ->accept()                                                         
+                                 |       |          +-------------+                                                   
+                                 |       |    e.g., | inet_accept | wait for connection, set socket state to CONNECTED
+                                 |       |          +-------------+                                                   
+                                 |       |                                                                            
+                                 |       |--> copy address info to userspace if asked to                              
+                                 |       |                                                                            
+                                 |       +--> return allocated file                                                   
+                                 |                                                                                    
+                                 +--> install the file to allocated fd                                                
+```
+
+### sys_write()
+
+(TBD)
+
+### sys_read()
+
+(TBD)
+
+### sys_close()
+
+(TBD)
+
+## <a name="transport-layer"></a> Transport Layer
 
 ## <a name="to-do-list"></a> To-Do List
 
