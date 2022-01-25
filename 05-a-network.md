@@ -3,9 +3,10 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Network Layers & Families](#network-layer-and-families)
+- [Network Layers & Families](#network-layers-and-families)
 - [Application Layer](#application-layer)
 - [Transport Layer](#transport-layer)
+- [Boot Flow](#boot-flow)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -85,41 +86,61 @@ Either side can **close()** this connection, and the other side will process the
 
 ```
 prototype:
-int socket(int domain, int type, int protocol);
+SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 ```
 
-Function **socket** takes three arguments: domain, type, and protocol.
-- **domain**
-  - It's the network family we mentioned above.
-- type
-  - Usually, the type is either TCP (SOCK_STREAM) or UDP (SOCK_DGRAM) in the above family.
-- protocol
-  - With the family **IPv4 Internet Protocol** and type TCP or UDP selected, this field can only be IP whether the caller specifies it or not.
+- **family**
+  - It's the network family we mentioned above, and it will be PF_INET in our study case.
+- **type**
+  - Once specifying the family as PF_INET, we have to select a type from the below list, and it will be SOCK_STREAM (TCP) in our case.
+  ```
+  SOCK_STREAM = 1,  <========== TCP
+  SOCK_DGRAM  = 2,  <========== UDP
+  SOCK_RAW    = 3,
+  SOCK_RDM    = 4,
+  SOCK_SEQPACKET  = 5,
+  SOCK_DCCP   = 6,
+  SOCK_PACKET = 10, 
+  ```
+- **protocol**
+  - With the family PF_INET and type TCP or UDP selected, this field can only be IP.
 
 ```
-+------------+                                                                                              
-| sys_socket |                                                                                              
-+--|---------+                                                                                              
-   |    +--------------+                                                                                    
-   +--> | __sys_socket |                                                                                    
-        +---|----------+                                                                                    
-            |    +-------------+                                                                            
-            |--> | sock_create |                                                                            
-            |    +---|---------+                                                                            
-            |        |    +---------------+                                                                 
-            |        +--> | __sock_create |                                                                 
-            |             +---------------+                                                                 
-            |                 |   +------------+                                                            
-            |                 |-->| sock_alloc | allocate socket                                            
-            |                 |   +------------+                                                            
-            |                 |                                                                             
-            |                 +--> call family->create()                                                    
-            |                            +-------------+                                                    
-            |                      e.g., | inet_create | install family operations to socket and call protocol->init()
-            |                            +-------------+                                                    
-            |    +-------------+                                                                            
-            +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table          
-                 +-------------+                                                                            
++------------+
+| sys_socket |
++--|---------+
+   |    +--------------+
+   +--> | __sys_socket |
+        +---|----------+
+            |    +-------------+
+            |--> | sock_create |
+            |    +---|---------+
+            |        |    +---------------+
+            |        +--> | __sock_create |
+            |             +---------------+
+            |                 |   +------------+
+            |                 |-->| sock_alloc | allocate socket
+            |                 |   +------------+
+            |                 |
+            |                 +--> call family->create()
+            |                            +-------------+
+            |                      e.g., | inet_create | install family operations to socket and call type->init()
+            |                            +---|---------+
+            |                                |
+            |                                |--> set socket state to UNCONNECTED
+            |                                |
+            |                                |--> install family operations, e.g., inet_stream_ops
+            |                                |
+            |                                |--> allocate tcp socket (not the same socket created earlier)
+            |                                |
+            |                                +--> call type->init()
+            |                                           +------------------+
+            |                                     e.g., | tcp_v4_init_sock | init tcp socket
+            |                                           +------------------+
+            |
+            |    +-------------+
+            +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
+                 +-------------+                                                                         
 ```
 
 ### bind()
@@ -128,23 +149,34 @@ The caller will prepare the address structure, and it's optional to specify the 
 The **bind** function will further check if the specified port is available or prepare a valid one if the caller hasn't set it.
 
 ```
-+----------+                                                               
-| sys_bind |                                                               
-+--|-------+                                                               
-   |    +------------+                                                     
-   +--> | __sys_bind |                                                     
-        +--|---------+                                                     
-           |    +---------------------+                                    
-           |--> | sockfd_lookup_light | get socket by file descriptor      
-           |    +---------------------+                                    
-           |    +---------------------+                                    
++----------+
+| sys_bind |
++--|-------+
+   |    +------------+
+   +--> | __sys_bind |
+        +--|---------+
+           |    +---------------------+
+           |--> | sockfd_lookup_light | get socket by file descriptor
+           |    +---------------------+
+           |    +---------------------+
            |--> | move_addr_to_kernel | copy data from user to kernel space
-           |    +---------------------+                                    
-           |                                                               
-           +--> call ->bind()                                              
-                      +-----------+                                        
-                e.g., | inet_bind | bind address to a port                 
-                      +-----------+                                        
+           |    +---------------------+
+           |
+           +--> call ->bind()
+                      +-----------+
+                e.g., | inet_bind | bind the given address to the socket
+                      +--|--------+
+                         |
+                         |--> call type->bind() if it exists (not our case)
+                         |
+                         |    +-------------+
+                         +--> | __inet_bind |
+                              +---|---------+
+                                  |
+                                  +--> call type->get_port()
+                                             +-------------------+
+                                       e.g., | inet_csk_get_port | check if the given port is valid or prepare a valid one
+                                             +-------------------+                                     
 ```
 
 ### listen()
@@ -251,7 +283,93 @@ It will prepare another file descriptor, socket, file for the connection.
 
 (TBD)
 
+The argument **family** in sys_socket() determines the first operation set for each network-related syscall.
+
+| Syscall     | Family              |
+| ---         | ---                 |
+| sys_socket  | inet_create         |
+| sys_bind    | inet_bind           |
+| sys_listen  | inet_listen         |
+| sys_connect | inet_stream_connect |
+| sys_accept  | inet_accept         |
+| sys_write   | (TBD)               |
+| sys_read    | (TBD)               |
+| sys_close   | (TBD)               |
+
 ## <a name="transport-layer"></a> Transport Layer
+
+The transport layer provides services such as reliable transmission, flow control, connection concept.
+Transmission Control Protocol (TCP) consists the above features, while User Datagram Protocol (UDP) provides a much simplified method for other transmission.
+
+| Family              | Transport layer              |
+| ---                 | ---                          |
+| inet_create         | tcp_v4_init_sock             |
+| inet_bind           | inet_csk_get_port            |
+| inet_listen         | inet_csk_get_port, inet_hash |
+| inet_stream_connect | tcp_v4_connect               |
+| inet_accept         | inet_csk_accept              | 
+| (TBD)               | (TBD)                        |
+| (TBD)               | (TBD)                        |
+| (TBD)               | (TBD)                        |
+
+For the socket creation, not much to introduce.
+
+```
+ +-------------+                                                              
+ | inet_create | install family operations to socket and call protocol->init()
+ +---|---------+                                                              
+     |                                                                        
+     +--> call type->init()                                                   
+                +------------------+                                          
+          e.g., | tcp_v4_init_sock | init tcp socket                          
+                +------------------+                                          
+                     |    +---------------+                                   
+                     |--> | tcp_init_sock |                                   
+                     |    +---------------+                                   
+                     |                                                        
+                     +--> install ipv4 operations                                                                                              
+```
+
+```
+ +-------------+                                                                             
+ | __inet_bind |                                                                             
+ +---|---------+                                                                             
+     |                                                                                       
+     +--> call type->get_port()                                                              
+                +-------------------+                                                        
+          e.g., | inet_csk_get_port | check if the given port is valid or prepare a valid one
+                +-------------------+                                                        
+                     |                                                                       
+                     |--> if no given port, find a valid one and return                      
+                     |                                                                       
+                     +--> check if given port is valid                                       
+```
+
+## <a name="boot-flow"></a> Boot Flow
+
+During boot up flow, a few init calls register the network family by function **sock_register()** to add the supported socket type on the system.
+Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
+
+```
++--------------------+     +---------------+           
+| netlink_proto_init | --> | sock_register | PF_NETLINK
++--------------------+     +---------------+           
++-----------+              +---------------+           
+| inet_init | -----------> | sock_register | PF_INET   
++-----------+              +---------------+           
++--------------+           +---------------+           
+| af_unix_init | --------> | sock_register | PF_UNIX   
++--------------+           +---------------+           
++-------------+            +---------------+           
+| af_alg_init | ---------> | sock_register | PF_ALG    
++-------------+            +---------------+           
++------------+             +---------------+           
+| inet6_init | ----------> | sock_register | PF_INET6  
++------------+             +---------------+           
++-------------+            +---------------+           
+| packet_init | ---------> | sock_register | PF_PACKET 
++-------------+            +---------------+           
+```
 
 ## <a name="to-do-list"></a> To-Do List
 
