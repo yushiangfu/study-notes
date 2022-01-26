@@ -50,37 +50,37 @@ We will introduce how the network works in Linux based on the below combination 
 
 ## <a name="application-layer"></a> Application Layer
 
+The kernel provides a few network-related syscalls to userspace, and whichever requests the services through those functions belongs to the application layer.
 Both the client and server sides call **socket()** to get the handle. 
-The server side alone calls **bind()** to relate the socket handle to its network address and then calls **listen()** to standby. 
+The server calls **bind()** to relate the socket handle to its network address and then calls **listen()** to standby. 
 Anytime the client can **connect()** to the server, wait for its **accept()**, and advance to the real deal. 
 Data operation can be as simple as combining a few **read()** and **write()**. 
 Since kernel conceals the most complicated part, users can operate socket data like handling a file. 
 Either side can **close()** this connection, and the other side will process the termination appropriately.
 
 ```                                 
-   client                 server    
------------------------------------ 
-  socket()               socket()   
-      |                      |      
-      |                      v      
-      |                   bind()    
-      |                      |      
-      |                      v      
-      |                  listen()   
-      v                      |      
-  connect()                  |      
-      |                      v      
-      |                  accept()   
-      |                      |      
-      v                      v      
-+-----------+          +-----------+
-|   data    |          |   data    |
-| operation |          | operation |
-+-----------+          +-----------+
-      |                      |      
-      v                      v      
-   close()                close()   
+     client                 server                                           
+  -----------------------------------                                        
+    socket()               socket()     prepare handle for network operations
+        |                      |                                             
+        |                      v                                             
+        |                   bind()      bind address (port) to the socket    
+        |                      |                                             
+        |                      v                                             
+        |                  listen()     wait for connection                  
+        v                      |                                             
+    connect()                  |                                             
+        |                      v                                             
+        |                  accept()     accept the connection                
+        |                      |                                             
+        v                      v                                             
+ read()/write()         read()/write()  regular data operation               
+        |                      |                                             
+        v                      v                                             
+     close()                close()     close the connection                  
 ```
+
+## <a name="transport-layer"></a> Transport Layer
 
 ### socket()
 
@@ -124,23 +124,28 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
             |                 |
             |                 +--> call family->create()
             |                            +-------------+
-            |                      e.g., | inet_create | install family operations to socket and call type->init()
+            |                      e.g., | inet_create | install family  operations to socket and call ->init()
             |                            +---|---------+
             |                                |
             |                                |--> set socket state to UNCONNECTED
             |                                |
-            |                                |--> install family operations, e.g., inet_stream_ops
+            |                                |--> install family + type operations, e.g., inet_stream_ops
             |                                |
             |                                |--> allocate tcp socket (not the same socket created earlier)
             |                                |
-            |                                +--> call type->init()
+            |                                +--> call ->init()
             |                                           +------------------+
             |                                     e.g., | tcp_v4_init_sock | init tcp socket
             |                                           +------------------+
+            |                                                |    +---------------+
+            |                                                |--> | tcp_init_sock |
+            |                                                |    +---------------+
+            |                                                |
+            |                                                +--> install ipv4 operations
             |
             |    +-------------+
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
-                 +-------------+                                                                         
+                 +-------------+                                                                        
 ```
 
 ### bind()
@@ -175,8 +180,12 @@ The **bind** function will further check if the specified port is available or p
                                   |
                                   +--> call type->get_port()
                                              +-------------------+
-                                       e.g., | inet_csk_get_port | check if the given port is valid or prepare a valid one
-                                             +-------------------+                                     
+                                       e.g., | inet_csk_get_port | 
+                                             +-------------------+
+                                                  |
+                                                  |--> if no given port, find a valid one and return
+                                                  |
+                                                  +--> check if given port is valid
 ```
 
 ### listen()
@@ -186,20 +195,35 @@ The function **listen** will change the socket state accordingly and add it to t
 We can use the utility **netstat** to display system socket status, and I guess the information comes from the hash table.
 
 ```
-+------------+                                                                                                    
-| sys_listen |                                                                                                    
-+--|---------+                                                                                                    
-   |    +--------------+                                                                                          
-   +--> | __sys_listen |                                                                                          
-        +---|----------+                                                                                          
-            |    +---------------------+                                                                          
-            |--> | sockfd_lookup_light | get socket by file descriptor                                            
-            |    +---------------------+                                                                          
-            |                                                                                                     
-            +--> call ->listen()                                                                                  
-                       +-------------+                                                                            
-                 e.g., | inet_listen | set socket state to 'LISTEN' and add it to hash table wating for connection
-                       +-------------+                                                                            
++------------+
+| sys_listen |
++--|---------+
+   |    +--------------+
+   +--> | __sys_listen |
+        +---|----------+
+            |    +---------------------+
+            |--> | sockfd_lookup_light | get socket by file descriptor
+            |    +---------------------+
+            |
+            +--> call ->listen()
+                       +-------------+
+                 e.g., | inet_listen | set tcp state to 'LISTEN' and add it to hash table wating for connection
+                       +---|---------+
+                           |    +-----------------------+
+                           +--> | inet_csk_listen_start |
+                                +-----|-----------------+
+                                      |
+                                      |--> set tcp state to LISTEN
+                                      |
+                                      |--> call type->get_port()
+                                      |          +-------------------+
+                                      |    e.g., | inet_csk_get_port | ensure we have a valid port
+                                      |          +-------------------+
+                                      |
+                                      +--> call type->hash()
+                                                 +-----------+
+                                           e.g., | inet_hash | add socket to hash table, and wait for connection
+                                                 +-----------+ 
 ```
 
 ### connect()
@@ -209,23 +233,60 @@ In TCP design, re-sending is possible if the sender receives no response from th
 The server determines whether to accept the packet, and the client socket will change the socket state to CONNECTED after learning the acceptance from the server.
 
 ```
-+-------------+                                                                                                                
-| sys_connect |                                                                                                                
-+---|---------+                                                                                                                
-    |    +---------------+                                                                                                     
-    +--> | __sys_connect |                                                                                                     
-         +---|-----------+                                                                                                     
-             |    +---------------------+                                                                                      
-             |--> | move_addr_to_kernel | copy data from user to kernel space                                                  
-             |    +---------------------+                                                                                      
-             |    +--------------------+                                                                                       
-             +--> | __sys_connect_file |                                                                                       
-                  +----|---------------+                                                                                       
-                       |                                                                                                       
-                       +--> call ->->connect()                                                                                 
-                                  +---------------------+                                                                      
-                            e.g., | inet_stream_connect | build socket buffer (skb), send out, wait for acception, change state to CONNECTED
-                                  +---------------------+    
+ +-------------+
+ | sys_connect |
+ +---|---------+
+     |    +---------------+
+     +--> | __sys_connect |
+          +---|-----------+
+              |    +---------------------+
+              |--> | move_addr_to_kernel | copy data from user to kernel space
+              |    +---------------------+
+              |    +--------------------+
+              +--> | __sys_connect_file |
+                   +----|---------------+
+                        |
+                        +--> call ->->connect()
+                                   +---------------------+
+                             e.g., | inet_stream_connect | build socket buffer, send out, wait for acception
+                                   +---------------------+
+                                         |    +-----------------------+
+                                         +--> | __inet_stream_connect |
+                                              +-----|-----------------+
+                                                    |
+                                                    +--> call ->connect()
+                                                               +----------------+
+                                                         e.g., | tcp_v4_connect | (refer to the below)
+                                                               +----------------+
+```
+
+```
++----------------+                                                                              
+| tcp_v4_connect | set addr and port, allocate skb and build tcp header, send to ip layer       
++---|------------+                                                                              
+    |    +------------------+                                                                   
+    |--> | ip_route_connect | prepare routing table, and decide next hop                        
+    |    +------------------+                                                                   
+    |                                                                                           
+    |--> set destination addr & port                                                            
+    |                                                                                           
+    |--> change tcp state to SYN_SENT                                                           
+    |                                                                                           
+    |    +-------------------+                                                                  
+    |--> | inet_hash_connect | bind a port to the socket and add to hash table                  
+    |    +-------------------+                                                                  
+    |    +-------------+                                                                        
+    +--> | tcp_connect |                                                                        
+         +---|---------+                                                                        
+             |    +---------------------+                                                       
+             |--> | sk_stream_alloc_skb | allocate socket buffer (skb)                          
+             |    +---------------------+                                                       
+             |    +------------------+                                                          
+             |--> | tcp_transmit_skb | build tcp header, send to ip layer for transmit          
+             |    +------------------+                                                          
+             |    +---------------------------+                                                 
+             +--> | inet_csk_reset_xmit_timer | re-send the packet if no response before timeout
+                  +---------------------------+                                                 
 ```
 
 ### accept()
@@ -296,8 +357,6 @@ The argument **family** in sys_socket() determines the first operation set for e
 | sys_read    | (TBD)               |
 | sys_close   | (TBD)               |
 
-## <a name="transport-layer"></a> Transport Layer
-
 The transport layer provides services such as reliable transmission, flow control, connection concept.
 Transmission Control Protocol (TCP) consists the above features, while User Datagram Protocol (UDP) provides a much simplified method for other transmission.
 
@@ -313,37 +372,6 @@ Transmission Control Protocol (TCP) consists the above features, while User Data
 | (TBD)               | (TBD)                        |
 
 For the socket creation, not much to introduce.
-
-```
- +-------------+                                                              
- | inet_create | install family operations to socket and call protocol->init()
- +---|---------+                                                              
-     |                                                                        
-     +--> call type->init()                                                   
-                +------------------+                                          
-          e.g., | tcp_v4_init_sock | init tcp socket                          
-                +------------------+                                          
-                     |    +---------------+                                   
-                     |--> | tcp_init_sock |                                   
-                     |    +---------------+                                   
-                     |                                                        
-                     +--> install ipv4 operations                                                                                              
-```
-
-```
- +-------------+                                                                             
- | __inet_bind |                                                                             
- +---|---------+                                                                             
-     |                                                                                       
-     +--> call type->get_port()                                                              
-                +-------------------+                                                        
-          e.g., | inet_csk_get_port | check if the given port is valid or prepare a valid one
-                +-------------------+                                                        
-                     |                                                                       
-                     |--> if no given port, find a valid one and return                      
-                     |                                                                       
-                     +--> check if given port is valid                                       
-```
 
 ## <a name="boot-flow"></a> Boot Flow
 
