@@ -207,7 +207,7 @@ We can use the utility **netstat** to display system socket status, and I guess 
             |
             +--> call ->listen()
                        +-------------+
-                 e.g., | inet_listen | set tcp state to 'LISTEN' and add it to hash table wating for connection
+                 e.g., | inet_listen | set tcp state to 'LISTEN' and add to hash table wating for connection
                        +---|---------+
                            |    +-----------------------+
                            +--> | inet_csk_listen_start |
@@ -222,7 +222,7 @@ We can use the utility **netstat** to display system socket status, and I guess 
                                       |
                                       +--> call type->hash()
                                                  +-----------+
-                                           e.g., | inet_hash | add socket to hash table, and wait for connection
+                                           e.g., | inet_hash | add socket to hash table waiting for connection
                                                  +-----------+ 
 ```
 
@@ -295,46 +295,162 @@ Like the function **connect()** waits for acceptance, function **accept()** wait
 It will prepare another file descriptor, socket, file for the connection.
 
 ```
-+------------+                                                                                                        
-| sys_accept |                                                                                                        
-+--|---------+                                                                                                        
-   |    +----------------+                                                                                            
-   +--> | __sys_accept4  |                                                                                            
-        +---|------------+                                                                                            
-            |    +--------------------+                                                                               
-            +--> | __sys_accept4_file |                                                                               
-                 +----|---------------+                                                                               
-                      |    +-----------------------+                                                                  
-                      +--> | __get_unused_fd_flags | get an valid file descriptor                                     
-                           +-----|-----------------+                                                                  
-                                 |    +-----------+                                                                   
-                                 |--> | do_accept |                                                                   
-                                 |    +--|--------+                                                                   
-                                 |       |    +----------------+                                                      
-                                 |       |--> | sock_from_file | get socket from file                                 
-                                 |       |    +----------------+                                                      
-                                 |       |    +------------+                                                          
-                                 |       |--> | sock_alloc | allocate socket for the connection                       
-                                 |       |    +------------+                                                          
-                                 |       |    +-----------------+                                                     
-                                 |       |--> | sock_alloc_file | allocate file for the connection                    
-                                 |       |    +-----------------+                                                     
-                                 |       |                                                                            
-                                 |       |--> call ->accept()                                                         
-                                 |       |          +-------------+                                                   
-                                 |       |    e.g., | inet_accept | wait for connection, set socket state to CONNECTED
-                                 |       |          +-------------+                                                   
-                                 |       |                                                                            
-                                 |       |--> copy address info to userspace if asked to                              
-                                 |       |                                                                            
-                                 |       +--> return allocated file                                                   
-                                 |                                                                                    
-                                 +--> install the file to allocated fd                                                
++------------+
+| sys_accept |
++--|---------+
+   |    +----------------+
+   +--> | __sys_accept4  |
+        +---|------------+
+            |    +--------------------+
+            +--> | __sys_accept4_file |
+                 +----|---------------+
+                      |    +-----------------------+
+                      +--> | __get_unused_fd_flags | get an valid file descriptor
+                      |    +-----------------------+
+                      |    +-----------+
+                      |--> | do_accept |
+                      |    +--|--------+
+                      |       |    +------------+
+                      |       |--> | sock_alloc | allocate socket for the connection
+                      |       |    +------------+
+                      |       |    +-----------------+
+                      |       |--> | sock_alloc_file | allocate file for the connection
+                      |       |    +-----------------+
+                      |       |
+                      |       |--> call ->accept()
+                      |       |          +-------------+
+                      |       |    e.g., | inet_accept | wait for connection, set socket state to CONNECTED
+                      |       |          +---|---------+
+                      |       |              |
+                      |       |              +--> call ->accept()
+                      |       |                         +-----------------+
+                      |       |                   e.g., | inet_csk_accept |
+                      |       |                         +----|------------+
+                      |       |                              |
+                      |       |                              |--> if no connection request in queue
+                      |       |                              |
+                      |       |                              |        +---------------------------+
+                      |       |                              |        | inet_csk_wait_for_connect |
+                      |       |                              |        +---------------------------+
+                      |       |                              |    +--------------------+
+                      |       |                              +--> | reqsk_queue_remove | remove a request
+                      |       |                                   +--------------------+
+                      |       |
+                      |       |--> copy address info to userspace if asked to
+                      |       |
+                      |       +--> return allocated file
+                      |
+                      |    +------------+
+                      +--> | fd_install | install the file to allocated fd
+                           +------------+                                           
 ```
 
 ### sys_write()
 
-(TBD)
+VFS layer
+
+```
++-----------+                                                                                
+| sys_write |                                                                                
++--|--------+                                                                                
+   |    +------------+                                                                       
+   +--> | ksys_write |                                                                       
+        +--|---------+                                                                       
+           |    +-----------+                                                                
+           |--> | file_ppos | get file offset                                                
+           |    +-----------+                                                                
+           |    +-----------+                                                                
+           |--> | vfs_write |                                                                
+           |    +--|--------+                                                                
+           |       |                                                                         
+           |       |--> if file has ->write                                                  
+           |       |                                                                         
+           |       |         call ->write()                                                  
+           |       |                                                                         
+           |       +--> else if file has ->write_iter                                        
+           |                                                                                 
+           |                +----------------+                                               
+           |                | new_sync_write |                                               
+           |                +---|------------+                                               
+           |                    |    +-----------------+                                     
+           |                    +--> | call_write_iter |                                     
+           |                         +----|------------+                                     
+           |                              |                                                  
+           |                              +--> call ->write_iter()                           
+           |                                         +-----------------+                     
+           |                                   e.g., | sock_write_iter | <========== our case
+           |                                         +-----------------+                     
+           |                                                                                 
+           +--> update file offset
+```
+
+TCP layer
+
+```
++-----------------+                                              
+| sock_write_iter |                                              
++----|------------+                                              
+     |    +--------------+                                       
+     +--> | sock_sendmsg |                                       
+          +---|----------+                                       
+              |    +--------------------+                        
+              +--> | sock_sendmsg_nosec |                        
+                   +----|---------------+                        
+                        |                                        
+                        +--> call ->sendmsg()                    
+                                   +--------------+              
+                             e.g., | inet_sendmsg |              
+                                   +---|----------+              
+                                       |                         
+                                       +--> call ->sendmsg()     
+                                                  +-------------+
+                                            e.g., | tcp_sendmsg |
+                                                  +-------------+
+```
+
+```
++-------------+                                                                                       
+| tcp_sendmsg |                                                                                       
++---|---------+                                                                                       
+    |                                                                                                 
+    |--> where there's data to be sent                                                                
+    |                                                                                                 
+    |        +---------------------+                                                                  
+    |        | sk_stream_alloc_skb | allcoate struct sk_buff for buffer management                    
+    |        +---------------------+                                                                  
+    |        +---------------------+                                                                  
+    |        | sk_page_frag_refill | allocate a few pages as buffer                                   
+    |        +---------------------+                                                                  
+    |        +--------------------------+                                                             
+    |        | skb_copy_to_page_nocache | copy data to the buffer                                     
+    |        +--------------------------+                                                             
+    |        +--------------------+                                                                   
+    |        | skb_fill_page_desc | file the buffer descriptor in struct sk_buff                      
+    |        +--------------------+                                                                   
+    |                                                                                                 
+    |        if not data left to be sent, exit the loop                                               
+    |                                                                                                 
+    +--> if we did copy data to socket buffer                                                         
+                                                                                                      
+             +----------+                                                                             
+             | tcp_push |                                                                             
+             +--|-------+                                                                             
+                |    +---------------------------+                                                    
+                +--> | __tcp_push_pending_frames |                                                    
+                     +------|--------------------+                                                    
+                            |    +----------------+                                                   
+                            +--> | tcp_write_xmit | build tcp header, send to ip layer for transmit   
+                                 +---|------------+                                                   
+                                     |    +---------------+                                           
+                                     |--> | tcp_mtu_probe | get MTU size                              
+                                     |    +---------------+                                           
+                                     |                                                                
+                                     |--> while socket has buffer (one socket might have multiple skb)
+                                     |                                                                
+                                     |    +------------------+                                        
+                                     +--> | tcp_transmit_skb |                                        
+                                          +------------------+                                        
+```
 
 ### sys_read()
 
