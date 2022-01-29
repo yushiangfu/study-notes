@@ -6,6 +6,7 @@
 - [Network Layers & Families](#network-layers-and-families)
 - [Application Layer](#application-layer)
 - [Transport Layer](#transport-layer)
+- [Network Layer](#network-layer)
 - [Boot Flow](#boot-flow)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
@@ -81,6 +82,11 @@ Either side can **close()** this connection, and the other side will process the
 ```
 
 ## <a name="transport-layer"></a> Transport Layer
+
+The transport layer provides reliable transmission, flow control, connection concepts. 
+Transmission Control Protocol (TCP) consists of the above features, while User 
+Datagram Protocol (UDP) provides a simplified method for another transmission. 
+Let's inspect how the TCP layer works behind each syscall to serve the request from the application layer.
 
 ### socket()
 
@@ -261,32 +267,35 @@ The server determines whether to accept the packet, and the client socket will c
 ```
 
 ```
-+----------------+                                                                              
-| tcp_v4_connect | set addr and port, allocate skb and build tcp header, send to ip layer       
-+---|------------+                                                                              
-    |    +------------------+                                                                   
-    |--> | ip_route_connect | prepare routing table, and decide next hop                        
-    |    +------------------+                                                                   
-    |                                                                                           
-    |--> set destination addr & port                                                            
-    |                                                                                           
-    |--> change tcp state to SYN_SENT                                                           
-    |                                                                                           
-    |    +-------------------+                                                                  
-    |--> | inet_hash_connect | bind a port to the socket and add to hash table                  
-    |    +-------------------+                                                                  
-    |    +-------------+                                                                        
-    +--> | tcp_connect |                                                                        
-         +---|---------+                                                                        
-             |    +---------------------+                                                       
-             |--> | sk_stream_alloc_skb | allocate socket buffer (skb)                          
-             |    +---------------------+                                                       
-             |    +------------------+                                                          
-             |--> | tcp_transmit_skb | build tcp header, send to ip layer for transmit          
-             |    +------------------+                                                          
-             |    +---------------------------+                                                 
++----------------+
+| tcp_v4_connect | set addr and port, allocate skb and build tcp header, send to ip layer
++---|------------+
+    |    +------------------+
+    |--> | ip_route_connect | prepare routing table, and decide next hop
+    |    +------------------+
+    |
+    |--> set destination addr & port
+    |
+    |--> change tcp state to SYN_SENT
+    |
+    |    +-------------------+
+    |--> | inet_hash_connect | bind a port to the socket and add to hash table
+    |    +-------------------+
+    |    +-------------+
+    +--> | tcp_connect |
+         +---|---------+
+             |    +---------------------+
+             |--> | sk_stream_alloc_skb | allocate socket buffer (skb)
+             |    +---------------------+
+             |    +------------------+
+             |--> | tcp_transmit_skb |
+             |    +----|-------------+
+             |         |    +--------------------+
+             |         +--> | __tcp_transmit_skb | build tcp header, send to ip layer for transmit
+             |              +--------------------+
+             |    +---------------------------+
              +--> | inet_csk_reset_xmit_timer | re-send the packet if no response before timeout
-                  +---------------------------+                                                 
+                  +---------------------------+                                        
 ```
 
 ### accept()
@@ -409,85 +418,154 @@ TCP layer
 ```
 
 ```
-+-------------+                                                                                       
-| tcp_sendmsg |                                                                                       
-+---|---------+                                                                                       
-    |                                                                                                 
-    |--> where there's data to be sent                                                                
-    |                                                                                                 
-    |        +---------------------+                                                                  
-    |        | sk_stream_alloc_skb | allcoate struct sk_buff for buffer management                    
-    |        +---------------------+                                                                  
-    |        +---------------------+                                                                  
-    |        | sk_page_frag_refill | allocate a few pages as buffer                                   
-    |        +---------------------+                                                                  
-    |        +--------------------------+                                                             
-    |        | skb_copy_to_page_nocache | copy data to the buffer                                     
-    |        +--------------------------+                                                             
-    |        +--------------------+                                                                   
-    |        | skb_fill_page_desc | file the buffer descriptor in struct sk_buff                      
-    |        +--------------------+                                                                   
-    |                                                                                                 
-    |        if not data left to be sent, exit the loop                                               
-    |                                                                                                 
-    +--> if we did copy data to socket buffer                                                         
-                                                                                                      
-             +----------+                                                                             
-             | tcp_push |                                                                             
-             +--|-------+                                                                             
-                |    +---------------------------+                                                    
-                +--> | __tcp_push_pending_frames |                                                    
-                     +------|--------------------+                                                    
-                            |    +----------------+                                                   
-                            +--> | tcp_write_xmit | build tcp header, send to ip layer for transmit   
-                                 +---|------------+                                                   
-                                     |    +---------------+                                           
-                                     |--> | tcp_mtu_probe | get MTU size                              
-                                     |    +---------------+                                           
-                                     |                                                                
++-------------+
+| tcp_sendmsg |
++---|---------+
+    |
+    |--> where there's data to be sent
+    |
+    |        +---------------------+
+    |        | sk_stream_alloc_skb | allcoate struct sk_buff for buffer management
+    |        +---------------------+
+    |        +---------------------+
+    |        | sk_page_frag_refill | allocate a few pages as buffer
+    |        +---------------------+
+    |        +--------------------------+
+    |        | skb_copy_to_page_nocache | copy data to the buffer
+    |        +--------------------------+
+    |        +--------------------+
+    |        | skb_fill_page_desc | file the buffer descriptor in struct sk_buff
+    |        +--------------------+
+    |
+    |        if not data left to be sent, exit the loop
+    |
+    +--> if we did copy data to socket buffer
+
+             +----------+
+             | tcp_push |
+             +--|-------+
+                |    +---------------------------+
+                +--> | __tcp_push_pending_frames |
+                     +------|--------------------+
+                            |    +----------------+
+                            +--> | tcp_write_xmit |
+                                 +---|------------+
+                                     |    +---------------+
+                                     |--> | tcp_mtu_probe | get MTU size
+                                     |    +---------------+
+                                     |
                                      |--> while socket has buffer (one socket might have multiple skb)
-                                     |                                                                
-                                     |    +------------------+                                        
-                                     +--> | tcp_transmit_skb |                                        
-                                          +------------------+                                        
+                                     |
+                                     |    +------------------+
+                                     +--> | tcp_transmit_skb |
+                                          +----|-------------+
+                                               |    +--------------------+
+                                               +--> | __tcp_transmit_skb | build tcp header, send to ip layer for transmit
+                                                    +--------------------+                                     
 ```
 
 ### sys_read()
 
-(TBD)
+VFS layer
+
+```
++----------+                                                          
+| sys_read |                                                          
++--|-------+                                                          
+   |    +-----------+                                                 
+   +--> | ksys_read |                                                 
+        +--|--------+                                                 
+           |    +-----------+                                         
+           |--> | file_ppos | get file offset                         
+           |    +-----------+                                         
+           |    +----------+                                          
+           |--> | vfs_read |                                          
+           |    +--|-------+                                          
+           |       |                                                  
+           |       |--> if ->read exists                              
+           |       |                                                  
+           |       |        call ->read()                             
+           |       |                                                  
+           |       +--> else if ->read_iter exists                    
+           |                                                          
+           |                +---------------+                         
+           |                | new_sync_read |                         
+           |                +---|-----------+                         
+           |                    |    +----------------+               
+           |                    +--> | call_read_iter |               
+           |                         +---|------------+               
+           |                             |                            
+           |                             +--> call ->read_iter()      
+           |                                                          
+           |                                  e.g., +----------------+
+           |                                        | sock_read_iter |
+           |                                        +----------------+
+           |                                                          
+           +--> update file offset                                    
+```
+
+TCP layer
+
+```
++----------------+                                              
+| sock_read_iter |                                              
++---|------------+                                              
+    |    +--------------+                                       
+    +--> | sock_recvmsg |                                       
+         +---|----------+                                       
+             |    +--------------------+                        
+             +--> | sock_recvmsg_nosec |                        
+                  +----|---------------+                        
+                       |                                        
+                       +--> call ->recvmsg()                    
+                                  +--------------+              
+                            e.g., | inet_recvmsg |              
+                                  +---|----------+              
+                                      |                         
+                                      +--> call ->recvmsg()     
+                                                 +-------------+
+                                           e.g., | tcp_recvmsg |
+                                                 +-------------+
+```
+
+```
++-------------+                                                                                      
+| tcp_recvmsg |                                                                                      
++---|---------+                                                                                      
+    |    +--------------------+                                                                      
+    +--> | tcp_recvmsg_locked |                                                                      
+         +----|---------------+                                                                      
+              |                                                                                      
+              +--> loop                                                                              
+                                                                                                     
+                       if receive queue has skb(s)                     --+                           
+                                                                         |                           
+                           +-----------------------+                     |                           
+                           | skb_copy_datagram_msg |                     |                           
+                           +-----------------------+                     |                           
+                                                                         | extremely simplified logic
+                       else                                              |                           
+                                                                         |                           
+                           +--------------+                              |                           
+                           | sk_wait_data | wait for data to arrive      |                           
+                           +--------------+                            --+                           
+```
 
 ### sys_close()
 
 (TBD)
 
-The argument **family** in sys_socket() determines the first operation set for each network-related syscall.
+## <a name="network-layer"></a> Network Layer
 
-| Syscall     | Family              |
-| ---         | ---                 |
-| sys_socket  | inet_create         |
-| sys_bind    | inet_bind           |
-| sys_listen  | inet_listen         |
-| sys_connect | inet_stream_connect |
-| sys_accept  | inet_accept         |
-| sys_write   | (TBD)               |
-| sys_read    | (TBD)               |
-| sys_close   | (TBD)               |
+If we specify TCP as our transport layer, it must be Internet Protocol (IP) as the network layer whether we set it. 
+As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
+As for **read()**,  it retrieves skb from the receive queue, but it's probably the IP layer that places skb(s) onto the queue.
 
-The transport layer provides services such as reliable transmission, flow control, connection concept.
-Transmission Control Protocol (TCP) consists the above features, while User Datagram Protocol (UDP) provides a much simplified method for other transmission.
-
-| Family              | Transport layer              |
-| ---                 | ---                          |
-| inet_create         | tcp_v4_init_sock             |
-| inet_bind           | inet_csk_get_port            |
-| inet_listen         | inet_csk_get_port, inet_hash |
-| inet_stream_connect | tcp_v4_connect               |
-| inet_accept         | inet_csk_accept              | 
-| (TBD)               | (TBD)                        |
-| (TBD)               | (TBD)                        |
-| (TBD)               | (TBD)                        |
-
-For the socket creation, not much to introduce.
+| TCP Layer      | IP Layer                         |
+| ---            | ---                              |
+| tcp_v4_connect | ip_route_connect & ip_queue_xmit |
+| tcp_sendmsg    | ip_queue_xmit                    |
+| tcp_recvmsg    | who places the skb?              |
 
 ## <a name="boot-flow"></a> Boot Flow
 
@@ -521,4 +599,4 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 
 ## <a name="reference"></a> Reference
 
-(TBD)
+- [TCP Server-Client implementation in C](https://www.geeksforgeeks.org/tcp-server-client-implementation-in-c/)
