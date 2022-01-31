@@ -460,7 +460,7 @@ TCP layer
                                      +--> | tcp_transmit_skb |
                                           +----|-------------+
                                                |    +--------------------+
-                                               +--> | __tcp_transmit_skb | build tcp header, send to ip layer for transmit
+                                               +--> | __tcp_transmit_skb | build tcp header and send to ip layer
                                                     +--------------------+                                     
 ```
 
@@ -566,6 +566,141 @@ As for **read()**,  it retrieves skb from the receive queue, but it's probably t
 | tcp_v4_connect | ip_route_connect & ip_queue_xmit |
 | tcp_sendmsg    | ip_queue_xmit                    |
 | tcp_recvmsg    | who places the skb?              |
+
+```
++--------+                                                                                   
+| ip_rcv |                                                                                   
++-|------+                                                                                   
+  |    +-------------+                                                                       
+  |--> | ip_rcv_core |                                                                       
+  |    +---|---------+                                                                       
+  |        |                                                                                 
+  |        |--> drop packet if it's not for us                                               
+  |        |                                                                                 
+  |        +--> locate transport header                                                      
+  |                                                                                          
+  |    +---------------+                                                                     
+  +--> | ip_rcv_finish |                                                                     
+       +---|-----------+                                                                     
+           |    +--------------------+                                                       
+           +--> | ip_rcv_finish_core | determine packet direction (deliver to tcp layer or forward to other host)
+                +--------------------+                                                       
+                +-----------+                                                                
+                | dst_input |                                                                
+                +--|--------+                                                                
+                   |                                                                         
+                   +--> call ->input()                                                       
+                              +------------------+                                           
+                        e.g., | ip_local_deliver | (if decided to deliver to tcp layer)
+                              +----|-------------+                                           
+                                   |                                                         
+                                   |--> reassemble the ip fragments if necessary                         
+                                   |                                                         
+                                   |    +-------------------------+                          
+                                   +--> | ip_local_deliver_finish |                          
+                                        +------|------------------+                          
+                                               |                                             
+                                               |--> adjust data ptr to tcp header (strip ip header)         
+                                               |                                             
+                                               |--> get next protocol (e.g., tcp) from packet
+                                               |                                             
+                                               |    +-------------------------+              
+                                               +--> | ip_protocol_deliver_rcu |              
+                                                    +-------------------------+              
+                                                                                             
+                                                            call ->handler()                 
+                                                                  +------------+             
+                                                            e.g., | tcp_v4_rcv | change tcp state or queue skb
+                                                                  +------------+             
+```
+
+```
++---------------+
+| ip_queue_xmit |
++---|-----------+
+    |    +-----------------+
+    +--> | __ip_queue_xmit |
+         +----|------------+
+              |    +----------------+
+              |--> | __sk_dst_check |
+              |    +----------------+
+              |
+              |--> build ip header
+              |    1. set protocol to tcp
+              |    2. set src & dst addr
+              |
+              |    +--------------+
+              +--> | ip_local_out |
+                   +---|----------+
+                       |    +------------+
+                       +--> | dst_output |
+                            +--|---------+
+                               |
+                               +--> call ->output()
+                                          +-----------+
+                                    e.g., | ip_output |
+                                          +--|--------+
+                                             |    +------------------+
+                                             +--> | ip_finish_output |
+                                                  +----|-------------+
+                                                       |    +--------------------+
+                                                       +--> | __ip_finish_output |
+                                                            +----|---------------+
+                                                                 |    +----------------+
+                                                                 |--> | ip_skb_dst_mtu |
+                                                                 |    +----------------+
+                                                                 |
+                                                                 |--> fragment the packet if it's larger than mtu
+                                                                 |
+                                                                 |    +-------------------+
+                                                                 +--> | ip_finish_output2 |
+                                                                      +----|--------------+
+                                                                           |    +-----------------+
+                                                                           |--> | ip_neigh_for_gw |
+                                                                           |    +-----------------+
+                                                                           |    +--------------+
+                                                                           +--> | neigh_output |
+                                                                                +---|----------+
+                                                                                    |    +-----------------+
+                                                                                    +--> | neigh_hh_output | 
+                                                                                         +-----------------+
+                                                                                         connect to driver layer
+```
+
+```
++-----------------+                                                                                         
+| neigh_hh_output |                                                                                         
++----|------------+                                                                                         
+     |    +----------------+                                                                                
+     +--> | dev_queue_xmit |                                                                                
+          +---|------------+                                                                                
+              |    +------------------+                                                                     
+              +--> | __dev_queue_xmit |                                                                     
+                   +----|-------------+                                                                     
+                        |    +---------------------+                                                        
+                        |--> | netdev_core_pick_tx | select tx queue                                        
+                        |    +---------------------+                                                        
+                        |    +---------------------+                                                        
+                        +--> | dev_hard_start_xmit |                                                        
+                             +-----|---------------+                                                        
+                                   |                                                                        
+                                   +--> for each skb                                                        
+                                                                                                            
+                                            +----------+                                                    
+                                            | xmit_one |                                                    
+                                            +--|-------+                                                    
+                                               |    +-------------------+                                   
+                                               +--> | netdev_start_xmit |                                   
+                                                    +----|--------------+                                   
+                                                         |    +---------------------+                       
+                                                         +--> | __netdev_start_xmit |                       
+                                                              +-----|---------------+                       
+                                                                    |                                       
+                                                                    +--> call ->ndo_start_xmit()            
+                                                                               +---------------------------+
+                                                                         e.g., | ftgmac100_hard_start_xmit |
+                                                                               +---------------------------+
+```
 
 ## <a name="boot-flow"></a> Boot Flow
 
