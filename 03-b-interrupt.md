@@ -283,23 +283,26 @@ Commonly speaking, the action->handler plays the role of ISR as we know it.
 If a driver chooses a kthread over a handler to help process the event, **irq_default_primary_handler** will be the default handler for later kthread wake up.
 
 ```
-+------------------+                                                           
-| handle_level_irq |                                                           
-+----|-------------+                                                           
-     |    +------------------+                                                 
-     +--> | handle_irq_event |                                                 
-          +----|-------------+                                                 
-               |    +-------------------------+                                
-               +--> | handle_irq_event_percpu |                                
-                    +------|------------------+                                
-                           |                                                   
-                           |--> action->handler, e.g., serial8250_interrupt
-                           |                                                   
-                           +--> if there's kthread prepared during registration
-                                                                               
-                                    +-------------------+                      
-                                    | __irq_wake_thread |                      
-                                    +-------------------+                      
++------------------+
+| handle_level_irq |
++----|-------------+
+     |    +------------------+
+     +--> | handle_irq_event |
+          +----|-------------+
+               |    +-------------------------+
+               +--> | handle_irq_event_percpu |
+                    +------|------------------+
+                           |    +---------------------------+
+                           +--> | __handle_irq_event_percpu |
+                                +------|--------------------+
+                                       |
+                                       |--> action->handler, e.g., serial8250_interrupt
+                                       |
+                                       +--> if there's kthread prepared during registration
+
+                                                +-------------------+
+                                                | __irq_wake_thread |
+                                                +-------------------+                
 ```
 
 ## <a name="software-irq"></a> Software IRQ
