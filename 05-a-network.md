@@ -6,7 +6,8 @@
 - [Network Layers & Families](#network-layers-and-families)
 - [Application Layer](#application-layer)
 - [Transport Layer](#transport-layer)
-- [Network Layer](#network-layer)
+- [Internet Layer](#internet-layer)
+- [Network Interface Layer](#network-interface-layer)
 - [Boot Flow](#boot-flow)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
@@ -555,7 +556,7 @@ TCP layer
 
 (TBD)
 
-## <a name="network-layer"></a> Network Layer
+## <a name="internet-layer"></a> Internet Layer
 
 If we specify TCP as our transport layer, it must be Internet Protocol (IP) as the network layer whether we set it. 
 As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
@@ -565,54 +566,100 @@ As for **read()**,  it retrieves skb from the receive queue, but it's probably t
 | ---            | ---                              |
 | tcp_v4_connect | ip_route_connect & ip_queue_xmit |
 | tcp_sendmsg    | ip_queue_xmit                    |
-| tcp_recvmsg    | who places the skb?              |
+| tcp_recvmsg    | ip_rcv                           |
+
+Let's skip **ip_route_connect** for now since I don't understand fib lookup and neighbor mechanism. 
 
 ```
-+--------+                                                                                   
-| ip_rcv |                                                                                   
-+-|------+                                                                                   
-  |    +-------------+                                                                       
-  |--> | ip_rcv_core |                                                                       
-  |    +---|---------+                                                                       
-  |        |                                                                                 
-  |        |--> drop packet if it's not for us                                               
-  |        |                                                                                 
-  |        +--> locate transport header                                                      
-  |                                                                                          
-  |    +---------------+                                                                     
-  +--> | ip_rcv_finish |                                                                     
-       +---|-----------+                                                                     
-           |    +--------------------+                                                       
-           +--> | ip_rcv_finish_core | determine packet direction (deliver to tcp layer or forward to other host)
-                +--------------------+                                                       
-                +-----------+                                                                
-                | dst_input |                                                                
-                +--|--------+                                                                
-                   |                                                                         
-                   +--> call ->input()                                                       
-                              +------------------+                                           
-                        e.g., | ip_local_deliver | (if decided to deliver to tcp layer)
-                              +----|-------------+                                           
-                                   |                                                         
-                                   |--> reassemble the ip fragments if necessary                         
-                                   |                                                         
-                                   |    +-------------------------+                          
-                                   +--> | ip_local_deliver_finish |                          
-                                        +------|------------------+                          
-                                               |                                             
-                                               |--> adjust data ptr to tcp header (strip ip header)         
-                                               |                                             
-                                               |--> get next protocol (e.g., tcp) from packet
-                                               |                                             
-                                               |    +-------------------------+              
-                                               +--> | ip_protocol_deliver_rcu |              
-                                                    +-------------------------+              
-                                                                                             
-                                                            call ->handler()                 
-                                                                  +------------+             
-                                                            e.g., | tcp_v4_rcv | change tcp state or queue skb
-                                                                  +------------+             
+                                             +-------- bits                                 
+                                             | +------ full children                        
+                                             | | +---- empty children                       
+                                             | | |                                          
+                             Main:           v v v                                          
+                               +-- 0.0.0.0/1 2 0 2                                          
+           node (+--) ==========> +-- 0.0.0.0/4 2 0 2                                       
+           leaf (|--) ==========>    |-- 0.0.0.0           <========== added by userspace   
+                                        /0 universe UNICAST                                 
+                                     +-- 10.0.2.0/24 2 0 2                                  
+                                        +-- 10.0.2.0/28 2 1 2                               
+                                           +-- 10.0.2.0/30 2 0 1                            
+                                              |-- 10.0.2.0 <========== added by userspace   
+             (mask_len, scope, type) ==========> /24 link UNICAST                           
+                                              |-- 10.0.2.2 <========== added by userspace   
+                                                 /32 link UNICAST                           
+                                              |-- 10.0.2.3 <========== added by userspace   
+                                                 /32 link UNICAST                           
+                                           |-- 10.0.2.15   <========== added by userspace   
+                                              /32 host LOCAL                                
+                                        |-- 10.0.2.255     <========== added by userspace   
+                                           /32 link BROADCAST                               
+                                  +-- 127.0.0.0/8 2 0 2                                     
+                                     +-- 127.0.0.0/31 1 0 0                                 
+                                        |-- 127.0.0.0      <========== added by userspace   
+                                           /8 host LOCAL                                    
+                                        |-- 127.0.0.1      <========== added by userspace   
+                                           /32 host LOCAL                                   
+                                     |-- 127.255.255.255   <========== added by userspace   
+                                        /32 link BROADCAST                                  
+ point to 'Main' ==========> Local:                                                         
+                             	...                                                           
 ```
+
+```
++--------------------+
+| fib_inetaddr_event |
++----|---------------+
+     |
+     |--> if event is NETDEV_UP
+     |
+     |        +----------------+
+     |        | fib_add_ifaddr |
+     |        +----------------+
+     |
+     +--> else if event if NETDEV_DOWN
+
+              +----------------+
+              | fib_del_ifaddr |
+              +----------------+
+```
+
+```
++----------------+                                                          
+| fib_add_ifaddr |                                                          
++---|------------+                                                          
+    |    +-----------+                                                      
+    +--> | fib_magic |                                                      
+         +--|--------+                                                      
+            |    +---------------+                                          
+            |--> | fib_new_table |                                          
+            |    +---|-----------+                                          
+            |        |    +---------------+                                 
+            |        |--> | fib_get_table |                                 
+            |        |    +---------------+                                 
+            |        |                                                      
+            |        |--> return table if found                             
+            |        |                                                      
+            |        |    +----------------+                                
+            |        |--> | fib_trie_table | allocate and set up a fib table
+            |        |    +----------------+                                
+            |        |                                                      
+            |        +--> add to hash table for later search                
+            |                                                               
+            |--> if command is NEW_ROUTE                                    
+            |                                                               
+            |        +------------------+                                   
+            |        | fib_table_insert |                                   
+            |        +------------------+                                   
+            |                                                               
+            +--> else                                                       
+                                                                            
+                     +------------------+                                   
+                     | fib_table_delete |                                   
+                     +------------------+                                   
+```
+
+For transmit, **ip_queue_xmit** is the entry point from the TCP layer. 
+It builds the packet's IP header, performs fragmentation if the size exceeds MTU, and transfers the packet to the network device driver.
 
 ```
 +---------------+
@@ -667,6 +714,60 @@ As for **read()**,  it retrieves skb from the receive queue, but it's probably t
                                                                                          connect to driver layer
 ```
 
+The function **ip_rcv** comes from the NAPI mechanism, and it places the packet onto receive queue of the target socket. 
+Every time users read, it eventually triggers **tcp_recvmsg** and picks up the packet from the queue.
+
+```
++--------+                                                                                   
+| ip_rcv |                                                                                   
++-|------+                                                                                   
+  |    +-------------+                                                                       
+  |--> | ip_rcv_core |                                                                       
+  |    +---|---------+                                                                       
+  |        |                                                                                 
+  |        |--> drop packet if it's not for us                                               
+  |        |                                                                                 
+  |        +--> locate transport header                                                      
+  |                                                                                          
+  |    +---------------+                                                                     
+  +--> | ip_rcv_finish |                                                                     
+       +---|-----------+                                                                     
+           |    +--------------------+                                                       
+           +--> | ip_rcv_finish_core | determine packet direction (deliver to tcp layer or forward to other host)
+                +--------------------+                                                       
+                +-----------+                                                                
+                | dst_input |                                                                
+                +--|--------+                                                                
+                   |                                                                         
+                   +--> call ->input()                                                       
+                              +------------------+                                           
+                        e.g., | ip_local_deliver | (if decided to deliver to tcp layer)
+                              +----|-------------+                                           
+                                   |                                                         
+                                   |--> reassemble the ip fragments if necessary                         
+                                   |                                                         
+                                   |    +-------------------------+                          
+                                   +--> | ip_local_deliver_finish |                          
+                                        +------|------------------+                          
+                                               |                                             
+                                               |--> adjust data ptr to tcp header (strip ip header)         
+                                               |                                             
+                                               |--> get next protocol (e.g., tcp) from packet
+                                               |                                             
+                                               |    +-------------------------+              
+                                               +--> | ip_protocol_deliver_rcu |              
+                                                    +-------------------------+              
+                                                                                             
+                                                            call ->handler()                 
+                                                                  +------------+             
+                                                            e.g., | tcp_v4_rcv | change tcp state or queue skb
+                                                                  +------------+             
+```
+
+
+
+
+
 ```
 +-----------------+                                                                                         
 | neigh_hh_output |                                                                                         
@@ -702,6 +803,49 @@ As for **read()**,  it retrieves skb from the receive queue, but it's probably t
                                                                                +---------------------------+
 ```
 
+## <a name="network-interface-layer"></a> Network Interface Layer
+
+After receiving skb from the Internet layer, the network device driver fills the TX descriptor(s) and triggers the register for hardware to take action.
+
+```
++---------------------------+                                              
+| ftgmac100_hard_start_xmit |                                              
++------|--------------------+                                              
+       |    +----------------+                                             
+       |--> | dma_map_single |  map the data so the hardware can access it?
+       |    +----------------+                                             
+       |                                                                   
+       |--> get the next available tx descriptor and set up it             
+       |                                                                   
+       |--> set up extra tx descriptors if skb has fragments               
+       |                                                                   
+       +--> trigger the hardware to read the updated tx descriptors        
+```
+
+```
++---------------------+                                                                                          
+| ftgmac100_interrupt |                                                                                          
++-----|---------------+                                                                                          
+      |    +--------------------+                                                                                
+      |--> | napi_schedule_prep | label SCHED in napi_struct                                                     
+      |    +--------------------+                                                                                
+      |                                                                                                          
+      +--> if SCHED is labeled by us                                                                             
+                                                                                                                 
+               +------------------------+                                                                        
+               | __napi_schedule_irqoff |                                                                        
+               +-----|------------------+                                                                        
+                     |    +-------------------+                                                                  
+                     +--> | ____napi_schedule |                                                                  
+                          +----|--------------+                                                                  
+                               |                                                                                 
+                               |--> add the napi_struct to the end of list 'softnet_data'                        
+                               |                                                                                 
+                               |    +------------------------+                                                   
+                               +--> | __raise_softirq_irqoff | label NET_RX and somewhere will handle it properly
+                                    +------------------------+                                                   
+```
+
 ## <a name="boot-flow"></a> Boot Flow
 
 During boot up flow, a few init calls register the network family by function **sock_register()** to add the supported socket type on the system.
@@ -730,8 +874,9 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 
 ## <a name="to-do-list"></a> To-Do List
 
-(TBD)
+- Introduce fib and neighbor in IP layer
 
 ## <a name="reference"></a> Reference
 
 - [TCP Server-Client implementation in C](https://www.geeksforgeeks.org/tcp-server-client-implementation-in-c/)
+- [IPv4 route lookup on Linux](https://vincent.bernat.ch/en/blog/2017-ipv4-route-lookup-linux)
