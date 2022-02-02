@@ -621,4 +621,83 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
                        +-------------+                                                   
 ```
   
+```
++-------------------+                                                                   
+| smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
++----|--------------+                                                                   
+     |                                                                                  
+     +--> endless loop                                                                  
+             +-------------------------------------------------------+                  
+             |if kthread should stop                                 |                  
+             |                                                       |                  
+             |    call ->cleanup() if it exists                      |                  
+             |                                                       |                  
+             |    return                                             |                  
+             +-------------------------------------------------------+                  
+             |if kthread should park                                 |                  
+             |                                                       |                  
+             |    call ->park() if it exists                         |                  
+             |                                                       |                  
+             |    change status to PARKED                            |                  
+             |                                                       |                  
+             |    +----------------+                                 |                  
+             |    | kthread_parkme | wait till SHOULD_PARK is cleared|                  
+             |    +----------------+                                 |                  
+             |                                                       |                  
+             |    continue                                           |                  
+             +-------------------------------------------------------+                  
+             |if status is NONE                                      |                  
+             |                                                       |                  
+             |    call ->setup() if it exists                        |                  
+             |                                                       |                  
+             |    change status to ACTIVE                            |                  
+             |                                                       |                  
+             |else if status is PARKED                               |                  
+             |                                                       |                  
+             |    call ->unpark() if it exists                       |                  
+             |                                                       |                  
+             |    change status to ACTIVE                            |                  
+             +-------------------------------------------------------+                  
+             |if kthread doesn't have to run                         |                  
+             |                                                       |                  
+             |    +----------+                                       |                  
+             |    | schedule |                                       |                  
+             |    +----------+                                       |                  
+             |                                                       |                  
+             |else                                                   |                  
+             |                              +---------------+        |                  
+             |    call ->thread_fn(), e.g., | run_ksoftirqd |        |                  
+             |                              +---------------+        |                  
+             +-------------------------------------------------------+                  
+```
+  
+```
++---------+                                                                                               
+| kthread | run argument 'threadfn'                                                                       
++--|------+                                                                                               
+   |                                                                                                      
+   |--> allocate struct 'kthread' and set up                                                              
+   |                                                                                                      
+   |--> complete 'done'                                                                                   
+   |                                                                                                      
+   |    +----------+                                                                                      
+   |--> | schedule |                                                                                      
+   |    +----------+                                                                                      
+   |                                                                                                      
+   |--> if kthread isn't labeled SHOULD_STOP                                                              
+   |                                                                                                      
+   |        +------------------+                                                                          
+   |        | __kthread_parkme | wait till SHOULD_PARK is cleared                                         
+   |        +------------------+                                                                          
+   |                                                                                                      
+   |        call threadfn()                                                                               
+   |              +-------------------+                                                                   
+   |        e.g., | smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
+   |              +-------------------+                                                                   
+   |                                                                                                      
+   |    +---------+                                                                                       
+   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return                 
+        +---------+                                                                                       
+```
+  
 </details>
