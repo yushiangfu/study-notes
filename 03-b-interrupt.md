@@ -212,7 +212,7 @@ We traverse and fetch the target IRQ descriptor by the hardware IRQ.
   20:       6383      AVIC        2 Edge      eth0                   ftgmac100_interrupt          
   21:          0      AVIC        5 Edge      aspeed_vhub            ast_vhub_irq                 
   22:          0      AVIC       25 Edge      aspeed gfx             aspeed_gfx_irq_handler       
-  23:          0      AVIC        7 Edge      aspeed-video           irq_default_primary_handler (threadfn = aspeed_video_irq)
+  23:          0      AVIC        7 Edge      aspeed-video           irq_default_primary_handler + aspeed_video_irq
   32:          0      AVIC        9 Edge      ttyS0                  serial8250_interrupt         
   33:        922      AVIC       10 Edge      ttyS4                  serial8250_interrupt         
   34:          0      AVIC        8 Edge      ipmi-bt-host, ttyS5    bt_bmc_irq                   
@@ -340,11 +340,48 @@ Function **spawn_ksoftirqd** is responsible for initializing the per-CPU task.
          -                                                                                                        
          v                                                                                                        
 +-----------------+                                                                                               
-| spawn_ksoftirqd |                                                                                               
+| spawn_ksoftirqd | for each cpu, prepare a kthread running 'run_ksoftirqd'
 +----|------------+                                                                                               
      |    +--------------------------------+                                                                      
-     +--> | smpboot_register_percpu_thread | argument softirq_threads is a structure containing ksoftirqd routines
+     +--> | smpboot_register_percpu_thread | for each cpu, prepare a kthread running specified hotplug thread
           +--------------------------------+                                                                      
+```
+
+If there's no pending softirq, the ksoftirqd will sleep till somewhere invokes it again.
+
+```
++---------------+                                                                      
+| run_ksoftirqd |                                                                      
++---|-----------+                                                                      
+    |                                                                                  
+    +--> if somewhere raised the softirq (saved in percpu variable)                    
+                                                                                       
+             +--------------+                                                          
+             | __do_softirq |                                                          
+             +---|----------+                                                          
+                 |                                                                     
+                 +--> get pending softirq(s) from percpu variable                      
+                                                                                       
+                      reset that variable to 0 <-----------------------------+         
+                                                                             |         
+                      for each softirq (0 ~ 9)                               |         
+                                                                             |         
+                          call ->action() if the corresponding bit is raised |         
+                                +---------------+                            |         
+                          e.g., | net_rx_action |                            |         
+                                +---------------+                            |         
+                                                                             |         
+                      if there's new pending softirq(s)                      |         
+                                                                             |         
+                          if it's appropriate to handle it now               |         
+                                                                             |         
+                              go to -----------------------------------------+         
+                                                                                       
+                          else                                                         
+                                                                                       
+                              +-----------------+                                      
+                              | wakeup_softirqd | wake up the ksoftirqd to deal with it
+                              +-----------------+                                      
 ```
 
 ## <a name="to-do-list"></a> To-Do List
