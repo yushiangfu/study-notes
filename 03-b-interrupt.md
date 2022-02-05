@@ -246,37 +246,37 @@ We've learned from the _Exception_ chapter that interruptions will cause the CPU
 Whether it switches from _USR_ or _SVC_ mode, it ultimately leads to _handle_arch_irq_, which points to _avic_handle_irq_ during initialization.
 
 ```
-+------------+                                                                             
-| vector_irq |                                                                             
-+------------+                                                                             
-      -                                                                                    
-      -                                                                                    
-      v                                                                                    
-+-----------------+                                                                        
-| avic_handle_irq |                                                                        
-+----|------------+                                                                        
-     |                                                                                     
-     +--> endless loop                                                                     
-                                                                                           
-              check register if there's any pending interrupt                              
-                                                                                           
-              exit loop if there's none                                                    
-                                                                                           
-              +-------------------+                                                        
-              | handle_domain_irq |                                                        
-              +----|--------------+                                                        
-                   |                                                                       
-                   |--> fetch target irq descriptor by hw irq                              
-                   |                                                                       
-                   |    +-----------------+                                                
-                   +--> | handle_irq_desc |                                                
-                        +----|------------+                                                
-                             |    +-------------------------+                              
-                             +--> | generic_handle_irq_desc |                              
-                                  +------|------------------+                              
-                                         |                                                 
++------------+
+| vector_irq |
++------------+
+      -
+      -
+      v
++-----------------+
+| avic_handle_irq |
++----|------------+
+     |
+     +--> endless loop
+     |
+     +------> check register if there's any pending interrupt
+     |
+     +------> exit loop if there's none
+     |
+     |        +-------------------+
+     +------> | handle_domain_irq |
+              +----|--------------+
+                   |
+                   |--> fetch target irq descriptor by hw irq
+                   |
+                   |    +-----------------+
+                   +--> | handle_irq_desc |
+                        +----|------------+
+                             |    +-------------------------+
+                             +--> | generic_handle_irq_desc |
+                                  +------|------------------+
+                                         |
                                          +--> call desc->handle_irq, e.g., handle_level_irq
-                                              which is installed by domain->map()          
+                                              which is installed by domain->map()
 ```
 
 Commonly speaking, the action->handler plays the role of ISR as we know it. 
@@ -311,18 +311,18 @@ Software IRQ is similar to its hardware version, except software triggers the in
 It's a fixed table shown below, and each index corresponds to an action or NULL. 
 Subsystems like timer, network, and scheduler, register these actions in the boot-up flow, and then somewhere trigger them in runtime if necessary.
 
-| Index            | Action                | Note                           |
-| ---              | ---                   |---                             |
-| HI_SOFTIRQ       | tasklet_hi_action     | (TBD)                          |
-| TIMER_SOFTIRQ    | run_timer_softirq     | (TBD)                          |
-| NET_TX_SOFTIRQ   | net_tx_action         | (TBD)                          |
-| NET_RX_SOFTIRQ   | net_rx_action         | (TBD)                          |
-| BLOCK_SOFTIRQ    | blk_done_softirq      | (TBD)                          |
-| IRQ_POLL_SOFTIRQ | irq_poll_softirq      | config is disabled             |
-| TASKLET_SOFTIRQ  | tasklet_action        | (TBD)                          |
-| SCHED_SOFTIRQ    | run_rebalance_domains | help balance the load among rq |
-| HRTIMER_SOFTIRQ  | hrtimer_run_softirq   | (TBD)                          |
-| RCU_SOFTIRQ      | rcu_core_si           | (TBD)                          |
+| Index            | Action                | Note                                   |
+| ---              | ---                   |---                                     |
+| HI_SOFTIRQ       | tasklet_hi_action     | (TBD)                                  |
+| TIMER_SOFTIRQ    | run_timer_softirq     | (TBD)                                  |
+| NET_TX_SOFTIRQ   | net_tx_action         | (TBD)                                  |
+| NET_RX_SOFTIRQ   | net_rx_action         | handle the list of napi_struct         |
+| BLOCK_SOFTIRQ    | blk_done_softirq      | (TBD)                                  |
+| IRQ_POLL_SOFTIRQ | irq_poll_softirq      | config is disabled                     |
+| TASKLET_SOFTIRQ  | tasklet_action        | (TBD)                                  |
+| SCHED_SOFTIRQ    | run_rebalance_domains | help balance the load among run queues |
+| HRTIMER_SOFTIRQ  | hrtimer_run_softirq   | (TBD)                                  |
+| RCU_SOFTIRQ      | rcu_core_si           | (TBD)                                  |
 
 ```
 open_softirq(index, action): register the action for an index
@@ -350,38 +350,65 @@ Function **spawn_ksoftirqd** is responsible for initializing the per-CPU task.
 If there's no pending softirq, the ksoftirqd will sleep till somewhere invokes it again.
 
 ```
-+---------------+                                                                      
-| run_ksoftirqd |                                                                      
-+---|-----------+                                                                      
-    |                                                                                  
-    +--> if somewhere raised the softirq (saved in percpu variable)                    
-                                                                                       
-             +--------------+                                                          
-             | __do_softirq |                                                          
-             +---|----------+                                                          
-                 |                                                                     
-                 +--> get pending softirq(s) from percpu variable                      
-                                                                                       
-                      reset that variable to 0 <-----------------------------+         
-                                                                             |         
-                      for each softirq (0 ~ 9)                               |         
-                                                                             |         
-                          call ->action() if the corresponding bit is raised |         
-                                +---------------+                            |         
-                          e.g., | net_rx_action |                            |         
-                                +---------------+                            |         
-                                                                             |         
-                      if there's new pending softirq(s)                      |         
-                                                                             |         
-                          if it's appropriate to handle it now               |         
-                                                                             |         
-                              go to -----------------------------------------+         
-                                                                                       
-                          else                                                         
-                                                                                       
-                              +-----------------+                                      
-                              | wakeup_softirqd | wake up the ksoftirqd to deal with it
-                              +-----------------+                                      
++---------------+
+| run_ksoftirqd |
++---|-----------+
+    |
+    +--> if somewhere raised the softirq (saved in percpu variable)
+    |
+    |        +--------------+
+    +------> | __do_softirq |
+             +---|----------+
+                 |
+                 +--> get pending softirq(s) from percpu variable
+                 |
+                 +--> reset that variable to 0 <-----------------------------+
+                 |                                                           |
+                 +--> for each softirq (0 ~ 9)                               |
+                 |                                                           |
+                 +------> call ->action() if the corresponding bit is raised |
+                 |              +---------------+                            |
+                 |        e.g., | net_rx_action |                            |
+                 |              +---------------+                            |
+                 |                                                           |
+                 +--> if there's new pending softirq(s)                      |
+                 |                                                           |
+                 +------> if it's appropriate to handle it now               |
+                 |                                                           |
+                 +----------> go to -----------------------------------------+
+                 |
+                 +------> else
+                 |
+                 |            +-----------------+
+                 +----------> | wakeup_softirqd | wake up the ksoftirqd to deal with it
+                              +-----------------+                            
+```
+
+```
++-----------------+                                               
+| avic_handle_irq |                                               
++----|------------+                                               
+     |    +-------------------+                                   
+     +--> | handle_domain_irq |                                   
+          +----|--------------+                                   
+               |    +-----------+                                 
+               |--> | irq_enter |                                 
+               |    +-----------+                                 
+               |    +-----------------+                           
+               |--> | handle_irq_desc |                           
+               |    +-----------------+                           
+               |    +----------+                                  
+               +--> | irq_exit |                                  
+                    +--|-------+                                  
+                       |    +----------------+                    
+                       +--> | __irq_exit_rcu |                    
+                            +---|------------+                    
+                                |                                 
+                                |--> if there's pending softirq(s)
+                                |                                 
+                                |        +----------------+       
+                                +------> | invoke_softirq |       
+                                         +----------------+       
 ```
 
 ## <a name="to-do-list"></a> To-Do List
@@ -391,6 +418,8 @@ If there's no pending softirq, the ksoftirqd will sleep till somewhere invokes i
 - Complete software IRQ table
 - Introduce IRQ domain
 - Introduce IPI
+- Introduce NMI
+- Trace in_interrupt()
 
 ## <a name="reference"></a> Reference
 
