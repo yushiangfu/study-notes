@@ -714,6 +714,41 @@ It builds the packet's IP header, performs fragmentation if the size exceeds MTU
                                                                                          connect to driver layer
 ```
 
+```
++-----------------+                                                                                         
+| neigh_hh_output |                                                                                         
++----|------------+                                                                                         
+     |    +----------------+                                                                                
+     +--> | dev_queue_xmit |                                                                                
+          +---|------------+                                                                                
+              |    +------------------+                                                                     
+              +--> | __dev_queue_xmit |                                                                     
+                   +----|-------------+                                                                     
+                        |    +---------------------+                                                        
+                        |--> | netdev_core_pick_tx | select tx queue                                        
+                        |    +---------------------+                                                        
+                        |    +---------------------+                                                        
+                        +--> | dev_hard_start_xmit |                                                        
+                             +-----|---------------+                                                        
+                                   |                                                                        
+                                   +--> for each skb                                                        
+                                                                                                            
+                                            +----------+                                                    
+                                            | xmit_one |                                                    
+                                            +--|-------+                                                    
+                                               |    +-------------------+                                   
+                                               +--> | netdev_start_xmit |                                   
+                                                    +----|--------------+                                   
+                                                         |    +---------------------+                       
+                                                         +--> | __netdev_start_xmit |                       
+                                                              +-----|---------------+                       
+                                                                    |                                       
+                                                                    +--> call ->ndo_start_xmit()            
+                                                                               +---------------------------+
+                                                                         e.g., | ftgmac100_hard_start_xmit |
+                                                                               +---------------------------+
+```
+
 The function **ip_rcv** comes from the NAPI mechanism, and it places the packet onto receive queue of the target socket. 
 Every time users read, it eventually triggers **tcp_recvmsg** and picks up the packet from the queue.
 
@@ -764,45 +799,6 @@ Every time users read, it eventually triggers **tcp_recvmsg** and picks up the p
                                                                   +------------+             
 ```
 
-
-
-
-
-```
-+-----------------+                                                                                         
-| neigh_hh_output |                                                                                         
-+----|------------+                                                                                         
-     |    +----------------+                                                                                
-     +--> | dev_queue_xmit |                                                                                
-          +---|------------+                                                                                
-              |    +------------------+                                                                     
-              +--> | __dev_queue_xmit |                                                                     
-                   +----|-------------+                                                                     
-                        |    +---------------------+                                                        
-                        |--> | netdev_core_pick_tx | select tx queue                                        
-                        |    +---------------------+                                                        
-                        |    +---------------------+                                                        
-                        +--> | dev_hard_start_xmit |                                                        
-                             +-----|---------------+                                                        
-                                   |                                                                        
-                                   +--> for each skb                                                        
-                                                                                                            
-                                            +----------+                                                    
-                                            | xmit_one |                                                    
-                                            +--|-------+                                                    
-                                               |    +-------------------+                                   
-                                               +--> | netdev_start_xmit |                                   
-                                                    +----|--------------+                                   
-                                                         |    +---------------------+                       
-                                                         +--> | __netdev_start_xmit |                       
-                                                              +-----|---------------+                       
-                                                                    |                                       
-                                                                    +--> call ->ndo_start_xmit()            
-                                                                               +---------------------------+
-                                                                         e.g., | ftgmac100_hard_start_xmit |
-                                                                               +---------------------------+
-```
-
 ## <a name="network-interface-layer"></a> Network Interface Layer
 
 After receiving skb from the Internet layer, the network device driver fills the TX descriptor(s) and triggers the register for hardware to take action.
@@ -844,6 +840,103 @@ After receiving skb from the Internet layer, the network device driver fills the
                                |    +------------------------+                                                   
                                +--> | __raise_softirq_irqoff | label NET_RX and somewhere will handle it properly
                                     +------------------------+                                                   
+```
+
+```
++---------------+                                                                                 
+| net_rx_action | handle the list of napi_struct (not guaranteed to process them all)                                        
++---|-----------+                                                                                 
+    |                                                                                             
+    |--> splice percpu list into local one                                                        
+    |                                                                                             
+    |--> endless loop                                                                             
+    |                                                                                             
+    |------> exit loop if the list is empty                                                       
+    |                                                                                             
+    |------> get the first napi_struct in list                                                    
+    |                                                                                             
+    |        +-----------+                                                                        
+    |------> | napi_poll |                                                                        
+    |        +--|--------+                                                                        
+    |           |                                                                                 
+    |           |--> remove napi_struct from list                                                 
+    |           |                                                                                 
+    |           |    +-------------+                                                              
+    |           |--> | __napi_poll |                                                              
+    |           |    +---|---------+                                                              
+    |           |        |                                                                        
+    |           |        |--> if the napi_struct is labeled SCHED                                 
+    |           |        |                                                                        
+    |           |        |------> call ->poll()                                                   
+    |           |        |              +----------------+                                        
+    |           |        |        e.g., | ftgmac100_poll | send packets to higher layer (e.g., ip)
+    |           |        |              +----------------+ restore hardware interrupts            
+    |           |        |                                                                        
+    |           |        |--> return if no work left                                              
+    |           |        |                                                                        
+    |           |        +--> or inform the caller to re-poll, and then return                    
+    |           |                                                                                 
+    |           +--> if need re-poll, add napi_struct back to the list                            
+    |                                                                                             
+    +--> splice the re-poll list back to the percpu list                                          
+```
+
+```
++----------------+                                                                                                 
+| ftgmac100_poll | send packets to higher layer (e.g., ip), restore hardware interrupts                            
++---|------------+                                                                                                 
+    |    +-----------------------+                                                                                 
+    |--> | ftgmac100_tx_complete | unmap complete packets and release their skbs                                   
+    |    +-----------------------+                                                                                 
+    |                                                                                                              
+    |--> while workload remains and we have budget to handle it                                                    
+    |                                                                                                              
+    |        +---------------------+                                                                               
+    |        | ftgmac100_rx_packet |                                                                               
+    |        +-----|---------------+                                                                               
+    |              |                                                                                               
+    |              |--> get pre-allocated skb & unmap dma mapping                                                  
+    |              |                                                                                               
+    |              |    +------------------------+                                                                 
+    |              |--> | ftgmac100_alloc_rx_buf | allocate skb and map dma mapping for next time                  
+    |              |    +------------------------+                                                                 
+    |              |                                                                                               
+    |              |--> get protocol (e.g., IP) from packet                                                        
+    |              |                                                                                               
+    |              |    +-------------------+                                                                      
+    |              +--> | netif_receive_skb | determine packet type (e.g., ip) and call its ->func() (e.g., ip_rcv)
+    |                   +-------------------+                                                                      
+    |                                                                                                              
+    |--> if we finish the workload                                                                                 
+    |                                                                                                              
+    |        +---------------+                                                                                     
+    |------> | napi_complete | clear the state of napi_struct                                                      
+    |        +---------------+                                                                                     
+    |                                                                                                              
+    +------> enable hardware interrupts                                                                            
+```
+
+```
++-------------------+                                                                           
+| netif_receive_skb | determine packet type (e.g., ip) and call its ->func() (e.g., ip_rcv)
++----|--------------+                                                                           
+     |    +----------------------------+                                                        
+     +--> | netif_receive_skb_internal |                                                        
+          +------|---------------------+                                                        
+                 |    +---------------------+                                                   
+                 +--> | __netif_receive_skb |                                                   
+                      +-----|---------------+                                                   
+                            |    +------------------------------+                               
+                            +--> | __netif_receive_skb_one_core |                               
+                                 +-------|----------------------+                               
+                                         |    +--------------------------+                      
+                                         |--> | __netif_receive_skb_core | determine packet type
+                                         |    +--------------------------+                      
+                                         |                                                      
+                                         +--> call ->func()                                     
+                                                    +--------+                                  
+                                              e.g., | ip_rcv |                                  
+                                                    +--------+                                  
 ```
 
 ## <a name="boot-flow"></a> Boot Flow
