@@ -131,10 +131,8 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
             |                 |
             |                 +--> call family->create()
             |                            +-------------+
-            |                      e.g., | inet_create | install family  operations to socket and call ->init()
+            |                      e.g., | inet_create | install family operations to socket and call ->init()
             |                            +---|---------+
-            |                                |
-            |                                |--> set socket state to UNCONNECTED
             |                                |
             |                                |--> install family + type operations, e.g., inet_stream_ops
             |                                |
@@ -148,7 +146,7 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
             |                                                |--> | tcp_init_sock |
             |                                                |    +---------------+
             |                                                |
-            |                                                +--> install ipv4 operations
+            |                                                +--> install ipv4 operations 'ipv4_specific'
             |
             |    +-------------+
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
@@ -388,7 +386,7 @@ VFS layer
            |                              |                                                  
            |                              +--> call ->write_iter()                           
            |                                         +-----------------+                     
-           |                                   e.g., | sock_write_iter | <========== our case
+           |                                   e.g., | sock_write_iter | (refer to the below)
            |                                         +-----------------+                     
            |                                                                                 
            +--> update file offset
@@ -414,36 +412,36 @@ TCP layer
                                        |                         
                                        +--> call ->sendmsg()     
                                                   +-------------+
-                                            e.g., | tcp_sendmsg |
+                                            e.g., | tcp_sendmsg | (refer to the below)
                                                   +-------------+
 ```
 
 ```
 +-------------+
-| tcp_sendmsg |
+| tcp_sendmsg | copy data to skb and send to ip layer
 +---|---------+
     |
-    |--> where there's data to be sent
+    +--> while there's data to be sent
     |
     |        +---------------------+
-    |        | sk_stream_alloc_skb | allcoate struct sk_buff for buffer management
+    +------> | sk_stream_alloc_skb | allcoate struct sk_buff for buffer management
     |        +---------------------+
     |        +---------------------+
-    |        | sk_page_frag_refill | allocate a few pages as buffer
+    +------> | sk_page_frag_refill | allocate a few pages as buffer
     |        +---------------------+
     |        +--------------------------+
-    |        | skb_copy_to_page_nocache | copy data to the buffer
+    +------> | skb_copy_to_page_nocache | copy data to the buffer
     |        +--------------------------+
     |        +--------------------+
-    |        | skb_fill_page_desc | file the buffer descriptor in struct sk_buff
+    +------> | skb_fill_page_desc | file the buffer descriptor in struct sk_buff
     |        +--------------------+
     |
-    |        if not data left to be sent, exit the loop
+    +------> if not data left to be sent, exit the loop
     |
     +--> if we did copy data to socket buffer
-
-             +----------+
-             | tcp_push |
+    |
+    |        +----------+
+    +------> | tcp_push |
              +--|-------+
                 |    +---------------------------+
                 +--> | __tcp_push_pending_frames |
@@ -462,7 +460,7 @@ TCP layer
                                           +----|-------------+
                                                |    +--------------------+
                                                +--> | __tcp_transmit_skb | build tcp header and send to ip layer
-                                                    +--------------------+                                     
+                                                    +--------------------+
 ```
 
 ### sys_read()
@@ -470,39 +468,39 @@ TCP layer
 VFS layer
 
 ```
-+----------+                                                          
-| sys_read |                                                          
-+--|-------+                                                          
-   |    +-----------+                                                 
-   +--> | ksys_read |                                                 
-        +--|--------+                                                 
-           |    +-----------+                                         
-           |--> | file_ppos | get file offset                         
-           |    +-----------+                                         
-           |    +----------+                                          
-           |--> | vfs_read |                                          
-           |    +--|-------+                                          
-           |       |                                                  
-           |       |--> if ->read exists                              
-           |       |                                                  
-           |       |        call ->read()                             
-           |       |                                                  
-           |       +--> else if ->read_iter exists                    
-           |                                                          
-           |                +---------------+                         
-           |                | new_sync_read |                         
-           |                +---|-----------+                         
-           |                    |    +----------------+               
-           |                    +--> | call_read_iter |               
-           |                         +---|------------+               
-           |                             |                            
-           |                             +--> call ->read_iter()      
-           |                                                          
-           |                                  e.g., +----------------+
-           |                                        | sock_read_iter |
++----------+
+| sys_read |
++--|-------+
+   |    +-----------+
+   +--> | ksys_read |
+        +--|--------+
+           |    +-----------+
+           +--> | file_ppos | get file offset
+           |    +-----------+
+           |    +----------+
+           +--> | vfs_read |
+           |    +--|-------+
+           |       |
+           |       +--> if ->read exists
+           |       |
+           |       |        call ->read()
+           |       |
+           |       +--> else if ->read_iter exists
+           |       |
+           |       |        +---------------+
+           |       +------> | new_sync_read |
+           |                +---|-----------+
+           |                    |    +----------------+
+           |                    +--> | call_read_iter |
+           |                         +---|------------+
+           |                             |
+           |                             +--> call ->read_iter()
            |                                        +----------------+
-           |                                                          
-           +--> update file offset                                    
+           |                                  e.g., | sock_read_iter | (refer to the below)
+           |                                        +----------------+
+           |
+           |
+           +--> update file offset
 ```
 
 TCP layer
@@ -525,31 +523,31 @@ TCP layer
                                       |                         
                                       +--> call ->recvmsg()     
                                                  +-------------+
-                                           e.g., | tcp_recvmsg |
+                                           e.g., | tcp_recvmsg | (refer to the below)
                                                  +-------------+
 ```
 
 ```
-+-------------+                                                                                      
-| tcp_recvmsg |                                                                                      
-+---|---------+                                                                                      
-    |    +--------------------+                                                                      
-    +--> | tcp_recvmsg_locked |                                                                      
-         +----|---------------+                                                                      
-              |                                                                                      
-              +--> loop                                                                              
-                                                                                                     
-                       if receive queue has skb(s)                     --+                           
-                                                                         |                           
-                           +-----------------------+                     |                           
-                           | skb_copy_datagram_msg |                     |                           
-                           +-----------------------+                     |                           
-                                                                         | extremely simplified logic
-                       else                                              |                           
-                                                                         |                           
-                           +--------------+                              |                           
-                           | sk_wait_data | wait for data to arrive      |                           
-                           +--------------+                            --+                           
++-------------+
+| tcp_recvmsg |
++---|---------+
+    |    +--------------------+
+    +--> | tcp_recvmsg_locked |
+         +----|---------------+
+              |
+              +--> loop
+              |
+              +------> if receive queue has skb(s)                     --+
+              |                                                          |
+              |            +-----------------------+                     |
+              +----------> | skb_copy_datagram_msg |                     |
+              |            +-----------------------+                     |
+              |                                                          | extremely simplified logic
+              +------> else                                              |
+              |                                                          |
+              |            +--------------+                              |
+              +----------> | sk_wait_data | wait for data to arrive      |
+                           +--------------+                            --+                      
 ```
 
 ### sys_close()
@@ -560,7 +558,7 @@ TCP layer
 
 If we specify TCP as our transport layer, it must be Internet Protocol (IP) as the network layer whether we set it. 
 As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
-As for **read()**,  it retrieves skb from the receive queue, but it's probably the IP layer that places skb(s) onto the queue.
+As for **read()**,  it retrieves skb from the receive queue, but it's the IP layer that places skb(s) onto the queue.
 
 | TCP Layer      | IP Layer                         |
 | ---            | ---                              |
@@ -753,50 +751,50 @@ The function **ip_rcv** comes from the NAPI mechanism, and it places the packet 
 Every time users read, it eventually triggers **tcp_recvmsg** and picks up the packet from the queue.
 
 ```
-+--------+                                                                                   
-| ip_rcv |                                                                                   
-+-|------+                                                                                   
-  |    +-------------+                                                                       
-  |--> | ip_rcv_core |                                                                       
-  |    +---|---------+                                                                       
-  |        |                                                                                 
-  |        |--> drop packet if it's not for us                                               
-  |        |                                                                                 
-  |        +--> locate transport header                                                      
-  |                                                                                          
-  |    +---------------+                                                                     
-  +--> | ip_rcv_finish |                                                                     
-       +---|-----------+                                                                     
-           |    +--------------------+                                                       
++--------+
+| ip_rcv |
++-|------+
+  |    +-------------+
+  +--> | ip_rcv_core |
+  |    +---|---------+
+  |        |
+  |        +--> drop packet if it's not for us
+  |        |
+  |        +--> locate transport header
+  |
+  |    +---------------+
+  +--> | ip_rcv_finish |
+       +---|-----------+
+           |    +--------------------+
            +--> | ip_rcv_finish_core | determine packet direction (deliver to tcp layer or forward to other host)
-                +--------------------+                                                       
-                +-----------+                                                                
-                | dst_input |                                                                
-                +--|--------+                                                                
-                   |                                                                         
-                   +--> call ->input()                                                       
-                              +------------------+                                           
+           |    +--------------------+
+           |    +-----------+
+           +--> | dst_input |
+                +--|--------+
+                   |
+                   +--> call ->input()
+                              +------------------+
                         e.g., | ip_local_deliver | (if decided to deliver to tcp layer)
-                              +----|-------------+                                           
-                                   |                                                         
-                                   |--> reassemble the ip fragments if necessary                         
-                                   |                                                         
-                                   |    +-------------------------+                          
-                                   +--> | ip_local_deliver_finish |                          
-                                        +------|------------------+                          
-                                               |                                             
-                                               |--> adjust data ptr to tcp header (strip ip header)         
-                                               |                                             
-                                               |--> get next protocol (e.g., tcp) from packet
-                                               |                                             
-                                               |    +-------------------------+              
-                                               +--> | ip_protocol_deliver_rcu |              
-                                                    +-------------------------+              
-                                                                                             
-                                                            call ->handler()                 
-                                                                  +------------+             
+                              +----|-------------+
+                                   |
+                                   +--> reassemble the ip fragments if necessary
+                                   |
+                                   |    +-------------------------+
+                                   +--> | ip_local_deliver_finish |
+                                        +------|------------------+
+                                               |
+                                               +--> adjust data ptr to tcp header (strip ip header)
+                                               |
+                                               +--> get next protocol (e.g., tcp) from packet
+                                               |
+                                               |    +-------------------------+
+                                               +--> | ip_protocol_deliver_rcu |
+                                                    +------|------------------+
+                                                           |
+                                                           +-->lcalla->handler()
+                                                                  +------------+
                                                             e.g., | tcp_v4_rcv | change tcp state or queue skb
-                                                                  +------------+             
+                                                                  +------------+         
 ```
 
 ## <a name="network-interface-layer"></a> Network Interface Layer
@@ -818,28 +816,40 @@ After receiving skb from the Internet layer, the network device driver fills the
        +--> trigger the hardware to read the updated tx descriptors        
 ```
 
+For packet receiving, the registered ISR schedules the NAPI struct of the driver to process the ingress packets. 
+Conventional interrupt mechanism is triggered by hardware components, notifying kernel some events happen and need the ISR to handle them. 
+This method saves more effort than the polling mechanism, which wastes the system resource if hardware event rarely shows. 
+However, modern network interface cards (NIC) support high-speed bandwidth and can quickly generate network interrupts storm. 
+NAPI is the mechanism introduced to solve this problem by mixing interrupt and polling methods. 
+Once a network interrupt happens, somewhere disables the NIC interrupt, and the polling method gets in the way. 
+The polling function registered by the NIC driver continues to receive the packet if there's any, hence saving the system from suffering high-frequency interrupt. 
+Once no more packets arrive, it switches back to the interrupt mechanism.
+
 ```
-+---------------------+                                                                                          
-| ftgmac100_interrupt |                                                                                          
-+-----|---------------+                                                                                          
-      |    +--------------------+                                                                                
-      |--> | napi_schedule_prep | label SCHED in napi_struct                                                     
-      |    +--------------------+                                                                                
-      |                                                                                                          
-      +--> if SCHED is labeled by us                                                                             
-                                                                                                                 
-               +------------------------+                                                                        
-               | __napi_schedule_irqoff |                                                                        
-               +-----|------------------+                                                                        
-                     |    +-------------------+                                                                  
-                     +--> | ____napi_schedule |                                                                  
-                          +----|--------------+                                                                  
-                               |                                                                                 
-                               |--> add the napi_struct to the end of list 'softnet_data'                        
-                               |                                                                                 
-                               |    +------------------------+                                                   
-                               +--> | __raise_softirq_irqoff | label NET_RX and somewhere will handle it properly
-                                    +------------------------+                                                   
++---------------------+
+| ftgmac100_interrupt |
++-----|---------------+
+      |    +----------------------+
+      +--> | napi_schedule_irqoff |
+           +-----|----------------+
+                 |    +--------------------+
+                 +--> | napi_schedule_prep | label SCHED in napi_struct
+                 |    +--------------------+
+                 |
+                 +--> if SCHED is labeled by us
+
+                          +------------------------+
+                          | __napi_schedule_irqoff |
+                          +-----|------------------+
+                                |    +-------------------+
+                                +--> | ____napi_schedule |
+                                     +----|--------------+
+                                          |
+                                          |--> add the napi_struct to the end of list 'softnet_data'
+                                          |
+                                          |    +------------------------+
+                                          +--> | __raise_softirq_irqoff | label NET_RX and somewhere will handle it properly
+                                               +------------------------+                                                 
 ```
 
 ```
@@ -937,6 +947,18 @@ After receiving skb from the Internet layer, the network device driver fills the
                                                     +--------+                                  
                                               e.g., | ip_rcv |                                  
                                                     +--------+                                  
+```
+
+Function **net_rx_action** has its counterpart named **net_tx_action**, responsible for skb cleaning after transmission.
+
+```
++---------------+                                               
+| net_tx_action |                                               
++---|-----------+                                               
+    |                                                           
+    |--> free each skb on completion queue                      
+    |                                                           
+    +--> run each qdisc on output queue <========== not our case
 ```
 
 ## <a name="boot-flow"></a> Boot Flow
