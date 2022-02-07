@@ -384,6 +384,8 @@ If there's no pending softirq, the ksoftirqd will sleep till somewhere invokes i
                               +-----------------+                            
 ```
 
+The exit flow of interrupt handling invokes the **ksoftirqd** to serve the softirq request if there's any.
+
 ```
 +-----------------+                                               
 | avic_handle_irq |                                               
@@ -409,6 +411,23 @@ If there's no pending softirq, the ksoftirqd will sleep till somewhere invokes i
                                 |        +----------------+       
                                 +------> | invoke_softirq |       
                                          +----------------+       
+```
+
+We can check the statistics of softirq as we check on the hardware interrupts.
+
+```
+root@romulus:~# cat /proc/softirqs 
+                    CPU0       
+          HI:          0
+       TIMER:      18093
+      NET_TX:        249
+      NET_RX:       2260
+       BLOCK:          0
+    IRQ_POLL:          0
+     TASKLET:          0
+       SCHED:          0
+     HRTIMER:          0
+         RCU:      36669
 ```
 
 ## <a name="to-do-list"></a> To-Do List
