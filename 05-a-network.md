@@ -291,10 +291,15 @@ The server determines whether to accept the packet, and the client socket will c
              |    +----|-------------+
              |         |    +--------------------+
              |         +--> | __tcp_transmit_skb | build tcp header, send to ip layer for transmit
-             |              +--------------------+
+             |              +----|---------------+
+             |                   |
+             |                   +--> call ->queue_xmit()
+             |                              +---------------+
+             |                        e.g., | ip_queue_xmit |
+             |                              +---------------+
              |    +---------------------------+
              +--> | inet_csk_reset_xmit_timer | re-send the packet if no response before timeout
-                  +---------------------------+                                        
+                  +---------------------------+
 ```
 
 ### accept()
@@ -460,7 +465,12 @@ TCP layer
                                           +----|-------------+
                                                |    +--------------------+
                                                +--> | __tcp_transmit_skb | build tcp header and send to ip layer
-                                                    +--------------------+
+                                                    +----|---------------+
+                                                         |
+                                                         +--> call ->queue_xmit()
+                                                                    +---------------+
+                                                              e.g., | ip_queue_xmit |
+                                                                    +---------------+
 ```
 
 ### sys_read()
@@ -566,41 +576,73 @@ As for **read()**,  it retrieves skb from the receive queue, but it's the IP lay
 | tcp_sendmsg    | ip_queue_xmit                    |
 | tcp_recvmsg    | ip_rcv                           |
 
-Let's skip **ip_route_connect** for now since I don't understand fib lookup and neighbor mechanism. 
+Once the kernel finishes the boot and transfers the control to the systemd, one of the userspace utility sets up the route information. 
+How it gets the data is another story I don't know yet. 
+The kernel knows which gateway's IP address to use when building the packet header with this knowledge.
 
 ```
-                                             +-------- bits                                 
-                                             | +------ full children                        
-                                             | | +---- empty children                       
-                                             | | |                                          
-                             Main:           v v v                                          
-                               +-- 0.0.0.0/1 2 0 2                                          
-           node (+--) ==========> +-- 0.0.0.0/4 2 0 2                                       
-           leaf (|--) ==========>    |-- 0.0.0.0           <========== added by userspace   
-                                        /0 universe UNICAST                                 
-                                     +-- 10.0.2.0/24 2 0 2                                  
-                                        +-- 10.0.2.0/28 2 1 2                               
-                                           +-- 10.0.2.0/30 2 0 1                            
-                                              |-- 10.0.2.0 <========== added by userspace   
-             (mask_len, scope, type) ==========> /24 link UNICAST                           
-                                              |-- 10.0.2.2 <========== added by userspace   
-                                                 /32 link UNICAST                           
-                                              |-- 10.0.2.3 <========== added by userspace   
-                                                 /32 link UNICAST                           
-                                           |-- 10.0.2.15   <========== added by userspace   
-                                              /32 host LOCAL                                
-                                        |-- 10.0.2.255     <========== added by userspace   
-                                           /32 link BROADCAST                               
-                                  +-- 127.0.0.0/8 2 0 2                                     
-                                     +-- 127.0.0.0/31 1 0 0                                 
-                                        |-- 127.0.0.0      <========== added by userspace   
-                                           /8 host LOCAL                                    
-                                        |-- 127.0.0.1      <========== added by userspace   
-                                           /32 host LOCAL                                   
-                                     |-- 127.255.255.255   <========== added by userspace   
-                                        /32 link BROADCAST                                  
- point to 'Main' ==========> Local:                                                         
-                             	...                                                           
+root@romulus:~# cat /proc/net/route 
+Iface   Destination     Gateway         Flags   RefCnt  Use     Metric  Mask            MTU     Window  IRTT                                                       
+eth0    00000000        0202000A        0003    0       0       1024    00000000        0       0       0
+               
+eth0    0002000A        00000000        0001    0       0       1024    00FFFFFF        0       0       0
+               
+eth0    0202000A        00000000        0005    0       0       1024    FFFFFFFF        0       0       0
+               
+eth0    0302000A        00000000        0005    0       0       1024    FFFFFFFF        0       0       0
+             
+```
+
+We can also utilize the utility **route** to display the pretty format.
+
+```
+root@romulus:~# route
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+default         10.0.2.2        0.0.0.0         UG    1024   0        0 eth0
+10.0.2.0        *               255.255.255.0   U     1024   0        0 eth0
+10.0.2.2        *               255.255.255.255 UH    1024   0        0 eth0
+10.0.2.3        *               255.255.255.255 UH    1024   0        0 eth0                                    
+```
+
+We can regard the function **ip_route_connect** does the gateway IP address lookup; otherwise, I have no idea what it's doing.
+
+```
++------------------+                                                                                               
+| ip_route_connect |                                                                                               
++----|-------------+                                                                                               
+     |    +-----------------------+                                                                                
+     |--> | ip_route_connect_init | init flowi4                                                                    
+     |    +-----------------------+                                                                                
+     |    +----------------------+                                                                                 
+     +--> | ip_route_output_flow |                                                                                 
+          +-----|----------------+                                                                                 
+                |    +-----------------------+                                                                     
+                +--> | __ip_route_output_key |                                                                     
+                     +-----|-----------------+                                                                     
+                           |    +--------------------------+                                                       
+                           +--> | ip_route_output_key_hash |                                                       
+                                +------|-------------------+                                                       
+                                       |    +------------------------------+                                       
+                                       +--> | ip_route_output_key_hash_rcu |                                       
+                                            +-------|----------------------+                                       
+                                                    |                                                              
+                                                    |--> try to determine output interface, src addr, dst addr     
+                                                    |                                                              
+                                                    |    +------------+                                            
+                                                    |--> | fib_lookup | lookup fib based on dst addr               
+                                                    |    +------------+                                            
+                                                    |    +------------------+                                      
+                                                    +--> | __mkroute_output |                                      
+                                                         +----|-------------+                                      
+                                                              |    +--------------+                                
+                                                              |--> | rt_dst_alloc | set up rtable and install ops  
+                                                              |    +--------------+ ->output(): ip_output            
+                                                              |                     ->input(): ip_local_deliver      
+                                                              |                                                    
+                                                              |    +----------------+                              
+                                                              +--> | rt_set_nexthop | save gw ip from fib to rtable
+                                                                   +----------------+                                                       
 ```
 
 ```
