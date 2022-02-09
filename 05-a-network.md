@@ -560,6 +560,43 @@ TCP layer
                            +--------------+                            --+                      
 ```
 
+Function **tcp_v4_rcv** is responsible for placing data onto the receive queue, so **tcp_recvmsg** can later retrieve data or wait till there's something.
+
+```
++------------+                                                                                               
+| tcp_v4_rcv |                                                                                               
++--|---------+                                                                                               
+   |    +-------------------+                                                                                
+   |--> | __inet_lookup_skb | lookup target socket through address information                               
+   |    +-------------------+                                                                                
+   |                                                                                                         
+   |--> if socket state is LISTEN                                                                            
+   |                                                                                                         
+   |        +---------------+                                                                                
+   +------> | tcp_v4_do_rcv |                                                                                
+            +---|-----------+                                                                                
+                |                                                                                            
+                |--> if state is ESTABLISHED                                                                 
+                |                                                                                            
+                |        +---------------------+                                                             
+                |------> | tcp_rcv_established |                                                             
+                |        +-----|---------------+                                                             
+                |              |    +---------------+                                                        
+                |              |--> | tcp_queue_rcv | add skb to the receive queue of the socket             
+                |              |    +---------------+                                                        
+                |              |    +----------------+                                                       
+                |              +--> | tcp_data_ready |                                                       
+                |                   +---|------------+                                                       
+                |                       |                                                                    
+                |                       +--> call ->sk_data_ready                                            
+                |                                  +-------------------+                                     
+                |                            e.g., | sock_def_readable | wake up the task waiting on the data
+                |                                  +-------------------+                                     
+                |    +-----------------------+                                                               
+                +--> | tcp_rcv_state_process | handle the tcp state change and packet reply                  
+                     +-----------------------+                                                               
+```
+
 ### sys_close()
 
 (TBD)
@@ -568,7 +605,7 @@ TCP layer
 
 If we specify TCP as our transport layer, it must be Internet Protocol (IP) as the network layer whether we set it. 
 As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
-As for **read()**,  it retrieves skb from the receive queue, but it's the IP layer that places skb(s) onto the queue.
+For **read()** action, the IP layer triggers the TCP handler to place data on the socket's receive queue.
 
 | TCP Layer      | IP Layer                         |
 | ---            | ---                              |
@@ -582,7 +619,7 @@ The kernel knows which gateway's IP address to use when building the packet head
 
 ```
 root@romulus:~# cat /proc/net/route 
-Iface   Destination     Gateway         Flags   RefCnt  Use     Metric  Mask            MTU     Window  IRTT                                                       
+Iface   Destination     Gateway         Flags   RefCnt  Use     Metric  Mask            MTU     Window  IRTT
 eth0    00000000        0202000A        0003    0       0       1024    00000000        0       0       0
                
 eth0    0002000A        00000000        0001    0       0       1024    00FFFFFF        0       0       0
@@ -642,8 +679,11 @@ We can regard the function **ip_route_connect** does the gateway IP address look
                                                               |                                                    
                                                               |    +----------------+                              
                                                               +--> | rt_set_nexthop | save gw ip from fib to rtable
-                                                                   +----------------+                                                       
+                                                                   +----------------+
 ```
+
+<details>
+  <summary> Messy Notes </summary>
 
 ```
 +--------------------+
@@ -698,6 +738,8 @@ We can regard the function **ip_route_connect** does the gateway IP address look
                      +------------------+                                   
 ```
 
+</details>
+  
 For transmit, **ip_queue_xmit** is the entry point from the TCP layer. 
 It builds the packet's IP header, performs fragmentation if the size exceeds MTU, and transfers the packet to the network device driver.
 
@@ -745,6 +787,8 @@ It builds the packet's IP header, performs fragmentation if the size exceeds MTU
                                                                            |    +-----------------+
                                                                            |--> | ip_neigh_for_gw |
                                                                            |    +-----------------+
+                                                                           |    get 'neighbor' struct throug gw ip
+                                                                           |
                                                                            |    +--------------+
                                                                            +--> | neigh_output |
                                                                                 +---|----------+
@@ -752,41 +796,6 @@ It builds the packet's IP header, performs fragmentation if the size exceeds MTU
                                                                                     +--> | neigh_hh_output | 
                                                                                          +-----------------+
                                                                                          connect to driver layer
-```
-
-```
-+-----------------+                                                                                         
-| neigh_hh_output |                                                                                         
-+----|------------+                                                                                         
-     |    +----------------+                                                                                
-     +--> | dev_queue_xmit |                                                                                
-          +---|------------+                                                                                
-              |    +------------------+                                                                     
-              +--> | __dev_queue_xmit |                                                                     
-                   +----|-------------+                                                                     
-                        |    +---------------------+                                                        
-                        |--> | netdev_core_pick_tx | select tx queue                                        
-                        |    +---------------------+                                                        
-                        |    +---------------------+                                                        
-                        +--> | dev_hard_start_xmit |                                                        
-                             +-----|---------------+                                                        
-                                   |                                                                        
-                                   +--> for each skb                                                        
-                                                                                                            
-                                            +----------+                                                    
-                                            | xmit_one |                                                    
-                                            +--|-------+                                                    
-                                               |    +-------------------+                                   
-                                               +--> | netdev_start_xmit |                                   
-                                                    +----|--------------+                                   
-                                                         |    +---------------------+                       
-                                                         +--> | __netdev_start_xmit |                       
-                                                              +-----|---------------+                       
-                                                                    |                                       
-                                                                    +--> call ->ndo_start_xmit()            
-                                                                               +---------------------------+
-                                                                         e.g., | ftgmac100_hard_start_xmit |
-                                                                               +---------------------------+
 ```
 
 The function **ip_rcv** comes from the NAPI mechanism, and it places the packet onto receive queue of the target socket. 
@@ -842,6 +851,41 @@ Every time users read, it eventually triggers **tcp_recvmsg** and picks up the p
 ## <a name="network-interface-layer"></a> Network Interface Layer
 
 After receiving skb from the Internet layer, the network device driver fills the TX descriptor(s) and triggers the register for hardware to take action.
+
+```
++-----------------+
+| neigh_hh_output |
++----|------------+
+     |    +----------------+
+     +--> | dev_queue_xmit |
+          +---|------------+
+              |    +------------------+
+              +--> | __dev_queue_xmit |
+                   +----|-------------+
+                        |    +---------------------+
+                        |--> | netdev_core_pick_tx | select tx queue
+                        |    +---------------------+
+                        |    +---------------------+
+                        +--> | dev_hard_start_xmit |
+                             +-----|---------------+
+                                   |
+                                   +--> for each skb
+                                   |
+                                   |        +----------+
+                                   +------> | xmit_one |
+                                            +--|-------+
+                                               |    +-------------------+
+                                               +--> | netdev_start_xmit |
+                                                    +----|--------------+
+                                                         |    +---------------------+
+                                                         +--> | __netdev_start_xmit |
+                                                              +-----|---------------+
+                                                                    |
+                                                                    +--> call ->ndo_start_xmit()
+                                                                               +---------------------------+
+                                                                         e.g., | ftgmac100_hard_start_xmit |
+                                                                               +---------------------------+
+```
 
 ```
 +---------------------------+                                              
@@ -1003,6 +1047,35 @@ Function **net_rx_action** has its counterpart named **net_tx_action**, responsi
     +--> run each qdisc on output queue <========== not our case
 ```
 
+Let's summarize the read and write flow from the perspective of the network layer model.
+
+```
+                             write                         read                         
+                                                                                        
+                                                                                        
+                         +-----------+                 +----------+                     
+ application             | sys_write |                 | sys_read |                     
+    layer                +-----------+                 +----------+                     
+                               |                             ^                          
+               ---------------------------------------------------------------          
+                               v                     +-------------+                    
+                        +-------------+              | tcp_recvmsg | get data from queue
+  transport             | tcp_sendmsg |              +-------------+                    
+    layer               +-------------+               | tcp_v4_rcv | put data onto queue
+                               |                      +------------+                    
+               ---------------------------------------------------------------          
+                               v                             |                          
+                       +---------------+                +--------+                      
+  internet             | ip_queue_xmit |                | ip_rcv |                      
+    layer              +---------------+                +--------+                      
+                               |                             ^                          
+               ---------------------------------------------------------------          
+                               v                             |                          
+   network       +---------------------------+    +---------------------+               
+  interface      | ftgmac100_hard_start_xmit |    | ftgmac100_interrupt |               
+    layer        +---------------------------+    +---------------------+               
+```
+
 ## <a name="boot-flow"></a> Boot Flow
 
 During boot up flow, a few init calls register the network family by function **sock_register()** to add the supported socket type on the system.
@@ -1031,7 +1104,9 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 
 ## <a name="to-do-list"></a> To-Do List
 
-- Introduce fib and neighbor in IP layer
+- Netfilter
+- TCP 3-way handshake
+- Which task set's the route information?
 
 ## <a name="reference"></a> Reference
 
