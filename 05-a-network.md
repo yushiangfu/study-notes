@@ -45,7 +45,6 @@ root@romulus:~# dmesg | grep family
 [    0.525302] NET: Registered PF_ALG protocol family           <========== no idea yet
 [    2.908709] NET: Registered PF_INET6 protocol family
 [    2.931712] NET: Registered PF_PACKET protocol family        <========== no idea yet
-
 ```
 
 We will introduce how the network works in Linux based on the below combination of TCP and IP (INET family), the so-called TCP/IP model.
@@ -112,6 +111,26 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 - **protocol**
   - With the family PF_INET and type TCP or UDP selected, this field can only be IP.
 
+This syscall allocates a socket and installs corresponding operations based on the specified arguments. 
+These operations determine how the application layer connects the transport layer and the internet layer. 
+Later it prepares a file representing the socket so the users can operate it by general file operations.
+
+```
+  server
+
+ +------+
+ | file |
+ +------+
+     |
+     |
++--------+
+| socket | ops = inet_stream_ops
++--------+ proto = tcp_prot
+```
+
+<details>
+  <summary> Code Trace </summary>
+
 ```
 +------------+
 | sys_socket |
@@ -152,11 +171,35 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
                  +-------------+                                                                        
 ```
-
+</details>
+  
 ### bind()
 
-The caller will prepare the address structure, and it's optional to specify the port. 
-The **bind** function will further check if the specified port is available or prepare a valid one if the caller hasn't set it.
+TCP and UDP protocols introduce the port concept in the transport layer, different from the physical port that connects to the network cable. 
+Every service occupies at least one port when it sets up the server with the help of **bind()**. 
+The common TCP ports are 80 (HTTP), 8080 (HTTPS), 22 (SSH), 53 (DNS), etc. 
+The caller can opt not to provide the port, and **bind()** will prepare a valid one in that case.
+
+```
+  server
+
+ +------+
+ | file |
+ +------+
+     |
+     |
++--------+
+| socket | ops = inet_stream_ops
++--------+ proto = tcp_prot
+     |
+     |
+ +------+
+ | port |
+ +------+                  
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +----------+
@@ -192,12 +235,38 @@ The **bind** function will further check if the specified port is available or p
                                                   |
                                                   +--> check if given port is valid
 ```
+  
+</details>
 
 ### listen()
 
 In TCP design, the socket has different states indicating its current status. 
 The function **listen** will change the socket state accordingly and add it to the hash table, waiting for the client to connect. 
 We can use the utility **netstat** to display system socket status, and I guess the information comes from the hash table.
+
+```
+                     server
+
+                    +------+
+                    | file |
+                    +------+
+                        |
+                        |
+                   +--------+
+                   | socket | ops = inet_stream_ops
+                   +--------+ proto = tcp_prot
+                        |
+                        |
+ hash table         +------+
++-+--------+        | port |
++-+--------+        +------+
++-+--------+
++-+--------+
++-+--------+
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +------------+
@@ -231,11 +300,39 @@ We can use the utility **netstat** to display system socket status, and I guess 
                                                  +-----------+ 
 ```
 
+</details>
+  
 ### connect()
 
-They call this function with server address information on the client side to build the packet and send it to the destination. 
+Clients call this function with server address and port information to build the packet and send it to the destination. 
+Client port is required for the connection establishment, though it could be random. 
 In TCP design, re-sending is possible if the sender receives no response from the target in a specified interval. 
-The server determines whether to accept the packet, and the client socket will change the socket state to CONNECTED after learning the acceptance from the server.
+The server side will receive the packet and locate the corresponding socket by server address and port through the hash table. 
+The client socket will change the socket state to CONNECTED after learning the acceptance from the server.
+
+```
+  client                                                    server
+
+ +------+                                                  +------+
+ | file |                                                  | file |
+ +------+                                                  +------+
+     |                                                         |
+     |                                                         |
++--------+                                                +--------+
+| socket |                                                | socket | ops = inet_stream_ops
++--------+ ------------------------+                  +-> +--------+ proto = tcp_prot
+     |                             |                  |        |
+     |                             |                  |        |
+ +------+                          |    hash table    |    +------+
+ | port |                          |   +-+--------+   |    | port |
+ +------+                          |   +-+--------+   |    +------+
+                                   +-> +-+--------+ --+
+                                       +-+--------+
+                                       +-+--------+
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
  +-------------+
@@ -302,10 +399,37 @@ The server determines whether to accept the packet, and the client socket will c
                   +---------------------------+
 ```
 
+</details>
+  
 ### accept()
 
-Like the function **connect()** waits for acceptance, function **accept()** waits for connection. 
-It will prepare another file descriptor, socket, file for the connection.
+After the client connects to the server, it waits for acceptance.
+Once server decides to accept the request, it prepares another pair of socket and file for real data transmission.
+Till this stage, both sides have been through the famous three-way handshake of TCP and officially establish the connection.
+
+```
+  client                                                    server
+
+ +------+                                +------+          +------+
+ | file |                                | file |          | file |
+ +------+                                +------+          +------+
+     |                                       |                 |
+     |                                       |                 |
++--------+                              +--------+        +--------+
+| socket | <--------------------------> | socket |        | socket | ops = inet_stream_ops
++--------+ ------------------------+    +--------+    +-> +--------+ proto = tcp_prot
+     |                             |                  |        |
+     |                             |                  |        |
+ +------+                          |    hash table    |    +------+
+ | port |                          |   +-+--------+   |    | port |
+ +------+                          |   +-+--------+   |    +------+
+                                   +-> +-+--------+ --+
+                                       +-+--------+
+                                       +-+--------+
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +------------+
@@ -321,16 +445,16 @@ It will prepare another file descriptor, socket, file for the connection.
                       +--> | __get_unused_fd_flags | get an valid file descriptor
                       |    +-----------------------+
                       |    +-----------+
-                      |--> | do_accept |
+                      +--> | do_accept |
                       |    +--|--------+
                       |       |    +------------+
-                      |       |--> | sock_alloc | allocate socket for the connection
+                      |       +--> | sock_alloc | allocate socket for the connection
                       |       |    +------------+
                       |       |    +-----------------+
-                      |       |--> | sock_alloc_file | allocate file for the connection
+                      |       +--> | sock_alloc_file | allocate file for the connection
                       |       |    +-----------------+
                       |       |
-                      |       |--> call ->accept()
+                      |       +--> call ->accept()
                       |       |          +-------------+
                       |       |    e.g., | inet_accept | wait for connection, set socket state to CONNECTED
                       |       |          +---|---------+
@@ -340,25 +464,64 @@ It will prepare another file descriptor, socket, file for the connection.
                       |       |                   e.g., | inet_csk_accept |
                       |       |                         +----|------------+
                       |       |                              |
-                      |       |                              |--> if no connection request in queue
+                      |       |                              +--> if no connection request in queue
                       |       |                              |
                       |       |                              |        +---------------------------+
-                      |       |                              |        | inet_csk_wait_for_connect |
+                      |       |                              +------> | inet_csk_wait_for_connect |
                       |       |                              |        +---------------------------+
                       |       |                              |    +--------------------+
                       |       |                              +--> | reqsk_queue_remove | remove a request
                       |       |                                   +--------------------+
                       |       |
-                      |       |--> copy address info to userspace if asked to
+                      |       +--> copy address info to userspace if asked to
                       |       |
                       |       +--> return allocated file
                       |
                       |    +------------+
                       +--> | fd_install | install the file to allocated fd
-                           +------------+                                           
+                           +------------+
+```
+  
+</details>
+  
+### write()
+
+Each side is free to write data to its socket, and the data goes through the normal flow of 'file write' before reaching the transport layer. 
+TCP then prepares the socket buffer (SKB), copies data onto it, builds the TCP header in SKB, and sends it to the Internet layer.
+
+```
+                     client                                                    server
+
+                    +------+                                +------+          +------+
+                    | file |                                | file |          | file |
+                    +------+                                +------+          +------+
+                        |                                       |                 |
+                        |                                       |                 |
+                   +--------+                              +--------+        +--------+
+                   | socket | <--------------------------> | socket |        | socket | ops = inet_stream_ops
+                   +--------+ ------------------------+    +--------+    +-> +--------+ proto = tcp_prot
+                        |                             |                  |        |
+                        |                             |                  |        |
+                    +------+                          |    hash table    |    +------+
+                    | port |                          |   +-+--------+   |    | port |
+                    +------+                          |   +-+--------+   |    +------+
+                                                      +-> +-+--------+ --+
+                                                          +-+--------+
+                                                          +-+--------+
+
+
+                     packet
+               |   +---------+
+from app layer |   | tcp hdr |
+               +-> +---------+
+                   |         |
+               +-- |  data   |
+   to ip layer |   |         |
+               v   +---------+
 ```
 
-### sys_write()
+<details>
+  <summary> Code Trace </summary>
 
 VFS layer
 
@@ -472,8 +635,47 @@ TCP layer
                                                               e.g., | ip_queue_xmit |
                                                                     +---------------+
 ```
+  
+</details>
+  
+### read()
 
-### sys_read()
+Whenever the network interface hardware receives the packet, the driver triggers the NAPI mechanism which we will introduce later.
+That mechanism eventually place the stripped packet onto the receive queue in TCP layer, waiting for the application to retrieve it.
+
+```
+                     client                                                    server
+
+                    +------+                                +------+          +------+
+                    | file |                                | file |          | file |
+                    +------+                                +------+          +------+
+                        |                                       |                 |
+                        |                                       |                 |
+                   +--------+                              +--------+        +--------+
+                   | socket | <--------------------------> | socket |        | socket | ops = inet_stream_ops
+                   +--------+ ------------------------+    +--------+    +-> +--------+ proto = tcp_prot
+                        |                             |                  |        |
+                        |                             |                  |        |
+                    +------+                          |    hash table    |    +------+
+                    | port |                          |   +-+--------+   |    | port |
+                    +------+                          |   +-+--------+   |    +------+
+                                                      +-> +-+--------+ --+
+                                                          +-+--------+
+                                                          +-+--------+
+
+
+                     packet                                                    packet
+               |   +---------+                                               +---------+   |
+from app layer |   | tcp hdr |                                               | tcp hdr |   | tcp layer: get
+               +-> +---------+   write                               read    +---------+ <-+
+                   |         |  ----------------------------------------->   |         |
+               +-- |  data   |                                               |  data   | <-+
+   to ip layer |   |         |                                               |         |   | tcp layer: put
+               v   +---------+                                               +---------+   |
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 VFS layer
 
@@ -596,7 +798,9 @@ Function **tcp_v4_rcv** is responsible for placing data onto the receive queue, 
                 +--> | tcp_rcv_state_process | handle the tcp state change and packet reply                  
                      +-----------------------+                                                               
 ```
-
+  
+</details>
+  
 ### sys_close()
 
 (TBD)
@@ -607,15 +811,16 @@ If we specify TCP as our transport layer, it must be Internet Protocol (IP) as t
 As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
 For **read()** action, the IP layer triggers the TCP handler to place data on the socket's receive queue.
 
-| TCP Layer      | IP Layer                         |
-| ---            | ---                              |
-| tcp_v4_connect | ip_route_connect & ip_queue_xmit |
-| tcp_sendmsg    | ip_queue_xmit                    |
-| tcp_recvmsg    | ip_rcv                           |
+| TCP Layer                | IP Layer                         |
+| ---                      | ---                              |
+| tcp_v4_connect           | ip_route_connect & ip_queue_xmit |
+| tcp_sendmsg              | ip_queue_xmit                    |
+| tcp_recvmsg & tcp_v4_rcv | ip_rcv                           |
 
 Once the kernel finishes the boot and transfers the control to the systemd, one of the userspace utility sets up the route information. 
 How it gets the data is another story I don't know yet. 
 The kernel knows which gateway's IP address to use when building the packet header with this knowledge.
+
 
 ```
 root@romulus:~# cat /proc/net/route 
@@ -1050,30 +1255,30 @@ Function **net_rx_action** has its counterpart named **net_tx_action**, responsi
 Let's summarize the read and write flow from the perspective of the network layer model.
 
 ```
-                             write                         read                         
-                                                                                        
-                                                                                        
-                         +-----------+                 +----------+                     
- application             | sys_write |                 | sys_read |                     
-    layer                +-----------+                 +----------+                     
-                               |                             ^                          
-               ---------------------------------------------------------------          
-                               v                     +-------------+                    
-                        +-------------+              | tcp_recvmsg | get data from queue
-  transport             | tcp_sendmsg |              +-------------+                    
-    layer               +-------------+               | tcp_v4_rcv | put data onto queue
-                               |                      +------------+                    
-               ---------------------------------------------------------------          
-                               v                             |                          
-                       +---------------+                +--------+                      
-  internet             | ip_queue_xmit |                | ip_rcv |                      
-    layer              +---------------+                +--------+                      
-                               |                             ^                          
-               ---------------------------------------------------------------          
-                               v                             |                          
-   network       +---------------------------+    +---------------------+               
-  interface      | ftgmac100_hard_start_xmit |    | ftgmac100_interrupt |               
-    layer        +---------------------------+    +---------------------+               
+                             write                         read                                             
+                                                                                                            
+                                                                                                            
+                         +-----------+                 +----------+                                         
+ application             | sys_write |                 | sys_read |                                         
+    layer                +-----------+                 +----------+                                         
+                               |                             |                                              
+               ----------------|-----------------------------v----------------                              
+                               v                     +-------------+                                        
+                        +-------------+              | tcp_recvmsg | get data from queue                    
+  transport             | tcp_sendmsg |              +-------------+                                       -
+    layer               +-------------+               | tcp_v4_rcv | put data onto queue                    
+                               |                      +------------+                                        
+               ----------------|-----------------------------^----------------                              
+                               v                             |                                              
+                       +---------------+                +--------+                                          
+  internet             | ip_queue_xmit |                | ip_rcv |                                          
+    layer              +---------------+                +--------+                                          
+                               |                             ^                                              
+               ----------------|-----------------------------|----------------                              
+                               v                             |                                              
+   network       +---------------------------+    +---------------------+                                   
+  interface      | ftgmac100_hard_start_xmit |    | ftgmac100_interrupt |                                   
+    layer        +---------------------------+    +---------------------+                                   
 ```
 
 ## <a name="boot-flow"></a> Boot Flow
@@ -1107,6 +1312,7 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 - Netfilter
 - TCP 3-way handshake
 - Which task set's the route information?
+- VLAN
 
 ## <a name="reference"></a> Reference
 
