@@ -14,7 +14,7 @@
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+Have a good day!
 
 ## <a name="network-layers-and-families"></a> Network Layers & Families
 
@@ -640,8 +640,9 @@ TCP layer
   
 ### read()
 
-Whenever the network interface hardware receives the packet, the driver triggers the NAPI mechanism which we will introduce later.
-That mechanism eventually place the stripped packet onto the receive queue in TCP layer, waiting for the application to retrieve it.
+The driver triggers the NAPI mechanism whenever the network interface hardware receives the packet. 
+That mechanism eventually places the partially stripped packet onto the receive queue in the TCP layer. 
+Every time users read, it triggers **tcp_recvmsg** and picks up the packet. 
 
 ```
                      client                                                    server
@@ -808,6 +809,30 @@ Function **tcp_v4_rcv** is responsible for placing data onto the receive queue, 
 ## <a name="internet-layer"></a> Internet Layer
 
 If we specify TCP as our transport layer, it must be Internet Protocol (IP) as the network layer whether we set it. 
+This layer dictates the direction of packets:
+- output: send to network interface layer for packet transmission
+- input: send transport layer
+- forward: this is probably the pervasive situation for those middle stops on the route
+
+```
+ transport       |          ^                          
+   layer         |          |                          
+                 |          |                          
+                 |          |                          
+      -----------|----------|-----------------------   
+                 |          |                          
+                 |          |                          
+ internet        |output    |input    forward          
+   layer         |          |          +---+           
+                 |          |          |   |           
+                 |          |          |   |           
+      -----------|----------|----------|---|--------   
+                 |          |          |   |           
+  network        |          |          |   |           
+ interface       |          |          |   |           
+   layer         v          |          |   v           
+```
+
 As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
 For **read()** action, the IP layer triggers the TCP handler to place data on the socket's receive queue.
 
@@ -820,7 +845,6 @@ For **read()** action, the IP layer triggers the TCP handler to place data on th
 Once the kernel finishes the boot and transfers the control to the systemd, one of the userspace utility sets up the route information. 
 How it gets the data is another story I don't know yet. 
 The kernel knows which gateway's IP address to use when building the packet header with this knowledge.
-
 
 ```
 root@romulus:~# cat /proc/net/route 
@@ -847,7 +871,10 @@ default         10.0.2.2        0.0.0.0         UG    1024   0        0 eth0
 10.0.2.3        *               255.255.255.255 UH    1024   0        0 eth0                                    
 ```
 
-We can regard the function **ip_route_connect** does the gateway IP address lookup; otherwise, I have no idea what it's doing.
+The function **ip_route_connect** does the gateway IP address lookup, which is essential when building the IP header.
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +------------------+                                                                                               
@@ -886,9 +913,6 @@ We can regard the function **ip_route_connect** does the gateway IP address look
                                                               +--> | rt_set_nexthop | save gw ip from fib to rtable
                                                                    +----------------+
 ```
-
-<details>
-  <summary> Messy Notes </summary>
 
 ```
 +--------------------+
@@ -949,6 +973,23 @@ For transmit, **ip_queue_xmit** is the entry point from the TCP layer.
 It builds the packet's IP header, performs fragmentation if the size exceeds MTU, and transfers the packet to the network device driver.
 
 ```
+output packet:
+
++---------+                                    
+|  ip hdr | src & dst ip, higher protocol (tcp)
++---------+                                    
+| tcp hdr | port                               
++---------+                                    
+|         |                                    
+|  data   |                                    
+|         |                                    
++---------+                                    
+```
+
+<details>
+  <summary> Code Trace </summary>
+
+```
 +---------------+
 | ip_queue_xmit |
 +---|-----------+
@@ -1002,9 +1043,28 @@ It builds the packet's IP header, performs fragmentation if the size exceeds MTU
                                                                                          +-----------------+
                                                                                          connect to driver layer
 ```
+  
+</details>
 
-The function **ip_rcv** comes from the NAPI mechanism, and it places the packet onto receive queue of the target socket. 
-Every time users read, it eventually triggers **tcp_recvmsg** and picks up the packet from the queue.
+Coming from the NAPI mechanism, **ip_rcv** analyzes the IP header and knows which handler to call by inspecting field **protocol**.
+By adjusting the skb pointers, the higher layer has no clue about the IP header as if it's stripped.
+
+```
+input packet:
+
++---------+                                     
+|  ip hdr | src & dst ip, higher protocol (tcp) 
++---------+  --+                                
+|         |    |                                
+|         |    |                                
+|   ???   |    | this is what tcp layer receives
+|         |    |                                
+|         |    |                                
++---------+  --+                                                               
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +--------+
@@ -1047,11 +1107,13 @@ Every time users read, it eventually triggers **tcp_recvmsg** and picks up the p
                                                +--> | ip_protocol_deliver_rcu |
                                                     +------|------------------+
                                                            |
-                                                           +-->lcalla->handler()
-                                                                  +------------+
-                                                            e.g., | tcp_v4_rcv | change tcp state or queue skb
-                                                                  +------------+         
+                                                           +--> call ->handler()
+                                                                      +------------+
+                                                                e.g., | tcp_v4_rcv | change tcp state or queue skb
+                                                                      +------------+         
 ```
+  
+</details>
 
 ## <a name="network-interface-layer"></a> Network Interface Layer
 
