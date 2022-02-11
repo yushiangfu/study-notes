@@ -978,7 +978,7 @@ output packet:
 +---------+                                    
 |  ip hdr | src & dst ip, higher protocol (tcp)
 +---------+                                    
-| tcp hdr | port                               
+| tcp hdr | src & dst port                               
 +---------+                                    
 |         |                                    
 |  data   |                                    
@@ -1038,9 +1038,9 @@ output packet:
                                                                            |    +--------------+
                                                                            +--> | neigh_output |
                                                                                 +---|----------+
-                                                                                    |    +-----------------+
-                                                                                    +--> | neigh_hh_output | 
-                                                                                         +-----------------+
+                                                                                    |    +----------------------+
+                                                                                    +--> | neigh_resolve_output | 
+                                                                                         +----------------------+
                                                                                          connect to driver layer
 ```
   
@@ -1117,41 +1117,71 @@ input packet:
 
 ## <a name="network-interface-layer"></a> Network Interface Layer
 
-After receiving skb from the Internet layer, the network device driver fills the TX descriptor(s) and triggers the register for hardware to take action.
+After receiving skb from the Internet layer, the network device driver builds the MAC header, fills the TX descriptor(s) and ask hardware to take action.
 
 ```
-+-----------------+
-| neigh_hh_output |
-+----|------------+
-     |    +----------------+
-     +--> | dev_queue_xmit |
-          +---|------------+
-              |    +------------------+
-              +--> | __dev_queue_xmit |
-                   +----|-------------+
-                        |    +---------------------+
-                        |--> | netdev_core_pick_tx | select tx queue
-                        |    +---------------------+
-                        |    +---------------------+
-                        +--> | dev_hard_start_xmit |
-                             +-----|---------------+
-                                   |
-                                   +--> for each skb
-                                   |
-                                   |        +----------+
-                                   +------> | xmit_one |
-                                            +--|-------+
-                                               |    +-------------------+
-                                               +--> | netdev_start_xmit |
-                                                    +----|--------------+
-                                                         |    +---------------------+
-                                                         +--> | __netdev_start_xmit |
-                                                              +-----|---------------+
-                                                                    |
-                                                                    +--> call ->ndo_start_xmit()
-                                                                               +---------------------------+
-                                                                         e.g., | ftgmac100_hard_start_xmit |
-                                                                               +---------------------------+
++---------+                                    
+| mac hdr | src & dst mac, higher protocol (ip)
++---------+                                    
+|  ip hdr | src & dst ip, higher protocol (tcp)
++---------+                                    
+| tcp hdr | src & dst port
++---------+                                    
+|         |                                    
+|  data   |                                    
+|         |                                    
++---------+                                    
+```
+
+<details>
+  <summary> Code Trace </summary>
+
+```
++--------------+
+| neigh_output |
++---|----------+
+    |
+    +--> call ->output()
+               +----------------------+
+         e.g., | neigh_resolve_output |
+               +-----|----------------+
+                     |    +-----------------+
+                     |--> | dev_hard_header |
+                     |    +----|------------+
+                     |         |
+                     |         +--> call ->create()
+                     |                    +------------+
+                     |              e.g., | eth_header | build mac header
+                     |                    +------------+
+                     |    +----------------+
+                     +--> | dev_queue_xmit |
+                          +----------------+
+                              |    +------------------+
+                              +--> | __dev_queue_xmit |
+                                   +----|-------------+
+                                        |    +---------------------+
+                                        |--> | netdev_core_pick_tx | select tx queue
+                                        |    +---------------------+
+                                        |    +---------------------+
+                                        +--> | dev_hard_start_xmit |
+                                             +-----|---------------+
+                                                   |
+                                                   +--> for each skb
+                                                   |
+                                                   |        +----------+
+                                                   +------> | xmit_one |
+                                                            +--|-------+
+                                                               |    +-------------------+
+                                                               +--> | netdev_start_xmit |
+                                                                    +----|--------------+
+                                                                         |    +---------------------+
+                                                                         +--> | __netdev_start_xmit |
+                                                                              +-----|---------------+
+                                                                                    |
+                                                                                    +--> call ->ndo_start_xmit(), e.g.,
+                                                                                         +---------------------------+
+                                                                                         | ftgmac100_hard_start_xmit |
+                                                                                         +---------------------------+
 ```
 
 ```
@@ -1169,6 +1199,8 @@ After receiving skb from the Internet layer, the network device driver fills the
        +--> trigger the hardware to read the updated tx descriptors        
 ```
 
+</details>
+
 For packet receiving, the registered ISR schedules the NAPI struct of the driver to process the ingress packets. 
 Conventional interrupt mechanism is triggered by hardware components, notifying kernel some events happen and need the ISR to handle them. 
 This method saves more effort than the polling mechanism, which wastes the system resource if hardware event rarely shows. 
@@ -1177,6 +1209,44 @@ NAPI is the mechanism introduced to solve this problem by mixing interrupt and p
 Once a network interrupt happens, somewhere disables the NIC interrupt, and the polling method gets in the way. 
 The polling function registered by the NIC driver continues to receive the packet if there's any, hence saving the system from suffering high-frequency interrupt. 
 Once no more packets arrive, it switches back to the interrupt mechanism.
+
+```
+                                                                                                
+               interrupt                                                                        
+             ------------>                                                                      
+                           disable interrupt, schedule napi of the driver | hw interrupt handler
+                                                                                                
++--------+                 napi->poll and send to higher layer            |                     
+| +----+ |                                                                |                     
+| | hw | |                 napi->poll and send to higher layer            |                     
+| +----+ |                                                                | sw interrupt handler
++--------+                 napi->poll and send to higher layer            |                     
+                                                                          |                     
+                           enable interrupt                               |                     
+                                                                                                
+               interrupt                                                                        
+             ------------>                                                                      
+                           (repeat)                                                             
+```
+
+The **poll** function learns the packet type by inspecting the field **protocol**, and knows which handler will help transfer the packet to the higher layer.
+
+```
++---------+                                     
+| mac hdr | src & dst mac, higher protocol (ip) 
++---------+  --+                                
+|         |    |                                
+|         |    |                                
+|         |    |                                
+|   ???   |    | this is what ip layer receives
+|         |    |                                
+|         |    |                                
+|         |    |                                
++---------+  --+                                
+```
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +---------------------+
@@ -1201,13 +1271,13 @@ Once no more packets arrive, it switches back to the interrupt mechanism.
                                           |--> add the napi_struct to the end of list 'softnet_data'
                                           |
                                           |    +------------------------+
-                                          +--> | __raise_softirq_irqoff | label NET_RX and somewhere will handle it properly
+                                          +--> | __raise_softirq_irqoff | label NET_RX and somewhere will handle it
                                                +------------------------+                                                 
 ```
 
 ```
 +---------------+                                                                                 
-| net_rx_action | handle the list of napi_struct (not guaranteed to process them all)                                        
+| net_rx_action | handle the list of napi_struct (not guaranteed to process them all)
 +---|-----------+                                                                                 
     |                                                                                             
     |--> splice percpu list into local one                                                        
@@ -1314,6 +1384,8 @@ Function **net_rx_action** has its counterpart named **net_tx_action**, responsi
     +--> run each qdisc on output queue <========== not our case
 ```
 
+</details>
+                                             
 Let's summarize the read and write flow from the perspective of the network layer model.
 
 ```
