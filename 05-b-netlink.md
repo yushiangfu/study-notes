@@ -525,6 +525,67 @@ The difference is that the task can aim for the target socket by specifying the 
           +------------------------+                                 
 ```
 
+| Protocol  | Msg Type             | ->doit                    | ->dumpit                   | Note                              |
+| ---       | ---                  | ---                       | ---                        | ---                               |
+| PF_UNSPEC | RTM_NEWNSID          | rtnl_net_newid            | NULL                       |                                   |
+| PF_UNSPEC | RTM_GETNSID          | rtnl_net_getid            | rtnl_net_dumpid            |                                   |
+| PF_UNSPEC | RTM_GETLINK          | rtnl_getlink              | rtnl_dump_ifinfo           |                                   |
+| PF_UNSPEC | RTM_SETLINK          | rtnl_setlink              | NULL                       |                                   |
+| PF_UNSPEC | RTM_NEWLINK          | rtnl_newlink              | NULL                       |                                   |
+| PF_UNSPEC | RTM_DELLINK          | rtnl_dellink              | NULL                       |                                   |
+| PF_UNSPEC | RTM_GETADDR          | NULL                      | rtnl_dump_all              |                                   |
+| PF_UNSPEC | RTM_GETROUTE         | NULL                      | rtnl_dump_all              |                                   |
+| PF_UNSPEC | RTM_GETNETCONF       | NULL                      | rtnl_dump_all              |                                   |
+| PF_UNSPEC | RTM_NEWLINKPROP      | rtnl_newlinkprop          | NULL                       |                                   |
+| PF_UNSPEC | RTM_DELLINKPROP      | rtnl_dellinkprop          | NULL                       |                                   |
+| PF_UNSPEC | RTM_GETSTATS         | rtnl_stats_get            | rtnl_stats_dump            |                                   |
+| PF_UNSPEC | RTM_NEWNEIGH         | neigh_add                 | NULL                       |                                   |
+| PF_UNSPEC | RTM_DELNEIGH         | neigh_delete              | NULL                       |                                   |
+| PF_UNSPEC | RTM_GETNEIGH         | neigh_get                 | neigh_get                  |                                   |
+| PF_UNSPEC | RTM_GETNEIGHTBL      | NULL                      | neightbl_dump_info         |                                   |
+| PF_UNSPEC | RTM_SETNEIGHTBL      | neightbl_set              | NULL                       |                                   |
+| PF_UNSPEC | RTM_NEWRULE          | fib_nl_newrule            | NULL                       |                                   |
+| PF_UNSPEC | RTM_DELRULE          | fib_nl_delrule            | NULL                       |                                   |
+| PF_UNSPEC | RTM_GETRULE          | NULL                      | fib_nl_dumprule            |                                   |
+| PF_UNSPEC | RTM_NEWNEXTHOP       | rtm_new_nexthop           | NULL                       |                                   |
+| PF_UNSPEC | RTM_DELNEXTHOP       | rtm_del_nexthop           | NULL                       |                                   |
+| PF_UNSPEC | RTM_GETNEXTHOP       | rtm_get_nexthop           | rtm_dump_nexthop           |                                   |
+| PF_UNSPEC | RTM_GETNEXTHOPBUCKET | rtm_get_nexthop_bucket    | rtm_dump_nexthop_bucket    |                                   |
+||||||
+| PF_BRIDGE | RTM_NEWNEIGH         | rtnl_fdb_add              | NULL                       |                                   |
+| PF_BRIDGE | RTM_DELNEIGH         | rtnl_fdb_del              | NULL                       |                                   |
+| PF_BRIDGE | RTM_GETNEIGH         | rtnl_fdb_get              | rtnl_fdb_dump              |                                   |
+| PF_BRIDGE | RTM_GETLINK          | NULL                      | rtnl_bridge_getlink        |                                   |
+| PF_BRIDGE | RTM_DELLINK          | rtnl_bridge_dellink       | NULL                       |                                   |
+| PF_BRIDGE | RTM_SETLINK          | rtnl_bridge_setlink       | NULL                       |                                   |
+||||||
+| PF_INET   | RTM_NEWNEXTHOP       | rtm_new_nexthop           | NULL                       |                                   |
+| PF_INET   | RTM_GETNEXTHOP       | NULL                      | rtm_dump_nexthop           |                                   |
+| PF_INET   | RTM_NEWADDR          | inet_rtm_newaddr          | NULL                       |                                   |
+| PF_INET   | RTM_DELADDR          | inet_rtm_deladdr          | NULL                       |                                   |
+| PF_INET   | RTM_GETADDR          | NULL                      | inet_dump_ifaddr           |                                   |
+| PF_INET   | RTM_GETNETCONF       | inet_netconf_get_devconf  | inet_netconf_dump_devconf  |                                   |
+| PF_INET   | RTM_NEWROUTE         | inet_rtm_newroute         | NULL                       |                                   |
+| PF_INET   | RTM_DELROUTE         | inet_rtm_delroute         | NULL                       |                                   |
+| PF_INET   | RTM_GETROUTE         | inet_rtm_getroute         | inet_dump_fib              | Two functions complete this entry |
+||||||
+| PF_INET6  | RTM_NEWNEXTHOP       | rtm_new_nexthop           | NULL                       |                                   |
+| PF_INET6  | RTM_GETNEXTHOP       | NULL                      | rtm_dump_nexthop           |                                   |
+| PF_INET6  | RTM_GETROUTE         | NULL                      | inet6_dump_fib             |                                   |
+| PF_INET6  | RTM_NEWROUTE         | inet6_rtm_newroute        | NULL                       |                                   |
+| PF_INET6  | RTM_DELROUTE         | inet6_rtm_delroute        | NULL                       |                                   |
+| PF_INET6  | RTM_GETROUTE         | inet6_rtm_getroute        | NULL                       |                                   |
+| PF_INET6  | RTM_GETLINK          | NULL                      | inet6_dump_ifinfo          |                                   |
+| PF_INET6  | RTM_NEWADDR          | inet6_rtm_newaddr         | NULL                       |                                   |
+| PF_INET6  | RTM_DELADDR          | inet6_rtm_deladdr         | NULL                       |                                   |
+| PF_INET6  | RTM_GETADDR          | inet6_rtm_getaddr         | inet6_dump_ifaddr          |                                   |
+| PF_INET6  | RTM_GETMULTICAST     | NULL                      | inet6_dump_ifmcaddr        |                                   |
+| PF_INET6  | RTM_GETANYCAST       | NULL                      | inet6_dump_ifacaddr        |                                   |
+| PF_INET6  | RTM_GETNETCONF       | inet6_netconf_get_devconf | inet6_netconf_dump_devconf |                                   |
+| PF_INET6  | RTM_NEWADDRLABEL     | ip6addrlbl_newdel         | NULL                       |                                   |
+| PF_INET6  | RTM_DELADDRLABEL     | ip6addrlbl_newdel         | NULL                       |                                   |
+| PF_INET6  | RTM_GETADDRLABEL     | ip6addrlbl_get            | ip6addrlbl_dump            |                                   |
+                      
 ## <a name="reference"></a> Reference
 
 [mwarning, netlink-examples](https://github.com/mwarning/netlink-examples)
