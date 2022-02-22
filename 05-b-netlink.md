@@ -571,10 +571,9 @@ The difference is that the task can aim for the target socket by specifying the 
 ||||||
 | PF_INET6  | RTM_NEWNEXTHOP       | rtm_new_nexthop           | NULL                       |                                   |
 | PF_INET6  | RTM_GETNEXTHOP       | NULL                      | rtm_dump_nexthop           |                                   |
-| PF_INET6  | RTM_GETROUTE         | NULL                      | inet6_dump_fib             |                                   |
+| PF_INET6  | RTM_GETROUTE         | inet6_rtm_getroute        | inet6_dump_fib             | Two functions complete this entry |
 | PF_INET6  | RTM_NEWROUTE         | inet6_rtm_newroute        | NULL                       |                                   |
 | PF_INET6  | RTM_DELROUTE         | inet6_rtm_delroute        | NULL                       |                                   |
-| PF_INET6  | RTM_GETROUTE         | inet6_rtm_getroute        | NULL                       |                                   |
 | PF_INET6  | RTM_GETLINK          | NULL                      | inet6_dump_ifinfo          |                                   |
 | PF_INET6  | RTM_NEWADDR          | inet6_rtm_newaddr         | NULL                       |                                   |
 | PF_INET6  | RTM_DELADDR          | inet6_rtm_deladdr         | NULL                       |                                   |
@@ -586,6 +585,157 @@ The difference is that the task can aim for the target socket by specifying the 
 | PF_INET6  | RTM_DELADDRLABEL     | ip6addrlbl_newdel         | NULL                       |                                   |
 | PF_INET6  | RTM_GETADDRLABEL     | ip6addrlbl_get            | ip6addrlbl_dump            |                                   |
                       
+```
++---------------+                                                   
+| rtnl_dump_all | for each family, call the ->dumpit() based on type
++---|-----------+                                                   
+    |                                                               
+    |--> for each family                                            
+    |                                                               
+    |------> get link based on 'family' and 'type'                  
+    |                                                               
+    +------> call link->dumpit()                                    
+                   +------------------+                             
+             e.g., | inet_dump_ifaddr | fill ipv4 info into skb     
+                   +------------------+      
+                   +------------------+                             
+             e.g., | inet_dump_ifaddr | dump each fib table into callback buffer
+                   +------------------+    
+```
+
+```
++--------------+                                                 
+| rtnl_getlink |                                                 
++---|----------+                                                 
+    |    +-----------+                                           
+    |--> | nlmsg_new | preapre new msg (skb)                     
+    |    +-----------+                                           
+    |    +------------------+                                    
+    |--> | rtnl_fill_ifinfo | fill dev related info onto msg
+    |    +------------------+                                    
+    |    +--------------+                                        
+    +--> | rtnl_unicast | send msg to the place that asks for it
+         +--------------+                                        
+```
+
+```
++-----------+                                                                        
+| neigh_get |                                                                        
++--|--------+                                                                        
+   |    +---------------------+                                                      
+   |--> | neigh_valid_get_req | parse incoming msg to get info, e.g., table, dst, ...
+   |    +---------------------+                                                      
+   |    +--------------+                                                             
+   |--> | neigh_lookup | lookup neighbor                                             
+   |    +--------------+                                                             
+   |    +-----------------+                                                          
+   +--> | neigh_get_reply |                                                          
+        +----|------------+                                                          
+             |    +-----------+                                                      
+             |--> | nlmsg_new | preapre new msg (skb)                                
+             |    +-----------+                                                      
+             |    +-----------------+                                                
+             |--> | neigh_fill_info | fill neighbor related info onto msg            
+             |    +-----------------+                                                
+             |    +--------------+                                                   
+             +--> | rtnl_unicast | send msg to the place that asks for it            
+                  +--------------+                                                   
+```
+
+```
++-----------------+                                              
+| rtm_get_nexthop |                                              
++----|------------+                                              
+     |    +----------------------+                               
+     |--> | nh_valid_get_del_req | get 'id' from msg             
+     |    +----------------------+                               
+     |    +-----------+                                          
+     |--> | alloc_skb |                                          
+     |    +-----------+                                          
+     |    +--------------------+                                 
+     |--> | nexthop_find_by_id | find next hop by id             
+     |    +--------------------+                                 
+     |    +--------------+                                       
+     |--> | nh_fill_node | fill the info of next hop into msg    
+     |    +--------------+                                       
+     |    +--------------+                                       
+     +--> | rtnl_unicast | send msg to the place that asks for it
+          +--------------+                                       
+```
+
+```
++-----------------+                                                                
+| fib_nl_dumprule | fill the rule info into incoming skb                           
++----|------------+                                                                
+     |                                                                             
+     |--> for each ops in the net namespace                                        
+     |                                                                             
+     |        +------------+                                                       
+     +------> | dump_rules |                                                       
+              +--|---------+                                                       
+                 |                                                                 
+                 |--> for each rules in the ops                                    
+                 |                                                                 
+                 |        +------------------+                                     
+                 +------> | fib_nl_fill_rule | fill the rule info into incoming skb
+                          +------------------+                                     
+```
+
+```
++------------------+                                              
+| inet_rtm_newaddr |                                              
++----|-------------+                                              
+     |    +---------------+                                       
+     |--> | rtm_to_ifaddr | get addr from msg                     
+     |    +---------------+                                       
+     |    +-------------------+                                   
+     |--> | find_matching_ifa | check if it's there already       
+     |    +-------------------+                                   
+     |                                                            
+     |--> if it doesn't exist yet                                 
+     |                                                            
+     |        +-------------------+                               
+     |        | __inet_insert_ifa |                               
+     +------> +-------------------+                               
+     |                                                            
+     +--> else                                                    
+     |                                                            
+     |        +-----------+                                       
+     +------> | rtmsg_ifa | prepare skb and send notification back
+              +-----------+                                       
+```
+
+```
++-------------------+                                                           
+| inet_rtm_newroute |                                                           
++----|--------------+                                                           
+     |    +-------------------+                                                 
+     |--> | rtm_to_fib_config | parse msg and convert to fib config             
+     |    +-------------------+                                                 
+     |    +---------------+                                                     
+     |--> | fib_new_table | prepare an fib table                                
+     |    +---------------+                                                     
+     |    +------------------+                                                  
+     +--> | fib_table_insert | add the table to system and send notifcation back
+          +------------------+                                                  
+```
+
+```
++--------------+                                                
+| rtnl_setlink |                                                
++---|----------+                                                
+    |    +------------------------+                             
+    |--> | nlmsg_parse_deprecated | parse attribute from msg    
+    |    +------------------------+                             
+    |                                                           
+    |--> get target net device                                  
+    |                                                           
+    |    +------------+                                         
+    +--> | do_setlink | configure the device by these attributes
+         +------------+                                         
+```
+
+
 ## <a name="reference"></a> Reference
 
 [mwarning, netlink-examples](https://github.com/mwarning/netlink-examples)
