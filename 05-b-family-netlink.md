@@ -525,6 +525,8 @@ The difference is that the task can aim for the target socket by specifying the 
           +------------------------+                                 
 ```
 
+Here's the table of callbacks that register to table[NETLINK_ROUTE] during bootup.
+
 | Protocol  | Msg Type             | ->doit                    | ->dumpit                   | Note                              |
 | ---       | ---                  | ---                       | ---                        | ---                               |
 | PF_UNSPEC | RTM_NEWNSID          | rtnl_net_newid            | NULL                       |                                   |
@@ -584,7 +586,10 @@ The difference is that the task can aim for the target socket by specifying the 
 | PF_INET6  | RTM_NEWADDRLABEL     | ip6addrlbl_newdel         | NULL                       |                                   |
 | PF_INET6  | RTM_DELADDRLABEL     | ip6addrlbl_newdel         | NULL                       |                                   |
 | PF_INET6  | RTM_GETADDRLABEL     | ip6addrlbl_get            | ip6addrlbl_dump            |                                   |
-                      
+
+<details>
+  <summary> Code Trace </summary>
+
 ```
 +---------------+                                                   
 | rtnl_dump_all | for each family, call the ->dumpit() based on type
@@ -734,7 +739,8 @@ The difference is that the task can aim for the target socket by specifying the 
     +--> | do_setlink | configure the device by these attributes
          +------------+                                         
 ```
-
+         
+</details>
 
 ## <a name="reference"></a> Reference
 
