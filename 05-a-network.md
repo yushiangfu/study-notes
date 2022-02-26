@@ -9,12 +9,29 @@
 - [Internet Layer](#internet-layer)
 - [Network Interface Layer](#network-interface-layer)
 - [Boot Flow](#boot-flow)
-- [To-Do List](#to-do-list)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
-Have a good day!
+```          
+               OSI Model            TCP/IP Model  
+                                                  
+           +--------------+       +--------------+
+         7 |  Application |       |              |
+           +--------------+       |              |
+         6 | Presentation |       |  Application |
+           +--------------+       |              |
+         5 |    Session   |       |              |
+           +--------------+       +--------------+
+         4 |   Transport  |       |   Transport  |
+           +--------------+       +--------------+
+ router  3 |    Network   |       |    Network   |
+           +--------------+       +--------------+
+ switch  2 |   Data Link  |       |              |
+           +--------------+       |    Network   |
+         1 |   Physical   |       |   Interface  |
+           +--------------+       +--------------+
+```
 
 ## <a name="network-layers-and-families"></a> Network Layers & Families
 
@@ -171,6 +188,37 @@ Later it prepares a file representing the socket so the users can operate it by 
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
                  +-------------+                                                                        
 ```
+</details>
+  
+### setsockopt()
+
+It's optional.
+
+<details>
+  <summary> Code Trace </summary>
+
+```
++----------------+                                     
+| sys_setsockopt |                                     
++---|------------+                                     
+    |    +------------------+                          
+    +--> | __sys_setsockopt |                          
+         +----|-------------+                          
+              |                                        
+              |--> if level is SOL_SOCKET              
+              |                                        
+              |        +-----------------+             
+              |------> | sock_setsockopt |             
+              |        +-----------------+             
+              |                                        
+              |--> else                                
+              |                                        
+              +------> call ->setsockopt()             
+                             +------------------------+
+                       e.g., | sock_common_setsockopt |
+                             +------------------------+
+```
+  
 </details>
   
 ### bind()
@@ -1440,13 +1488,6 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 | packet_init | ---------> | sock_register | PF_PACKET 
 +-------------+            +---------------+           
 ```
-
-## <a name="to-do-list"></a> To-Do List
-
-- Netfilter
-- TCP 3-way handshake
-- Which task set's the route information?
-- VLAN
 
 ## <a name="reference"></a> Reference
 
