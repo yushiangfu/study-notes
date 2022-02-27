@@ -7,6 +7,33 @@
 
 ## <a name="introduction"></a> Introduction
 
+Utility **udhcpc** broadcasts a packet to discover the DHCP server and get an assigned IP in the later interaction sequence. 
+It's worth noting that the packet is a self-made UDP packet actually by specifying arguments as below.
+
+```
+socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP))
+```
+
+It then generates a socket that allows **udhcpc** to compose IP header, UDP header, and payload (DHCP message). 
+Though it's still the kernel that builds the MAC header, the arguments come from **udhcpc**, which means it controls all the major fields of a packet.
+
+```
++---------+
+| mac hdr | src mac (dev addr) + dst mac (broadcast) + higher protocol (ip)
++---------+
+|  ip hdr | src ip (any)       + dst ip (broadcast)  + higher protocol (udp)
++---------+
+| udp hdr | src port (68)      + dst port (67)
++---------+
+|         |
+|  data   | dhcp message
+|         |
++---------+
+```
+
+<details>
+  <summary> Code Trace </summary>
+
 ```
 +------------+
 | sys_socket |
@@ -102,7 +129,7 @@
                                               |--> | packet_alloc_skb |
                                               |    +------------------+
                                               |    +-----------------+
-                                              |--> | dev_hard_header | build mac header
+                                              |--> | dev_hard_header | build mac header based on user parameters
                                               |    +-----------------+
                                               |    +-----------------------------+
                                               |--> | skb_copy_datagram_from_iter | copy data to skb
@@ -113,6 +140,52 @@
                                                    e.g., | dev_queue_xmit | transfer skb to driver and send out
                                                          +----------------+
 ```
+
+```
++--------------+
+| sys_recvfrom |
++---|----------+
+    |    +----------------+
+    +--> | __sys_recvfrom |
+         +---|------------+
+             |    +---------------------+
+             |--> | import_single_range | copy buf from user space to kernel iov
+             |    +---------------------+
+             |    +---------------------+
+             |--> | sockfd_lookup_light | get socket through fd
+             |    +---------------------+
+             |    +--------------+
+             |--> | sock_recvmsg |
+             |    +---|----------+
+             |        |    +--------------------+
+             |        +--> | sock_recvmsg_nosec |
+             |             +----|---------------+
+             |                  |
+             |                  +--> call ->sendmsg()
+             |                             +----------------+
+             |                       e.g., | packet_recvmsg |
+             |                             +---|------------+
+             |                                 |    +--------------------+
+             |                                 |--> | skb_recv_datagram  | receive skb from queue, might block
+             |                                 |    +--------------------+
+             |                                 |    +-----------------------+
+             |                                 |--> | skb_copy_datagram_msg | copy data to msg
+             |                                 |    +-----------------------+
+             |                                 |
+             |                                 |--> copy addr info to msg
+             |                                 |
+             |                                 |    +-------------------+
+             |                                 +--> | skb_free_datagram | free the skb
+             |                                      +-------------------+
+             |
+             |--> if user space 'addr' is provided
+             |
+             |        +-------------------+
+             +------> | move_addr_to_user |
+                      +-------------------+
+```
+   
+</details>
 
 ## <a name="reference"></a> Reference
 
