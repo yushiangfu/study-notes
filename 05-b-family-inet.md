@@ -16,6 +16,107 @@
 ## <a name="udp"></a> User Datagram Protocol (UDP)
 
 ```
+              +--------+                                +--------+
+              | TCP/IP |                                | UDP/IP |
+              +--------+                                +--------+
+                                       │
+    client                 server      │      client                 server
+ -----------------------------------   │   -----------------------------------
+   socket()               socket()     │     socket()               socket()
+       |                      |        │         |                      |
+       |                      v        │         |                      v
+       |                   bind()      │         |                   bind()
+       |                      |        │         |                      |
+       |                      v        │         |                      |
+       |                  listen()     │         |                      |
+       v                      |        │         |                      |
+   connect()                  |        │         |                      |
+       |                      v        │         |                      |
+       |                  accept()     │         |                      |
+       |                      |        │         |                      |
+       v                      v        │         v                      v
+read()/write()         read()/write()  │  read()/write()         read()/write()
+       |                      |        │         |                      |
+       v                      v        │         v                      v
+    close()                close()     │      close()                close()
+                                       │
+```
+
+```
+                            write                         read
+
+
+                        +-----------+                 +----------+
+application             | sys_write |                 | sys_read |
+   layer                +-----------+                 +----------+
+                              |                             |
+              ----------------|-----------------------------v----------------
+                              v                      +-------------+
+                       +-------------+               | udp_recvmsg | get data from queue
+ transport             | udp_sendmsg |               +-------------+                                      -
+   layer               +-------------+                 | udp_rcv |   put data onto queue
+                              |                        +---------+
+              ----------------|-----------------------------^----------------
+                              v                             |
+                       +-------------+                 +--------+
+ internet              | ip_send_skb |                 | ip_rcv |
+   layer               +-------------+                 +--------+
+                              |                             ^
+              ----------------|-----------------------------|----------------
+                              v                             |
+  network       +---------------------------+    +---------------------+
+ interface      | ftgmac100_hard_start_xmit |    | ftgmac100_interrupt |
+   layer        +---------------------------+    +---------------------+
+```
+
+<details>
+  <summary> Code Trace </summary>
+
+```
++----------+
+| sys_bind |
++--|-------+
+   |    +------------+
+   +--> | __sys_bind |
+        +--|---------+
+           |    +---------------------+
+           |--> | sockfd_lookup_light | get socket by file descriptor
+           |    +---------------------+
+           |    +---------------------+
+           |--> | move_addr_to_kernel | copy data from user to kernel space
+           |    +---------------------+
+           |
+           +--> call ->bind()
+                      +-----------+
+                e.g., | inet_bind | bind the given address to the socket
+                      +--|--------+
+                         |
+                         |--> call type->bind() if it exists (not our case)
+                         |
+                         |    +-------------+
+                         +--> | __inet_bind |
+                              +---|---------+
+                                  |
+                                  +--> call type->get_port()
+                                             +-----------------+
+                                       e.g., | udp_v4_get_port |
+                                             +----|------------+
+                                                  |    +------------------+
+                                                  +--> | udp_lib_get_port |
+                                                       +----|-------------+
+                                                            |
+                                                            |--> if src port isn't specified
+                                                            |
+                                                            |------> find an available one
+                                                            |
+                                                            |--> else
+                                                            |
+                                                            |        check if it's available
+                                                            |
+                                                            +--> add the sock to the udp hash table
+```
+
+```
     +-----------+                                                                      
     | sys_write |                                                                      
     +-----------+                                                                      
@@ -129,11 +230,6 @@
          +-----------------+                            
 ```
 
-
-
-
-
-
 ```
 +---------+                                                                                     
 | udp_rcv |                                                                                     
@@ -158,13 +254,13 @@
                                       +-----------------------+                                 
 ```
 
+</details>
 
-
-## <a name="udp"></a> Internet Control Message Protocol (ICMP)
+## <a name="icmp"></a> Internet Control Message Protocol (ICMP)
 
 (TBD)
 
-## <a name="udp"></a> Address Resolution Protocol (ARP)
+## <a name="arp"></a> Address Resolution Protocol (ARP)
 
 (TBD)
 
@@ -303,4 +399,4 @@
 
 ## <a name="reference"></a> Reference
 
-(TBD)
+- [UDP Server-Client implementation in C](https://www.geeksforgeeks.org/udp-server-client-implementation-c/)
