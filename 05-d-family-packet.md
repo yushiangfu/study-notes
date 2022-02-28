@@ -31,6 +31,35 @@ Though it's still the kernel that builds the MAC header, the arguments come from
 +---------+
 ```
 
+Creating the socket registers the **packet_rcv** for specified **protocol**, e.g., IP. 
+Whenever an incoming packet indicates that its higher protocol is IP, the network subsystem calls not only **ip_rcv** but also **packet_rcv**. 
+The latter further wakes up the waiting task if there's any.
+
+```
+                           write                          read
+
+
+                    1. prep payload              1. parse internet hdr
+                    2. prep transport hdr        2. parse transport hdr
+                    3. prep internet hdr         3. parse payload
+
+                       +------------+                 +----------+
+application            | sys_sendto |                 | sys_read |
+   layer               +------------+                 +----------+
+                              |                             |
+              ----------------|-----------------------------v----------------
+                              v                    +----------------+
+                     +----------------+            | packet_recvmsg | get data from queue
+                     | packet_sendmsg |            +----------------+
+                     +----------------+              | packet_rcv |   put data onto queue
+                              |                      +------------+
+              ----------------|-----------------------------^----------------
+                              v                             |
+  network       +---------------------------+    +---------------------+
+ interface      | ftgmac100_hard_start_xmit |    | ftgmac100_interrupt |
+   layer        +---------------------------+    +---------------------+
+```
+
 <details>
   <summary> Code Trace </summary>
 
@@ -61,11 +90,28 @@ Though it's still the kernel that builds the MAC header, the arguments come from
             |                                |--> if 'protocol' is specified
             |                                |
             |                                |        +----------------------+
-            |                                +------> | __register_prot_hook |
+            |                                +------> | __register_prot_hook | register packet_rcv() for arg 'protocol'
             |                                         +----------------------+
             |    +-------------+
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
                  +-------------+
+```
+  
+```
++------------+                                                          
+| packet_rcv |                                                          
++--|---------+                                                          
+   |    +-----------+                                                   
+   |--> | skb_clone | copy the skb                                      
+   |    +-----------+                                                   
+   |    +------------------+                                            
+   |--> | __skb_queue_tail |                                            
+   |    +------------------+                                            
+   |                                                                    
+   +--> call ->sk_data_ready()                                          
+              +-------------------+                                     
+        e.g., | sock_def_readable | wake up the task waiting on the data
+              +-------------------+                                     
 ```
 
 ```
