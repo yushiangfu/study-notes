@@ -7,14 +7,55 @@
 
 ## <a name="introduction"></a> Introduction
 
-Utility **udhcpc** broadcasts a packet to discover the DHCP server and get an assigned IP in the later interaction sequence. 
-It's worth noting that the packet is a self-made UDP packet actually by specifying arguments as below.
+Utility **udhcpc** is the typical DHCP client on an embedded system that helps us get the IP dynamically from the DHCP server. 
+Because it's at the stage before obtaining an IP, the interaction between the DHCP client and server differs from what we commonly know.
+
+1. The client broadcasts a packet to discover the server.
+2. The server replies with an available IP address and other information such as gateway IP that the client can configure.
+3. The client broadcasts again to indicate that it will take the offer.
+4. Server: cool.
+
+```
+            client                                                       server           
+                                                                                          
+                                                                                          
++---------------------------+      broadcast                                              
+|       dhcp discover       | ------------------->                                        
++---------------------------+                                                             
+ src mac = aa:aa:aa:bb:bb:bb                                                              
+ dst mac = ff:ff:ff:ff:ff:ff                                                              
+  src ip = 0.0.0.0                                                                        
+  dst ip = 255.255.255.255                                                                
+                                               unicast       +---------------------------+
+                                        <------------------- |        dhcp offer         |
+                                                             +---------------------------+
+                                                              src mac = cc:cc:cc:dd:dd:dd 
+                                                              dst mac = aa:aa:aa:bb:bb:bb 
+                                                               src ip = 192.168.0.1       
+                                                               dst ip = 255.255.255.255   
++---------------------------+      broadcast                                              
+|       dhcp request        | ------------------->                                        
++---------------------------+                                                             
+ src mac = aa:aa:aa:bb:bb:bb                                                              
+ dst mac = ff:ff:ff:ff:ff:ff                                                              
+  src ip = 0.0.0.0                                                                        
+  dst ip = 255.255.255.255                                                                
+                                               unicast       +---------------------------+
+                                        <------------------- |         dhcp ack          |
+                                                             +---------------------------+
+                                                              src mac = cc:cc:cc:dd:dd:dd 
+                                                              dst mac = aa:aa:aa:bb:bb:bb 
+                                                               src ip = 192.168.0.1       
+                                                               dst ip = 255.255.255.255   
+```
+
+Tracing the code of **udhcpc**, it's worth noting that the packet from the client is a self-made UDP datagram using a highly customizable socket.
 
 ```
 socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP))
 ```
 
-It then generates a socket that allows **udhcpc** to compose IP header, UDP header, and payload (DHCP message). 
+Doing so allows **udhcpc** to freely compose IP header, UDP header, and payload (DHCP message). 
 Though it's still the kernel that builds the MAC header, the arguments come from **udhcpc**, which means it controls all the major fields of a packet.
 
 ```
@@ -31,9 +72,9 @@ Though it's still the kernel that builds the MAC header, the arguments come from
 +---------+
 ```
 
-Creating the socket registers the **packet_rcv** for specified **protocol**, e.g., IP. 
+When creating a socket of packet family, the framework automatically registers the **packet_rcv** for specified **protocol**, e.g., IP. 
 Whenever an incoming packet indicates that its higher protocol is IP, the network subsystem calls not only **ip_rcv** but also **packet_rcv**. 
-The latter further wakes up the waiting task if there's any.
+The latter further wakes up the waiting task, such as **udhcpc**, to advance the DHCP procedure.
 
 ```
                            write                          read
@@ -235,4 +276,4 @@ application            | sys_sendto |                 | sys_read |
 
 ## <a name="reference"></a> Reference
 
-(TBD)
+- [Dynamic Host Configuration Protocol](https://en.wikipedia.org/wiki/Dynamic_Host_Configuration_Protocol)
