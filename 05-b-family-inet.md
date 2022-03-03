@@ -11,7 +11,36 @@
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+There are seven socket types in our study case. The INET family prepares five operation sets and registers them into three types.
+- Type **STREAM**: it can only mean the combination of TCP and IP.
+- Type **DGRAM**: the transport layer can be UDP, UDP lite, or ICMP.
+- Type **RAW**: users prepare the transport layer themselves or even handle the Internet layer.
+
+```
++---------------------------------------+                                
+|      +--------------------------+     |                                
+|      |                          |     |                                
+|      |                socket(family, type, protocol)                   
+|      |                                         |                       
+|      |                                         |                       
+|      v                                         |                       
+|    INET                                        |                       
+|   +--------------------------------------------|----------------------+
+|   |    [STREAM]   ----   TCP/IP                |                      |
+|   |                                            v                      |
++-------> [DGRAM]   ----   UDP/IP   ----   UDP_LITE/IP   ----   ICMP/IP |
+    |                                                                   |
+    |       [RAW]   ----   */IP                                         |
+    |                                                                   |
+    |       [RDM]                                                       |
+    |                                                                   |
+    | [SEQPACKET]                                                       |
+    |                                                                   |
+    |      [DCCP]                                                       |
+    |                                                                   |
+    |    [PACKET]                                                       |
+    +-------------------------------------------------------------------+
+```
      
 ## <a name="udp"></a> User Datagram Protocol (UDP)
 
@@ -290,7 +319,9 @@ application             | sys_write |                 | sys_read |
             |                                |
             |                                |--> install family + type operations, e.g., inet_stream_ops
             |                                |
-            |                                |--> allocate tcp socket (not the same socket created earlier)
+            |                                |--> allocate protocol sock (different from generic socket)
+            |                                |
+            |                                |--> set ->hdrincl to 1 if user specifiesprotocolas 'raw'
             |                                |
             |                                +--> call ->init()
             |                                          +-------------+
