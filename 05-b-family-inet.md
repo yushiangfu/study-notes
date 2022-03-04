@@ -295,6 +295,19 @@ application             | sys_write |                 | sys_read |
 
 ## <a name="raw"></a> Raw
 
+When users choose the **raw** type, they will build the header of the transport layer specified in the argument **protocol**. 
+Setting **protocol** to IPPROTO_RAW indicates the users will even prepare the IP header independently.
+
+```
+socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)        <== users build transport header (e.g., icmp)
+socket(PF_INET, SOCK_RAW, IPPROTO_RAW)         <== users build transport header + ip header
+socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP)) <== users build transport header + ip header + mac header
+                                                   (actually it's kernel that helps build the customized mac header)
+```
+
+<details>
+  <summary> Code Trace </summary>
+
 ```
 +------------+
 | sys_socket |
@@ -321,7 +334,7 @@ application             | sys_write |                 | sys_read |
             |                                |
             |                                |--> allocate protocol sock (different from generic socket)
             |                                |
-            |                                |--> set ->hdrincl to 1 if user specifiesprotocolas 'raw'
+                                             |--> set ->hdrincl to 1 if user specifies protocol as 'raw'
             |                                |
             |                                +--> call ->init()
             |                                          +-------------+
@@ -331,6 +344,16 @@ application             | sys_write |                 | sys_read |
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
                  +-------------+
 ```
+
+</details>
+    
+
+Type **RAW** supports ICMP in sendmsg() by the below two steps.
+- Copy setting from user space to kernel space.
+- Ask kernel to build the IP header and send out the packet.
+
+<details>
+  <summary> Code Trace </summary>
 
 ```
 +------------+                                                                                                          
@@ -363,19 +386,96 @@ application             | sys_write |                 | sys_read |
                                               +--> call ->sendmsg()                                                     
                                                          +-------------+                                                
                                                    e.g., | raw_sendmsg |                                                
-                                                         +---|---------+                                                
-                                                             |    +----------------------+                              
-                                                             |--> | ip_route_output_flow | decide addr, interface, gw ip
-                                                             |    +----------------------+                              
-                                                             |    +-----------------+                                   
-                                                             +--> | raw_send_hdrinc |                                   
-                                                                  +----|------------+                                   
-                                                                       |                                                
-                                                                       |--> set up skb                                  
-                                                                       |                                                
-                                                                       |    +------------+                              
-                                                                       +--> | dst_output | send to driver layer         
-                                                                            +------------+                              
+                                                         +-------------+                                                
+                                           
+```
+
+```
++-------------+
+| raw_sendmsg |
++---|---------+
+    |
+    |--> if ->hdrincl isn't set (kernel builds the ip header)
+    |
+    |        +---------------------+
+    |------> | raw_probe_proto_opt |
+    |        +-----|---------------+
+    |              |
+    |              |--> return if it's not icmp protocl
+    |              |
+    |              +--> copy icmp data from user to kernel
+    |
+    |    +----------------------+
+    |--> | ip_route_output_flow | decide addr, interface, gw ip
+    |    +----------------------+
+    |
+    +--> if ->hdrincl is set (user builds the ip header)
+    |
+    |        +-----------------+
+    |------> | raw_send_hdrinc |
+    |        +----|------------+
+    |             |
+    |             |--> set up skb
+    |             |
+    |             |    +------------+
+    |             +--> | dst_output | send to driver layer
+    |                  +------------+
+    |
+    |--> else (kernel builds the ip header)
+    |
+    |        +----------------+
+    |------> | ip_append_data | append data to make a larger datagram
+    |        +----------------+
+    |
+    |------> if no more data
+    |
+    |            +------------------------+
+    +----------> | ip_push_pending_frames |
+                 +-----|------------------+
+                       |    +---------------+
+                       |--> | ip_finish_skb | build ip header
+                       |    +---------------+
+                       |    +-------------+
+                       +--> | ip_send_skb | send to driver layer
+                            +-------------+
+```
+
+</details>
+
+When the incoming packet arrives at the Internet layer, function ip_rcv parses the IP header to get the higher protocol. 
+Knowing that helps it transfer the packet by calling the corresponding registered handler. 
+So far, the INET family supports up to five handlers in my study case.
+    
+```
++---------+
+| mac hdr | src & dst mac, higher protocol (ip)
++---------+
+|  ip hdr | src & dst ip, higher protocol (???)
++---------+
+|   ???   |
+|---------|
+|         |
+|   data  |
+|         |
++---------+
+```
+
+```
+                                          +----------+   
+                +----    [ICMP]    -----  | icmp_rcv |   
+                |                         +----------+   
+                |                         +----------+   
+                +----    [IGMP]    -----  | igmp_rcv |   
+                |                         +----------+   
++--------+      |                         +------------+ 
+| ip_rcv |  ---------     [TCP]    -----  | tcp_v4_rcv | 
++--------+      |                         +------------+ 
+                |                         +---------+    
+                |----     [UDP]    -----  | udp_rcv |    
+                |                         +---------+    
+                |                         +-------------+
+                +----  [UDP_LITE]  -----  | udplite_rcv |
+                                          +-------------+
 ```
 
 ```
