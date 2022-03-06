@@ -331,14 +331,14 @@ The typical **ECHO** is one of them and the only one I've ever used.
 | ICMP_ADDRESSREPLY   | 18     | Address Mask Reply      | icmp_discard   |
 ```
 
-By applying the **strace** on utility **ping** of busybox and **ping** in Ubuntu, we can observe that they create different types of socket.
+By applying the **strace** on utility **ping** of busybox and **ping** in Ubuntu, we can observe that they create different socket types.
 
 ```
 ping of busybox
     - socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
     - application provides the arguments, and kernel builds the icmp header
     
-ping in Ubuntu
+ping in ubuntu
     - socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)
     - application builds the icmp header
 ```
@@ -370,6 +370,9 @@ application             | sys_write |
    layer        +---------------------------+    +---------------------+    +---------------------------+
 ```
 
+<details>
+  <summary> Code Trace </summary>
+
 ```
 +----------+                                         
 | icmp_rcv |                                         
@@ -395,6 +398,8 @@ application             | sys_write |
                               +-----------------+    
 ```
 
+</details>
+    
 ## <a name="igmp"></a> Internet Group Management Protocol (IGMP)
 
 (TBD)
