@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [User Datagram Protocol (UDP)](#udp)
 - [Internet Control Message Protocol (ICMP)](#icmp)
+- [Internet Group Management Protocol (IGMP)](#igmp)
 - [Address Resolution Protocol (ARP)](#arp)
 - [Raw](#raw)
 - [Reference](#reference)
@@ -40,6 +41,27 @@ There are seven socket types in our study case. The INET family prepares five op
     |                                                                   |
     |    [PACKET]                                                       |
     +-------------------------------------------------------------------+
+```
+
+On the receiving side, if the **protocol** filed in the MAC header is **IP**, the NAPI mechanism calls the handler **ip_rcv** to take over the packet. 
+And IP layer will parse the **protocol** field in the IP header to decide the corresponding handler and deliver the packet for further processing.
+
+```
+                                          +----------+   
+                +----    [ICMP]    -----  | icmp_rcv |   
+                |                         +----------+   
+                |                         +----------+   
+                +----    [IGMP]    -----  | igmp_rcv |   
+                |                         +----------+   
++--------+      |                         +------------+ 
+| ip_rcv |  ---------     [TCP]    -----  | tcp_v4_rcv | 
++--------+      |                         +------------+ 
+                |                         +---------+    
+                |----     [UDP]    -----  | udp_rcv |    
+                |                         +---------+    
+                |                         +-------------+
+                +----  [UDP_LITE]  -----  | udplite_rcv |
+                                          +-------------+
 ```
      
 ## <a name="udp"></a> User Datagram Protocol (UDP)
@@ -199,7 +221,7 @@ application             | sys_write |                 | sys_read |
     +--> | udp_push_pending_frames |                                        
          +------|------------------+                                        
                 |    +----------------+                                     
-                |--> |  ip_finish_skb | merge multiple skb into a larger one
+                |--> |  ip_finish_skb | build ip header
                 |    +----------------+                                     
                 |    +-------------+                                        
                 +--> | udp_send_skb|                                        
@@ -286,6 +308,94 @@ application             | sys_write |                 | sys_read |
 </details>
 
 ## <a name="icmp"></a> Internet Control Message Protocol (ICMP)
+
+ICMP is the protocol that serves the purpose of diagnosing and controlling. 
+Utility **ping** is the application that works on top of ICMP, which supports up to eighteen types of messages. 
+The typical **ECHO** is one of them and the only one I've ever used.
+
+```
+| Name                | Number | Note                    | Handler        |
+| ---                 | ---    | ---                     | ---            |
+| ICMP_ECHOREPLY      | 0      | Echo Reply              | ping_rcv       |
+| ICMP_DEST_UNREACH   | 3      | Destination Unreachable | icmp_unreach   |
+| ICMP_SOURCE_QUENCH  | 4      | Source Quench           | icmp_unreach   |
+| ICMP_REDIRECT       | 5      | Redirect (change route) | icmp_redirect  |
+| ICMP_ECHO           | 8      | Echo Request            | icmp_echo      |
+| ICMP_TIME_EXCEEDED  | 11     | Time Exceeded           | icmp_unreach   |
+| ICMP_PARAMETERPROB  | 12     | Parameter Problem       | icmp_unreach   |
+| ICMP_TIMESTAMP      | 13     | Timestamp Request       | icmp_timestamp |
+| ICMP_TIMESTAMPREPLY | 14     | Timestamp Reply         | icmp_discard   |
+| ICMP_INFO_REQUEST   | 15     | Information Request     | icmp_discard   |
+| ICMP_INFO_REPLY     | 16     | Information Reply       | icmp_discard   |
+| ICMP_ADDRESS        | 17     | Address Mask Request    | icmp_discard   |
+| ICMP_ADDRESSREPLY   | 18     | Address Mask Reply      | icmp_discard   |
+```
+
+By applying the **strace** on utility **ping** of busybox and **ping** in Ubuntu, we can observe that they create different types of socket.
+
+```
+ping of busybox
+    - socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+    - application provides the arguments, and kernel builds the icmp header
+    
+ping in Ubuntu
+    - socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)
+    - application builds the icmp header
+```
+
+```
+                            write                                       read
+
+
+                        +-----------+
+application             | sys_write |
+   layer                +-----------+
+                              |
+              ----------------|----------------------------------------------------------------------------
+                              v
+                       +-------------+
+ transport             | raw_sendmsg |                +----------+                 +------------+
+   layer               +-------------+                | icmp_rcv |  ------------>  | icmp_reply |
+                              |                       +----------+                 +------------+
+              ----------------|-----------------------------^-----------------------------|----------------
+                              v                             |                             v
+                       +-------------+                 +--------+                  +-------------+
+ internet              | ip_send_skb |                 | ip_rcv |                  | ip_send_skb |
+   layer               +-------------+                 +--------+                  +-------------+
+                              |                             ^                             |
+              ----------------|-----------------------------|-----------------------------|----------------
+                              v                             |                             v
+  network       +---------------------------+    +---------------------+    +---------------------------+
+ interface      | ftgmac100_hard_start_xmit |    | ftgmac100_interrupt |    | ftgmac100_hard_start_xmit |
+   layer        +---------------------------+    +---------------------+    +---------------------------+
+```
+
+```
++----------+                                         
+| icmp_rcv |                                         
++--|-------+                                         
+   |                                                 
+   |--> get icmp header from packet                  
+   |                                                 
+   +--> call [type].handler()                        
+              +-----------+                          
+        e.g., | icmp_echo |                          
+              +--|--------+                          
+                 |                                   
+                 |--> set icmp type to ECHOREPLY     
+                 |                                   
+                 |    +------------+                 
+                 +--> | icmp_reply |                 
+                      +--|---------+                 
+                         |    +---------------------+
+                         |--> | ip_route_output_key |
+                         |    +---------------------+
+                         |    +-----------------+    
+                         +--> | icmp_push_reply |    
+                              +-----------------+    
+```
+
+## <a name="igmp"></a> Internet Group Management Protocol (IGMP)
 
 (TBD)
 
@@ -458,24 +568,6 @@ So far, the INET family supports up to five handlers in my study case.
 |   data  |
 |         |
 +---------+
-```
-
-```
-                                          +----------+   
-                +----    [ICMP]    -----  | icmp_rcv |   
-                |                         +----------+   
-                |                         +----------+   
-                +----    [IGMP]    -----  | igmp_rcv |   
-                |                         +----------+   
-+--------+      |                         +------------+ 
-| ip_rcv |  ---------     [TCP]    -----  | tcp_v4_rcv | 
-+--------+      |                         +------------+ 
-                |                         +---------+    
-                |----     [UDP]    -----  | udp_rcv |    
-                |                         +---------+    
-                |                         +-------------+
-                +----  [UDP_LITE]  -----  | udplite_rcv |
-                                          +-------------+
 ```
 
 ```
