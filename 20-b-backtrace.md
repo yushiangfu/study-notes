@@ -7,17 +7,16 @@
 
 ## <a name="introduction"></a> Introduction
 
-By observing the dumped **vmlinux**, we can see that
-1. Before doing anything, it pushes some registers into the stack and recovers at the end of the function.
-2. The saved register set commonly includes **fp**, **ip**, **lr**, and **pc**.
+Working on an embedded system, we are very likely to see the kernel panic or exception from time to time. 
+The information includes register values, memory content around stack pointer, and function backtrace. 
+It might not be helpful because it's all about the victim instead of the culprit. 
+Since kernel space is a large shared memory region, everyone can be the suspect that pollutes the data on purpose or accident. 
+But anyway, it's better to have some clues than to investigate from nowhere. 
+We can issue the below command to object dump the abundant information of the vmlinux. (warning! ABUNDANT information!)
 
-| Alias | Register | Role                 |
-| ---   | ---      | ---                  |
-| fp    | r11      | frame pointer        |
-| ip    | r12      | scratch register (?) |
-| sp    | r13      | stack pointer        |
-| lr    | r14      | link register        |
-| pc    | r15      | program counter      |
+```
+arm-linux-gnueabi-objdump -ldS vmlinux
+```
 
 ```
 8085d9d0 <ip_rcv>:
@@ -61,6 +60,20 @@ start_kernel():
 80d01188:   e89daff0    ldm sp, {r4, r5, r6, r7, r8, r9, sl, fp, sp, pc}
 ```
 
+Looking into the dumped file, we can see that:
+1. Before doing anything, the regular function pushes some registers into the stack and recovers before returning.
+2. The saved register set commonly includes **fp**, **ip**, **lr**, and **pc**.
+
+| Alias | Register | Role                 |
+| ---   | ---      | ---                  |
+| fp    | r11      | frame pointer        |
+| ip    | r12      | scratch register (?) |
+| sp    | r13      | stack pointer        |
+| lr    | r14      | link register        |
+| pc    | r15      | program counter      |
+
+Kernel stack on the 32-bit ARM architecture is a two-page space for each task to run the kernel logic, such as syscall and interrupt handler.
+
 ```
   high addr  +--+-----------+
              |  |  reserved | 8 bytes
@@ -81,31 +94,105 @@ stack ---+   |  +-----------+
    low addr  +--+-----------+
 ```
 
+Generally speaking, functions utilize stack as storage for local variables and CPU registers. 
+We can regard the stack as a series of frames, and each frame is the storage of a function.
+
 ```
-               stack                                                                                     
-               (mem)          +----                  +-------+  --+                                      
-                              |        reg fp  --->  |  pc   |    |                                      
-     high addr                |                      +-------+    |                                      
-             |   -   |        |                      |  lr   |    |                                      
-             |   -   |        |                      +-------+    | fixed cast: info of previous frame   
-             |-------|        |                      |  sp   |    |                                      
- even older  | frame |        |                      +-------+    |                                      
-             |-------|        |                      |  fp   |    |                                      
-             |       |        |                      +-------+  --+                                      
-   previous  | frame |        |                      |  r6   |    |                                      
-             |       |        |                      +-------+    |                                      
-             |-------|    ----+                      |  r5   |    | optional cast: data of previous frame
-             |       |                               +-------+    |                                      
-    current  | frame |                               |  r4   |    |                                      
-             |-------|    ----+                      +-------+  --+                                      
-             |       |        -                      |       |    |                                      
-             |       |        |                      |  32B  |    |                                      
-             |       |        |                      |       |    | not relevant to us                   
-             |       |        |                      +-------+    |                                      
-      low addr                |        reg sp  --->  |  lr   |    |                                      
-                              +----                  +-------+  --+                                      
+                                        stack
+                                        (mem)
+
+                              high addr
+                                      |   -   |
+                                      |   -   |
++----------+                          |-------|
+| function |  ─────────────────────►  | frame |
++--|-------+                          |-------|
+   |    +----------+                  |       |
+   +--> | function |  ─────────────►  | frame |
+        +--|-------+                  |       |
+           |    +----------+          |-------|
+           +--> | function |  ─────►  |       |
+                +----------+          | frame |
+                                      |-------|
+                                      |       |
+                                      |       |
+                                      |       |
+                                      |       |
+                               low addr
+```
+  
+Given any frame pointer, we can quickly get the frame pointer of the previous frame and dump the information recursively till the very first frame.
+
+```
+               stack                                            fixed cast: info of previous frame                     
+               (mem)              -                  +-------+  --+                                                    
+                                 /     reg fp  --->  |  pc   |    | <--- where we are of the current frame             
+     high addr                  /                    +-------+    |                                                    
+             |   -   |         /                     |  lr   |    | <--- where we come from of the previous frame      
+             |   -   |        /                      +-------+    |                                                    
+             |-------|       /                       |  sp   |    | <--- where the stack end is of the previous frame  
+ even older  | frame |      /                        +-------+    |                                                    
+             |-------|     /                         |  fp   |    | <--- where the frame start is of the previous frame
+             |       |    /                          +-------+  --+                                                    
+   previous  | frame |   /                           |  r6   |    |                                                    
+             |       |  /                            +-------+    |                                                    
+             |-------|                               |  r5   |    | optional cast: data of previous frame              
+             |       |                               +-------+    |                                                    
+    current  | frame |                               |  r4   |    |                                                    
+             |-------|                               +-------+  --+                                                    
+             |       |  \                            |       |    |                                                    
+             |       |   \                           |       |    |                                                    
+             |       |    \                          |       |    | not relevant to us                                 
+             |       |     \                         +-------+    |                                                    
+      low addr              \          reg sp  --->  |  lr   |    |                                                    
+                             -                       +-------+  --+         
 ```
 
+<details>
+  <summary> Code Trace </summary>
+
+```
++----------------+                                                                                                
+| dump_backtrace |                                                                                                
++---|------------+                                                                                                
+    |                                                                                                             
+    |--> determine frame pointer & mode                                                                           
+    |                                                                                                             
+    |    +-------------+                                                                                          
+    +--> | c_backtrace |                                                                                          
+         +---|---------+                                                                                          
+             |                                                                                                    
+             +--> save registers to stack                                                                         
+             |                                                                                                    
+             +--> for each frame                                                                                  
+             |                                                                                                    
+             |------> if frame pointer isn't valid, return                                                        
+             |                                                                                                    
+             |        +----------------------+                                                                    
+             |------> | dump_backtrace_entry |                                                                    
+             |        +-----|----------------+                                                                    
+             |              |                                                                                     
+             |              +--> print one line                                                                   
+             |                                                                                                    
+             |                   e.g., [<80942e80>] (dump_backtrace) from [<80109348>] (arch_cpu_idle+0x3c/0x4c)  
+             |                                                                                                    
+             |------> if condition met                                                                            
+             |                                                                                                    
+             |            +--------------------+                                                                  
+             |----------> | dump_backtrace_stm |                                                                  
+             |            +----|---------------+                                                                  
+             |                 |                                                                                  
+             |                 +--> dump registers                                                                
+             |                                                                                                    
+             |                      e.g., r10:00c5387d r9:410fb767 r8:8810c000 r7:ffffffff r6:00c0387d r5:00000051
+             |                                                                                                    
+             |------> if next frame pointer is null, return                                                       
+             |                                                                                                    
+             +--> restore registers from stack                                                                    
+```
+
+</details>
+  
 ## <a name="reference"></a> Reference
 
-(TBD)
+- My friend Sneaker's slide
