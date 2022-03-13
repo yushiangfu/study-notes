@@ -5,7 +5,7 @@
 - [Introduction](#introduction)
 - [Device Tree](#device-tree)
 - [Driver and Device Registration](#driver-and-device-registration)
-- [To-Do List](#to-do-list)
+- [Character and Block Devices](#character-and-block-devices)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -141,13 +141,17 @@ Before introducing driver and device, let's talk about the **bus** first.
 We can regard the **bus** as a collection of devices and drivers, and there are numerous buses in the system.
 
 ```
-                  subsys_private        +-------+      +-------+               
- bus_type        +---------------+      | dev A |      | dev B |               
-   +---+         | klist_devices <----->+-------+<----->-------+               
-   | p---------> |               |                                             
-   +---+         | klist_drivers <----->+-------+<----->-------<----->+-------+
-                 +---------------+      | drv C |      | drv D |      | drv E |
-                                        +-------+      +-------+      +-------+
+                                        +-------+        +-------+
+                                   ┌──► | dev A | ◄────► | dev B |
+                 subsys_private    │    +-------+        +-------+
+bus_type        +---------------+  │
+  +---+         | klist_devices ◄──┘
+  | p ────────► |               |
+  +---+         | klist_drivers ◄──┐
+                +---------------+  │
+                                   │    +-------+        +-------+        +-------+
+                                   └──► | drv C | ◄────► | drv D | ◄────► | drv E |
+                                        +-------+        +-------+        +-------+
 ```
 
 ```
@@ -185,6 +189,9 @@ The kernel prepares the device structure for any device from DTS/DTB, parses its
 The rest is similar to the driver registration.
 It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
 
+<details>
+  <summary> Code Trace </summary>
+
 ```
 +---------------------------------+                                                                            
 | of_platform_device_create_pdata |                                                                            
@@ -214,6 +221,8 @@ It doesn't matter whether the driver or device registers first. Both flows will 
                           +--> | bus_probe_device | traverse each driver and try to match, call driver->probe() if matched
                                +------------------+                                                            
 ```
+    
+</details>
 
 Both **driver_attach** and **bus_probe_device** are not directly but eventually go to **really_probe**, which triggers the driver defined probe function
 
@@ -232,10 +241,22 @@ Both **driver_attach** and **bus_probe_device** are not directly but eventually 
          +--------------+ (one driver might take care of multiple similar devices)          
 ```
 
-## <a name="to-do-list"></a> To-Do List
+## <a name="character-and-block-devices"></a> Character and Block Devices
 
-- Add pinctrl related stuff when registering device
-- Introduce cdev & bdev
+```
++-------------------+                                                                              
+| __register_chrdev |                                                                              
++----|--------------+                                                                              
+     |    +--------------------------+                                                             
+     |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
+     |    +--------------------------+                                                             
+     |                                                                                             
+     |--> prepare a 'cdev' for the dev# range                                                      
+     |                                                                                             
+     |    +----------+                                                                             
+     +--> | cdev_add | add the 'cdev' to a table for later lookup                                  
+          +----------+                                                                             
+```
 
 ## <a name="reference"></a> Reference
 
