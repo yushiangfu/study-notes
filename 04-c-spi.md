@@ -115,13 +115,13 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
                 |------> | aspeed_smc_chip_setup_init | initialize
                 |        +----------------------------+
                 |        +--------------+
-                |------> | spi_nor_scan | (trace it separately)
+                |------> | spi_nor_scan | (refer to the below)
                 |        +--------------+
                 |        +------------------------------+
                 |------> | aspeed_smc_chip_setup_finish | determine write and read control value
                 |        +------------------------------+
                 |        +---------------------+
-                +------> | mtd_device_register | (trace it separately)
+                +------> | mtd_device_register | (refer to the below)
                          +---------------------+                                            
 ```
 
@@ -170,7 +170,7 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
                              |------> if 'of' (our case)
                              |
                              |            +-------------------+
-                             |----------> | mtd_part_of_parse | allocate partition array and read info from each partition node
+                             |----------> | mtd_part_of_parse | (refer to the below)
                              |            +-------------------+
                              |
                              |        +--------------------+
@@ -213,6 +213,148 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
                                            |------> get addr & size info from node                                             
                                            |                                                                                   
                                            +------> get label from node and use it as partition name                           
+```
+
+```
++--------------+                                                               
+| init_mtdchar |                                                               
++---|----------+                                                               
+    |    +-------------------+                                                 
+    +--> | __register_chrdev | reserve devt# (major = 90, minor = 0 ~ 2^20 - 1)
+         +-------------------+                                                 
+```
+
+```
++--------------+                                           
+| mtdchar_open |                                           
++---|----------+                                           
+    |    +----------------+                                
+    |--> | get_mtd_device | get master mtd                 
+    |    +----------------+                                
+    |                                                      
+    +--> prepare 'mtd_file_info' and assign to file private
+```
+
+```
++--------------+                                                                                
+| mtdchar_read |                                                                                
++---|----------+                                                                                
+    |    +-------------------+                                                                  
+    |--> | mtd_kmalloc_up_to | allocate buffer                                                  
+    |    +-------------------+                                                                  
+    |                                                                                           
+    +--> while we haven't read enough to meet user's requirement                                
+    |                                                                                           
+    |        +----------+                                                                       
+    |------> | mtd_read |                                                                       
+    |        +--|-------+                                                                       
+    |           |    +--------------+                                                           
+    |           +--> | mtd_read_oob |                                                           
+    |                +---|----------+                                                           
+    |                    |    +------------------+                                              
+    |                    +--> | mtd_read_oob_std |                                              
+    |                         +----|-------------+                                              
+    |                              |    +--------------------+                                  
+    |                              |--> | mtd_get_master_ofs | adjust local offset to global one
+    |                              |    +--------------------+                                  
+    |                              |                                                            
+    |                              +--> call ->_read(), e.g.,                                   
+    |                                   +--------------+                                        
+    |                                   | spi_nor_read | (refer to the below)                   
+    |                                   +--------------+                                        
+    |        +--------------+                                                                   
+    +------> | copy_to_user |                                                                   
+    |        +--------------+                                                                   
+    |                                                                                           
+    +--> free the buffer                                                                        
+```
+
+```
++--------------+                                                  
+| spi_nor_read |                                                  
++---|----------+                                                  
+    |                                                             
+    |--> while we haven't read enough                             
+    |                                                             
+    |        +----------------------+                             
+    |------> | spi_nor_convert_addr | do nothing in our case      
+    |        +----------------------+                             
+    |        +-------------------+                                
+    |------> | spi_nor_read_data |                                
+    |        +-------------------+                                
+    |                                                             
+    +------> call ->read(), e.g.,                                 
+             +-----------------+                                  
+             | aspeed_smc_read | (driver of aspeed spi controller)
+             +-----------------+ read data and copy to buffer     
+```
+
+```
++---------------+                                             
+| mtdchar_write |                                             
++---|-----------+                                             
+    |    +-------------------+                                
+    |--> | mtd_kmalloc_up_to | allocate buffer                
+    |    +-------------------+                                
+    |                                                         
+    |    while we hanv't read enough                          
+    |                                                         
+    |        +----------------+                               
+    |------> | copy_from_user |                               
+    |        +----------------+                               
+    |        +-----------+                                    
+    +------> | mtd_write |                                    
+    |        +--|--------+                                    
+    |           |    +---------------+                        
+    |           +--> | mtd_write_oob |                        
+    |                +---|-----------+                        
+    |                    |    +-------------------+           
+    |                    +--> | mtd_write_oob_std |           
+    |                         +----|--------------+           
+    |                              |                          
+    |                              +--> call ->_write(), e.g.,
+    |                                   +---------------+     
+    |                                   | spi_nor_write | (refer to the below)
+    |                                   +---------------+     
+    |                                                         
+    +--> free the buffer                                      
+```
+
+```
++---------------+                                                                 
+| spi_nor_write |                                                                 
++---|-----------+                                                                 
+    |                                                                             
+    |--> while we haven't write enough                                            
+    |                                                                             
+    |        +----------------------+                                             
+    +------> | spi_nor_convert_addr | do nothing in our case                      
+             +----------------------+                                             
+             +----------------------+                                             
+             | spi_nor_write_enable |                                             
+             +----------------------+                                             
+             +--------------------+                                               
+             | spi_nor_write_data |                                               
+             +----|---------------+                                               
+                  |                                                               
+                  +--> call ->write(), e.g.,                                      
+                       +-----------------------+                                  
+                       | aspeed_smc_write_user | (driver of aspeed spi controller)
+                       +-----------------------+ write buffer data                
+```
+
+```
++---------------+
+| mtdchar_close |
++---|-----------+
+    |
+    |--> if the file is opened with 'write' flag
+    |
+    |        +----------+
+    |------> | mtd_sync | call ->_sync() if it exists (not our case)
+    |        +----------+
+    |
+    +--> free mtd_file_info
 ```
 
 ## <a name="reference"></a> Reference
