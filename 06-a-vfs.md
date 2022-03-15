@@ -48,6 +48,32 @@
            +--> update file offset                                      
 ```
 
+```
++--------------------+                        
+| init_special_inode |                        
++----|---------------+                        
+     |                                        
+     |--> if mode is 'char'                   
+     |                                        
+     |------> install 'def_chr_fops' to inode 
+     |                                        
+     |--> else if mode if 'block'             
+     |                                        
+     +------> install 'def_blk_fops' to inode 
+     |                                        
+     |--> else if mode if 'fifo'              
+     |                                        
+     +------> install 'pipefifo_fops' to inode
+     |                                        
+     |--> else if mode if 'sock'              
+     |                                        
+     +------> do ntohing                      
+     |                                        
+     |--> else                                
+     |                                        
+     +------> error                           
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 (TBD)
