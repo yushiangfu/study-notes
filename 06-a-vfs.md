@@ -8,7 +8,51 @@
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+```
++----------+                                                                                                
+| sys_open |                                                                                                
++--|-------+                                                                                                
+   |    +-------------+                                                                                     
+   +--> | do_sys_open |                                                                                     
+        +---|---------+                                                                                     
+            |    +----------------+                                                                         
+            +--> | do_sys_openat2 |                                                                         
+                 +---|------------+                                                                         
+                     |    +---------------------+                                                           
+                     |--> | get_unused_fd_flags | find an unused fd from file desc table                    
+                     |    +---------------------+                                                           
+                     |    +--------------+                                                                  
+                     |--> | do_filp_open |                                                                  
+                     |    +---|----------+                                                                  
+                     |        |    +-------------+                                                          
+                     |        +--> | path_openat |                                                          
+                     |             +---|---------+                                                          
+                     |                 |    +------------------+                                            
+                     |                 |--> | alloc_empty_file | allocate 'file'                            
+                     |                 |    +------------------+                                            
+                     |                 |                                                                    
+                     |                 |--> walk path to get the final dentry                               
+                     |                 |                                                                    
+                     |                 |    +---------+                                                     
+                     |                 +--> | do_open |                                                     
+                     |                      +--|------+                                                     
+                     |                         |    +----------+                                            
+                     |                         +--> | vfs_open |                                            
+                     |                              +--|-------+                                            
+                     |                                 |    +----------------+                              
+                     |                                 +--> | do_dentry_open |                              
+                     |                                      +---|------------+                              
+                     |                                          |                                           
+                     |                                          |--> get fops from inode and install to file
+                     |                                          |                                           
+                     |                                          +--> call ->open(), e.g.,                   
+                     |                                               +-------------+                        
+                     |                                               | blkdev_open |                        
+                     |                                               +-------------+                        
+                     |    +------------+                                                                    
+                     +--> | fd_install | table[fd] = file                                                   
+                          +------------+                                                                    
+```
 
 ```
 +-----------+                                                           
