@@ -258,6 +258,29 @@ Both **driver_attach** and **bus_probe_device** are not directly but eventually 
           +----------+                                                                             
 ```
 
+```
++-------------+                                         
+| chrdev_open |                                         
++---|---------+                                         
+    |                                                   
+    |--> if inode doesn't know where cdev is            
+    |                                                   
+    |------> serach cdev in 'cdev_map' based on dev#    
+    |                                                   
+    |------> save cdev addr in inode                    
+    |                                                   
+    |--> get file ops from cdev                         
+    |                                                   
+    |    +--------------+                               
+    |--> | replace_fops | replace fops of file to cdev's
+    |    +--------------+                               
+    |                                                   
+    +--> call ->open, e.g.,                             
+         +--------------+                               
+         | mtdchar_open |                               
+         +--------------+                               
+```
+
 ## <a name="reference"></a> Reference
 
 (None)
