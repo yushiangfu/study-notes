@@ -55,6 +55,30 @@
 ```
 
 ```
++-------------+                                                           
+| blkdev_open |                                                           
++---|---------+                                                           
+    |    +-------------------+                                            
+    |--> | blkdev_get_by_dev |                                            
+    |    +----|--------------+                                            
+    |         |    +--------------------+                                 
+    |         +--> | blkdev_get_no_open | get bdev by dev#                
+    |              +--------------------+                                 
+    |              +------------------+                                   
+    |              | blkdev_get_whole |                                   
+    |              +----|-------------+                                   
+    |                   |                                                 
+    |                   |--> get gendick from bdev                        
+    |                   |                                                 
+    |                   +--> call gendisk->open(), e.g.,                  
+    |                        +---------------+                            
+    |                        | blktrans_open | (from gendisk to mtd layer)
+    |                        +---------------+                            
+    |                                                                     
+    +--> assign bdev mapping to file                                      
+```
+
+```
 +-----------+                                                           
 | sys_write |                                                           
 +--|--------+                                                           
