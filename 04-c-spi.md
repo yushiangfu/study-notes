@@ -357,6 +357,68 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
     +--> free mtd_file_info
 ```
 
+```
++------------------+                                                                                      
+| mtdblock_tr_init |                                                                                      
++----|-------------+                                                                                      
+     |    +-----------------------+                                                                       
+     +--> | register_mtd_blktrans |                                                                       
+          +-----|-----------------+                                                                       
+                |    +-----------------+                                                                  
+                |--> | register_blkdev | register name to major_names[major]                              
+                |    +-----------------+                                                                  
+                |                                                                                         
+                |--> add arg tr to 'blktrans_majors' list                                                 
+                |                                                                                         
+                |--> for each mtd                                                                         
+                |                                                                                         
+                +------> call ->add_mtd(), e.g.,                                                          
+                         +------------------+                                                             
+                         | mtdblock_add_mtd |                                                             
+                         +----|-------------+                                                             
+                              |    +----------------------+                                               
+                              +--> | add_mtd_blktrans_dev |                                               
+                                   +-----|----------------+                                               
+                                         |                                                                
+                                         |--> add mtd to tr                                               
+                                         |                                                                
+                                         |    +-------------------+                                       
+                                         |--> | blk_mq_alloc_disk | allocate gendisk and queue            
+                                         |    +-------------------+                                       
+                                         |                                                                
+                                         |--> set up gendisk (major, minor, fops = 'mtd_block_ops')         
+                                         |                                                                
+                                         |    +-----------------+                                         
+                                         +--> | device_add_disk | add disk information to kernel list     
+                                              +-----------------+                                         
+```
+
+```
+ +-------------+                                             
+ | blkdev_open |                                             
+ +-------------+                                             
+        -                                                    
+        -                                                    
+        -                                                    
++---------------+                                            
+| blktrans_open |                                            
++---|-----------+                                            
+    |                                                        
+    |--> call tr->open(), e.g.,                              
+    |    +---------------+                                   
+    |    | mtdblock_open | (nothing important)               
+    |    +---------------+                                   
+    |                                                        
+    |    +------------------+                                
+    +--> | __get_mtd_device |                                
+         +----|-------------+                                
+              |                                              
+              +--> call master->_get_device(), e.g.,         
+                   +--------------------+                    
+                   | spi_nor_get_device | (nothing important)
+                   +--------------------+                    
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
