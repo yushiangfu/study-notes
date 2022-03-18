@@ -54,66 +54,88 @@
                           +------------+                                                                    
 ```
 
+
+
 ```
-+-------------+                                                           
-| blkdev_open |                                                           
-+---|---------+                                                           
-    |    +-------------------+                                            
-    |--> | blkdev_get_by_dev |                                            
-    |    +----|--------------+                                            
-    |         |    +--------------------+                                 
-    |         +--> | blkdev_get_no_open | get bdev by dev#                
-    |              +--------------------+                                 
-    |              +------------------+                                   
-    |              | blkdev_get_whole |                                   
-    |              +----|-------------+                                   
-    |                   |                                                 
-    |                   |--> get gendick from bdev                        
-    |                   |                                                 
-    |                   +--> call gendisk->open(), e.g.,                  
-    |                        +---------------+                            
-    |                        | blktrans_open | (from gendisk to mtd layer)
-    |                        +---------------+                            
-    |                                                                     
-    +--> assign bdev mapping to file                                      
++----------+                                         
+| sys_read |                                         
++--|-------+                                         
+   |    +-----------+                                
+   +--> | ksys_read |                                
+        +--|--------+                                
+           |                                         
+           |--> get offset from 'file'               
+           |                                         
+           |    +----------+                         
+           |--> | vfs_read |                         
+           |    +--|-------+                         
+           |       |                                 
+           |       |--> if ->read() exists           
+           |       |                                 
+           |       |------> call ->read()            
+           |       |                                 
+           |       |--> else if ->read_iter() exists 
+           |       |                                 
+           |       +------> call ->read_iter(), e.g.,
+           |                +------------------+     
+           |                | blkdev_read_iter |     
+           |                +------------------+     
+           |                                         
+           +--> update offset to 'file'              
 ```
 
 ```
-+-----------+                                                           
-| sys_write |                                                           
-+--|--------+                                                           
-   |    +------------+                                                  
-   +--> | ksys_write |                                                  
-        +--|---------+                                                  
-           |    +-----------+                                           
-           |--> | file_ppos | get file offset                           
-           |    +-----------+                                           
-           |    +-----------+                                           
-           |--> | vfs_write |                                           
-           |    +--|--------+                                           
-           |       |                                                    
-           |       |--> if file has ->write                             
-           |       |                                                    
-           |       |         call ->write()                             
-           |       |               +-----------+                        
-           |       |         e.g., | write_mem |                        
-           |       |               +-----------+                        
-           |       |                                                    
-           |       +--> else if file has ->write_iter                   
-           |                                                            
-           |                +----------------+                          
-           |                | new_sync_write |                          
-           |                +---|------------+                          
-           |                    |    +-----------------+                
-           |                    +--> | call_write_iter |                
-           |                         +----|------------+                
-           |                              |                             
-           |                              +--> call ->write_iter()      
++-----------+
+| sys_write |
++--|--------+
+   |    +------------+
+   +--> | ksys_write |
+        +--|---------+
+           |    +-----------+
+           |--> | file_ppos | get file offset
+           |    +-----------+
+           |    +-----------+
+           |--> | vfs_write |
+           |    +--|--------+
+           |       |
+           |       |--> if file has ->write
+           |       |
+           |       |-------> call ->write()
+           |       |               +-----------+
+           |       |         e.g., | write_mem |
+           |       |               +-----------+
+           |       |
+           |       +--> else if file has ->write_iter
+           |       |
+           |       |        +----------------+
+           |       +------->| new_sync_write |
+           |                +---|------------+
+           |                    |    +-----------------+
+           |                    +--> | call_write_iter |
+           |                         +----|------------+
+           |                              |
+           |                              +--> call ->write_iter()
            |                                         +-----------------+
            |                                   e.g., | sock_write_iter |
            |                                         +-----------------+
-           |                                                            
-           +--> update file offset                                      
+           |
+           +--> update file offset                                  
+```
+
+```
++-----------+                                                         
+| sys_close |                                                         
++--|--------+                                                         
+   |    +----------+                                                  
+   +--> | close_fd |                                                  
+        +--|-------+                                                  
+           |    +-----------+                                         
+           |--> | pick_file | remove file from table[fd] and return it
+           |    +-----------+                                         
+           |                                                          
+           |--> if ->flush() exists                                   
+           |                                                          
+           +------> call ->flush()                                    
 ```
 
 ```
