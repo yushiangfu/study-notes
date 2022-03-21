@@ -419,6 +419,34 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
                    +--------------------+                    
 ```
 
+```
++--------------+                                           
+| mtd_queue_rq |                                           
++---|----------+                                           
+    |    +-------------------+                             
+    +--> | mtd_blktrans_work |                             
+         +----|--------------+                             
+              |    +---------------------+                 
+              +--> | do_blktrans_request |                 
+                   +-----|---------------+                 
+                         |                                 
+                         |--> switch option                
+                         |                                 
+                         |--> case READ                    
+                         |                                 
+                         |------> call ->readsect(), e.g., 
+                         |        +-------------------+    
+                         |        | mtdblock_readsect |    
+                         |        +-------------------+    
+                         |                                 
+                         |    case WRITE                   
+                         |                                 
+                         +------> call ->writesect(), e.g.,
+                                  +--------------------+   
+                                  | mtdblock_writesect |   
+                                  +--------------------+   
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
