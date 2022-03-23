@@ -417,6 +417,28 @@ Both **driver_attach** and **bus_probe_device** are not directly but eventually 
                                                        +--------------+                     
 ```
 
+```
++--------------------+                                                                                
+| blkdev_write_begin |                                                                                
++----|---------------+                                                                                
+     |    +-------------------+                                                                       
+     +--> | block_write_begin |                                                                       
+          +----|--------------+                                                                       
+               |    +-----------------------------+                                                   
+               |--> | grab_cache_page_write_begin | get a page from mapping, or allocate one otherwise
+               |    +-----------------------------+                                                   
+               |    +---------------------+                                                           
+               +--> | __block_write_begin |                                                           
+                    +-----|---------------+                                                           
+                          |    +-------------------------+                                            
+                          +--> | __block_write_begin_int |                                            
+                               +------|------------------+                                            
+                                      |                                                               
+                                      |--> for each block head (bh) in list                           
+                                      |                                                               
+                                      +------> adjust bh status                                       
+```
+
 ## <a name="reference"></a> Reference
 
 (None)
