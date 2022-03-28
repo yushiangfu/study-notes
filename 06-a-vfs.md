@@ -9,6 +9,128 @@
 ## <a name="introduction"></a> Introduction
 
 ```
++-----------------------+                                                                                                      
+| vfs_caches_init_early |                                                                                                      
++-----|-----------------+                                                                                                      
+      |                                                                                                                        
+      |--> init 'in_lookup_hashtable'                                                                                          
+      |                                                                                                                        
+      |    +-------------------+                                                                                               
+      |--> | dcache_init_early |                                                                                               
+      |    +----|--------------+                                                                                               
+      |         |    +-------------------------+                                                                               
+      |         +--> | alloc_large_system_hash |                                                                               
+      |              +------|------------------+                                                                               
+      |                     |                                                                                                  
+      |                     |--> allocate and init hash table                                                                  
+      |                     |                                                                                                  
+      |                     +--> print '[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes, linear)'
+      |                                                                                                                        
+      |    +------------------+                                                                                                
+      +--> | inode_init_early |                                                                                                
+           +----|-------------+                                                                                                
+                |    +-------------------------+                                                                               
+                +--> | alloc_large_system_hash |                                                                               
+                     +------|------------------+                                                                               
+                            |                                                                                                  
+                            |--> allocate and init hash table                                                                  
+                            |                                                                                                  
+                            +--> print '[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes, linear)' 
+```
+
+```
++-----------------+                                                          
+| vfs_caches_init |                                                          
++----|------------+                                                          
+     |                                                                       
+     |--> prepare kmem cache for 'path' (4096 characters at most)            
+     |                                                                       
+     |    +-------------+                                                    
+     |--> | dcache_init | preapre kmem cache for 'dentry'                    
+     |    +-------------+                                                    
+     |    +------------+                                                     
+     |--> | inode_init | preapre kmem cache for 'inode'                      
+     |    +------------+                                                     
+     |    +------------+                                                     
+     |--> | files_init | preapre kmem cache for 'file'                       
+     |    +------------+                                                     
+     |    +---------------------+                                            
+     |--> | files_maxfiles_init | determine the max number of files in system
+     |    +---------------------+                                            
+     |    +----------+                                                       
+     |--> | mnt_init | (traced separately)                                   
+     |    +----------+                                                       
+     |    +-----------------+                                                
+     |--> | bdev_cache_init |                                                
+     |    +----|------------+                                                
+     |         |                                                             
+     |         |--> prepare kmem cache for 'bdev_indoe'                      
+     |         |                                                             
+     |         |    +---------------------+                                  
+     |         |--> | register_filesystem | (traced separately)              
+     |         |    +---------------------+                                  
+     |         |    +------------+                                           
+     |         +--> | kern_mount | (traced separately)                       
+     |              +------------+                                           
+     |    +-------------+                                                    
+     +--> | chrdev_init | init 'cdev_map'                                    
+          +-------------+                                                    
+```
+
+```
++----------+
+| mnt_init |
++--|-------+
+   |
+   |--> prepare kmem cache for 'mount'
+   |
+   |--> allocate 'mount_hashtable'
+   |
+   |--> allocate 'mountpoint_hashtable'
+   |
+   |    +-------------+
+   |--> | kernfs_init | prepare kmem cache for 'kernfs_node' and 'kernfs_iattrs'
+   |    +-------------+
+   |    +------------+
+   |--> | sysfs_init |
+   |    +--|---------+
+   |       |    +--------------------+
+   |       +--> | kernfs_create_root | (traced separately)
+   |       |    +--------------------+
+   |       |    +---------------------+
+   |       +--> | register_filesystem | (traced separately)
+   |            +---------------------+
+   |    +------------+
+   |--> | shmem_init |
+   |    +--|---------+
+   |       |    +-----------------------+
+   |       +--> | shmem_init_inodecache | prepare kmem cache for 'shmem_inode_info'
+   |            +-----------------------+
+   |            +---------------------+
+   |            | register_filesystem | (traced separately)
+   |            +---------------------+
+   |            +------------+
+   |            | kern_mount | (traced separately)
+   |            +------------+
+   |    +-------------+
+   |--> | init_rootfs | (not our concern)
+   |    +-------------+
+   |    +-----------------+
+   +--> | init_mount_tree |
+        +----|------------+
+             |    +----------------+
+             |--> | vfs_kern_mount | (traced separately)
+             |    +----------------+
+             |    +------------+
+             |--> | set_fs_pwd |
+             |    +------------+
+             |    +-------------+
+             +--> | set_fs_root |
+                  +-------------+
+
+```
+
+```
 +----------+                                                                                                
 | sys_open |                                                                                                
 +--|-------+                                                                                                
