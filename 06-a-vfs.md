@@ -67,7 +67,7 @@
      |         |--> prepare kmem cache for 'bdev_indoe'                      
      |         |                                                             
      |         |    +---------------------+                                  
-     |         |--> | register_filesystem | (traced separately)              
+     |         |--> | register_filesystem | register arg (e.g., 'bd_type') to 'file_systems' list
      |         |    +---------------------+                                  
      |         |    +------------+                                           
      |         +--> | kern_mount | (traced separately)                       
@@ -98,7 +98,7 @@
    |       +--> | kernfs_create_root | (traced separately)
    |       |    +--------------------+
    |       |    +---------------------+
-   |       +--> | register_filesystem | (traced separately)
+   |       +--> | register_filesystem | register arg (e.g., 'sysfs_fs_type') to 'file_systems' list
    |            +---------------------+
    |    +------------+
    |--> | shmem_init |
@@ -107,7 +107,7 @@
    |       +--> | shmem_init_inodecache | prepare kmem cache for 'shmem_inode_info'
    |            +-----------------------+
    |            +---------------------+
-   |            | register_filesystem | (traced separately)
+   |            | register_filesystem | register arg (e.g., 'shmem_fs_type') to 'file_systems' list
    |            +---------------------+
    |            +------------+
    |            | kern_mount | (traced separately)
@@ -284,6 +284,91 @@
      |--> else                                
      |                                        
      +------> error                           
+```
+
+```
++-------------+                                         
+| d_make_root |                                         
++---|---------+                                         
+    |    +--------------+                               
+    |--> | d_alloc_anon |                               
+    |    +---|----------+                               
+    |        |    +-----------+                         
+    |        +--> | __d_alloc | allocate and init dentry
+    |             +-----------+                         
+    |    +---------------+                              
+    +--> | d_instantiate | fill inode info in dentry    
+         +---------------+                              
+```
+
+```
++--------------------+
+| pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
++----|---------------+
+     |    +----------------+
+     +--> | get_tree_nodev |
+          +---|------------+
+              |    +---------------+
+              +--> | vfs_get_super |
+                   +---|-----------+
+                       |    +---------+
+                       |--> | sget_fc |
+                       |    +--|------+
+                       |       |    +-------------+
+                       |       +--> | alloc_super |
+                       |            +---|---------+
+                       |                |
+                       |                |--> allocate a super block (sb) and set up it
+                       |                |
+                       |                |--> call arg set(), e.g.,
+                       |                |    +-------------------+
+                       |                |    | set_anon_super_fc | assign an free dev_t to the sb
+                       |                |    +-------------------+
+                       |                |
+                       |                +--> add the sb to 'super_blocks' list
+                       |
+                       +--> if sb doesn't have root yet
+
+                                call arg fill_super(), e.g.,
+                                +----------------------+
+                                | pseudo_fs_fill_super | prepare indoe and dentry for sb
+                                +----------------------+
+```
+
+```
++------------+                                                                                                                 
+| kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
++--|---------+                                                                                                                 
+   |    +----------------+                                                                                                     
+   +--> | vfs_kern_mount |                                                                                                     
+        +---|------------+                                                                                                     
+            |    +----------------------+                                                                                      
+            |--> | fs_context_for_mount |                                                                                      
+            |    +-----|----------------+                                                                                      
+            |          |    +------------------+                                                                               
+            |          +--> | alloc_fs_context |                                                                               
+            |               +----|-------------+                                                                               
+            |                    |                                                                                             
+            |                    |--> allcoate fs context (fc)                                                                 
+            |                    |                                                                                             
+            |                    +--> call ->init_fs_context(), e.g.,                                                          
+            |                         +--------------------+                                                                   
+            |                         | bd_init_fs_context | prepare pseudo fs context and install 'bdev_sops'                 
+            |                         +--------------------+                                                                   
+            |    +----------+                                                                                                  
+            +--> | fc_mount |                                                                                                  
+                 +--|-------+                                                                                                  
+                    |    +--------------+                                                                                      
+                    |--> | vfs_get_tree |                                                                                      
+                    |    +---|----------+                                                                                      
+                    |        |                                                                                                 
+                    |        +--> call ->get_tree(), e.g.,                                                                     
+                    |             +--------------------+                                                                       
+                    |             | pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
+                    |             +--------------------+                                                                       
+                    |    +------------------+                                                                                  
+                    +--> | vfs_create_mount | allocate and set up 'mount'                                                      
+                         +------------------+                                                                                  
 ```
 
 ## <a name="to-do-list"></a> To-Do List
