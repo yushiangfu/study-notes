@@ -84,8 +84,57 @@
 ```
 
 ```
++------------------+                                    
+| blkdev_writepage |                                    
++----|-------------+                                    
+     |    +-----------------------+                     
+     +--> | block_write_full_page |                     
+          +-----|-----------------+                     
+                |    +-------------------------+        
+                +--> | __block_write_full_page |        
+                     +------|------------------+        
+                            |    +---------------------+
+                            +--> | create_page_buffers |
+                                 +---------------------+
+                                 +---------------+      
+                                 | submit_bh_wbc |      
+                                 +---|-----------+      
+                                     |    +------------+
+                                     +--> | submit_bio |
+                                          +------------+
+```
+
+```
++---------------+                                                                                                         
+| do_writepages | with specified range, write dirty pages back                                                            
++---|-----------+                                                                                                         
+    |                                                                                                                     
+    |--> if ->writepages() exists                                                                                         
+    |                                                                                                                     
+    +------> call ->writepages(), e.g.,                                                                                   
+    |        +-------------------+      +--------------------+                                                            
+    |        | blkdev_writepages | ---> | generic_writepages |                                                            
+    |        +-------------------+      +--------------------+                                                            
+    |                                                                                                                     
+    |--> else                                                                                                             
+    |                                                                                                                     
+    |        +--------------------+                                                                                       
+    +------> | generic_writepages |                                                                                       
+             +----|---------------+                                                                                       
+                  |    +----------------+                                                                                 
+                  |--> | blk_start_plug | prepare plug for current task                                                   
+                  |    +----------------+                                                                                 
+                  |    +-------------------+                                                                              
+                  |--> | write_cache_pages | within range, call mapping->writepage() for each dirty page                  
+                  |    +-------------------+                                                                              
+                  |    +-----------------+                                                                                
+                  +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
+                       +-----------------+                                                                                
+```
+
+```
 +-----------------+                                                                                                         
-| blk_finish_plug |                                                                                                         
+| blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
 +----|------------+                                                                                                         
      |    +---------------------+                                                                                           
      |--> | blk_flush_plug_list |                                                                                           
@@ -112,7 +161,7 @@
      |                                 +-   |--> else                                                                       
      |                     (simplified |    |                                                                               
      |                        logic)   |    |        +--------------------------------+                                     
-     |                                 +-   +------> | blk_mq_try_issue_list_directly | eventually trigger the mtd operation
+     |                                 +-   +------> | blk_mq_try_issue_list_directly | (refer to the below)
      |                                               +--------------------------------+                                     
      |                                                                                                                      
      +--> unset current task plug                                                                                           
@@ -163,6 +212,59 @@
                                       |--> for each block head (bh) in list                           
                                       |                                                               
                                       +------> adjust bh status                                       
+```
+
+```
++------------+                                                                                             
+| submit_bio |                                                                                             
++--|---------+                                                                                             
+   |    +-------------------+                                                                              
+   +--> | submit_bio_noacct |                                                                              
+        +----|--------------+                                                                              
+             |                                                                                             
+             |--> if bio_list of current task is in use                                                    
+             |                                                                                             
+             |        +--------------+                                                                     
+             |------> | bio_list_add | append the bio to the bio_list                                      
+             |        +--------------+                                                                     
+             |                                                                                             
+             +------> return                                                                               
+             |                                                                                             
+             |--> if gendisk doesn't have ->submit_bio()                                                   
+             |                                                                                             
+             |        +------------------------+      +--------------+                                     
+             +------> | __submit_bio_noacct_mq | ---> | __submit_bio | prepare 'request' and add to a queue
+             |        +------------------------+      +--------------+                                     
+             |                                                                                             
+             |------> return                                                                               
+             |                                                                                             
+             |    +---------------------+      +--------------+                                            
+             +--> | __submit_bio_noacct | ---> | __submit_bio | prepare 'request' and add to a queue       
+                  +---------------------+      +--------------+                                            
+```
+
+```
++--------------+
+| __submit_bio | prepare 'request' and add to a queue
++---|----------+
+    |
+    |--> if disk has ->submit_bio()
+    |
+    |        call ->submit_bio()
+    |
+    |        return
+    |
+    |    +-------------------+
+    +--> | blk_mq_submit_bio |
+         +----|--------------+
+              |    +------------------------+
+              |--> | __blk_mq_alloc_request | prepare 'request'
+              |    +------------------------+
+              |    +-------------+
+              |--> | blk_mq_plug | get plug from the current task
+              |    +-------------+
+              |
+              +--> add the 'request' to plug list or io scheduler queue
 ```
 
 ## <a name="reference"></a> Reference
