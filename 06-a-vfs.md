@@ -39,42 +39,45 @@
 ```
 
 ```
-+-----------------+                                                          
-| vfs_caches_init |                                                          
-+----|------------+                                                          
-     |                                                                       
-     |--> prepare kmem cache for 'path' (4096 characters at most)            
-     |                                                                       
-     |    +-------------+                                                    
-     |--> | dcache_init | preapre kmem cache for 'dentry'                    
-     |    +-------------+                                                    
-     |    +------------+                                                     
-     |--> | inode_init | preapre kmem cache for 'inode'                      
-     |    +------------+                                                     
-     |    +------------+                                                     
-     |--> | files_init | preapre kmem cache for 'file'                       
-     |    +------------+                                                     
-     |    +---------------------+                                            
++-----------------+
+| vfs_caches_init |
++----|------------+
+     |
+     |--> prepare kmem cache for 'path' (4096 characters at most)
+     |
+     |    +-------------+
+     |--> | dcache_init | preapre kmem cache for 'dentry'
+     |    +-------------+
+     |    +------------+
+     |--> | inode_init | preapre kmem cache for 'inode'
+     |    +------------+
+     |    +------------+
+     |--> | files_init | preapre kmem cache for 'file'
+     |    +------------+
+     |    +---------------------+
      |--> | files_maxfiles_init | determine the max number of files in system
-     |    +---------------------+                                            
-     |    +----------+                                                       
-     |--> | mnt_init | (traced separately)                                   
-     |    +----------+                                                       
-     |    +-----------------+                                                
-     |--> | bdev_cache_init |                                                
-     |    +----|------------+                                                
-     |         |                                                             
-     |         |--> prepare kmem cache for 'bdev_indoe'                      
-     |         |                                                             
-     |         |    +---------------------+                                  
+     |    +---------------------+
+     |    +----------+
+     |--> | mnt_init | (traced separately)
+     |    +----------+
+     |    +-----------------+
+     |--> | bdev_cache_init |
+     |    +----|------------+
+     |         |
+     |         |--> prepare kmem cache for 'bdev_indoe'
+     |         |
+     |         |    +---------------------+
      |         |--> | register_filesystem | register arg (e.g., 'bd_type') to 'file_systems' list
-     |         |    +---------------------+                                  
-     |         |    +------------+                                           
-     |         +--> | kern_mount | (traced separately)                       
-     |              +------------+                                           
-     |    +-------------+                                                    
-     +--> | chrdev_init | init 'cdev_map'                                    
-          +-------------+                                                    
+     |         |    +---------------------+
+     |         |    +------------+
+     |         +--> | kern_mount | prepare 'super_block' and mount nowhere (for internal use)
+     |              +--|---------+
+     |                 |    +----------------+
+     |                 +--> | vfs_kern_mount |
+     |                      +----------------+
+     |    +-------------+
+     +--> | chrdev_init | init 'cdev_map'
+          +-------------+                                                 
 ```
 
 ```
@@ -95,7 +98,7 @@
    |--> | sysfs_init |
    |    +--|---------+
    |       |    +--------------------+
-   |       +--> | kernfs_create_root | (traced separately)
+   |       +--> | kernfs_create_root | prepare kernel fs 'root' and its 'node'
    |       |    +--------------------+
    |       |    +---------------------+
    |       +--> | register_filesystem | register arg (e.g., 'sysfs_fs_type') to 'file_systems' list
@@ -110,24 +113,47 @@
    |            | register_filesystem | register arg (e.g., 'shmem_fs_type') to 'file_systems' list
    |            +---------------------+
    |            +------------+
-   |            | kern_mount | (traced separately)
-   |            +------------+
+   |            | kern_mount | prepare 'super_block' and mount nowhere (for internal use)
+   |            +--|---------+
+   |               |    +----------------+
+   |               +--> | vfs_kern_mount |
+   |                    +----------------+
    |    +-------------+
-   |--> | init_rootfs | (not our concern)
+   |--> | init_rootfs | determine 'is_tmpfs' (but it's not used elsewhere?)
    |    +-------------+
    |    +-----------------+
    +--> | init_mount_tree |
         +----|------------+
              |    +----------------+
-             |--> | vfs_kern_mount | (traced separately)
+             |--> | vfs_kern_mount | prepare 'super_block' and mount nowhere
              |    +----------------+
+             |
+             |--> prepare a mount namespace and set the root mount (by what we got from the above)
+             |
              |    +------------+
              |--> | set_fs_pwd |
              |    +------------+
              |    +-------------+
              +--> | set_fs_root |
                   +-------------+
+```
 
+```
++--------------------+                                                          
+| kernfs_create_root | prepare kernel fs 'root' and its 'node'
++----|---------------+                                                          
+     |                                                                          
+     |--> allocate 'root' (kernfs_root)                                         
+     |                                                                          
+     |    +-------------------+                                                 
+     |--> | __kernfs_new_node | allocate 'node' (kernfs_node)                   
+     |    +-------------------+                                                 
+     |                                                                          
+     |--> set up 'root'                                                         
+     |                                                                          
+     |    +-----------------+                                                   
+     +--> | kernfs_activate | traverse the ndoe(s) and label 'ACTIVATED' on each
+          +-----------------+                                                   
 ```
 
 ```
@@ -369,6 +395,27 @@
                     |    +------------------+                                                                                  
                     +--> | vfs_create_mount | allocate and set up 'mount'                                                      
                          +------------------+                                                                                  
+```
+
+```
++-----------------+                                                                 
+| populate_rootfs |                                                                 
++----|------------+                                                                 
+     |    +-----------------------+                                                 
+     +--> | async_schedule_domain | (do_populate_rootfs)                            
+          +-----|-----------------+                                                 
+                |    +----------------------------+                                 
+                +--> | async_schedule_node_domain |                                 
+                     +------|---------------------+                                 
+                            |    +-----------+                                      
+                            |--> | INIT_WORK | (async_run_entry_fn)                 
+                            |    +-----------+                                      
+                            |                                                       
+                            |--> add entry to domain                                
+                            |                                                       
+                            |    +-----------------+                                
+                            +--> | queue_work_node | add work to 'system_unbound_wq'
+                                 +-----------------+                                
 ```
 
 ## <a name="to-do-list"></a> To-Do List
