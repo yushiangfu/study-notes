@@ -418,6 +418,44 @@
                                  +-----------------+                                
 ```
 
+```
++-----------+                                                                                       
+| filp_open |                                                                                       
++--|--------+                                                                                       
+   |    +----------------+                                                                          
+   |--> | getname_kernel | prepare 'filename' and copy name string to its field                     
+   |    +----------------+                                                                          
+   |    +----------------+                                                                          
+   +--> | file_open_name |                                                                          
+        +---|------------+                                                                          
+            |    +--------------+                                                                   
+            +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()
+                 +--------------+                                                                   
+```
+
+```
++-----------+                                                 
+| path_init | set nd's root, path, and inode
++--|--------+                                                 
+   |                                                          
+   |--> if it's a absolute path (starts with a '/')           
+   |                                                          
+   |        +--------------+                                  
+   |------> | nd_jump_root |                                  
+   |        +---|----------+                                  
+   |            |    +----------+                             
+   |            |--> | set_root | nd->root = current->fs->root
+   |            |    +----------+                             
+   |            |                                             
+   |            +--> nd->path = nd->root                      
+   |                                                          
+   |--> else (a relative path)                                
+   |                                                          
+   |------> nd->path = current->fs->pwd                       
+   |                                                          
+   +------> set nd->inode from nd->path                       
+```
+
 ```                                                     
  00000000: 3037 3037 3031 3030 3030 3032 4431 3030  070701000002D100
            |------------| |-----------------| |---                  
