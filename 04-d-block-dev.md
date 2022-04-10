@@ -105,34 +105,6 @@
 ```
 
 ```
-+---------------+                                                                                                         
-| do_writepages | with specified range, write dirty pages back                                                            
-+---|-----------+                                                                                                         
-    |                                                                                                                     
-    |--> if ->writepages() exists                                                                                         
-    |                                                                                                                     
-    +------> call ->writepages(), e.g.,                                                                                   
-    |        +-------------------+      +--------------------+                                                            
-    |        | blkdev_writepages | ---> | generic_writepages |                                                            
-    |        +-------------------+      +--------------------+                                                            
-    |                                                                                                                     
-    |--> else                                                                                                             
-    |                                                                                                                     
-    |        +--------------------+                                                                                       
-    +------> | generic_writepages |                                                                                       
-             +----|---------------+                                                                                       
-                  |    +----------------+                                                                                 
-                  |--> | blk_start_plug | prepare plug for current task                                                   
-                  |    +----------------+                                                                                 
-                  |    +-------------------+                                                                              
-                  |--> | write_cache_pages | within range, call mapping->writepage() for each dirty page                  
-                  |    +-------------------+                                                                              
-                  |    +-----------------+                                                                                
-                  +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
-                       +-----------------+                                                                                
-```
-
-```
 +-----------------+                                                                                                         
 | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
 +----|------------+                                                                                                         
@@ -212,6 +184,36 @@
                                       |--> for each block head (bh) in list                           
                                       |                                                               
                                       +------> adjust bh status                                       
+```
+
+```
++------------------+                                          
+| blkdev_write_end |                                          
++----|-------------+                                          
+     |    +-----------------+                                 
+     +--> | block_write_end |                                 
+          +----|------------+                                 
+               |    +----------------------+                  
+               +--> | __block_commit_write | mark buffer dirty
+                    +----------------------+                  
+```
+
+```
++-------------------+                                                                                        
+| blkdev_write_iter |                                                                                        
++----|--------------+                                                                                        
+     |    +----------------+                                                                                 
+     |--> | blk_start_plug |                                                                                 
+     |    +----------------+                                                                                 
+     |    +---------------------------+                                                                      
+     |--> | __generic_file_write_iter | copy data to pages of mapping, mark them dirty                       
+     |    +---------------------------+                                                                      
+     |    +--------------------+                                                                             
+     |--> | generic_write_sync | sync back to storage                                                        
+     |    +--------------------+                                                                             
+     |    +-----------------+                                                                                
+     +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
+          +-----------------+                                                                                
 ```
 
 ```
