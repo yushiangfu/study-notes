@@ -269,6 +269,23 @@
               +--> add the 'request' to plug list or io scheduler queue
 ```
 
+```
++------------------+                                                            
+| blkdev_read_iter |                                                            
++----|-------------+                                                            
+     |    +------------------------+                                            
+     +--> | generic_file_read_iter |                                            
+          +-----|------------------+                                            
+                |                                                               
+                |--> if DIRECT flag is set                                      
+                |                                                               
+                |------> (skip, not my case this time)                          
+                |                                                               
+                |    +--------------+                                           
+                +--> | filemap_read | copy data from page of mapping to iterator
+                     +--------------+                                           
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
