@@ -7,7 +7,7 @@
 
 ```
 +------------------------+                                                       
-| generic_file_read_iter |                                                       
+| generic_file_read_iter | read data from page of mapping
 +-----|------------------+                                                       
       |                                                                          
       |--> if 'DIRECT' flag is set                                               
@@ -171,6 +171,101 @@
      |                  +----------------------------+                                          
      |                                                                                          
      +--> ensure the pages are up-to-date                                                       
+```
+
+```
++---------------+                                                                                                                   
+| sync_blockdev | sync bdev mapping to back storage                                                                                 
++---|-----------+                                                                                                                   
+    |    +-----------------+                                                                                                        
+    +--> | __sync_blockdev |                                                                                                        
+         +----|------------+                                                                                                        
+              |                                                                                                                     
+              |--> if caller doesn't wait                                                                                           
+              |                                                                                                                     
+              |        +---------------+                                                                                            
+              |------> | filemap_flush |                                                                                            
+              |        +---------------+                                                                                            
+              |                                                                                                                     
+              |--> else                                                                                                             
+              |                                                                                                                     
+              |        +------------------------+                                                                                   
+              +------> | filemap_write_and_wait |                                                                                   
+                       +-----|------------------+                                                                                   
+                             |    +------------------------------+                                                                  
+                             +--> | filemap_write_and_wait_range |                                                                  
+                                  +-------|----------------------+                                                                  
+                                          |    +----------------------------+                                                       
+                                          |--> | __filemap_fdatawrite_range |                                                       
+                                          |    +------|---------------------+                                                       
+                                          |           |    +------------------------+                                               
+                                          |           +--> | filemap_fdatawrite_wbc |                                               
+                                          |                +-----|------------------+                                               
+                                          |                      |    +---------------+                                             
+                                          |                      +--> | do_writepages | with specified range, write dirty pages back
+                                          |                           +---------------+                                             
+                                          |    +-------------------------+                                                          
+                                          +--> | filemap_fdatawait_range | wait till WRITEBACK pages finish                         
+                                               +-------------------------+                                                          
+```
+
+```
++---------------+                                                                                                         
+| do_writepages | with specified range, write dirty pages back                                                            
++---|-----------+                                                                                                         
+    |                                                                                                                     
+    |--> if ->writepages() exists                                                                                         
+    |                                                                                                                     
+    +------> call ->writepages(), e.g.,                                                                                   
+    |        +-------------------+      +--------------------+                                                            
+    |        | blkdev_writepages | ---> | generic_writepages |                                                            
+    |        +-------------------+      +--------------------+                                                            
+    |                                                                                                                     
+    |--> else                                                                                                             
+    |                                                                                                                     
+    |        +--------------------+                                                                                       
+    +------> | generic_writepages |                                                                                       
+             +----|---------------+                                                                                       
+                  |    +----------------+                                                                                 
+                  |--> | blk_start_plug | prepare plug for current task                                                   
+                  |    +----------------+                                                                                 
+                  |    +-------------------+                                                                              
+                  |--> | write_cache_pages | within range, call mapping->writepage() for each dirty page                  
+                  |    +-------------------+                                                                              
+                  |    +-----------------+                                                                                
+                  +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
+                       +-----------------+                                                                                
+```
+
+```
++---------------------------+                                                      
+| __generic_file_write_iter | copy data to pages of mapping, mark them dirty       
++------|--------------------+                                                      
+       |                                                                           
+       |--> if 'DIRECT' flag is set                                                
+       |                                                                           
+       |------> (skip, not my case here)                                           
+       |                                                                           
+       |--> else                                                                   
+       |                                                                           
+       |        +-----------------------+                                          
+       +------> | generic_perform_write |                                          
+                +-----|-----------------+                                          
+                      |                                                            
+                      |--> while we haven't written enough                         
+                      |                                                            
+                      |------> call ->write_begin(), e.g.,                         
+                      |        +--------------------+                              
+                      |        | blkdev_write_begin | get a page from mapping      
+                      |        +--------------------+                              
+                      |        +----------------------------+                      
+                      |------> | copy_page_from_iter_atomic | copy data to the page
+                      |        +----------------------------+                      
+                      |                                                            
+                      +------> call ->write_end(), e.g.,                           
+                               +------------------+                                
+                               | blkdev_write_end | mark buffer dirty              
+                               +------------------+                                
 ```
 
 ## <a name="reference"></a> Reference
