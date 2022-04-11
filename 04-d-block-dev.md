@@ -7,29 +7,121 @@
 
 ## <a name="introduction"></a> Introduction
 
+Block device is one of the seven file types supported by virtual file system (VFS). 
+
 ```
-+-------------+                                                           
-| blkdev_open |                                                           
-+---|---------+                                                           
-    |    +-------------------+                                            
-    |--> | blkdev_get_by_dev |                                            
-    |    +----|--------------+                                            
-    |         |    +--------------------+                                 
-    |         +--> | blkdev_get_no_open | get bdev by dev#                
-    |              +--------------------+                                 
-    |              +------------------+                                   
-    |              | blkdev_get_whole |                                   
-    |              +----|-------------+                                   
-    |                   |                                                 
-    |                   |--> get gendick from bdev                        
-    |                   |                                                 
-    |                   +--> call gendisk->open(), e.g.,                  
-    |                        +---------------+                            
+         +--                                                                                                       
+         |      +----------+            +----------+              +-----------+         +-----------+              
+ syscall |      | sys_open |            | sys_read |              | sys_write |         | sys_close |              
+         |      +----------+            +----------+              +-----------+         +-----------+              
+         +--          |                       |                         |                     |                    
+         +--          v                       v                         v                     v       worker       
+         |      +----------+            +----------+              +-----------+           +------+ +----------+    
+         |      | vfs_open |            | vfs_read |              | vfs_write |           | fput | | ____fput |    
+         |      +----------+            +----------+              +-----------+           +------+ +----------+    
+     vfs |            |                       |                         |                                |         
+         |            v                       v                         v                                v         
+         |     +-------------+      +------------------+      +-------------------+              +--------------+  
+         |     | blkdev_open |      | blkdev_read_iter |      | blkdev_write_iter |              | blkdev_close |  
+         |     +-------------+      +------------------+      +-------------------+              +--------------+  
+         +--          |                       |                         |                                |         
+         +--          |                       v                         v                                |         
+         |            |             +------------------+      +------------------+                       |         
+ address |            |             | blkdev_readahead |      | blkdev_writepage |                       | implicit
+   space |            |             ++-----------------+      ++-----------------+                       | write   
+         |            |              | blk_finish_plug |       | blk_finish_plug |                       |         
+         |            |              +-----------------+       +-----------------+                       |         
+         +--          |                       |                         |                                |         
+         +--          v                       v                         v                                v         
+         |    +---------------+     +-------------------+     +-------------------+            +------------------+
+     mtd |    | mtdblock_open |     | mtdblock_readsect |     | mtdblock_writesect|            | mtdblock_release |
+         |    +---------------+     +-------------------+     +-------------------+            +------------------+
+         +--    
+```
+
+```
+const struct file_operations def_blk_fops = { 
+    .open       = blkdev_open,
+    .release    = blkdev_close,
+    .read_iter  = blkdev_read_iter,
+    .write_iter = blkdev_write_iter,
+...
+}
+
+const struct address_space_operations def_blk_aops = { 
+    .readpage   = blkdev_readpage,
+    .readahead  = blkdev_readahead,
+    .writepage  = blkdev_writepage,
+    .write_begin    = blkdev_write_begin,
+    .write_end  = blkdev_write_end,
+    .writepages = blkdev_writepages,
+...
+};
+
+static struct mtd_blktrans_ops mtdblock_tr = { 
+    .open       = mtdblock_open,
+    .release    = mtdblock_release,
+    .readsect   = mtdblock_readsect,
+    .writesect  = mtdblock_writesect,
+...
+};
+```
+
+<details>
+  <summary> Code Trace </summary>
+
+```
++-------------+
+| blkdev_open |
++---|---------+
+    |    +-------------------+
+    |--> | blkdev_get_by_dev |
+    |    +----|--------------+
+    |         |    +--------------------+
+    |         +--> | blkdev_get_no_open | get bdev by dev#
+    |         |    +--------------------+
+    |         |    +------------------+
+    |         +--> | blkdev_get_whole |
+    |              +----|-------------+
+    |                   |
+    |                   |--> get gendick from bdev
+    |                   |
+    |                   +--> call gendisk->open(), e.g.,
+    |                        +---------------+
     |                        | blktrans_open | (from gendisk to mtd layer)
-    |                        +---------------+                            
-    |                                                                     
-    +--> assign bdev mapping to file                                      
+    |                        +---------------+
+    |
+    +--> assign bdev mapping to file                             
 ```
+
+```
++------------------+                                                            
+| blkdev_read_iter |                                                            
++----|-------------+                                                            
+     |    +------------------------+                                            
+     +--> | generic_file_read_iter | read data from page of mapping
+          +------------------------+                                            
+```
+    
+```
++-------------------+                                                                                        
+| blkdev_write_iter |                                                                                        
++----|--------------+                                                                                        
+     |    +----------------+                                                                                 
+     |--> | blk_start_plug |                                                                                 
+     |    +----------------+                                                                                 
+     |    +---------------------------+                                                                      
+     |--> | __generic_file_write_iter | copy data to pages of mapping, mark them dirty                       
+     |    +---------------------------+                                                                      
+     |    +--------------------+                                                                             
+     |--> | generic_write_sync | sync back to storage                                                        
+     |    +--------------------+                                                                             
+     |    +-----------------+                                                                                
+     +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
+          +-----------------+                                                                                
+```
+
+</details>
 
 ```
 +------------------+                                                              
@@ -199,24 +291,6 @@
 ```
 
 ```
-+-------------------+                                                                                        
-| blkdev_write_iter |                                                                                        
-+----|--------------+                                                                                        
-     |    +----------------+                                                                                 
-     |--> | blk_start_plug |                                                                                 
-     |    +----------------+                                                                                 
-     |    +---------------------------+                                                                      
-     |--> | __generic_file_write_iter | copy data to pages of mapping, mark them dirty                       
-     |    +---------------------------+                                                                      
-     |    +--------------------+                                                                             
-     |--> | generic_write_sync | sync back to storage                                                        
-     |    +--------------------+                                                                             
-     |    +-----------------+                                                                                
-     +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
-          +-----------------+                                                                                
-```
-
-```
 +------------+                                                                                             
 | submit_bio |                                                                                             
 +--|---------+                                                                                             
@@ -267,23 +341,6 @@
               |    +-------------+
               |
               +--> add the 'request' to plug list or io scheduler queue
-```
-
-```
-+------------------+                                                            
-| blkdev_read_iter |                                                            
-+----|-------------+                                                            
-     |    +------------------------+                                            
-     +--> | generic_file_read_iter |                                            
-          +-----|------------------+                                            
-                |                                                               
-                |--> if DIRECT flag is set                                      
-                |                                                               
-                |------> (skip, not my case this time)                          
-                |                                                               
-                |    +--------------+                                           
-                +--> | filemap_read | copy data from page of mapping to iterator
-                     +--------------+                                           
 ```
 
 ## <a name="reference"></a> Reference
