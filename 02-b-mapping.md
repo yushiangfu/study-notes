@@ -32,6 +32,46 @@
 ```
 
 ```
++-------------------+                                                                           
+| filemap_get_pages | ensure data is there and up-to-date                                       
++----|--------------+                                                                           
+     |    +------------------------+                                                            
+     |--> | filemap_get_read_batch | save a bunch of page addresses in pvec                     
+     |    +------------------------+                                                            
+     |                                                                                          
+     |--> if get nothing                                                                        
+     |                                                                                          
+     |        +---------------------------+                                                     
+     |------> | page_cache_sync_readahead |                                                     
+     |        +---------------------------+                                                     
+     |        +------------------------+                                                        
+     |------> | filemap_get_read_batch | save a bunch of page addresses in pvec                 
+     |        +------------------------+                                                        
+     |                                                                                          
+     |--> if still get nothing                                                                  
+     |                                                                                          
+     |        +---------------------+                                                           
+     |------> | filemap_create_page | allocate a page, read data to it, and add the page to cache
+     |        +---------------------+                                                           
+     |                                                                                          
+     |------> return                                                                            
+     |                                                                                          
+     |                                                                                          
+     |--> get the last page in pvec                                                             
+     |                                                                                          
+     |--> if it's labeled READAHEAD                                                             
+     |                                                                                          
+     |        +-------------------+                                                             
+     |------> | filemap_readahead |                                                             
+     |        +----|--------------+                                                             
+     |             |    +----------------------------+                                          
+     |             +--> | page_cache_async_readahead |                                          
+     |                  +----------------------------+                                          
+     |                                                                                          
+     +--> ensure the pages are up-to-date                                                       
+```
+
+```
 +---------------------------+                                                                                               
 | page_cache_sync_readahead |                                                                                               
 +------|--------------------+                                                                                               
@@ -62,8 +102,8 @@
                                                  |----------> | read_pages | (traced separately)         |                  
                                                  |            +------------+                             |                  
                                                  |                                                       |                  
-                                                 |------> else                                           |  simplified logic
-                                                 |                                                       |                  
+                                                 |------> else                                           |  simplified
+                                                 |                                                       |  logic
                                                  |            +--------------------+                     |                  
                                                  |----------> | __page_cache_alloc |                     |                  
                                                  |            +--------------------+                     |                  
@@ -131,46 +171,6 @@
       |    +-------------+                                                      
       +--> | pagevec_add | add the page to pvec                                 
            +-------------+                                                      
-```
-
-```
-+-------------------+                                                                           
-| filemap_get_pages | ensure data is there and up-to-date                                       
-+----|--------------+                                                                           
-     |    +------------------------+                                                            
-     |--> | filemap_get_read_batch | save a bunch of page addresses in pvec                     
-     |    +------------------------+                                                            
-     |                                                                                          
-     |--> if get nothing                                                                        
-     |                                                                                          
-     |        +---------------------------+                                                     
-     |------> | page_cache_sync_readahead |                                                     
-     |        +---------------------------+                                                     
-     |        +------------------------+                                                        
-     |------> | filemap_get_read_batch | save a bunch of page addresses in pvec                 
-     |        +------------------------+                                                        
-     |                                                                                          
-     |--> if still get nothing                                                                  
-     |                                                                                          
-     |        +---------------------+                                                           
-     |------> | filemap_create_page | alocate a page, read data to it, and add the page to cache
-     |        +---------------------+                                                           
-     |                                                                                          
-     |------> return                                                                            
-     |                                                                                          
-     |                                                                                          
-     |--> get the last page in pvec                                                             
-     |                                                                                          
-     |--> if it's labeled READAHEAD                                                             
-     |                                                                                          
-     |        +-------------------+                                                             
-     |------> | filemap_readahead |                                                             
-     |        +----|--------------+                                                             
-     |             |    +----------------------------+                                          
-     |             +--> | page_cache_async_readahead |                                          
-     |                  +----------------------------+                                          
-     |                                                                                          
-     +--> ensure the pages are up-to-date                                                       
 ```
 
 ```
