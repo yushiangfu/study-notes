@@ -7,7 +7,12 @@
 
 ## <a name="introduction"></a> Introduction
 
-Block device is one of the seven file types supported by virtual file system (VFS). 
+Block device is one of the seven file types supported by the virtual file system (VFS). 
+The device file has its special file operations prepared, and they work as the portal to block related functions. 
+The blkdev_read_iter() and blkdev_write_iter() interact with address space, which is the abstract of mapping. 
+Address space is a radix tree structure containing many pages that represent data pieces of a file or block storage. 
+The block device mapping goes through the block layer, and each read-write operation is wrapped as a request and cached in a queue appropriately. 
+When the time is right, the stream of requests bursts to the next layer, e.g., MTD.
 
 ```
          +--                                                                                                       
@@ -40,35 +45,35 @@ Block device is one of the seven file types supported by virtual file system (VF
 ```
 
 ```
-const struct file_operations def_blk_fops = { 
-    .open       = blkdev_open,
-    .release    = blkdev_close,
-    .read_iter  = blkdev_read_iter,
-    .write_iter = blkdev_write_iter,
-...
-}
+const struct file_operations def_blk_fops = {           --+
+    .open       = blkdev_open,                            |
+    .release    = blkdev_close,                           |
+    .read_iter  = blkdev_read_iter,                       | vfs
+    .write_iter = blkdev_write_iter,                      |
+...                                                       |
+}                                                       --+
 
-const struct address_space_operations def_blk_aops = { 
-    .readpage   = blkdev_readpage,
-    .readahead  = blkdev_readahead,
-    .writepage  = blkdev_writepage,
-    .write_begin    = blkdev_write_begin,
-    .write_end  = blkdev_write_end,
-    .writepages = blkdev_writepages,
-...
-};
+const struct address_space_operations def_blk_aops = {  --+
+    .readpage   = blkdev_readpage,                        |
+    .readahead  = blkdev_readahead,                       |
+    .writepage  = blkdev_writepage,                       | address
+    .write_begin    = blkdev_write_begin,                 | space
+    .write_end  = blkdev_write_end,                       |
+    .writepages = blkdev_writepages,                      |
+...                                                       |
+};                                                      --+
 
-static struct mtd_blktrans_ops mtdblock_tr = { 
-    .open       = mtdblock_open,
-    .release    = mtdblock_release,
-    .readsect   = mtdblock_readsect,
-    .writesect  = mtdblock_writesect,
-...
-};
+static struct mtd_blktrans_ops mtdblock_tr = {          --+
+    .open       = mtdblock_open,                          |
+    .release    = mtdblock_release,                       |
+    .readsect   = mtdblock_readsect,                      | mtd
+    .writesect  = mtdblock_writesect,                     |
+...                                                       |
+};                                                      --+
 ```
 
 <details>
-  <summary> Code Trace </summary>
+  <summary> Code trace of VFS layer </summary>
 
 ```
 +-------------+
@@ -122,6 +127,9 @@ static struct mtd_blktrans_ops mtdblock_tr = {
 ```
 
 </details>
+
+<details>
+  <summary> Code trace of address space layer </summary>
 
 ```
 +------------------+                                                              
@@ -343,6 +351,8 @@ static struct mtd_blktrans_ops mtdblock_tr = {
               +--> add the 'request' to plug list or io scheduler queue
 ```
 
+</details>
+         
 ## <a name="reference"></a> Reference
 
 (TBD)
