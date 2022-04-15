@@ -7,51 +7,16 @@
 
 ## <a name="introduction"></a> Introduction
 
-```
-                 +----  flash@0 ◄─── [chip]
-                 |  +------------+
-                 |  |   u-boot   | ◄─── [mtd] ─┐
-                 |  +------------+             │
-                 |  | u-boot-env | ◄─── [mtd]  │
-                 |  +------------+             │
-                 |  |   kernel   | ◄─── [mtd]  │ ◄─── [mtd]
-[controller]     |  +------------+             │
-      │          |  |    rofs    | ◄─── [mtd]  │
-      ▼          |  +------------+             │
-spi@1e620000 ----+  |    rwfs    | ◄─── [mtd] ─┘
-                 |  +------------+
-                 |
-                 |
-                 |----  flash@1
-                 |     (disabled)
-                 |
-                 |
-                 +----  flash@2
-                       (disabled)
-```
+We can access the NAND or NOR flash through the SPI interface of the chip, e.g., AST2500. 
+And the memory technology device (MTD) abstracts the complicated command sending stuff into a layer that users can apply regular read and write.
+Here's the list of all the MTD device files, and we can see that there are 7 MTD partitions duplicated in three groups:
 
-```
-                 +----  flash@0                        +----  flash@0                        +----  flash@0
-                 |  +------------+                     |  +------------+                     |     (disabled)
-                 |  |   u-boot   |                     |  |            |                     |
-                 |  +------------+                     |  +------------+                     |
-                 |  | u-boot-env |                     |                                     |
-                 |  +------------+                     |                                     |
-                 |  |   kernel   |                     |                                     |
-                 |  +------------+                     |                                     |
-                 |  |    rofs    |                     |                                     |
-                 |  +------------+                     |                                     |
-spi@1e620000 ----+  |    rwfs    |    spi@1e630000 ----+                    spi@1e631000 ----+
-                 |  +------------+                     |                      (disabled)     |
-                 |                                     |                                     |
-                 |                                     |                                     |
-                 |----  flash@1                        +----  flash@1                        +----  flash@1
-                 |     (disabled)                            (disabled)                            (disabled)
-                 |
-                 |
-                 +----  flash@2
-                       (disabled)
-```
+- character device
+- character device (read-only)
+- block device
+
+Also, there's a folder containing link files with descriptive names, and each points to the corresponding character device file. 
+Note that mtd1 to mtd6 represent the partition while mtd0 means the whole flash.
 
 ```
 root@romulus:~# ls -l /dev/mtd*
@@ -85,6 +50,109 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 rofs -> ../mtd4
 lrwxrwxrwx    1 root     root             7 Mar 12 08:17 rwfs -> ../mtd5
 lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot -> ../mtd1
 lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
+```
+
+```
+                 +----  flash@0                        +----  flash@0                        +----  flash@0
+                 |  +------------+                     |  +------------+                     |     (disabled)
+                 |  |   u-boot   |                     |  |            |                     |
+                 |  +------------+                     |  +------------+                     |
+                 |  | u-boot-env |                     |                                     |
+                 |  +------------+                     |                                     |
+                 |  |   kernel   |                     |                                     |
+                 |  +------------+                     |                                     |
+                 |  |    rofs    |                     |                                     |
+                 |  +------------+                     |                                     |
+spi@1e620000 ----+  |    rwfs    |    spi@1e630000 ----+                    spi@1e631000 ----+
+                 |  +------------+                     |                      (disabled)     |
+                 |                                     |                                     |
+                 |                                     |                                     |
+                 |----  flash@1                        +----  flash@1                        +----  flash@1
+                 |     (disabled)                            (disabled)                            (disabled)
+                 |
+                 |
+                 +----  flash@2
+                       (disabled)
+```
+
+```
+            register            ahb
+                |                |
+                |                |
+                +-------+        +-------+
+                |       |        |       |
+spi@1e620000 {  v       v        v       v
+    reg = <0x1e620000 0xc4 0x20000000 0x10000000>;
+    #address-cells = <0x01>;
+    #size-cells = <0x00>;
+    compatible = "aspeed,ast2500-fmc";
+    clocks = <0x02 0x19>;
+    status = "okay";
+    interrupts = <0x13>;               chip select
+                                            |
+    flash@0 {                               |
+        reg = <0x00>; <---------------------+
+        compatible = "jedec,spi-nor";
+        spi-max-frequency = <0x2faf080>;
+        status = "okay";
+        m25p,fast-read;
+        label = "bmc";
+
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <0x01>;
+            #size-cells = <0x01>;
+
+
+                    u-boot@0 {
+                        reg = <0x00 0x60000>;
+                        label = "u-boot";
+                    };
+
+                    u-boot-env@60000 {
+                        reg = <0x60000 0x20000>;
+                        label = "u-boot-env";
+                    };
+
+                    kernel@80000 {
+                        reg = <0x80000 0x440000>;
+                        label = "kernel";
+                    };
+
+                    rofs@c0000 {
+                        reg = <0x4c0000 0x1740000>;
+                        label = "rofs";
+                    };
+
+                    rwfs@1c00000 {
+                        reg = <0x1c00000 0x400000>;
+                        label = "rwfs";
+                    };
+                };
+            };
+```
+
+```
+                 +----  flash@0 ◄─── [chip]
+                 |  +------------+
+                 |  |   u-boot   | ◄─── [mtd] ─┐
+                 |  +------------+             │
+                 |  | u-boot-env | ◄─── [mtd]  │
+                 |  +------------+             │
+                 |  |   kernel   | ◄─── [mtd]  │ ◄─── [mtd]
+[controller]     |  +------------+             │
+      │          |  |    rofs    | ◄─── [mtd]  │
+      ▼          |  +------------+             │
+spi@1e620000 ----+  |    rwfs    | ◄─── [mtd] ─┘
+                 |  +------------+
+                 |
+                 |
+                 |----  flash@1
+                 |     (disabled)
+                 |
+                 |
+                 +----  flash@2
+                       (disabled)
 ```
 
 ```
@@ -225,6 +293,19 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
 ```
 
 ```
+static const struct file_operations mtd_fops = {
+    .read       = mtdchar_read,
+    .write      = mtdchar_write,
+    .open       = mtdchar_open,
+    .release    = mtdchar_close,
+...
+};
+```
+
+<details>
+  <summary> Code trace of VFS layer </summary>
+
+```
 +--------------+                                           
 | mtdchar_open |                                           
 +---|----------+                                           
@@ -270,26 +351,6 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
 ```
 
 ```
-+--------------+                                                  
-| spi_nor_read |                                                  
-+---|----------+                                                  
-    |                                                             
-    |--> while we haven't read enough                             
-    |                                                             
-    |        +----------------------+                             
-    |------> | spi_nor_convert_addr | do nothing in our case      
-    |        +----------------------+                             
-    |        +-------------------+                                
-    |------> | spi_nor_read_data |                                
-    |        +-------------------+                                
-    |                                                             
-    +------> call ->read(), e.g.,                                 
-             +-----------------+                                  
-             | aspeed_smc_read | (driver of aspeed spi controller)
-             +-----------------+ read data and copy to buffer     
-```
-
-```
 +---------------+                                             
 | mtdchar_write |                                             
 +---|-----------+                                             
@@ -319,6 +380,49 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
     |                                                         
     +--> free the buffer                                      
 ```
+  
+```
++---------------+
+| mtdchar_close |
++---|-----------+
+    |
+    |--> if the file is opened with 'write' flag
+    |
+    |        +----------+
+    |------> | mtd_sync | call ->_sync() if it exists (not our case)
+    |        +----------+
+    |
+    +--> free mtd_file_info
+```
+  
+</details>
+
+```
+    mtd->_write = spi_nor_write;
+    mtd->_erase = spi_nor_erase;
+    mtd->_read = spi_nor_read;
+...
+```
+
+```
++--------------+                                                  
+| spi_nor_read |                                                  
++---|----------+                                                  
+    |                                                             
+    |--> while we haven't read enough                             
+    |                                                             
+    |        +----------------------+                             
+    |------> | spi_nor_convert_addr | do nothing in our case      
+    |        +----------------------+                             
+    |        +-------------------+                                
+    |------> | spi_nor_read_data |                                
+    |        +-------------------+                                
+    |                                                             
+    +------> call ->read(), e.g.,                                 
+             +-----------------+                                  
+             | aspeed_smc_read | (driver of aspeed spi controller)
+             +-----------------+ read data and copy to buffer     
+```
 
 ```
 +---------------+                                                                 
@@ -341,20 +445,6 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
                        +-----------------------+                                  
                        | aspeed_smc_write_user | (driver of aspeed spi controller)
                        +-----------------------+ write buffer data                
-```
-
-```
-+---------------+
-| mtdchar_close |
-+---|-----------+
-    |
-    |--> if the file is opened with 'write' flag
-    |
-    |        +----------+
-    |------> | mtd_sync | call ->_sync() if it exists (not our case)
-    |        +----------+
-    |
-    +--> free mtd_file_info
 ```
 
 ```
