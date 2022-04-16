@@ -3,9 +3,16 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Files and DTS](#files-and-dts)
+- [Control Flow](#control-flow)
+- [Boot Up](#boot-up)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
+
+(TBD)
+
+## <a name="files-and-dts"></a> Files and DTS
 
 SPI is a protocol like I2C that we use to communicate with devices within a computer system. 
 The most significant differences from I2C are:
@@ -20,9 +27,6 @@ Here's the list of all the MTD device files, and we can see that there are 7 MTD
 - character device
 - character device (read-only)
 - block device
-
-Also, there's a folder containing link files with descriptive names, and each points to the corresponding character device file. 
-Note that mtd1 to mtd5 represent the partition while mtd0 means the whole flash.
 
 ```
 root@romulus:~# ls -l /dev/mtd*
@@ -57,6 +61,9 @@ lrwxrwxrwx    1 root     root             7 Mar 12 08:17 rwfs -> ../mtd5
 lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot -> ../mtd1
 lrwxrwxrwx    1 root     root             7 Mar 12 08:17 u-boot-env -> ../mtd2
 ```
+
+Also, there's a folder containing link files with descriptive names, and each points to the corresponding character device file. 
+Note that mtd1 to mtd5 represent the partition while mtd0 means the whole flash containing them. The mtd6 is another entire flash.
 
 From the description in DTS, we can see that there are three SPI controllers in AST2500. 
 The SPI protocol replaces the address concept in the I2C protocol with slave selection, which is a prerequisite action before accessing devices. 
@@ -218,6 +225,8 @@ spi@1e631000 {
 };
 ```
 </details>
+  
+## <a name="control-flow"></a> Control Flow
 
 The control flows between the character device and block device are distinct. 
 But they eventually connect to the MTD layer through the different entry points and further deliver the data request to the SPI driver.
@@ -369,9 +378,172 @@ static const struct file_operations mtd_fops = {
   
 </details>
   
-During the kernel boot flow, SPI driver sequentially probes SPI controllers and parses partitions from DTB.
-It creates two MTDs that represent the whole flash, and install the SPI operation set to each MTD after identifying the flash model.
+```  
+static struct mtd_blktrans_ops mtdblock_tr = { 
+    .open       = mtdblock_open,
+    .release    = mtdblock_release,
+    .readsect   = mtdblock_readsect,
+    .writesect  = mtdblock_writesect,
+...
+};
+```
+  
+<details>
+  <summary> Code trace of 'mtdblock_tr' </summary>
+  
+```
++------------------+                                                                                      
+| mtdblock_tr_init |                                                                                      
++----|-------------+                                                                                      
+     |    +-----------------------+                                                                       
+     +--> | register_mtd_blktrans |                                                                       
+          +-----|-----------------+                                                                       
+                |    +-----------------+                                                                  
+                |--> | register_blkdev | register name to major_names[major]                              
+                |    +-----------------+                                                                  
+                |                                                                                         
+                |--> add arg tr to 'blktrans_majors' list                                                 
+                |                                                                                         
+                |--> for each mtd                                                                         
+                |                                                                                         
+                +------> call ->add_mtd(), e.g.,                                                          
+                         +------------------+                                                             
+                         | mtdblock_add_mtd |                                                             
+                         +----|-------------+                                                             
+                              |    +----------------------+                                               
+                              +--> | add_mtd_blktrans_dev |                                               
+                                   +-----|----------------+                                               
+                                         |                                                                
+                                         |--> add mtd to tr                                               
+                                         |                                                                
+                                         |    +-------------------+                                       
+                                         |--> | blk_mq_alloc_disk | allocate gendisk and queue            
+                                         |    +-------------------+                                       
+                                         |                                                                
+                                         |--> set up gendisk (major, minor, fops = 'mtd_block_ops')         
+                                         |                                                                
+                                         |    +-----------------+                                         
+                                         +--> | device_add_disk | add disk information to kernel list     
+                                              +-----------------+                                         
+```
+
+```
+ +-------------+                                             
+ | blkdev_open |                                             
+ +-------------+                                             
+        -                                                    
+        -                                                    
+        -                                                    
++---------------+                                            
+| blktrans_open |                                            
++---|-----------+                                            
+    |                                                        
+    |--> call tr->open(), e.g.,                              
+    |    +---------------+                                   
+    |    | mtdblock_open | (nothing important)               
+    |    +---------------+                                   
+    |                                                        
+    |    +------------------+                                
+    +--> | __get_mtd_device |                                
+         +----|-------------+                                
+              |                                              
+              +--> call master->_get_device(), e.g.,         
+                   +--------------------+                    
+                   | spi_nor_get_device | (nothing important)
+                   +--------------------+                    
+```
+
+```
++--------------+                                           
+| mtd_queue_rq |                                           
++---|----------+                                           
+    |    +-------------------+                             
+    +--> | mtd_blktrans_work |                             
+         +----|--------------+                             
+              |    +---------------------+                 
+              +--> | do_blktrans_request |                 
+                   +-----|---------------+                 
+                         |                                 
+                         |--> switch option                
+                         |                                 
+                         |--> case READ                    
+                         |                                 
+                         |------> call ->readsect(), e.g., 
+                         |        +-------------------+    
+                         |        | mtdblock_readsect |    
+                         |        +-------------------+    
+                         |                                 
+                         |    case WRITE                   
+                         |                                 
+                         +------> call ->writesect(), e.g.,
+                                  +--------------------+   
+                                  | mtdblock_writesect |   
+                                  +--------------------+   
+```
+
+</details>
  
+```
+    mtd->_write = spi_nor_write;
+    mtd->_erase = spi_nor_erase;
+    mtd->_read = spi_nor_read;
+...
+```
+  
+<details>
+  <summary> Code trace of SPI functions </summary>
+
+```
++--------------+                                                  
+| spi_nor_read |                                                  
++---|----------+                                                  
+    |                                                             
+    |--> while we haven't read enough                             
+    |                                                             
+    |        +----------------------+                             
+    |------> | spi_nor_convert_addr | do nothing in our case      
+    |        +----------------------+                             
+    |        +-------------------+                                
+    |------> | spi_nor_read_data |                                
+    |        +-------------------+                                
+    |                                                             
+    +------> call ->read(), e.g.,                                 
+             +-----------------+                                  
+             | aspeed_smc_read | (driver of aspeed spi controller)
+             +-----------------+ read data and copy to buffer     
+```
+
+```
++---------------+                                                                 
+| spi_nor_write |                                                                 
++---|-----------+                                                                 
+    |                                                                             
+    |--> while we haven't write enough                                            
+    |                                                                             
+    |        +----------------------+                                             
+    +------> | spi_nor_convert_addr | do nothing in our case                      
+             +----------------------+                                             
+             +----------------------+                                             
+             | spi_nor_write_enable |                                             
+             +----------------------+                                             
+             +--------------------+                                               
+             | spi_nor_write_data |                                               
+             +----|---------------+                                               
+                  |                                                               
+                  +--> call ->write(), e.g.,                                      
+                       +-----------------------+                                  
+                       | aspeed_smc_write_user | (driver of aspeed spi controller)
+                       +-----------------------+ write buffer data                
+```
+
+</details>
+  
+## <a name="boot-up"></a> Boot Up
+  
+During the kernel boot flow, the SPI driver sequentially probes SPI controllers and parses partitions from DTB. 
+After creating the MTD representing the whole flash, it identifies the flash model and installs the SPI operation set.
+The probing and parsing procedure generates the below kernel boot log.
+    
 ```
                                       +--    [    0.815817] aspeed-smc 1e620000.spi: Using 50 MHz SPI frequency                    
                                       |      [    0.819803] aspeed-smc 1e620000.spi: n25q256a (32768 Kbytes)                       
@@ -528,146 +700,6 @@ It creates two MTDs that represent the whole flash, and install the SPI operatio
 ```
 
 </details>
-  
-```
-    mtd->_write = spi_nor_write;
-    mtd->_erase = spi_nor_erase;
-    mtd->_read = spi_nor_read;
-...
-```
-
-```
-+--------------+                                                  
-| spi_nor_read |                                                  
-+---|----------+                                                  
-    |                                                             
-    |--> while we haven't read enough                             
-    |                                                             
-    |        +----------------------+                             
-    |------> | spi_nor_convert_addr | do nothing in our case      
-    |        +----------------------+                             
-    |        +-------------------+                                
-    |------> | spi_nor_read_data |                                
-    |        +-------------------+                                
-    |                                                             
-    +------> call ->read(), e.g.,                                 
-             +-----------------+                                  
-             | aspeed_smc_read | (driver of aspeed spi controller)
-             +-----------------+ read data and copy to buffer     
-```
-
-```
-+---------------+                                                                 
-| spi_nor_write |                                                                 
-+---|-----------+                                                                 
-    |                                                                             
-    |--> while we haven't write enough                                            
-    |                                                                             
-    |        +----------------------+                                             
-    +------> | spi_nor_convert_addr | do nothing in our case                      
-             +----------------------+                                             
-             +----------------------+                                             
-             | spi_nor_write_enable |                                             
-             +----------------------+                                             
-             +--------------------+                                               
-             | spi_nor_write_data |                                               
-             +----|---------------+                                               
-                  |                                                               
-                  +--> call ->write(), e.g.,                                      
-                       +-----------------------+                                  
-                       | aspeed_smc_write_user | (driver of aspeed spi controller)
-                       +-----------------------+ write buffer data                
-```
-
-```
-+------------------+                                                                                      
-| mtdblock_tr_init |                                                                                      
-+----|-------------+                                                                                      
-     |    +-----------------------+                                                                       
-     +--> | register_mtd_blktrans |                                                                       
-          +-----|-----------------+                                                                       
-                |    +-----------------+                                                                  
-                |--> | register_blkdev | register name to major_names[major]                              
-                |    +-----------------+                                                                  
-                |                                                                                         
-                |--> add arg tr to 'blktrans_majors' list                                                 
-                |                                                                                         
-                |--> for each mtd                                                                         
-                |                                                                                         
-                +------> call ->add_mtd(), e.g.,                                                          
-                         +------------------+                                                             
-                         | mtdblock_add_mtd |                                                             
-                         +----|-------------+                                                             
-                              |    +----------------------+                                               
-                              +--> | add_mtd_blktrans_dev |                                               
-                                   +-----|----------------+                                               
-                                         |                                                                
-                                         |--> add mtd to tr                                               
-                                         |                                                                
-                                         |    +-------------------+                                       
-                                         |--> | blk_mq_alloc_disk | allocate gendisk and queue            
-                                         |    +-------------------+                                       
-                                         |                                                                
-                                         |--> set up gendisk (major, minor, fops = 'mtd_block_ops')         
-                                         |                                                                
-                                         |    +-----------------+                                         
-                                         +--> | device_add_disk | add disk information to kernel list     
-                                              +-----------------+                                         
-```
-
-```
- +-------------+                                             
- | blkdev_open |                                             
- +-------------+                                             
-        -                                                    
-        -                                                    
-        -                                                    
-+---------------+                                            
-| blktrans_open |                                            
-+---|-----------+                                            
-    |                                                        
-    |--> call tr->open(), e.g.,                              
-    |    +---------------+                                   
-    |    | mtdblock_open | (nothing important)               
-    |    +---------------+                                   
-    |                                                        
-    |    +------------------+                                
-    +--> | __get_mtd_device |                                
-         +----|-------------+                                
-              |                                              
-              +--> call master->_get_device(), e.g.,         
-                   +--------------------+                    
-                   | spi_nor_get_device | (nothing important)
-                   +--------------------+                    
-```
-
-```
-+--------------+                                           
-| mtd_queue_rq |                                           
-+---|----------+                                           
-    |    +-------------------+                             
-    +--> | mtd_blktrans_work |                             
-         +----|--------------+                             
-              |    +---------------------+                 
-              +--> | do_blktrans_request |                 
-                   +-----|---------------+                 
-                         |                                 
-                         |--> switch option                
-                         |                                 
-                         |--> case READ                    
-                         |                                 
-                         |------> call ->readsect(), e.g., 
-                         |        +-------------------+    
-                         |        | mtdblock_readsect |    
-                         |        +-------------------+    
-                         |                                 
-                         |    case WRITE                   
-                         |                                 
-                         +------> call ->writesect(), e.g.,
-                                  +--------------------+   
-                                  | mtdblock_writesect |   
-                                  +--------------------+   
-```
 
 ## <a name="reference"></a> Reference
 
