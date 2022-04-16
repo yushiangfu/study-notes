@@ -511,9 +511,121 @@ nod /dev/console 0600 0 0 c 5 1
 dir /root 0700 0 0
 ```
 
-## <a name="to-do-list"></a> To-Do List
+```
++---------------+                                                                                        
+| path_parentat | walk through the path name, update dentry and mnt of the last component in nd
++---|-----------+                                                                                        
+    |    +-----------+                                                                                   
+    |--> | path_init | set nd's root, path, and inode                                                    
+    |    +-----------+                                                                                   
+    |    +----------------+                                                                              
+    |--> | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
+    |    +----------------+                                                                              
+    |    +---------------+                                                                               
+    |--> | complete_walk | finalize something that doesn't matter to us                                  
+    |    +---------------+                                                                               
+    |                                                                                                    
+    |--> copy path to argument and reset nd                                                              
+    |                                                                                                    
+    |    +----------------+                                                                              
+    +--> | terminate_walk | finalize something that doesn't matter to us                                 
+         +----------------+                                                                              
+```
 
-(TBD)
+```
++----------------+                                                                          
+| link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
++---|------------+                                                                          
+    |                                                                                       
+    |--> endless loop                                                                       
+    |                                                                                       
+    +------> update nd last                                                                 
+    |                                                                                       
+    |        +----------------+                                                             
+    |------> | walk_component | update path (dentry + mnt) and inode of nd to next component
+    |        +----------------+                                                             
+    |                                                                                       
+    +------> (ignore link handling)                                                         
+```
+
+```
++----------------+                                                                          
+| walk_component | update path (dentry + mnt) and inode of nd to next component           
++---|------------+                                                                          
+    |                                                                                       
+    |--> if it's DOT or DOTDOT                                                              
+    |                                                                                       
+    |        +-------------+                                                                
+    |------> | handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)
+    |        +-------------+                                                                
+    |                                                                                       
+    |------> return                                                                         
+    |                                                                                       
+    |    +-------------+                                                                    
+    |--> | lookup_fast | find child dentry in hash table by parent dentry and child name    
+    |    +-------------+                                                                    
+    |    +-----------+                                                                      
+    +--> | step_into | update path and inode of nd (automount and link cases are considered)
+         +-----------+                                                                      
+```
+
+```
++-------------+                                                                             
+| handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)             
++---|---------+                                                                             
+    |                                                                                       
+    |--> if it's DOTDOT (do nothing for DOT case)                                           
+    |                                                                                       
+    |------> ensure nd has root setting                                                     
+    |                                                                                       
+    |    +---------------+                                                                  
+    |--> | follow_dotdot |                                                                  
+    |    +---|-----------+                                                                  
+    |        |                                                                              
+    |        |--> if it's the root, return NULL                                             
+    |        |                                                                              
+    |        |--> if it's a mount point                                                     
+    |        |                                                                              
+    |        |        +-------------------+                                                 
+    |        |------> | choose_mountpoint | update dentry and mnt in path with mount point  
+    |        |        +-------------------+                                                 
+    |        |                                                                              
+    |        +--> get parent dentry and inode                                               
+    |                                                                                       
+    |    +-----------+                                                                      
+    +--> | step_into | update path and inode of nd (automount and link cases are considered)
+         +-----------+                                                                      
+```
+
+```
++-----------+                                                                     
+| step_into | update path and inode of nd (automount and link cases are considered)
++--|--------+                                                                     
+   |    +---------------+                                                         
+   |--> | handle_mounts | update mnt and dentry of path if it's mounted           
+   |    +---|-----------+                                                         
+   |        |    +-----------------+                                              
+   |        +--> | traverse_mounts |                                              
+   |             +----|------------+                                              
+   |                  |    +-------------------+                                  
+   |                  +--> | __traverse_mounts |                                  
+   |                       +----|--------------+                                  
+   |                            |                                                 
+   |                            |--> if it's mounted                              
+   |                            |                                                 
+   |                            |        +------------+                           
+   |                            |------> | lookup_mnt | return the first child mnt
+   |                            |        +------------+                           
+   |                            |                                                 
+   |                            |------> update the mnt and dentry of path with it
+   |                            |                                                 
+   |                            +--> (ignore the case of auto mount)              
+   |                                                                              
+   |--> update path and inode of nd                                               
+   |                                                                              
+   +--> (ignore the case of link)                                                 
+```
+
 
 ## <a name="reference"></a> Reference
 
