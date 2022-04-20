@@ -626,6 +626,43 @@ dir /root 0700 0 0
    +--> (ignore the case of link)                                                 
 ```
 
+```
++-----------------+                                                                                                              
+| vfs_path_lookup |                                                                                                              
++----|------------+                                                                                                              
+     |    +-----------------+                                                                                                    
+     +--> | filename_lookup |                                                                                                    
+          +----|------------+                                                                                                    
+               |    +---------------+                                                                                            
+               |--> | set_nameidata | set up nd and replace the one of current task                                              
+               |    +---------------+                                                                                            
+               |    +---------------+                                                                                            
+               |--> | path_lookupat |                                                                                            
+               |    +---|-----------+                                                                                            
+               |        |    +-----------+                                                                                       
+               |        |--> | path_init | decide the starting point for lookup                                                  
+               |        |    +-----------+                                                                                       
+               |        |                                                                                                        
+               |        |--> endless loop                                                                                        
+               |        |                                                                                                        
+               |        |        +----------------+                                                                              
+               |        |------> | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
+               |        |        +----------------+                                                                              
+               |        |                                                                                                        
+               |        |------> break loop if error                                                                             
+               |        |                                                                                                        
+               |        |        +-------------+                                                                                 
+               |        |------> | lookup_last | update path (dentry + mnt) and inode of nd to next component                    
+               |        |        +-------------+                                                                                 
+               |        |                                                                                                        
+               |        |------> break loop if error                                                                             
+               |        |                                                                                                        
+               |        +--> copy path to argument and reset nd                                                                  
+               |                                                                                                                 
+               |    +-------------------+                                                                                        
+               +--> | restore_nameidata |                                                                                        
+                    +-------------------+                                                                                        
+```
 
 ## <a name="reference"></a> Reference
 
