@@ -664,6 +664,50 @@ dir /root 0700 0 0
                     +-------------------+                                                                                        
 ```
 
+```
++------------+                                                                         
+| vfs_create | e.g., prepare an inode of regular file and link it with given dentry    
++--|---------+                                                                         
+   |                                                                                   
+   |--> if dir inode has no ->create(), return error                                   
+   |                                                                                   
+   +--> call ->create(), e.g.,                                                         
+        +--------------+                                                               
+        | shmem_create | prepare an inode of regular file and link it with given dentry
+        +--------------+                                                               
+```
+
+```
++-----------+                                                                                           
+| new_inode | allocate a complex or regular inode, init and add to sb's list                            
++--|--------+                                                                                           
+   |    +------------------+                                                                            
+   |--> | new_inode_pseudo |                                                                            
+   |    +----|-------------+                                                                            
+   |         |    +-------------+                                                                       
+   |         +--> | alloc_inode |                                                                       
+   |              +---|---------+                                                                       
+   |                  |                                                                                 
+   |                  |--> if sb has ->alloc_inode()                                                    
+   |                  |                                                                                 
+   |                  |------> call ->alloc_inode(), e.g.,                                              
+   |                  |        +-------------------+                                                    
+   |                  |        | shmem_alloc_inode | allocate a complex inode containing the regular one
+   |                  |        +-------------------+                                                    
+   |                  |                                                                                 
+   |                  |--> else                                                                         
+   |                  |                                                                                 
+   |                  |        +------------------+                                                     
+   |                  |------> | kmem_cache_alloc | allocate a regular one                              
+   |                  |        +------------------+                                                     
+   |                  |    +-------------------+                                                        
+   |                  +--> | inode_init_always | init inode, e.g., set its sb                           
+   |                       +-------------------+                                                        
+   |    +-------------------+                                                                           
+   +--> | inode_sb_list_add | add the inode to sb's list                                                
+        +-------------------+                                                                           
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
