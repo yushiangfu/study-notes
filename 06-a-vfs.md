@@ -666,7 +666,7 @@ dir /root 0700 0 0
 
 ```
 +------------+                                                                         
-| vfs_create | e.g., prepare an inode of regular file and link it with given dentry    
+| vfs_create | prepare an inode of regular file and link it with given dentry    
 +--|---------+                                                                         
    |                                                                                   
    |--> if dir inode has no ->create(), return error                                   
@@ -706,6 +706,49 @@ dir /root 0700 0 0
    |    +-------------------+                                                                           
    +--> | inode_sb_list_add | add the inode to sb's list                                                
         +-------------------+                                                                           
+```
+
+```
++-------------+                                                                                    
+| vfs_tmpfile | prepare dentry and inode, set dentry's name using ino, and link inode and dentry   
++---|---------+                                                                                    
+    |                                                                                              
+    |--> if dir inode doesn't have ->tmpfile(), return error                                       
+    |                                                                                              
+    |    +---------+                                                                               
+    |--> | d_alloc | allocate and init a dentry, link with its parent                              
+    |    +---------+                                                                               
+    |                                                                                              
+    +--> call ->tmpfile(), e.g.,                                                                   
+         +---------------+                                                                         
+         | shmem_tmpfile | prepare an inode, set dentry's name using ino, and link inode and dentry
+         +---------------+                                                                         
+```
+
+```
++-----------+                                                                           
+| vfs_mknod |                                                                           
++--|--------+                                                                           
+   |                                                                                    
+   |--> if dir inode has no ->mknod(), return error                                     
+   |                                                                                    
+   +--> call ->mknod(), e.g.,                                                           
+        +-------------+                                                                 
+        | shmem_mknod | prepare an inode of specified type and link it with given dentry
+        +-------------+                                                                 
+```
+
+```
++-----------+                                                                      
+| vfs_mkdir | prepare an inode of directory and link it with given dentry          
++--|--------+                                                                      
+   |                                                                               
+   |--> if dir inode has no ->mkdir(), return error                                
+   |                                                                               
+   +--> call ->mkdir(), e.g.,                                                      
+        +-------------+                                                            
+        | shmem_mkdir | prepare an inode of directory and link it with given dentry
+        +-------------+                                                            
 ```
 
 ## <a name="reference"></a> Reference
