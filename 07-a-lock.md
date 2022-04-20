@@ -61,10 +61,25 @@ Tasks are welcome to yield the execution opportunity early, but more likely, the
 In other words, tasks themselves can't guarantee the instructions (load, update, and store) executed without intervention, which is the root cause. 
 For ARM, it introduces two special instructions, LDRX and STRX, to resolve the problem.
 
+When executing LDRX, it not only loads the value from memory to register but also monitors the address. 
+For STRX, it checks if other STRX accesses the exact address already and fails the store if that's the case. 
+Note that both instructions won't apply to the critical region directly since a context switch is likely to happen within a complicated context. 
+And all the STRX might keep interfering with each other. 
+Instead, they surround only one value, the well-known lock, and whichever task executes STRX successfully means it acquires the lock. 
+Next, that lock applies to the critical region to achieve the synchronization mechanism.
+
+```
+               +---- loadx : memory -> register, and monitor
+               |                                            
+ a = a + 1 ----|---- update: register                       
+               |                                            
+               +---- storex: register -> memory, and check  
+```
+
 Lock value comprises two fields: **next** and **owner**, and let's interpret it as the ticket system of a boba shop.
 
-- next: the number on the ticket system for the current customer.
-- owner: the number on the display monitor for the customer whose drink is ready.
+- next: the number for the customer who's about to order.
+- owner: the number for the customer whose drink is ready.
 
 For each lock value, we have four fundamental operations:
 
