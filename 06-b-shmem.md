@@ -31,6 +31,24 @@
                   +---------------+                                                                                                                                   
 ```
 
+```
++---------------+                                                                         
+| shmem_tmpfile | prepare an inode, set dentry's name using ino, and link inode and dentry
++---|-----------+                                                                         
+    |    +-----------------+                                                              
+    |--> | shmem_get_inode | allocate an inode, init and install operation sets           
+    |    +-----------------+                                                              
+    |    +-----------+                                                                    
+    +--> | d_tmpfile |                                                                    
+         +--|--------+                                                                    
+            |                                                                             
+            |--> use inode# as dentry name                                                
+            |                                                                             
+            |    +---------------+                                                        
+            +--> | d_instantiate | fill inode info in dentry and link them                
+                 +---------------+                                                        
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
