@@ -751,6 +751,69 @@ dir /root 0700 0 0
         +-------------+                                                            
 ```
 
+```
++-----------+                                                            
+| vfs_rmdir |                                                            
++--|--------+                                                            
+   |                                                                     
+   |--> if dir has no ->rmdir(), return error                            
+   |                                                                     
+   |--> if it's a mount point, return error                              
+   |                                                                     
+   |--> call ->rmdir(), e.g.,                                            
+   |    +-------------+                                                  
+   |    | shmem_rmdir | inode nlink-- -- --, dentry ref count--          
+   |    +-------------+                                                  
+   |    +----------------------+                                         
+   |--> | shrink_dcache_parent | release unused child dentries           
+   |    +----------------------+                                         
+   |    +---------------+                                                
+   +--> | detach_mounts | detach the mount if the dentry is a mount point
+        +---------------+                                                
+```
+
+```
++------------+                                                           
+| vfs_unlink |                                                           
++--|---------+                                                           
+   |                                                                     
+   |--> if dir has no ->unlink(), return error                           
+   |                                                                     
+   |--> if dentry is a mount point, return error                         
+   |                                                                     
+   |--> call ->unlink(), e.g.,                                           
+   |    +--------------+                                                 
+   |    | shmem_unlink | inode nlink--, dentry ref count--               
+   |    +--------------+                                                 
+   |    +---------------+                                                
+   +--> | detach_mounts | detach the mount if the dentry is a mount point
+        +---------------+                                                
+```
+
+```
++-------------+                                                                    
+| vfs_symlink |                                                                    
++---|---------+                                                                    
+    |                                                                              
+    |--> if dir has no ->symlink(), return error                                   
+    |                                                                              
+    +--> call ->symlink(), e.g.,                                                   
+         +---------------+                                                         
+         | shmem_symlink | preapre inode, save dst path to it, and link with dentry
+         +---------------+                                                         
+```
+
+```
++----------+                                                          
+| vfs_link | fill inode info in the new dentry and link them          
++--|-------+                                                          
+   |                                                                  
+   +--> call ->link(), e.g.,                                          
+        +------------+                                                
+        | shmem_link | fill inode info in the new dentry and link them
+        +------------+                                                
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
