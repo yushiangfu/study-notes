@@ -95,6 +95,30 @@
          +--------------+                                        
 ```
 
+```
++---------------+                                                                
+| shmem_symlink | preapre inode, save dst path to it, and link with dentry       
++---|-----------+                                                                
+    |    +-----------------+                                                     
+    |--> | shmem_get_inode | allocate an inode, init and install operation sets  
+    |    +-----------------+                                                     
+    |                                                                            
+    |--> save the dst path to inode                                              
+    |                                                                            
+    |    +---------------+                                                       
+    +--> | d_instantiate | fill inode info in dentry and link them               
+         +---------------+                                                       
+```
+
+```
++------------+                                                   
+| shmem_link | fill inode info in the new dentry and link them   
++--|---------+                                                   
+   |    +---------------+                                        
+   +--> | d_instantiate | fill inode info in dentry and link them
+        +---------------+                                        
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
