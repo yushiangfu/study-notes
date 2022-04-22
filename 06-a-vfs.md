@@ -533,6 +533,44 @@ dir /root 0700 0 0
 ```
 
 ```
++-----------------+                                                                                                              
+| vfs_path_lookup |                                                                                                              
++----|------------+                                                                                                              
+     |    +-----------------+                                                                                                    
+     +--> | filename_lookup |                                                                                                    
+          +----|------------+                                                                                                    
+               |    +---------------+                                                                                            
+               |--> | set_nameidata | set up nd and replace the one of current task                                              
+               |    +---------------+                                                                                            
+               |    +---------------+                                                                                            
+               |--> | path_lookupat |                                                                                            
+               |    +---|-----------+                                                                                            
+               |        |    +-----------+                                                                                       
+               |        |--> | path_init | decide the starting point for lookup                                                  
+               |        |    +-----------+                                                                                       
+               |        |                                                                                                        
+               |        |--> endless loop                                                                                        
+               |        |                                                                                                        
+               |        |        +----------------+                                                                              
+               |        |------> | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
+               |        |        +----------------+                                                                              
+               |        |                                                                                                        
+               |        |------> break loop if error                                                                             
+               |        |                                                                                                        
+               |        |        +-------------+                                                                                 
+               |        |------> | lookup_last | update path (dentry + mnt) and inode of nd to next component                    
+               |        |        +-------------+                                                                                 
+               |        |                                                                                                        
+               |        |------> break loop if error                                                                             
+               |        |                                                                                                        
+               |        +--> copy path to argument and reset nd                                                                  
+               |                                                                                                                 
+               |    +-------------------+                                                                                        
+               +--> | restore_nameidata |                                                                                        
+                    +-------------------+                                                                                        
+```
+
+```
 +----------------+                                                                          
 | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
 +---|------------+                                                                          
@@ -624,44 +662,6 @@ dir /root 0700 0 0
    |--> update path and inode of nd                                               
    |                                                                              
    +--> (ignore the case of link)                                                 
-```
-
-```
-+-----------------+                                                                                                              
-| vfs_path_lookup |                                                                                                              
-+----|------------+                                                                                                              
-     |    +-----------------+                                                                                                    
-     +--> | filename_lookup |                                                                                                    
-          +----|------------+                                                                                                    
-               |    +---------------+                                                                                            
-               |--> | set_nameidata | set up nd and replace the one of current task                                              
-               |    +---------------+                                                                                            
-               |    +---------------+                                                                                            
-               |--> | path_lookupat |                                                                                            
-               |    +---|-----------+                                                                                            
-               |        |    +-----------+                                                                                       
-               |        |--> | path_init | decide the starting point for lookup                                                  
-               |        |    +-----------+                                                                                       
-               |        |                                                                                                        
-               |        |--> endless loop                                                                                        
-               |        |                                                                                                        
-               |        |        +----------------+                                                                              
-               |        |------> | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
-               |        |        +----------------+                                                                              
-               |        |                                                                                                        
-               |        |------> break loop if error                                                                             
-               |        |                                                                                                        
-               |        |        +-------------+                                                                                 
-               |        |------> | lookup_last | update path (dentry + mnt) and inode of nd to next component                    
-               |        |        +-------------+                                                                                 
-               |        |                                                                                                        
-               |        |------> break loop if error                                                                             
-               |        |                                                                                                        
-               |        +--> copy path to argument and reset nd                                                                  
-               |                                                                                                                 
-               |    +-------------------+                                                                                        
-               +--> | restore_nameidata |                                                                                        
-                    +-------------------+                                                                                        
 ```
 
 ```
@@ -812,6 +812,63 @@ dir /root 0700 0 0
         +------------+                                                
         | shmem_link | fill inode info in the new dentry and link them
         +------------+                                                
+```
+
+```
++------------+                                          
+| vfs_rename |                                          
++--|---------+                                          
+   |                                                    
+   |--> if old dir has no ->rename(), return error      
+   |                                                    
+   +--> call ->rename(), e.g.,                          
+        +---------------+                               
+        | shmem_rename2 | unlink dst dentry if it exists
+        +---------------+                               
+```
+
+```
++--------------+                                                  
+| vfs_readlink |                                                  
++---|----------+                                                  
+    |                                                             
+    |--> get dst path from inode (we ignore the lenghty path case)
+    |                                                             
+    +--> copy data to arg buffer                                  
+```
+
+```
++--------------+                                                                  
+| vfs_get_link |                                                                  
++---|----------+                                                                  
+    |                                                                             
+    |--> if given entry isn't a link file, return error                           
+    |                                                                             
+    +--> call ->get_link()                                                        
+         +----------------+                                                       
+         | shmem_get_link | get the virtual address of inode mapping at offset = 0
+         +----------------+                                                       
+```
+
+```
++------------+                                                                                                                 
+| init_mkdir |                                                                                                                 
++--|---------+                                                                                                                 
+   |    +------------------+                                                                                                   
+   |--> | kern_path_create |                                                                                                   
+   |    +----|-------------+                                                                                                   
+   |         |    +-----------------+                                                                                          
+   |         +--> | filename_create | ensure target dentry exists (create one if not)                                          
+   |              +----|------------+                                                                                          
+   |                   |    +-------------------+                                                                              
+   |                   |--> | filename_parentat | walk through the path name, update dentry and mnt of the last component in nd
+   |                   |    +-------------------+                                                                              
+   |                   |    +---------------+                                                                                  
+   |                   +--> | __lookup_hash | ensure target dentry exists (find the existing one or create one otherwise)      
+   |                        +---------------+                                                                                  
+   |    +-----------+                                                                                                          
+   +--> | vfs_mkdir | prepare an inode of directory and link it with given dentry                                              
+        +-----------+                                                                                                          
 ```
 
 ## <a name="reference"></a> Reference
