@@ -119,6 +119,28 @@
         +---------------+                                        
 ```
 
+```
+ +---------------+                                          
+ | shmem_rename2 | unlink dst dentry if it exists           
+ +---|-----------+                                          
+     |                                                      
+     +--> if target dentry exists already                   
+     |                                                      
+     |    +--------------+                                  
+     +--> | shmem_unlink | inode nlink--, dentry ref count--
+          +--------------+                                                                 
+```
+
+```
++----------------+                                                       
+| shmem_get_link | get the virtual address of inode mapping at offset = 0
++---|------------+                                                       
+    |                                                                    
+    |--> get page of inode mapping at offset 0                           
+    |                                                                    
+    +--> return the virtual address that it represents                   
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
