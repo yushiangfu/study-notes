@@ -268,6 +268,71 @@
                                +------------------+                                
 ```
 
+```
++---------------------+                                          
+| unmap_mapping_range |                                          
++-----|---------------+                                          
+      |                                                          
+      |--> ensure the start and len is page-size aligned         
+      |                                                          
+      |    +---------------------+                               
+      +--> | unmap_mapping_pages | unmap all the vma within range
+           +---------------------+                               
+```
+
+```
++---------------+                                                                        
+| release_pages | drop ref for each page in array, free the pages whose ref reaches 0
++---|-----------+                                                                        
+    |                                                                                    
+    |--> for each page in array                                                          
+    |                                                                                    
+    |------> page ref--                                                                  
+    |                                                                                    
+    |------> if ref != 0 (it's still used), continue                                     
+    |                                                                                    
+    |------> if page is set 'lru'                                                        
+    |                                                                                    
+    |            +------------------------+                                              
+    |----------> | del_page_from_lru_list | remove page from list (lruvec of memory node)
+    |            +------------------------+                                              
+    |            +------------------------+                                              
+    |----------> | __clear_page_lru_flags | clear 'lru', 'active', 'unevictable' on page 
+    |            +------------------------+                                              
+    |                                                                                    
+    |------> add page to a local list                                                    
+    |                                                                                    
+    |    +----------------------+                                                        
+    +--> | free_unref_page_list | free each page in the local list                       
+         +----------------------+                                                        
+```
+
+```
++-------------------+                                                                                           
+| __pagevec_lru_add | move pages in pvec to lru list of memory node and release them                            
++----|--------------+                                                                                           
+     |                                                                                                          
+     |--> for each page in pvec                                                                                 
+     |        +----------------------------+                                                                    
+     |        | relock_page_lruvec_irqsave | lock and get lruvec from memory node                               
+     |        +----------------------------+                                                                    
+     |        +----------------------+                                                                          
+     |        | __pagevec_lru_add_fn |                                                                          
+     |        +-----|----------------+                                                                          
+     |              |                                                                                           
+     |              |--> label 'lru' on page                                                                    
+     |              |                                                                                           
+     |              |    +----------------------+                                                               
+     |              +--> | add_page_to_lru_list | add page to the proper list in lruvec based on page attributes
+     |                   +----------------------+                                                               
+     |    +-------------------------------+                                                                     
+     |--> | unlock_page_lruvec_irqrestore | unlock                                                              
+     |    +-------------------------------+                                                                     
+     |    +---------------+                                                                                     
+     +--> | release_pages | drop ref for each page in array, free the pages whose ref reaches 0                 
+          +---------------+                                                                                     
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
