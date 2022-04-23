@@ -3,6 +3,8 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Spinlock](#spinlock)
+- [Read and Write Lock](#rwlock)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -59,22 +61,24 @@ The problem arises once other tasks have interests in it as well, and from the C
 The reason is that modern operating systems support multi-tasks virtually running simultaneously through context switch. 
 Tasks are welcome to yield the execution opportunity early, but more likely, they get kicked out by the scheduler. 
 In other words, tasks themselves can't guarantee the instructions (load, update, and store) executed without intervention, which is the root cause. 
-For ARM, it introduces two special instructions, LDRX and STRX, to resolve the problem.
+For ARM, it introduces two special instructions, LDREX and STREX, to resolve the problem.
 
-When executing LDRX, it not only loads the value from memory to register but also monitors the address. 
-For STRX, it checks if other STRX accesses the exact address already and fails the store if that's the case. 
+When executing LDREX, it not only loads the value from memory to register but also monitors the address. 
+For STREX, it checks if other STREX accesses the exact address already and fails the store if that's the case. 
 Note that both instructions won't apply to the critical region directly since a context switch is likely to happen within a complicated context. 
-And all the STRX might keep interfering with each other. 
-Instead, they surround only one value, the well-known lock, and whichever task executes STRX successfully means it acquires the lock. 
+And all the STREX might keep interfering with each other. 
+Instead, they surround only one value, the well-known lock, and whichever task executes STREX successfully means it acquires the lock. 
 Next, that lock applies to the critical region to achieve the synchronization mechanism.
 
 ```
-               +---- loadx : memory -> register, and monitor
+               +---- load_ex : memory -> register, and monitor
                |                                            
- a = a + 1 ----|---- update: register                       
+ a = a + 1 ----|---- update  : register                       
                |                                            
-               +---- storex: register -> memory, and check  
+               +---- store_ex: register -> memory, and check  
 ```
+
+## <a name="spinlock"></a> Spinlock
 
 Lock value comprises two fields: **next** and **owner**, and let's interpret it as the ticket system of a boba shop.
 
@@ -145,6 +149,90 @@ Assuming we have three tasks accessing the same data within a critical region, l
                         |                             |                              |                              | 
 ```
 
+<details>
+  <summary> Code trace </summary>
+
+```
++----------------+                                                           
+| arch_spin_lock | update lock.next, and wait till I'm the lock owner        
++---|------------+                                                           
+    |                                                                        
+    |--> endless loop                                                        
+    |                                                                        
+    |------> use LDREX to load lock value to local variable                  
+    |                                                                        
+    |------> variable.next++, use STREX to store to lock value               
+    |                                                                        
+    |------> if it's stored successfully (no other STREX happens before mine)
+    |                                                                        
+    |----------> break                                                       
+    |                                                                        
+    |--> while variable.next != lock.owner (not my turn yet)                 
+    |                                                                        
+    +------> wait for event                                                  
+```
+
+```
++-------------------+                                                         
+| arch_spin_trylock |                                                         
++----|--------------+                                                         
+     |                                                                        
+     |--> endless loop                                                        
+     |                                                                        
+     |------> use LDREX to load lock value to local variable                  
+     |                                                                        
+     |------> if variable.next != variable.lock (someone is holding the lock) 
+     |                                                                        
+     +----------> break                                                       
+     |                                                                        
+     +------> variable.next++, use STREX to store to lock value               
+     |                                                                        
+     +------> if it's stored successfully (no other STREX happens before mine)
+     |                                                                        
+     |----------> break                                                       
+     |                                                                        
+     +--> return 1 if lock is acquired, or 0 otherwise                        
+```
+
+```
++------------------+                       
+| arch_spin_unlock |                       
++----|-------------+                       
+     |                                     
+     +--> lock.owner++ (read for new owner)
+```
+
+</details>
+  
+## <a name="rwlock"></a> Read and Write Lock
+  
+```
++-----------------+                                                               
+| arch_write_lock |                                                               
++----|------------+                                                               
+     |                                                                            
+     |--> endless loop                                                            
+     |                                                                            
+     |------> use LDREX to load lock value to local variable                      
+     |                                                                            
+     |------> if the lock value is zero (not used)                                
+     |                                                                            
+     |----------> use STREX to store 0x8000_0000 to lock value                    
+     |                                                                            
+     |----------> if it's stored successfully (no other STREX happens before mine)
+     |                                                                            
+     +--------------> break                                                       
+```
+  
+```
++-------------------+          
+| arch_write_unlock |          
++----|--------------+          
+     |                         
+     +--> store 0 to lock value
+```
+
+  
 ## <a name="reference"></a> Reference
 
 [J. Corbet, Ticket spinlocks](https://lwn.net/Articles/267968/)
