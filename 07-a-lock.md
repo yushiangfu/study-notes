@@ -225,6 +225,28 @@ Assuming we have three tasks accessing the same data within a critical region, l
 ```
   
 ```
++--------------------+                                                        
+| arch_write_trylock |                                                        
++----|---------------+                                                        
+     |                                                                        
+     |--> endless loop                                                        
+     |                                                                        
+     |------> use LDREX to load lock value to local variable                  
+     |                                                                        
+     |------> if the lock value isn't zero (used)                             
+     |                                                                        
+     |----------> break                                                       
+     |                                                                        
+     |------> use STREX to store 0x8000_0000 to lock value                    
+     |                                                                        
+     |------> if it's stored successfully (no other STREX happens before mine)
+     |                                                                        
+     |----------> break                                                       
+     |                                                                        
+     +--> return 1 if lock is acquired, or 0 otherwise                        
+```
+  
+```
 +-------------------+          
 | arch_write_unlock |          
 +----|--------------+          
