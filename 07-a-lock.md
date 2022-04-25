@@ -214,7 +214,7 @@ There is also the read-write lock that utilizes LDREX and STREX to access the lo
 Possible lock values are:
 
 - 0x0000_0000: it's available for both reader and writer.
-- 0x8000_0000: a writer holds the lock.
+- 0x8000_0000: a writer holds the lock, making the value negative in two's complement.
 - Else       : at least one reader has the lock, and any other readers can join anytime.
 
 ```
@@ -222,6 +222,46 @@ Possible lock values are:
   +---------------+
   |w|      r      |
   +---------------+
+```
+
+Here's an example of how two readers and one writer access the lock.
+
+```
+         lock
+   31              0
+   +---------------+
+   |w|      r      |   |          [Task A]           |           [Task B]           |           [Task C]           |
+   +---------------+   |           reader            |            writer            |            reader            |
+                       |                             |                              |                              |
+init  0x0000_0000     -----------------------------------------------------------------------------------------------
+           |           |      get lock value         |                              |                              |
+           |           |      value >= 0? yes        |                              |                              |
+           v           |      value++ and lock       |                              |                              |
+      0x0000_0001     -----------------------------------------------------------------------------------------------
+           |           |                             |        get lock value        |                              |
+           |           |                             |        value == 0? no        |                              |
+           |           |                             |        wait                  |                              |
+           |          -----------------------------------------------------------------------------------------------
+           |           |                             |                              |       get lock value         |
+           |           |                             |                              |       value >= 0? yes        |
+           v           |                             |                              |       value++ and lock       |
+      0x0000_0002     -----------------------------------------------------------------------------------------------
+           |           |                             |                              |                              |
+           |           |                             |                              |       unlock, value--        |
+           v           |                             |                              |                              |
+      0x0000_0001     -----------------------------------------------------------------------------------------------
+           |           |                             |        get lock value        |                              |
+           |           |                             |        value == 0? no        |                              |
+           |           |                             |        wait                  |                              |
+           |          -----------------------------------------------------------------------------------------------
+           |           |                             |                              |                              |
+           |           |       unlock, value--       |                              |                              |
+           v           |                             |                              |                              |
+      0x0000_0000     -----------------------------------------------------------------------------------------------
+           |           |                             |      get lock value          |                              |
+           |           |                             |      value == 0? yes         |                              |
+           v           |                             |      set bit 31 and lock     |                              |
+      0x8000_0000
 ```
 
 <details>
