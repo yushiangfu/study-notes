@@ -333,6 +333,75 @@
           +---------------+                                                                                     
 ```
 
+```
++---------------+                                                                                         
+| lru_add_drain | collect pages from other lru lists to memory node, and release them                     
++---|-----------+                                                                                         
+    |                                                                                                     
+    |--> get pvec from 'lru_pvecs.lru_add'                                                                
+    |                                                                                                     
+    |    +-------------------+                                                                            
+    |--> | __pagevec_lru_add | move pages in pvec to lru list of memory node and release them             
+    |    +-------------------+                                                                            
+    |                                                                                                     
+    |--> get pvec from 'lru_rotate.pvec'                                                                  
+    |                                                                                                     
+    |    +---------------------+                                                                          
+    |--> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them           
+    |    +---------------------+                                                                          
+    |                                                                                                     
+    |--> get pvec from 'lru_pvecs.lru_deactivate_file'                                                    
+    |                                                                                                     
+    |    +---------------------+                                                                          
+    +--> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them           
+    |    +---------------------+                                                                          
+    |                                                                                                     
+    |--> get pvec from 'lru_pvecs.lru_deactivate'                                                         
+    |                                                                                                     
+    |    +---------------------+                                                                          
+    +--> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them           
+    |    +---------------------+                                                                          
+    |                                                                                                     
+    |--> get pvec from 'lru_pvecs.lru_lazyfree'                                                           
+    |                                                                                                     
+    |    +---------------------+                                                                          
+    |--> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them           
+    |    +---------------------+                                                                          
+    |    +---------------------+                                                                          
+    +--> | activate_page_drain |                                                                          
+         +-----|---------------+                                                                          
+               |                                                                                          
+               |--> get pvec from 'lru_pvecs.activate_page'                                               
+               |                                                                                          
+               |    +---------------------+                                                               
+               +--> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them
+                    +---------------------+                                                               
+```
+
+```
++--------------------------+                                                                                                
+| unmap_mapping_range_tree | for each vma within range, clear page table entries within vma                                 
++------|-------------------+                                                                                                
+       |    +---------------------------+                                                                                   
+       |--> | vma_interval_tree_foreach |                                                                                   
+       |    +---------------------------+                                                                                   
+       |                                                                                                                    
+       |------> adjust the start and end to ensure they are in the vma ragne                                                
+       |                                                                                                                    
+       |        +-------------------------+                                                                                 
+       +------> | unmap_mapping_range_vma |                                                                                 
+                +------|------------------+                                                                                 
+                       |    +-----------------------+                                                                       
+                       +--> | zap_page_range_single |                                                                       
+                            +-----|-----------------+                                                                       
+                                  |    +---------------+                                                                    
+                                  +--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
+                                  |    +---------------+                                                                    
+                                  |    +------------------+                                                                 
+                                  +--> | unmap_single_vma | clear page table entries within range                           
+                                       +------------------+                                                                 
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
