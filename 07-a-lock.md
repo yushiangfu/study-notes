@@ -4,7 +4,7 @@
 
 - [Introduction](#introduction)
 - [Spinlock](#spinlock)
-- [Read and Write Lock](#rwlock)
+- [Read-Write Lock](#rwlock)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -204,8 +204,29 @@ Assuming we have three tasks accessing the same data within a critical region, l
 
 </details>
   
-## <a name="rwlock"></a> Read and Write Lock
-  
+## <a name="rwlock"></a> Read-Write Lock
+
+There is also the read-write lock that utilizes LDREX and STREX to access the lock value, and the differences are:
+
+- It allows multiple readers to enter the critical region but only one writer at a time.
+- It doesn't guarantee the waiting sequence since there's no ticket number concept.
+
+Possible lock values are:
+
+- 0x0000_0000: it's available for both reader and writer.
+- 0x8000_0000: a writer holds the lock.
+- Else       : at least one reader has the lock, and any other readers can join anytime.
+
+```
+  31              0
+  +---------------+
+  |w|      r      |
+  +---------------+
+```
+
+<details>
+  <summary> Code trace </summary>
+
 ```
 +-----------------+                                                               
 | arch_write_lock |                                                               
@@ -254,7 +275,72 @@ Assuming we have three tasks accessing the same data within a critical region, l
      +--> store 0 to lock value
 ```
 
+```
++----------------+                                                           
+| arch_read_lock |                                                           
++---|------------+                                                           
+    |                                                                        
+    |--> endless loop                                                        
+    |                                                                        
+    |------> use LDREX to load lock value to local variable                  
+    |                                                                        
+    +------> variable++                                                      
+    |                                                                        
+    |------> if variable < 0 (lock is held by a writer?)                     
+    |                                                                        
+    |----------> continue                                                    
+    |                                                                        
+    |------> use STREX to store variable lock value                          
+    |                                                                        
+    |------> if it's stored successfully (no other STREX happens before mine)
+    |                                                                        
+    +----------> break                                                       
+```
+ 
+```
++------------------+                                                          
+| arch_read_unlock |                                                          
++----|-------------+                                                          
+     |                                                                        
+     |--> endless loop                                                        
+     |                                                                        
+     |------> use LDREX to load lock value to local variable                  
+     |                                                                        
+     |------> variable--                                                      
+     |                                                                        
+     |------> use STREX to store variable lock value                          
+     |                                                                        
+     |------> if it's stored successfully (no other STREX happens before mine)
+     |                                                                        
+     +----------> break                                                       
+```
+ 
+```
++-------------------+
+| arch_read_trylock |
++----|--------------+
+     |
+     |--> endless loop
+     |
+     |------> se LDREX to load lock value to local variable
+     |
+     |------> variable++
+     |
+     |------> if it's < 0 (lock is held by a writer)
+     |
+     |----------> break
+     |
+     |------> use STREX to store variable lock value
+     |
+     |------> if it's stored successfully (no other STREX happens before mine)
+     |
+     |----------> break
+     |
+     +--> return 1 if lock is acquired, or 0 otherwise
+```
   
+<details>
+ 
 ## <a name="reference"></a> Reference
 
 [J. Corbet, Ticket spinlocks](https://lwn.net/Articles/267968/)
