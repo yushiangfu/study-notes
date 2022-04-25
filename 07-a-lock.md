@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Spinlock](#spinlock)
 - [Read-Write Lock](#rwlock)
+- [Mutex](#mutex)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -379,8 +380,53 @@ init  0x0000_0000     ----------------------------------------------------------
      +--> return 1 if lock is acquired, or 0 otherwise
 ```
   
-<details>
+</details>
+  
+## <a name="mutex"></a> Mutex
  
+```
++------------+                                                                                                      
+| mutex_lock |                                                                                                      
++--|---------+                                                                                                      
+   |    +----------------------+                                                                                    
+   |--> | __mutex_trylock_fast | if no one owns the mutex right now, acquire it                                     
+   |    +----------------------+                                                                                    
+   |                                                                                                                
+   |--> return if we got the mutex                                                                                  
+   |                                                                                                                
+   |    +-----------------------+                                                                                   
+   +--> | __mutex_lock_slowpath |                                                                                   
+        +-----|-----------------+                                                                                   
+              |    +--------------+                                                                                 
+              +--> | __mutex_lock |                                                                                 
+                   +---|----------+                                                                                 
+                       |    +---------------------+                                                                 
+                       +--> | __mutex_lock_common |                                                                 
+                            +-----|---------------+                                                                 
+                                  |    +--------------------+                                                       
+                                  |--> | __mutex_add_waiter | add current task to the end of wait queue of the mutex
+                                  |    +--------------------+                                                       
+                                  |    +-------------------+                                                        
+                                  |--> | set_current_state | change task state, e.g., 'uninterruptible'             
+                                  |    +-------------------+                                                        
+                                  |                                                                                 
+                                  |--> endless loop                                                                 
+                                  |                                                                                 
+                                  |        +---------------------------+                                            
+                                  |------> | schedule_preempt_disabled | go to sleep                                
+                                  |        +---------------------------+                                            
+                                  |                                      <--- somewhere woke me up                  
+                                  |        +----------------------------+                                           
+                                  |------> | __mutex_trylock_or_handoff | try lock again                            
+                                  |        +----------------------------+                                           
+                                  |                                                                                 
+                                  |------> break loop if we got the mutext                                          
+                                  |                                                                                 
+                                  |    +-----------------------+                                                    
+                                  +--> | __mutex_remove_waiter | remove task from waiter list                       
+                                       +-----------------------+                                                    
+```
+  
 ## <a name="reference"></a> Reference
 
 [J. Corbet, Ticket spinlocks](https://lwn.net/Articles/267968/)
