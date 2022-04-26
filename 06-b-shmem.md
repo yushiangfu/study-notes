@@ -141,6 +141,59 @@
     +--> return the virtual address that it represents                   
 ```
 
+```
++----------------------+                                                                                                  
+| shmem_truncate_range | for each page in truncated range, unmap and detatch it from mapping
++-----|----------------+                                                                                                  
+      |    +------------------+                                                                                           
+      +--> | shmem_undo_range | for each page in truncated range, unmap and detatch it from mapping
+           +----|-------------+                                                                                           
+                |                                                                                                         
+                |--> while we can still fill pvec from mapping                                                            
+                |                                                                                                         
+                |------> for each page in pvec                                                                            
+                |                                                                                                         
+                |            +---------------------+                                                                      
+                |----------> | truncate_inode_page | unmap and invalidate page, detatch it from mapping, and has its ref--
+                |            +---------------------+                                                                      
+                |                                                                                                         
+                |--> for index between start and end                                                                      
+                |                                                                                                         
+                |        +------------------+                                                                             
+                |------> | find_get_entries | fill pvec from mapping                                                      
+                |        +------------------+                                                                             
+                |                                                                                                         
+                +------> break loop if nothing to fill                                                                    
+                |                                                                                                         
+                |------> for each page in pvec                                                                            
+                |                                                                                                         
+                |            +-----------------+                                                                          
+                |----------> | shmem_free_swap | detach from mapping (what's the difference from 'truncate_inode_page'?)  
+                |            +-----------------+                                                                          
+                |    +--------------------+                                                                               
+                +--> | shmem_recalc_inode | update inode info                                                             
+                     +--------------------+                                                                               
+```
+
+```
++---------------+                                                                                            
+| shmem_setattr | truncate inode if size becomes to smaller, copy attributes to inode                        
++---|-----------+                                                                                            
+    |                                                                                                        
+    |--> if it's about size change on regular file                                                           
+    |                                                                                                        
+    |------> update size in inode                                                                            
+    |                                                                                                        
+    |------> if new size is smaller                                                                          
+    |                                                                                                        
+    |            +----------------------+                                                                    
+    |--------->  | shmem_truncate_range | for each page in truncated range, unmap and detatch it from mapping
+    |            +----------------------+                                                                    
+    |    +--------------+                                                                                    
+    +--> | setattr_copy | copy attributes to inode                                                           
+         +--------------+                                                                                    
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
