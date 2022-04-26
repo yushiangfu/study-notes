@@ -871,6 +871,36 @@ dir /root 0700 0 0
         +-----------+                                                                                                          
 ```
 
+```
++--------------+                                                                                                                       
+| vfs_truncate | truncate inode if size becomes to smaller, update inode info                                                          
++---|----------+                                                                                                                       
+    |    +-------------+                                                                                                               
+    +--> | do_truncate |                                                                                                               
+         +---|---------+                                                                                                               
+             |                                                                                                                         
+             |--> preapre 'iattr' and update 'size' field                                                                              
+             |                                                                                                                         
+             |    +---------------+                                                                                                    
+             +--> | notify_change |                                                                                                    
+                  +---|-----------+                                                                                                    
+                      |                                                                                                                
+                      |--> adjust 'iattr'                                                                                              
+                      |                                                                                                                
+                      |--> if inode has ->setattr()                                                                                    
+                      |                                                                                                                
+                      |------> call ->setattr(), e.g.,                                                                                 
+                      |        +---------------+                                                                                       
+                      |        | shmem_setattr | truncate inode if size becomes to smaller, copy attributes to inode                   
+                      |        +---------------+                                                                                       
+                      |                                                                                                                
+                      |--> else                                                                                                        
+                      |                                                                                                                
+                      |        +----------------+                                                                                      
+                      +------> | simple_setattr | truncate inode if size becomes to smaller, copy attributes to inode, mark inode dirty
+                               +----------------+                                                                                      
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
