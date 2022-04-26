@@ -402,6 +402,99 @@
                                        +------------------+                                                                 
 ```
 
+```
++---------------------+                                                                           
+| try_to_release_page | detatch bh list from page and free them                                   
++-----|---------------+                                                                           
+      |                                                                                           
+      |--> if page has the 'writeback' label, return                                              
+      |                                                                                           
+      |--> if mapping has ->releasepage()                                                         
+      |                                                                                           
+      |------> call ->releasepage()                                                               
+      |                                                                                           
+      |--> else                                                                                   
+      |                                                                                           
+      |        +---------------------+                                                            
+      +------> | try_to_free_buffers |                                                            
+               +-----|---------------+                                                            
+                     |    +--------------+                                                        
+                     |--> | drop_buffers | move the bh list to a local head, and detatch from page
+                     |    +--------------+                                                        
+                     |    +-------------------+                                                   
+                     |--> | cancel_dirty_page | clear 'dirty' bit of page                         
+                     |    +-------------------+                                                   
+                     |                                                                            
+                     |--> for each bh in local list                                               
+                     |                                                                            
+                     |        +------------------+                                                
+                     +------> | free_buffer_head | return bh to kmem cache                        
+                              +------------------+                                                
+```
+
+```
++----------------------+                                                      
+| block_invalidatepage | clear some flags for those truncated bh              
++-----|----------------+                                                      
+      |                                                                       
+      |--> get buffer head from page private                                  
+      |                                                                       
+      |--> for each buffer in the linked list                                 
+      |                                                                       
+      |------> if the buffer is above the arg 'offset'                        
+      |                                                                       
+      |            +----------------+                                         
+      |----------> | discard_buffer | clear some flags of the bh              
+      |            +----------------+                                         
+      |                                                                       
+      |--> if arg 'length' is page size                                       
+      |                                                                       
+      |        +---------------------+                                        
+      +------> | try_to_release_page | detatch bh list from page and free them
+               +---------------------+                                        
+```
+
+```
++---------------------+                                                                                           
+| truncate_inode_page | unmap and invalidate page, detatch it from mapping, and has its ref--                     
++-----|---------------+                                                                                           
+      |    +-----------------------+                                                                              
+      |--> | truncate_cleanup_page | unmpa and invalidate page                                                    
+      |    +-----|-----------------+                                                                              
+      |          |                                                                                                
+      |          |--> if page is set 'mapped'                                                                     
+      |          |                                                                                                
+      |          |        +--------------------+                                                                  
+      |          |------> | unmap_mapping_page | for each vma within range, clear page table entries within vma   
+      |          |        +--------------------+                                                                  
+      |          |                                                                                                
+      |          |--> if page has private (private what?)                                                         
+      |          |                                                                                                
+      |          |        +-------------------+                                                                   
+      |          +------> | do_invalidatepage | e.g., clear some flags for those truncated bh                     
+      |                   +-------------------+                                                                   
+      |    +------------------------+                                                                             
+      +--> | delete_from_page_cache | detatch page from mapping and page ref--                                    
+           +-----|------------------+                                                                             
+                 |                                                                                                
+                 |--> get page mapping                                                                            
+                 |                                                                                                
+                 |    +--------------------------+                                                                
+                 |--> | __delete_from_page_cache | detatch page from mapping                                      
+                 |    +--------------------------+                                                                
+                 |    +----------------------+                                                                    
+                 +--> | page_cache_free_page |                                                                    
+                      +-----|----------------+                                                                    
+                            |                                                                                     
+                            |--> if mapping has ->freepage()                                                      
+                            |                                                                                     
+                            |------> call ->freepage()                                                            
+                            |                                                                                     
+                            |    +----------+                                                                     
+                            +--> | put_page |                                                                     
+                                 +----------+                                                                     
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
