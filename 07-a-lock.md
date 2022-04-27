@@ -6,6 +6,7 @@
 - [Spinlock](#spinlock)
 - [Read-Write Lock](#rwlock)
 - [Mutex](#mutex)
+- [Semaphore](#semaphore)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -205,6 +206,13 @@ Assuming we have three tasks accessing the same data within a critical region, l
 
 </details>
   
+Variant:
+
+```
+raw_spin_lock_irqsave     : backup cpsr, disable interrupt, and acquire spinlock
+raw_spin_unlock_irqrestore: release spinlock, and restore cpsr
+```
+  
 ## <a name="rwlock"></a> Read-Write Lock
 
 There is also the read-write lock that utilizes LDREX and STREX to access the lock value, and the differences are:
@@ -383,7 +391,24 @@ init  0x0000_0000     ----------------------------------------------------------
 </details>
   
 ## <a name="mutex"></a> Mutex
- 
+
+The mutex is another type of lock that works based on spinlock. 
+The difference is that tasks sleep while waiting instead of constantly querying as spinlock does.
+
+```
+    mutex                                 
++-----------+                             
+|   owner   | the task owning the mutex
+|           |                             
+| wait_lock | spinlock                    
+|           |                             
+| wait_list | tasks waiting for the mutex 
++-----------+                             
+```
+
+<details>
+  <summary> Code trace </summary>
+  
 ```
 +------------+                                                                                                      
 | mutex_lock |                                                                                                      
@@ -426,6 +451,122 @@ init  0x0000_0000     ----------------------------------------------------------
                                   +--> | __mutex_remove_waiter | remove task from waiter list                       
                                        +-----------------------+                                                    
 ```
+  
+```
++--------------+                                                                
+| mutex_unlock |                                                                
++---|----------+                                                                
+    |    +---------------------+                                                
+    |--> | __mutex_unlock_fast | reset mutex owner to null                      
+    |    +---------------------+                                                
+    |                                                                           
+    |--> return if unlocked (what's the failed case?)                           
+    |                                                                           
+    |    +-------------------------+                                            
+    +--> | __mutex_unlock_slowpath |                                            
+         +------|------------------+                                            
+                |                                                               
+                |--> if there's at least one task in queue waiting for the mutex
+                |                                                               
+                |        +------------+                                         
+                |------> | wake_q_add | add the first task to the wake queue    
+                |        +------------+                                         
+                |    +-----------+                                              
+                +--> | wake_up_q | wake up the task                             
+                     +-----------+                                              
+```
+
+</details>
+  
+## <a name="semaphore"></a> Semaphore
+
+Semaphore is the generic form of mutex; it allows n tasks to enter the critical region simultaneously. 
+Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
+  
+```
+  semaphore                                                
++-----------+                                              
+|   lock    | spinlock                                     
+|           |                                              
+|   count   | the number of tasks that can acquire the lock
+|           |                                              
+| wait_list | tasks waiting for the semaphore              
++-----------+                                              
+```
+  
+<details>
+  <summary> Code trace </summary>
+  
+```
++--------------------+                                                                  
+| down_interruptible |                                                                  
++----|---------------+                                                                  
+     |    +-----------------------+                                                     
+     |--> | raw_spin_lock_irqsave | semaphore lock                                      
+     |    +-----------------------+                                                     
+     |                                                                                  
+     |--> if count > 0                                                                  
+     |                                                                                  
+     |------> count--                                                                   
+     |                                                                                  
+     |--> else                                                                          
+     |                                                                                  
+     |        +----------------------+                                                  
+     |------> | __down_interruptible |                                                  
+     |        +-----|----------------+                                                  
+     |              |    +---------------+                                              
+     |              +--> | __down_common |                                              
+     |                   +---|-----------+                                              
+     |                       |                                                          
+     |                       +--> add waiter to the end of list                         
+     |                                                                                  
+     |                            endless loop                                          
+     |                                                                                  
+     |                                +---------------------+                           
+     |                                | __set_current_state |                           
+     |                                +---------------------+                           
+     |                                +------------------+                              
+     |                                | schedule_timeout |                              
+     |                                +------------------+                              
+     |                                                        <--- somewhere woke me up 
+     |                                if waiter is up, return (lock acquired)
+     |                                                                                  
+     |    +----------------------------+                                                
+     +--> | raw_spin_unlock_irqrestore | semaphore lock                                 
+          +----------------------------+                                                
+```
+  
+```
++----+                                             
+| up |                                             
++|---+                                             
+ |    +-----------------------+                    
+ |--> | raw_spin_lock_irqsave | semaphore lock     
+ |    +-----------------------+                    
+ |                                                 
+ |--> if no waiting task on the list               
+ |                                                 
+ |------> count++                                  
+ |                                                 
+ |--> else                                         
+ |                                                 
+ |        +------+                                 
+ |------> | __up |                                 
+ |        +-|----+                                 
+ |          |                                      
+ |          |--> remove the first waiter from list 
+ |          |                                      
+ |          |--> waiter->up = true                 
+ |          |                                      
+ |          |    +-----------------+               
+ |          +--> | wake_up_process |               
+ |               +-----------------+               
+ |    +----------------------------+               
+ +--> | raw_spin_unlock_irqrestore | semaphore lock
+      +----------------------------+               
+```
+  
+</details>
   
 ## <a name="reference"></a> Reference
 
