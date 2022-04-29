@@ -1027,7 +1027,7 @@ dir /root 0700 0 0
            |--> else if blabla                                                                                
            |                                                                                                  
            |         +-------------------+                                                                    
-           |------>  | do_move_mount_old |                                                                    
+           |------>  | do_move_mount_old | peform a moving mount
            |         +-------------------+                                                                    
            |                                                                                                  
            |--> else                                                                                          
@@ -1035,6 +1035,21 @@ dir /root 0700 0 0
            |        +--------------+                                                                          
            +------> | do_new_mount | prepare sb/dentry/inode of child mnt, and connect child mnt to parent mnt
                     +--------------+                                                                          
+```
+
+```
++-------------------+                                                                    
+| do_move_mount_old | peform a moving mount
++----|--------------+                                                                    
+     |    +-----------+                                                                  
+     |--> | kern_path | lookup the path, save dentry and mnt in 'path'                   
+     |    +-----------+                                                                  
+     |    +---------------+                                                              
+     +--> | do_move_mount |                                                              
+          +---|-----------+                                                              
+              |    +----------------------+                                              
+              +--> | attach_recursive_mnt | connect src (child) mnt to dst (parent) mnt  
+                   +----------------------+                                              
 ```
 
 ```
@@ -1075,30 +1090,144 @@ dir /root 0700 0 0
      |        +--> | graft_tree |                                                                           
      |             +--|---------+                                                                           
      |                |    +----------------------+                                                         
-     |                +--> | attach_recursive_mnt |                                                         
-     |                     +-----|----------------+                                                         
-     |                           |    +----------------+                                                    
-     |                           +--> | get_mountpoint | get source mount point                             
-     |                           |    +----------------+                                                    
-     |                           |                                                                          
-     |                           |--> if dst mnt is shared                                                  
-     |                           |                                                                          
-     |                           |------> (skip, not our case)                                              
-     |                           |                                                                          
-     |                           |    +--------------------+                                                
-     |                           |--> | mnt_set_mountpoint | connect src (child) mnt to dst (parent) mnt    
-     |                           |    +--------------------+                                                
-     |                           |    +-------------+                                                       
-     |                           |--> | commit_tree | add child mnt to parent's hash table and children list
-     |                           |    +-------------+                                                       
-     |                           |                                                                          
-     |                           |--> for each mnt in local list                                            
-     |                           |                                                                          
-     |                           +------> (skip, it's related to shared mnt)                                
-     |                                                                                                      
+     |                +--> | attach_recursive_mnt | connect src (child) mnt to dst (parent) mnt
+     |                     +----------------------+                                                         
      |    +--------------+                                                                                  
      +--> | unlock_mount |                                                                                  
           +--------------+                                                                                  
+```
+
+```
+ +----------------------+                                                             
+ | attach_recursive_mnt | connect src (child) mnt to dst (parent) mnt
+ +-----|----------------+                                                             
+       |    +----------------+                                                        
+       +--> | get_mountpoint | get source mount point                                 
+       |    +----------------+                                                        
+       |                                                                              
+       |--> if dst mnt is shared                                                      
+       |                                                                              
+       |------> (skip, not our case)                                                  
+       |                                                                              
+       +--> if it's a moving mount (src is mounted at somewhere already)              
+       |                                                                              
+       |        +------------+                                                        
+       |------> | unhash_mnt | detatch from old parent mnt                            
+       |        +------------+                                                        
+       |        +------------+                                                        
+       |------> | attach_mnt | connect to new parent mnt                              
+       |        +------------+                                                        
+       |                                                                              
+       |--> else (new mount)                                                          
+       |                                                                              
+       |        +--------------------+                                                
+       |------> | mnt_set_mountpoint | connect src (child) mnt to dst (parent) mnt    
+       |        +--------------------+                                                
+       |        +-------------+                                                       
+       |------> | commit_tree | add child mnt to parent's hash table and children list
+       |        +-------------+                                                       
+       |                                                                              
+       |--> for each mnt in local list                                                
+       |                                                                              
+       +------> (skip, it's related to shared mnt)                                    
+```
+
+```
++-------------------+                                                                    
+| prepare_namespace | mount root based on boot command                                   
++----|--------------+                                                                    
+     |                                                                                   
+     |--> if user has specified 'root_delay' in boot command                             
+     |                                                                                   
+     |------> print "Waiting %d sec before mounting root device...\n"                    
+     |                                                                                   
+     |        +--------+                                                                 
+     |------> | ssleep | wait that many seconds                                          
+     |        +--------+                                                                 
+     |    +--------------+                                                               
+     |--> | md_run_setup | (do nothing bc of disabled config)                            
+     |    +--------------+                                                               
+     |                                                                                   
+     |--> if user has specified 'root' in boot command                                   
+     |                                                                                   
+     |------> if it's 'mtd' or 'ubi'                                                     
+     |                                                                                   
+     |            +------------------+                                                   
+     +----------> | mount_block_root |                                                   
+     |            +------------------+                                                   
+     |                                                                                   
+     |----------> go to 'out'                                                            
+     |                                                                                   
+     |        +---------------+                                                          
+     |------> | name_to_dev_t | string to dev_t                                          
+     |        +---------------+                                                          
+     |    +-------------+                                                                
+     |--> | initrd_load | (disabled)                                                     
+     |    +-------------+                                                                
+     |                                                                                   
+     |--> retry till we have a valid ROOT_DEV                                            
+     |                                                                                   
+     |    +------------+                                                                 
+     |--> | mount_root | try to mount root based on root dev_t                           
+     |    +------------+                                                                 
+     |    +----------------+                                                             
+     |--> | devtmpfs_mount | (skip for now)                                              
+     |    +----------------+                                                             
+     |    +------------+                                                                 
+     |--> | init_mount | perform a moving mount of '.' to '/'     <-- what's the purpose?
+     |    +------------+                                                                 
+     |    +-------------+                                                                
+     +--> | init_chroot | update root of current task to '/root'  <-- what's the purpose?
+          +-------------+                                                                
+```
+
+```
++-------------------+                                                                    
+| prepare_namespace | mount root based on boot command                                   
++----|--------------+                                                                    
+     |                                                                                   
+     |--> if user has specified 'root_delay' in boot command                             
+     |                                                                                   
+     |------> print "Waiting %d sec before mounting root device...\n"                    
+     |                                                                                   
+     |        +--------+                                                                 
+     |------> | ssleep | wait that many seconds                                          
+     |        +--------+                                                                 
+     |    +--------------+                                                               
+     |--> | md_run_setup | (do nothing bc of disabled config)                            
+     |    +--------------+                                                               
+     |                                                                                   
+     |--> if user has specified 'root' in boot command                                   
+     |                                                                                   
+     |------> if it's 'mtd' or 'ubi'                                                     
+     |                                                                                   
+     |            +------------------+                                                   
+     +----------> | mount_block_root |                                                   
+     |            +------------------+                                                   
+     |                                                                                   
+     |----------> go to 'out'                                                            
+     |                                                                                   
+     |        +---------------+                                                          
+     |------> | name_to_dev_t | string to dev_t                                          
+     |        +---------------+                                                          
+     |    +-------------+                                                                
+     |--> | initrd_load | (disabled)                                                     
+     |    +-------------+                                                                
+     |                                                                                   
+     |--> retry till we have a valid ROOT_DEV                                            
+     |                                                                                   
+     |    +------------+                                                                 
+     |--> | mount_root | try to mount root based on root dev_t                           
+     |    +------------+                                                                 
+     |    +----------------+                                                             
+     |--> | devtmpfs_mount | (skip for now)                                              
+     |    +----------------+                                                             
+     |    +------------+                                                                 
+     |--> | init_mount | perform a moving mount of '.' to '/'     <-- what's the purpose?
+     |    +------------+                                                                 
+     |    +-------------+                                                                
+     +--> | init_chroot | update root of current task to '/root'  <-- what's the purpose?
+          +-------------+                                                                
 ```
 
 ## <a name="reference"></a> Reference
