@@ -119,7 +119,7 @@
    |               +--> | vfs_kern_mount |
    |                    +----------------+
    |    +-------------+
-   |--> | init_rootfs | determine 'is_tmpfs' (but it's not used elsewhere?)
+   |--> | init_rootfs | determine 'is_tmpfs' (it's 'true' in our case)
    |    +-------------+
    |    +-----------------+
    +--> | init_mount_tree |
@@ -369,10 +369,10 @@
    +--> | vfs_kern_mount |                                                                                                     
         +---|------------+                                                                                                     
             |    +----------------------+                                                                                      
-            |--> | fs_context_for_mount |                                                                                      
+            |--> | fs_context_for_mount | allocate fc and fs-specific private data
             |    +-----|----------------+                                                                                      
             |          |    +------------------+                                                                               
-            |          +--> | alloc_fs_context |                                                                               
+            |          +--> | alloc_fs_context | 
             |               +----|-------------+                                                                               
             |                    |                                                                                             
             |                    |--> allcoate fs context (fc)                                                                 
@@ -537,7 +537,7 @@ dir /root 0700 0 0
 | vfs_path_lookup |                                                                                                              
 +----|------------+                                                                                                              
      |    +-----------------+                                                                                                    
-     +--> | filename_lookup |                                                                                                    
+     +--> | filename_lookup | lookup the path, save dentry and mnt in 'path'
           +----|------------+                                                                                                    
                |    +---------------+                                                                                            
                |--> | set_nameidata | set up nd and replace the one of current task                                              
