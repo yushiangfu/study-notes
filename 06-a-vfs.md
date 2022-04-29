@@ -3,7 +3,6 @@
 ## Index
 
 - [Introduction](#introduction)
-- [To-Do List](#to-do-list)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -901,6 +900,207 @@ dir /root 0700 0 0
                                +----------------+                                                                                      
 ```
 
+```
++------------+                                                                               
+| mount_root | try to mount root based on root dev_t                                         
++--|---------+                                                                               
+   |                                                                                         
+   |--> if ROOT_DEV == Root_NFS (actually the logic is removed bc of disabled config)        
+   |                                                                                         
+   |        +----------------+                                                               
+   |------> | mount_nfs_root |                                                               
+   |        +----------------+                                                               
+   |                                                                                         
+   |------> return                                                                           
+   |                                                                                         
+   +--> if ROOT_DEV == Root_CIFS (actually the logic is removed bc of disabled config)       
+   |                                                                                         
+   |        +-----------------+                                                              
+   |------> | mount_cifs_root |                                                              
+   |        +-----------------+                                                              
+   |                                                                                         
+   |------> return                                                                           
+   |                                                                                         
+   +--> if ROOT_DEV == 0                                                                     
+   |                                                                                         
+   |        +------------------+                                                             
+   |------> | mount_nodev_root |                                                             
+   |        +------------------+                                                             
+   |                                                                                         
+   |------> return if mounted successfully                                                   
+   |                                                                                         
+   |    +------------+                                                                       
+   |--> | create_dev | create a block device file with name "/dev/root" and dev_t ROOT_DEV   
+   |    +------------+                                                                       
+   |    +------------------+                                                                 
+   +--> | mount_block_root | determine fs list, try to mount root with each till any succeeds
+        +------------------+                                                                 
+```
+
+```
++------------------+                                                                                
+| mount_block_root | determine fs list, try to mount root with each till any succeeds
++----|-------------+                                                                                
+     |    +------------+                                                                            
+     |--> | alloc_page | allocate a page for fs name list                                           
+     |    +------------+                                                                            
+     |                                                                                              
+     |--> if user has specified 'rootfstype' in boot command (note: it's regarded as a fs name list)
+     |                                                                                              
+     |------> copy it to the allocated page                                                         
+     |                                                                                              
+     |--> else                                                                                      
+     |                                                                                              
+     |        +--------------------+                                                                
+     |------> | list_bdev_fs_names | prepare a list of registered fs, and copy to the page          
+     |        +--------------------+                                                                
+     |                                                                                              
+     |--> for each fs name in list                                                                  
+     |                                                                                              
+     |        +---------------+                                                                     
+     |------> | do_mount_root | mount given 'name' to '/root'                                       
+     |        +---------------+                                                                     
+     |                                                                                              
+     +------> break loop if mounted successfully                                                    
+```
+
+```
++---------------+                                                      
+| do_mount_root | mount given 'name' to '/root'                        
++---|-----------+                                                      
+    |                                                                  
+    |--> if arg 'data' is given                                        
+    |                                                                  
+    |        +------------+                                            
+    |------> | alloc_page | allocate a page                            
+    |        +------------+                                            
+    |                                                                  
+    |------> copy 'data' to the allocated page                         
+    |                                                                  
+    |    +------------+                                                
+    |--> | init_mount | mount properly based on flags                  
+    |    +------------+                                                
+    |    +------------+                                                
+    |--> | init_chdir | update pwd of current task to '/root'          
+    |    +------------+                                                
+    |                                                                  
+    +--> print "VFS: Mounted root (%s filesystem)%s on device %u:%u.\n"
+```
+
+```
++------------+                                                                                                
+| init_mount | mount properly based on flags                                                                  
++--|---------+                                                                                                
+   |    +-----------+                                                                                         
+   |--> | kern_path | lookup the path, save dentry and mnt in 'path'                                          
+   |    +-----------+                                                                                         
+   |    +------------+                                                                                        
+   +--> | path_mount |                                                                                        
+        +--|---------+                                                                                        
+           |                                                                                                  
+           |--> adjust flags                                                                                  
+           |                                                                                                  
+           |--> if blabla                                                                                     
+           |                                                                                                  
+           |        +--------------------+                                                                    
+           |------> | do_reconfigure_mnt |                                                                    
+           |        +--------------------+                                                                    
+           |                                                                                                  
+           |--> else if blabla                                                                                
+           |                                                                                                  
+           |        +------------+                                                                            
+           |------> | do_remount |                                                                            
+           |        +------------+                                                                            
+           |                                                                                                  
+           |--> else if blabla                                                                                
+           |                                                                                                  
+           |        +-------------+                                                                           
+           |------> | do_loopback |                                                                           
+           |        +-------------+                                                                           
+           |                                                                                                  
+           |--> else if blabla                                                                                
+           |                                                                                                  
+           |         +----------------+                                                                       
+           |------>  | do_change_type |                                                                       
+           |         +----------------+                                                                       
+           |                                                                                                  
+           |--> else if blabla                                                                                
+           |                                                                                                  
+           |         +-------------------+                                                                    
+           |------>  | do_move_mount_old |                                                                    
+           |         +-------------------+                                                                    
+           |                                                                                                  
+           |--> else                                                                                          
+           |                                                                                                  
+           |        +--------------+                                                                          
+           +------> | do_new_mount | prepare sb/dentry/inode of child mnt, and connect child mnt to parent mnt
+                    +--------------+                                                                          
+```
+
+```
++--------------+                                                                                
+| do_new_mount | prepare sb/dentry/inode of child mnt, and connect child mnt to parent mnt      
++---|----------+                                                                                
+    |    +-------------+                                                                        
+    |--> | get_fs_type | get 'fs' based on name                                                 
+    |    +-------------+                                                                        
+    |    +----------------------+                                                               
+    |--> | fs_context_for_mount | allocate fc and fs-specific private data                      
+    |    +----------------------+                                                               
+    |                                                                                           
+    |--> parse params for the 'fc'                                                              
+    |                                                                                           
+    |    +--------------+                                                                       
+    |--> | vfs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
+    |    +--------------+                                                                       
+    |    +-----------------+                                                                    
+    +--> | do_new_mount_fc | connect src (child) mnt to dst (parent) mnt                        
+         +-----------------+                                                                    
+```
+
+```
++-----------------+                                                                                         
+| do_new_mount_fc | connect src (child) mnt to dst (parent) mnt                                             
++----|------------+                                                                                         
+     |    +------------------+                                                                              
+     |--> | vfs_create_mount | allocate 'mount' (which includes 'vfsmnt'), and set up                       
+     |    +------------------+                                                                              
+     |    +------------+                                                                                    
+     |--> | lock_mount | ensure the dentry of path has a 'mountpoint'                                       
+     |    +------------+                                                                                    
+     |    +--------------+                                                                                  
+     |--> | do_add_mount |                                                                                  
+     |    +---|----------+                                                                                  
+     |        |    +------------+                                                                           
+     |        +--> | graft_tree |                                                                           
+     |             +--|---------+                                                                           
+     |                |    +----------------------+                                                         
+     |                +--> | attach_recursive_mnt |                                                         
+     |                     +-----|----------------+                                                         
+     |                           |    +----------------+                                                    
+     |                           +--> | get_mountpoint | get source mount point                             
+     |                           |    +----------------+                                                    
+     |                           |                                                                          
+     |                           |--> if dst mnt is shared                                                  
+     |                           |                                                                          
+     |                           |------> (skip, not our case)                                              
+     |                           |                                                                          
+     |                           |    +--------------------+                                                
+     |                           |--> | mnt_set_mountpoint | connect src (child) mnt to dst (parent) mnt    
+     |                           |    +--------------------+                                                
+     |                           |    +-------------+                                                       
+     |                           |--> | commit_tree | add child mnt to parent's hash table and children list
+     |                           |    +-------------+                                                       
+     |                           |                                                                          
+     |                           |--> for each mnt in local list                                            
+     |                           |                                                                          
+     |                           +------> (skip, it's related to shared mnt)                                
+     |                                                                                                      
+     |    +--------------+                                                                                  
+     +--> | unlock_mount |                                                                                  
+          +--------------+                                                                                  
+```
+
 ## <a name="reference"></a> Reference
 
-(TBD)
+- [Shared Subtrees](https://www.kernel.org/doc/Documentation/filesystems/sharedsubtree.txt)
