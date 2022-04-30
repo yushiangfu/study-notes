@@ -3,9 +3,69 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Structures](#structures)
+- [File Types & Operations](#file-types-and-operations)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
+
+A file system is a format managing file metadata and data. E.g., NTFS from Windows and EXT family from Linux are well-known examples. 
+The virtual file system is the unified interface that allows users to operate the files using the same method, like read() and write(). 
+It significantly abstracts the sophisticated design and complicated implementation, and therefore we don't have to know the details before using any file system.
+
+## <a name="structures"></a> Structures
+
+- struct **inode**
+      - What we think of like a file is represented by a struct inode in VFS.
+      - It stores the metadata of a file and knows where and how to access the file data
+- struct **dentry**
+      - Usually, one **inode** pairs with one **dentry** (hard link is the exception).
+      - VFS places the file name here.
+      - It establishes the folder and file hierarchy and works as caches to speed up the file lookup.
+- struct **file**
+      - Temporary component when a task opens a file, and it's process-specific.
+- struct **mount**
+      - Folders and files build up the tree within an area, e.g., partition, and each area has its filesystem and tree.
+      - We must mount them onto the root hierarchy before accessing them, and struct **mount** manage the action.
+
+```
+                           +---+                                      
+                           | m | root mount                           
+                           +---+                                      
+                          /     \                                     
+                        /-       -\                                   
+                       /           \                                  
+                      /             \                                 
+                    /-   +---+---+   -\                               
+                   /     | i | d |'/'  \                              
+                  /      +---+---+      \                             
+                 /             |         \                            
+               /-    +---------+---------+-\                          
+              /      |                   |  \                         
+             / +---+---+           +---+---+ \                +---+   
+           /-  | i | d |'var'      | i | d | ---------------  | m |   
+          /    +---+---+           +---+---+    \             +---+   
+         /           |                 'home'    \           /     \  
+        /     +------------+                      \         /       \ 
+      /-      |            |                       -\      - ---------
+     /  +---+---+     +---+---+                      \                
+    /   | i | d |     | i | d |'log.txt'              \               
+  /-    +---+-|-+     +---+---+                        -\             
+ /            |'more'   ^                                \            
+--------------|---------|----------------------------------           
+            +---+       |          +---+                              
+            | m |       ^--------  | f |  task a                      
+            +---\       |          +---+                              
+           /     \      |          +---+                              
+          /       \     +--------  | f |  task b                      
+         - ---------               +---+                              
+```
+
+So in the above diagram, we can see that there's the root mount and two other trees mounted onto **/home** and **/var/more**. 
+Inside the root mount, the dentry of each inode maintains the file hierarchy. 
+When tasks access the **/var/log.txt**, the VFS generates temporary file structures for each separately.
+
+## <a name="file-types-and-operations"></a> File Types & Operations
 
 ```
 +-----------------------+                                                                                                      
