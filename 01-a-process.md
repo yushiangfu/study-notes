@@ -154,6 +154,39 @@ Please note the scheduler itself is not a process or thread but a mechanism with
                                                               +-------------------------------------------+
 ```
 
+```
+    prio   kernel           user            nice                        
+            view            view            value                       
+                                                                        
+      ^      | |             | |                                        
+ high |      | | < 0         | | < 139?                  deadline class 
+      |   --------------------------------------------------------------
+      |      | | 0           | | 139                                    
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                         realtime class 
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | | 99          | | 40                                     
+      |   --------------------------------------------------------------
+      |      | | 100         | | 39          | | -20                    
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+      |      | |             | |             | |           fair class   
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+  low |      +-+ 139         +-+ 0           +-+ 19                     
+```
+
 Individual core has its run queue, dividing into sub-queues of different scheduling classes.
 1. [Stop class] it has only one task, which helps task migration between run queues.
 2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
