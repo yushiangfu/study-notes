@@ -67,6 +67,77 @@ When tasks access the **/var/log.txt**, the VFS generates temporary file structu
 
 ## <a name="file-types-and-operations"></a> File Types & Operations
 
+The VFS supports seven file types, and each of them has its inode and file operations specifying how it reacts to regular access.
+
+- Inode operation
+  - To get and set the attributes.
+  - To create or remove the child from a folder.
+  - To lookup.
+- File operation
+  - To change the content.
+  - To seek the offset.
+  - To map the data onto memory.
+
+Different file systems have their implementations for the same file type, and our example here shows how **shmem** does it. 
+Another candidate for the root file system is **ramfs**.
+
+- Regular file
+  - Most files fall into this category, e.g., jpg, png, mp4. They share the same file type but compose in a different format.
+
+```
+inode->i_op = &shmem_inode_operations;
+inode->i_fop = &shmem_file_operations;
+```
+
+- Directory
+  - It's a collection of files and folders, e.g., /, /home/, /tmp/.
+
+```
+inode->i_op = &shmem_dir_inode_operations;
+inode->i_fop = &simple_dir_operations;
+```
+
+- Link
+  - A **symbolic** or **soft** link, not the **hard** one.
+  - Shortcut to another destination.
+
+```
+inode->i_op = &empty_iops;
+inode->i_fop = &no_open_fops;
+```
+
+- Character device
+  - Please refer to the driver framework for further introduction.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &def_chr_fops;
+```
+
+- Block device
+  - Please refer to the driver framework for further introduction.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &def_blk_fops;
+```
+
+- Pipe
+  - I haven't studied it yet.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &pipefifo_fops;
+```
+
+- Socket
+  - It's not there until any task opens it with specified arguments, and therefore file operation here is unnecessary to socket type.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &no_open_fops;
+```
+
 ```
 +-----------------------+                                                                                                      
 | vfs_caches_init_early |                                                                                                      
