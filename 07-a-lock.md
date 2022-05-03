@@ -7,6 +7,7 @@
 - [Read-Write Lock](#rwlock)
 - [Mutex](#mutex)
 - [Semaphore](#semaphore)
+- [Futex](#futex)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -564,6 +565,135 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
  |    +----------------------------+               
  +--> | raw_spin_unlock_irqrestore | semaphore lock
       +----------------------------+               
+```
+
+## <a name="futex"></a> Futex
+
+```
++------------+                                                               
+| futex_wait | set up key, queue task to sleep, till it's waken              
++--|---------+                                                               
+   |    +-------------------+                                                
+   |--> | futex_setup_timer | set up the sleeping timer                      
+   |    +-------------------+                                                
+   |    +------------------+                                                 
+   |--> | futex_wait_setup | set up key and get value from uesr addr         
+   |    +------------------+                                                 
+   |    +---------------------+                                              
+   |--> | futex_wait_queue_me | add task to queue and sleep, till it's waken 
+   |    +---------------------+                                              
+   |                                                                         
+   |--> if task isn't in queue anymore (it succeeds), go to out              
+   |out:                                                                     
+   |--> if there's timeout timer                                             
+   |                                                                         
+   |        +----------------+                                               
+   |------> | hrtimer_cancel |                                               
+   |        +----------------+                                               
+   |        +--------------------------+                                     
+   +------> | destroy_hrtimer_on_stack |                                     
+            +--------------------------+                                     
+```
+  
+```
++------------------+                                         
+| futex_wait_setup | set up key and get value from uesr addr 
++----|-------------+                                         
+     |    +---------------+                                  
+     |--> | get_futex_key | set up key                       
+     |    +---------------+                                  
+     |    +------------------------+                         
+     |--> | get_futex_value_locked | get value from user addr
+     |    +------------------------+                         
+     |                                                       
+     |--> if value from user addr != value from arg          
+     |                                                       
+     +------> return error                                   
+```
+  
+```
++---------------+                                                                 
+| get_futex_key | set up key                                                      
++---|-----------+                                                                 
+    |                                                                             
+    |--> if it's a private futex (fast path)                                      
+    |                                                                             
+    |------> set up key.private and return                                        
+    |                                                                             
+    |    +---------------------+                                                  
+    |--> | get_user_pages_fast | get page of the user address and pin it in memory
+    |    +---------------------+                                                  
+    |                                                                             
+    |--> if it's an anonymous mapping                                             
+    |                                                                             
+    |------> set up key.private                                                   
+    |                                                                             
+    |--> else                                                                     
+    |                                                                             
+    +------> set up key.shared                                                    
+```
+  
+```
++---------------------+                                                        
+| futex_wait_queue_me | add task to queue and sleep, till it's waken        
++-----|---------------+                                                        
+      |    +-------------------+                                               
+      |--> | set_current_state | set task state to 'interruptible'             
+      |    +-------------------+                                               
+      |    +----------+                                                        
+      |--> | queue_me |                                                        
+      |    +--|-------+                                                        
+      |       |    +------------+                                              
+      |       +--> | __queue_me | link futex and task, add futex to hash bucket
+      |            +------------+                                              
+      |                                                                        
+      |--> if 'timeout' is given                                               
+      |                                                                        
+      |        +-------------------------------+                               
+      |------> | hrtimer_sleeper_start_expires |                               
+      |        +-------------------------------+                               
+      |    +--------------------+                                              
+      |--> | freezable_schedule | go to sleep                                  
+      |    +--------------------+                                              
+      |                        <-- somewhere woke me up                        
+      |    +---------------------+                                             
+      +--> | __set_current_state | set task state to 'running'                 
+           +---------------------+                                             
+```
+ 
+```
++------------+                                                        
+| futex_wake | wake up task(s) in hash bucket                         
++--|---------+                                                        
+   |    +---------------+                                             
+   |--> | get_futex_key | set up key                                  
+   |    +---------------+                                             
+   |                                                                  
+   |--> for each node in hash bucket                                  
+   |                                                                  
+   |        +-------------+                                           
+   |------> | match_futex | check if key attributes are the same      
+   |        +-------------+                                           
+   |                                                                  
+   |------> check if the node meets our 'bitset'                      
+   |                                                                  
+   |        +-----------------+                                       
+   |------> | mark_wake_futex |                                       
+   |        +----|------------+                                       
+   |             |    +-----------------+                             
+   |             |--> | __unqueue_futex | remove node from hash bucket
+   |             |    +-----------------+                             
+   |             |    +-----------------+                             
+   |             +--> | wake_q_add_safe | add task to wake queue      
+   |                  +-----------------+                             
+   |                                                                  
+   |------> if we added that many (nr_wake) tasks to the wake queue   
+   |                                                                  
+   |----------> break                                                 
+   |                                                                  
+   |    +-----------+                                                 
+   +--> | wake_up_q | wake up task(s) in queue                        
+        +-----------+                                                 
 ```
   
 </details>
