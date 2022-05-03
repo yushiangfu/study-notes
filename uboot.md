@@ -1,0 +1,131 @@
+## Index
+
+1. [Introduction](#introduction)
+2. [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+```
++---------------+                                                               
+| bootp_request | set up tx packet, install timeout and udp handler, send packet
++---|-----------+                                                               
+    |                                                                           
+    |--> determine timeout period                                               
+    |                                                                           
+    |--> print "BOOTP broadcast %d\n"                                           
+    |                                                                           
+    |--> set up a tx packet (udp, ip, broadcast)                                
+    |                                                                           
+    |    +---------------+                                                      
+    |--> | dhcp_extended | further set up                                       
+    |    +---------------+                                                      
+    |                                                                           
+    |--> set timeout handler 'bootp_timeout_handler()'                          
+    |                                                                           
+    |--> set udp handler 'dhcp_handler'                                         
+    |                                                                           
+    |    +-----------------+                                                    
+    +--> | net_send_packet |                                                    
+         +----|------------+                                                    
+              |    +----------+                                                 
+              +--> | eth_send |                                                 
+                   +--|-------+                                                 
+                      |                                                         
+                      +--> call ->send(), e.g.,                                 
+                           +---------------+                                    
+                           | ftgmac100_send|                                    
+                           +---------------+                                    
+```
+
+```
+ +----------+                                                                               
+ | net_loop | send and receive dhcp packets, load boot file
+ +--|-------+                                                                               
+    |    +----------+                                                                       
+    |--> | net_init | inti variables and get mac addr                                       
+    |    +----------+                                                                       
+    |    +----------+                                                                       
+    |--> | eth_init |                                                                       
+    |    +--|-------+                                                                       
+    |       |                                                                               
+    |       +--> call ->start(), e.g.,                                                      
+    |            +-----------------+                                                        
+    |            | ftgmac100_start |                                                        
+    |            +----|------------+                                                        
+    |                 |                                                                     
+    |                 |--> init                                                             
+    |                 |                                                                     
+    |                 +--> print "%s: link up, %d Mbps %s-duplex mac:%pM\n"                 
+ restart:                                                                                   
+    |    +---------------+                                                                  
+    |--> | net_init_loop | get mac addr                                                     
+    |    +---------------+                                                                  
+    |                                                                                       
+    |--> swtich 'protocol'                                                                  
+    |                                                                                       
+    |--> case 'dhcp'                                                                        
+    |                                                                                       
+    |        +--------------+                                                               
+    |------> | dhcp_request | set up tx packet, install timeout and udp handler, send packet
+    |        +--------------+                                                               
+    |                                                                                       
+    |--> endless loop                                                                       
+    |                                                                                       
+    |        +--------+                                                                     
+    |------> | eth_rx | receive and handle up to 32 packets, load the boot file implicitly
+    |        +--------+                                                                     
+    |                                                                                       
+    |------> run timeout handler if necessary                                               
+    |                                                                                       
+    |------> switch net_state                                                               
+    |                                                                                       
+    |------> case 'restart'                                                                 
+    |                                                                                       
+    |-----------> go to restart                                                             
+    |                                                                                       
+    |------> case                                                                           
+    |                                                                                       
+    +-----------> print "Bytes transferred = %d (%x hex)\n"                                 
+```
+
+```
++--------+                                                                               
+| eth_rx | receive and handle up to 32 packets, load the boot file implicitly
++-|------+                                                                               
+  |                                                                                      
+  |--> for up to 32 packets                                                              
+  |                                                                                      
+  |------> call ->recv(), e.g.,                                                          
+  |        +----------------+                                                            
+  |        | ftgmac100_recv |                                                            
+  |        +----------------+                                                            
+  |        +-----------------------------+                                               
+  |------> | net_process_received_packet |                                               
+  |        +-------|---------------------+                                               
+  |                |                                                                     
+  |                |--> parse header and check                                           
+  |                |                                                                     
+  |                +--> call udp handler, e.g.,                                          
+  |                     +--------------+                                                 
+  |                     | dhcp_handler |                                                 
+  |                     +---|----------+                                                 
+  |                         |                                                            
+  |                         |--> switch dhcp_state                                       
+  |                         |                                                            
+  |                         |--> case REQUESTING                                         
+  |                         |                                                            
+  |                         |------> print "DHCP client bound to address %pI4 (%lu ms)\n"
+  |                         |                                                            
+  |                         |        +---------------+                                   
+  |                         +------> | net_auto_load |                                   
+  |                                  +---|-----------+                                   
+  |                                      |    +------------+                             
+  |                                      +--> | tftp_start |                             
+  |                                           +------------+                             
+  |                                                                                      
+  +------> break loop early if no packet                                                 
+```
+
+## <a name="reference"></a> Reference
+
+(TBD)
