@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Structures](#structures)
 - [File Types & Operations](#file-types-and-operations)
+- [VFS Operations](#vfs-operations)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -138,6 +139,243 @@ inode->i_op = &shmem_special_inode_operations;
 inode->i_fop = &no_open_fops;
 ```
 
+## <a name="vfs-operations"></a> VFS Operations
+
+### Mount
+
+I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
+Even though I raised my questions, I still didn't understand his replies (slow learner?). 
+Fast forward to today, and here are my answers to my poor old questions.
+
+- What does mount do?
+  - To connect the file tree to another one.
+- Why do we need to mount?
+  - To make the isolated file tree visible.
+- Why do Windows users not have to mount?
+  - Automatic mount
+
+We start the introduction by command **mount** usage.
+
+```
+          +------------------------+                    
+          | where the file tree is |                    
+          +------------------------+                    
+                       ^                                
+                       |                                
+                --------------                          
+ mount -t jffs2 /dev/mtdblock5 /run/initramfs/rw        
+       --------                -----------------        
+           |                           |                
+           v                           v                
+ +------------------+   +------------------------------+
+ | file tree format |   | where I want it connects to, |
+ +------------------+   | a.k.a. mount point           |
+                        +------------------------------+
+```
+
+<details>
+  <summary> Code trace </summary>
+
+```
++------------+                                                                                                                 
+| kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
++--|---------+                                                                                                                 
+   |    +----------------+                                                                                                     
+   +--> | vfs_kern_mount |                                                                                                     
+        +---|------------+                                                                                                     
+            |    +----------------------+                                                                                      
+            |--> | fs_context_for_mount | allocate fc and fs-specific private data
+            |    +-----|----------------+                                                                                      
+            |          |    +------------------+                                                                               
+            |          +--> | alloc_fs_context | 
+            |               +----|-------------+                                                                               
+            |                    |                                                                                             
+            |                    |--> allcoate fs context (fc)                                                                 
+            |                    |                                                                                             
+            |                    +--> call ->init_fs_context(), e.g.,                                                          
+            |                         +--------------------+                                                                   
+            |                         | bd_init_fs_context | prepare pseudo fs context and install 'bdev_sops'                 
+            |                         +--------------------+                                                                   
+            |    +----------+                                                                                                  
+            +--> | fc_mount |                                                                                                  
+                 +--|-------+                                                                                                  
+                    |    +--------------+                                                                                      
+                    |--> | vfs_get_tree |                                                                                      
+                    |    +---|----------+                                                                                      
+                    |        |                                                                                                 
+                    |        +--> call ->get_tree(), e.g.,                                                                     
+                    |             +--------------------+                                                                       
+                    |             | pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
+                    |             +--------------------+                                                                       
+                    |    +------------------+                                                                                  
+                    +--> | vfs_create_mount | allocate and set up 'mount'                                                      
+                         +------------------+                                                                                  
+```
+
+</details>
+      
+### Lookup
+
+<details>
+  <summary> Code trace </summary>
+
+```
++-----------------+                                                                                                              
+| vfs_path_lookup |                                                                                                              
++----|------------+                                                                                                              
+     |    +-----------------+                                                                                                    
+     +--> | filename_lookup | lookup the path, save dentry and mnt in 'path'
+          +----|------------+                                                                                                    
+               |    +---------------+                                                                                            
+               |--> | set_nameidata | set up nd and replace the one of current task                                              
+               |    +---------------+                                                                                            
+               |    +---------------+                                                                                            
+               |--> | path_lookupat |                                                                                            
+               |    +---|-----------+                                                                                            
+               |        |    +-----------+                                                                                       
+               |        |--> | path_init | decide the starting point for lookup                                                  
+               |        |    +-----------+                                                                                       
+               |        |                                                                                                        
+               |        |--> endless loop                                                                                        
+               |        |                                                                                                        
+               |        |        +----------------+                                                                              
+               |        |------> | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
+               |        |        +----------------+                                                                              
+               |        |                                                                                                        
+               |        |------> break loop if error                                                                             
+               |        |                                                                                                        
+               |        |        +-------------+                                                                                 
+               |        |------> | lookup_last | update path (dentry + mnt) and inode of nd to next component                    
+               |        |        +-------------+                                                                                 
+               |        |                                                                                                        
+               |        |------> break loop if error                                                                             
+               |        |                                                                                                        
+               |        +--> copy path to argument and reset nd                                                                  
+               |                                                                                                                 
+               |    +-------------------+                                                                                        
+               +--> | restore_nameidata |                                                                                        
+                    +-------------------+                                                                                        
+```
+
+```
++-----------+                                                 
+| path_init | set nd's root, path, and inode
++--|--------+                                                 
+   |                                                          
+   |--> if it's a absolute path (starts with a '/')           
+   |                                                          
+   |        +--------------+                                  
+   |------> | nd_jump_root |                                  
+   |        +---|----------+                                  
+   |            |    +----------+                             
+   |            |--> | set_root | nd->root = current->fs->root
+   |            |    +----------+                             
+   |            |                                             
+   |            +--> nd->path = nd->root                      
+   |                                                          
+   |--> else (a relative path)                                
+   |                                                          
+   |------> nd->path = current->fs->pwd                       
+   |                                                          
+   +------> set nd->inode from nd->path                       
+```
+      
+```
++----------------+                                                                          
+| link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
++---|------------+                                                                          
+    |                                                                                       
+    |--> endless loop                                                                       
+    |                                                                                       
+    +------> update nd last                                                                 
+    |                                                                                       
+    |        +----------------+                                                             
+    |------> | walk_component | update path (dentry + mnt) and inode of nd to next component
+    |        +----------------+                                                             
+    |                                                                                       
+    +------> (ignore link handling)                                                         
+```
+
+```
++----------------+                                                                          
+| walk_component | update path (dentry + mnt) and inode of nd to next component           
++---|------------+                                                                          
+    |                                                                                       
+    |--> if it's DOT or DOTDOT                                                              
+    |                                                                                       
+    |        +-------------+                                                                
+    |------> | handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)
+    |        +-------------+                                                                
+    |                                                                                       
+    |------> return                                                                         
+    |                                                                                       
+    |    +-------------+                                                                    
+    |--> | lookup_fast | find child dentry in hash table by parent dentry and child name    
+    |    +-------------+                                                                    
+    |    +-----------+                                                                      
+    +--> | step_into | update path and inode of nd (automount and link cases are considered)
+         +-----------+                                                                      
+```
+
+```
++-------------+                                                                             
+| handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)             
++---|---------+                                                                             
+    |                                                                                       
+    |--> if it's DOTDOT (do nothing for DOT case)                                           
+    |                                                                                       
+    |------> ensure nd has root setting                                                     
+    |                                                                                       
+    |    +---------------+                                                                  
+    |--> | follow_dotdot |                                                                  
+    |    +---|-----------+                                                                  
+    |        |                                                                              
+    |        |--> if it's the root, return NULL                                             
+    |        |                                                                              
+    |        |--> if it's a mount point                                                     
+    |        |                                                                              
+    |        |        +-------------------+                                                 
+    |        |------> | choose_mountpoint | update dentry and mnt in path with mount point  
+    |        |        +-------------------+                                                 
+    |        |                                                                              
+    |        +--> get parent dentry and inode                                               
+    |                                                                                       
+    |    +-----------+                                                                      
+    +--> | step_into | update path and inode of nd (automount and link cases are considered)
+         +-----------+                                                                      
+```
+
+```
++-----------+                                                                     
+| step_into | update path and inode of nd (automount and link cases are considered)
++--|--------+                                                                     
+   |    +---------------+                                                         
+   |--> | handle_mounts | update mnt and dentry of path if it's mounted           
+   |    +---|-----------+                                                         
+   |        |    +-----------------+                                              
+   |        +--> | traverse_mounts |                                              
+   |             +----|------------+                                              
+   |                  |    +-------------------+                                  
+   |                  +--> | __traverse_mounts |                                  
+   |                       +----|--------------+                                  
+   |                            |                                                 
+   |                            |--> if it's mounted                              
+   |                            |                                                 
+   |                            |        +------------+                           
+   |                            |------> | lookup_mnt | return the first child mnt
+   |                            |        +------------+                           
+   |                            |                                                 
+   |                            |------> update the mnt and dentry of path with it
+   |                            |                                                 
+   |                            +--> (ignore the case of auto mount)              
+   |                                                                              
+   |--> update path and inode of nd                                               
+   |                                                                              
+   +--> (ignore the case of link)                                                 
+```
+
+</details>
+      
 ```
 +-----------------------+                                                                                                      
 | vfs_caches_init_early |                                                                                                      
@@ -492,42 +730,6 @@ inode->i_fop = &no_open_fops;
 ```
 
 ```
-+------------+                                                                                                                 
-| kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
-+--|---------+                                                                                                                 
-   |    +----------------+                                                                                                     
-   +--> | vfs_kern_mount |                                                                                                     
-        +---|------------+                                                                                                     
-            |    +----------------------+                                                                                      
-            |--> | fs_context_for_mount | allocate fc and fs-specific private data
-            |    +-----|----------------+                                                                                      
-            |          |    +------------------+                                                                               
-            |          +--> | alloc_fs_context | 
-            |               +----|-------------+                                                                               
-            |                    |                                                                                             
-            |                    |--> allcoate fs context (fc)                                                                 
-            |                    |                                                                                             
-            |                    +--> call ->init_fs_context(), e.g.,                                                          
-            |                         +--------------------+                                                                   
-            |                         | bd_init_fs_context | prepare pseudo fs context and install 'bdev_sops'                 
-            |                         +--------------------+                                                                   
-            |    +----------+                                                                                                  
-            +--> | fc_mount |                                                                                                  
-                 +--|-------+                                                                                                  
-                    |    +--------------+                                                                                      
-                    |--> | vfs_get_tree |                                                                                      
-                    |    +---|----------+                                                                                      
-                    |        |                                                                                                 
-                    |        +--> call ->get_tree(), e.g.,                                                                     
-                    |             +--------------------+                                                                       
-                    |             | pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
-                    |             +--------------------+                                                                       
-                    |    +------------------+                                                                                  
-                    +--> | vfs_create_mount | allocate and set up 'mount'                                                      
-                         +------------------+                                                                                  
-```
-
-```
 +-----------------+                                                                 
 | populate_rootfs |                                                                 
 +----|------------+                                                                 
@@ -561,29 +763,6 @@ inode->i_fop = &no_open_fops;
             |    +--------------+                                                                   
             +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()
                  +--------------+                                                                   
-```
-
-```
-+-----------+                                                 
-| path_init | set nd's root, path, and inode
-+--|--------+                                                 
-   |                                                          
-   |--> if it's a absolute path (starts with a '/')           
-   |                                                          
-   |        +--------------+                                  
-   |------> | nd_jump_root |                                  
-   |        +---|----------+                                  
-   |            |    +----------+                             
-   |            |--> | set_root | nd->root = current->fs->root
-   |            |    +----------+                             
-   |            |                                             
-   |            +--> nd->path = nd->root                      
-   |                                                          
-   |--> else (a relative path)                                
-   |                                                          
-   |------> nd->path = current->fs->pwd                       
-   |                                                          
-   +------> set nd->inode from nd->path                       
 ```
 
 ```                                                     
@@ -660,138 +839,6 @@ dir /root 0700 0 0
     |    +----------------+                                                                              
     +--> | terminate_walk | finalize something that doesn't matter to us                                 
          +----------------+                                                                              
-```
-
-```
-+-----------------+                                                                                                              
-| vfs_path_lookup |                                                                                                              
-+----|------------+                                                                                                              
-     |    +-----------------+                                                                                                    
-     +--> | filename_lookup | lookup the path, save dentry and mnt in 'path'
-          +----|------------+                                                                                                    
-               |    +---------------+                                                                                            
-               |--> | set_nameidata | set up nd and replace the one of current task                                              
-               |    +---------------+                                                                                            
-               |    +---------------+                                                                                            
-               |--> | path_lookupat |                                                                                            
-               |    +---|-----------+                                                                                            
-               |        |    +-----------+                                                                                       
-               |        |--> | path_init | decide the starting point for lookup                                                  
-               |        |    +-----------+                                                                                       
-               |        |                                                                                                        
-               |        |--> endless loop                                                                                        
-               |        |                                                                                                        
-               |        |        +----------------+                                                                              
-               |        |------> | link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
-               |        |        +----------------+                                                                              
-               |        |                                                                                                        
-               |        |------> break loop if error                                                                             
-               |        |                                                                                                        
-               |        |        +-------------+                                                                                 
-               |        |------> | lookup_last | update path (dentry + mnt) and inode of nd to next component                    
-               |        |        +-------------+                                                                                 
-               |        |                                                                                                        
-               |        |------> break loop if error                                                                             
-               |        |                                                                                                        
-               |        +--> copy path to argument and reset nd                                                                  
-               |                                                                                                                 
-               |    +-------------------+                                                                                        
-               +--> | restore_nameidata |                                                                                        
-                    +-------------------+                                                                                        
-```
-
-```
-+----------------+                                                                          
-| link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
-+---|------------+                                                                          
-    |                                                                                       
-    |--> endless loop                                                                       
-    |                                                                                       
-    +------> update nd last                                                                 
-    |                                                                                       
-    |        +----------------+                                                             
-    |------> | walk_component | update path (dentry + mnt) and inode of nd to next component
-    |        +----------------+                                                             
-    |                                                                                       
-    +------> (ignore link handling)                                                         
-```
-
-```
-+----------------+                                                                          
-| walk_component | update path (dentry + mnt) and inode of nd to next component           
-+---|------------+                                                                          
-    |                                                                                       
-    |--> if it's DOT or DOTDOT                                                              
-    |                                                                                       
-    |        +-------------+                                                                
-    |------> | handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)
-    |        +-------------+                                                                
-    |                                                                                       
-    |------> return                                                                         
-    |                                                                                       
-    |    +-------------+                                                                    
-    |--> | lookup_fast | find child dentry in hash table by parent dentry and child name    
-    |    +-------------+                                                                    
-    |    +-----------+                                                                      
-    +--> | step_into | update path and inode of nd (automount and link cases are considered)
-         +-----------+                                                                      
-```
-
-```
-+-------------+                                                                             
-| handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)             
-+---|---------+                                                                             
-    |                                                                                       
-    |--> if it's DOTDOT (do nothing for DOT case)                                           
-    |                                                                                       
-    |------> ensure nd has root setting                                                     
-    |                                                                                       
-    |    +---------------+                                                                  
-    |--> | follow_dotdot |                                                                  
-    |    +---|-----------+                                                                  
-    |        |                                                                              
-    |        |--> if it's the root, return NULL                                             
-    |        |                                                                              
-    |        |--> if it's a mount point                                                     
-    |        |                                                                              
-    |        |        +-------------------+                                                 
-    |        |------> | choose_mountpoint | update dentry and mnt in path with mount point  
-    |        |        +-------------------+                                                 
-    |        |                                                                              
-    |        +--> get parent dentry and inode                                               
-    |                                                                                       
-    |    +-----------+                                                                      
-    +--> | step_into | update path and inode of nd (automount and link cases are considered)
-         +-----------+                                                                      
-```
-
-```
-+-----------+                                                                     
-| step_into | update path and inode of nd (automount and link cases are considered)
-+--|--------+                                                                     
-   |    +---------------+                                                         
-   |--> | handle_mounts | update mnt and dentry of path if it's mounted           
-   |    +---|-----------+                                                         
-   |        |    +-----------------+                                              
-   |        +--> | traverse_mounts |                                              
-   |             +----|------------+                                              
-   |                  |    +-------------------+                                  
-   |                  +--> | __traverse_mounts |                                  
-   |                       +----|--------------+                                  
-   |                            |                                                 
-   |                            |--> if it's mounted                              
-   |                            |                                                 
-   |                            |        +------------+                           
-   |                            |------> | lookup_mnt | return the first child mnt
-   |                            |        +------------+                           
-   |                            |                                                 
-   |                            |------> update the mnt and dentry of path with it
-   |                            |                                                 
-   |                            +--> (ignore the case of auto mount)              
-   |                                                                              
-   |--> update path and inode of nd                                               
-   |                                                                              
-   +--> (ignore the case of link)                                                 
 ```
 
 ```
