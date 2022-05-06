@@ -6,6 +6,46 @@
 ## <a name="introduction"></a> Introduction
 
 ```
++----------------+
+| netboot_common |
++---|------------+
+    |
+    |--> set default 'load_addr'
+    |
+    |--> switch argc
+    |
+    |------> case 1 (only cmd 'dhcp' and no argument)
+    |
+    |----------> set 'net_boot_file_name' from env "bootfile"
+    |
+    +------> case 2 (cmd 'dhcp' and one argument)
+    |
+    |----------> if the arg is addr
+    |
+    |--------------> set 'load_addr' from the arg
+    |
+    |--------------> set 'net_boot_file_name' from env "bootfile"
+    |
+    |----------> else
+    |
+    |--------------> set 'net_boot_file_name' from the arg
+    |
+    |------> case 3 (we have everything we need)
+    |
+    +----------> set 'load_addr' and 'net_boot_file_name' from args
+    |
+    |    +----------+
+    |--> | net_loop | send and receive dhcp packets, load boot file
+    |    +----------+
+    |    +--------------------+
+    |--> | netboot_update_env | update variables to uboot env
+    |    +--------------------+
+    |    +-----------------------+
+    +--> | bootm_maybe_autostart | boot up if "autostart" is set
+         +-----------------------+
+```
+
+```
 +---------------+                                                               
 | bootp_request | set up tx packet, install timeout and udp handler, send packet
 +---|-----------+                                                               
