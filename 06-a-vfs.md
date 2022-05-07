@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Structures](#structures)
 - [File Types & Operations](#file-types-and-operations)
+- [Boot Flow](#boot-flow)
 - [VFS Operations](#vfs-operations)
 - [Reference](#reference)
 
@@ -139,6 +140,65 @@ inode->i_op = &shmem_special_inode_operations;
 inode->i_fop = &no_open_fops;
 ```
 
+## <a name="boot-flow"></a> Boot Flow
+
+Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
+We can see that there's only one pair of dentry and inode, which represents the well-known '/' entry. 
+After letting tasks know where the **mount** and **dentry** are, the file tree becomes visible to them.
+
+```
++---------> mount                                     
+|     +----------------+                              
+|     |      mnt       |                              
+|     |  +----------+  |                              
+|     |  |+--------+|  |                              
+|     |  ||mnt_root|---------------+                  
+|     |  |+--------+|  |           |                  
+|     |  +----------+  |           v                  
+|     |+--------------+|        +------+       +-----+
+|     ||mnt_mountpoint--------> |dentry| <---> |inode|
+|     |+--------------+|        +------+       +-----+
+|     |  +----------+  |                              
++---------mnt_parent|  |                              
+      |  +----------+  |                              
+      +----------------+                              
+```
+
+When building the kernel image, data under **usr/** will become the initramfs included in the generated kernel image, and it contributes the very minimum rootfs:
+
+- /dev
+- /dev/console
+- /root
+
+And then the complete rootfs either comes from initrd or other mediums:
+
+- Initrd
+  - It's initramfs-romulus in our case. Don't be bothered by its naming since there might be some historical factors.
+- NFS
+  - The source is from an NFS server.
+- CIFS
+  - The source if from a Samba server.
+- Block
+  - The source is from a drive partition, another common case in practical usage.
+
+```
+                         +-----------+                                      
+                         | initramfs |                                      
+                         +--/-----\--+                                      
+                           /       \                                        
+                          /         \                                       
+                         v           v                                      
+                 +--------+         +-------+                               
+ our study case  | initrd |         | other |                               
+                 +--------+         /-------\                               
+                                   /    |    \                              
+                                  /     |     \                             
+                                 v      v      v                            
+                           +-----+  +------+   +-------+                    
+                           | nfs |  | cifs |   | block | another common case
+                           +-----+  +------+   +-------+                    
+```
+
 ## <a name="vfs-operations"></a> VFS Operations
 
 ### Mount
@@ -173,6 +233,9 @@ We start the introduction by command **mount** usage.
                         +------------------------------+
 ```
 
+The kernel will prepare the below structures for the source tree: **mount**, **dentry**, **inode**. 
+The **mount** doesn't connect to anything yet and isn't visible to the users.
+
 ```
 +---------> mount                                     
 |     +----------------+                              
@@ -191,44 +254,54 @@ We start the introduction by command **mount** usage.
       +----------------+                              
 ```
 
+Later the kernel mounts the source tree onto the dentry of the destination folder, which is also known as the mount point. 
+Also, the mount structure of the mount point acts as the parent mount, and the **mnt_parent** points to the right place. 
+That's how we make the source tree of a specific disk partition visible to us, and now the **lookup** can traverse into it.
+
 ```
-+-----------------------------> mount                                                                                          
-|                   |     +----------------+                                                                                   
-|                   |     |      mnt       |                                                                                   
-|                   |     |  +----------+  |                                                                                   
-|                   |     |  |+--------+|  |                                                                                   
-|                   |     |  ||mnt_root-----------------------------------+                                                    
-|                   |     |  |+--------+|  |                              |                                                    
-|                   |     |  +----------+  |                              v                                                    
-|                   |     |+--------------+|                          +------+-----+                                           
-|                   |     ||mnt_mountpoint--------------------------> |dentry|inode|                                           
-|                   |     |+--------------+|                          +---^--+-----+                                           
-|                   |     |  +----------+  |                              |                                                    
-|                   +---------mnt_parent|  |                              |                                                    
-|                         |  +----------+  |                 +--------------------------------------+                          
-|                         +----------------+                 |                  |                   |                          
-|                                                        +---|--+-----+     +---|--+-----+      +---|--+-----+                 
-|                                                        |dentry|inode|     |dentry|inode|      |dentry|inode|                 
-|                                                        +---^--+-----+     +------+-----+      +---^--+-----+                 
-|                                                            |                                      |                          
-|                                                            |                                      |                          
-|                                               +----------------------+                       +---------------------+         
-|                                               |                      |                       |                     |         
++-----------------------------> mount
+|                   |     +----------------+
+|                   |     |      mnt       |
+|                   |     |  +----------+  |
+|                   |     |  |+--------+|  |
+|                   |     |  ||mnt_root-----------------------------------+
+|                   |     |  |+--------+|  |                              |
+|                   |     |  +----------+  |                              v
+|                   |     |+--------------+|                          +------+-----+
+|                   |     ||mnt_mountpoint--------------------------> |dentry|inode|
+|                   |     |+--------------+|                          +---^--+-----+
+|                   |     |  +----------+  |                              |
+|                   +---------mnt_parent|  |                              |
+|                         |  +----------+  |                 +--------------------------------------+
+|                         +----------------+                 |                  |                   |
+|                                                        +---|--+-----+     +---|--+-----+      +---|--+-----+
+|                                                        |dentry|inode|     |dentry|inode|      |dentry|inode|
+|                                                        +---^--+-----+     +------+-----+      +---^--+-----+
+|                                                            |                                      |
+|                                                            |                                      |
+|                                               +----------------------+                       +---------------------+
+|                                               |                      |                       |                     |
 |           mount                           +---|--+-----+         +---|--+-----+          +---|--+-----+        +---|--+-----+
-|     +----------------+                    |dentry|inode|         |dentry|inode|          |dentry|inode|        |dentry|inode|
-|     |      mnt       |                    +---^--+-----+         +------+-----+          +------+-----+        +------+-----+
-|     |  +----------+  |                        |                                                                              
-|     |  |+--------+|  |   +------+-----+       |                                                                              
-|     |  ||mnt_root------> |dentry|inode|       |                                                                              
-|     |  |+--------+|  |   +------+-----+       |                                                                              
-|     |  +----------+  |                        |                                                                              
-|     |+--------------+|                        |                                                                              
-|     ||mnt_mountpoint--------------------------+                                                                              
-|     |+--------------+|                                                                                                       
-|     |  +----------+  |                                                                                                       
-+---------mnt_parent|  |                                                                                                       
-      |  +----------+  |                                                                                                       
-      +----------------+                                                                                                       
+|     +----------------+        +---------> |dentry|inode|         |dentry|inode|          |dentry|inode|        |dentry|inode|
+|     |      mnt       |        |           +------+-----+         +------+-----+          +------+-----+        +------+-----+
+|     |  +----------+  |        |
+|     |  |+--------+|  |        |               +------+-----+
+|     |  ||mnt_root-------------|-------------> |dentry|inode|
+|     |  |+--------+|  |        |               +---^--+-----+
+|     |  +----------+  |        |                   |
+|     |+--------------+|        |                   |
+|     ||mnt_mountpoint----------+      +-------------------------+
+|     |+--------------+|               |                         |
+|     |  +----------+  |           +---|--+-----+            +---|--+-----+
++---------mnt_parent|  |           |dentry|inode|            |dentry|inode|
+      |  +----------+  |           +---^--+-----+            +---^--+-----+
+      +----------------+               |                         |
+                                       |                         |
+                                       |                    +---------------+
+                                       |                    |               |
+                                   +---|--+-----+       +---|--+-----+  +---|--+-----+
+                                   |dentry|inode|       |dentry|inode|  |dentry|inode|
+                                   +------+-----+       +------+-----+  +------+-----+
 ```
 
 <details>
@@ -1410,7 +1483,7 @@ dir /root 0700 0 0
      |--> | devtmpfs_mount | (skip for now)                                              
      |    +----------------+                                                             
      |    +------------+                                                                 
-     |--> | init_mount | perform a moving mount of '.' to '/'     <-- what's the purpose?
+     |--> | init_mount | perform a moving mount of '/root' to '/', and now '/' points to the copy of our initramfs
      |    +------------+                                                                 
      |    +-------------+                                                                
      +--> | init_chroot | update root of current task to '/root'  <-- what's the purpose?
