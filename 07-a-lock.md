@@ -8,6 +8,7 @@
 - [Mutex](#mutex)
 - [Semaphore](#semaphore)
 - [Futex](#futex)
+- [PI-Futex](#pi-futex)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -567,6 +568,8 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
       +----------------------------+               
 ```
 
+</details>
+  
 ## <a name="futex"></a> Futex
 
 ```
@@ -696,7 +699,161 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
         +-----------+                                                 
 ```
   
-</details>
+## <a name="pi-futex"></a> PI-Futex
+  
+```
++-----------------------------+                                                                                     
+| __rt_mutex_start_proxy_lock | start lock acquisition for another task, reutrn 0 if blocked, or 1 for lock acquired
++-------|---------------------+                                                                                     
+        |    +----------------------+                                                                               
+        |--> | try_to_take_rt_mutex | try to acquire the lock for task and return 1, otherwise 0                    
+        |    +----------------------+                                                                               
+        |                                                                                                           
+        |--> if try successfully, return 1                                                                          
+        |                                                                                                           
+        |    +-------------------------+                                                                            
+        +--> | task_blocks_on_rt_mutex | adjust prio and sched class of waiter, and propagate to chain              
+             +-------------------------+                                                                            
+```
+  
+```
++-------------------------+                                                              
+| task_blocks_on_rt_mutex | adjust prio and sched class of waiter, and propagate to chain
++------|------------------+                                                              
+       |                                                                                 
+       |--> if owner == task (deadlock), return error                                    
+       |                                                                                 
+       |--> set up waiter                                                                
+       |                                                                                 
+       |    +--------------------+                                                       
+       |--> | waiter_update_prio | set waiter prio based on task's                       
+       |    +--------------------+                                                       
+       |    +---------------------+                                                      
+       |--> | rt_mutex_top_waiter | get the top waiter from queue of lock                
+       |    +---------------------+                                                      
+       |    +------------------+                                                         
+       |--> | rt_mutex_enqueue | add our waiter into queue of lock                       
+       |    +------------------+                                                         
+       |    +----------------+                                                           
+       |--> | build_ww_mutex | (ignore bc of disabled config)                            
+       |    +----------------+                                                           
+       |                                                                                 
+       |--> if no owner, return                                                          
+       |                                                                                 
+       |--> if waiter == top waiter                                                      
+       |                                                                                 
+       |        +---------------------+                                                  
+       |------> | rt_mutex_dequeue_pi | dequeue top waiter                               
+       |        +---------------------+                                                  
+       |        +---------------------+                                                  
+       |------> | rt_mutex_enqueue_pi | enqueue waiter                                   
+       |        +---------------------+                                                  
+       |        +----------------------+                                                 
+       |------> | rt_mutex_adjust_prio | adjust piro and sche class of task              
+       |        +----------------------+                                                 
+       |    +----------------------------+                                               
+       +--> | rt_mutex_adjust_prio_chain | adjust the priority chain                     
+            +----------------------------+                                               
+```
+
+```
++----------------------+                                                                            
+| rt_mutex_adjust_prio | adjust piro and sche class of task                                         
++-----|----------------+                                                                            
+      |                                                                                             
+      |--> get the top pi waiter from given task                                                    
+      |                                                                                             
+      |    +------------------+                                                                     
+      +--> | rt_mutex_setprio |                                                                     
+           +----|-------------+                                                                     
+                |    +------------------+                                                           
+                |--> | rt_mutex_setprio | get higher prio from bot tasks                            
+                |    +------------------+                                                           
+                |                                                                                   
+                |--> return if no need to adjust prio                                               
+                |                                                                                   
+                |--> p->pi_top_task = pi_task                                                       
+                |                                                                                   
+                |    +--------------+                                                               
+                |--> | dequeue_task | dequeue task if it's in any run queue                         
+                |    +--------------+                                                               
+                |    +---------------+                                                              
+                |--> | put_prev_task | put task if it's running                                     
+                |    +---------------+                                                              
+                |    +---------------------+                                                        
+                |--> | __setscheduler_prio | adjust task's sched class and prio                     
+                |    +---------------------+                                                        
+                |    +--------------+                                                               
+                |--> | enqueue_task | add task back to rq if it was there                           
+                |    +--------------+                                                               
+                |    +---------------+                                                              
+                |--> | set_next_task | set it as next task if it was running                        
+                |    +---------------+                                                              
+                |    +---------------------+                                                        
+                +--> | check_class_changed | call class method to handle class change or prio change
+                     +---------------------+                                                        
+```
+  
+```
++----------------------------+                                             
+| rt_mutex_adjust_prio_chain | adjust the priority chain                   
++------|---------------------+                                             
+       |                                                                   
+       |--> return if no waiter on task                                    
+       |                                                                   
+       |    +---------------------+                                        
+       |--> | rt_mutex_top_waiter | get top waiter from lock               
+       |    +---------------------+                                        
+       |    +------------------+                                           
+       |--> | rt_mutex_dequeue | remove waiter from queue                  
+       |    +------------------+                                           
+       |    +--------------------+                                         
+       |--> | waiter_update_prio | set waiter prio attributes based on task
+       |    +--------------------+                                         
+       |    +------------------+                                           
+       +--> | rt_mutex_enqueue | add task to queue                         
+       |    +------------------+                                           
+       |                                                                   
+       |--> do some other dequeue and enqueue actions properly             
+       |                                                                   
+       |    +----------------------+                                       
+       +--> | rt_mutex_adjust_prio | adjust piro and sche class of task    
+            +----------------------+                                       
+```
+
+```
++--------------------------+                                                                                   
+| rt_mutex_wait_proxy_lock | wait for lock                                                                     
++------|-------------------+                                                                                   
+       |    +-------------------+                                                                              
+       |--> | set_current_state | set task state to 'interruptible'                                            
+       |    +-------------------+                                                                              
+       |    +-------------------------+                                                                        
+       |--> | rt_mutex_slowlock_block |                                                                        
+       |    +------|------------------+                                                                        
+       |           |                                                                                           
+       |           |--> endless loop                                                                           
+       |           |                                                                                           
+       |           |        +----------------------+                                                           
+       |           |------> | try_to_take_rt_mutex | try to acquire the lock for task and return 1, otherwise 0
+       |           |        +----------------------+                                                           
+       |           |                                                                                           
+       |           |------> break loop if lock acquired                                                        
+       |           |                                                                                           
+       |           |------> determine owner                                                                    
+       |           |                                                                                           
+       |           |------> if no owner                                                                        
+       |           |                                                                                           
+       |           |            +----------+                                                                   
+       |           |----------> | schedule |                                                                   
+       |           |            +----------+                                                                   
+       |           |    +---------------------+                                                                
+       |           +--> | __set_current_state | set task state to 'running'                                    
+       |                +---------------------+                                                                
+       |    +-------------------------+                                                                        
+       +--> | fixup_rt_mutex_waiters  | remvoe label 'has_waiter' from lock owner if there's no waiter         
+            +-------------------------+                                                                        
+```
   
 ## <a name="reference"></a> Reference
 
