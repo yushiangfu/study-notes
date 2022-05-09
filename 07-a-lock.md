@@ -571,7 +571,88 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
 </details>
   
 ## <a name="futex"></a> Futex
-
+  
+Futex is the fast lock mechanism for userspace to utilize, and it needs no kernel involvement if the lock is uncontented. 
+The kernel is still necessary for contended cases to help put the tasks to sleep or wake them up. 
+Somehow, the author replaces the terms **lock** and **unlock** with **wait** and **wake**. 
+For contented **wait**, the kernel wraps the waiting task into **futex_q** and inserts it to the hash table indexed by the hashed value of the key. 
+The list is priority-descending and FIFO for those tasks with the same priority value. 
+As you can imagine, **unlock** is the **futex_q** removal from the list and waking up that task to continue its logic.
+  
+```
+ futex_hash_bucket  --+                                                                             
+    +---------+       |                                                                             
+    |+-------+|       |              hash table                                                     
+    ||waiters||       |                                                                             
+    |+-------+|       |          +-----------------+                                                
+    | +----+  |       | -------- |futex_queues[0]  |                                                
+    | |lock|  |       |          +-----------------+       +-------+       +-------+       +-------+
+    | +----+  |       |          |futex_queues[1]  | ----- |futex_q| ----- |futex_q| ----- |futex_q|
+    | +-----+ |       |          +-----------------+       +-------+       +-------+       +-------+
+    | |chain| |       |                   -                                    |                    
+    | +-----+ |       |                   -                                    |                    
+    +---------+     --+                   -                                |--------|               
+                                          -                                                         
+                                          -                                 futex_q                 
+                                          -                                +--------+               
+                                 +-----------------+                       |  list  |               
+                                 |futex_queues[255]|                       |+------+|               
+                                 +-----------------+                       ||+----+||               
+                                                                           |||prio|||               
+                                                                           ||+----+||               
+                                                                           |+------+|               
+                                                                           | +----+ |               
+                                                                           | |task| |               
+                                                                           | +----+ |               
+                                                                           +--------+               
+```
+  
+<details>
+  <summary> Code trace </summary>
+  
+```
++-----------+                                                                                                                      
+| sys_futex |                                                                                                                      
++--|--------+                                                                                                                      
+   |    +----------+                                                                                                               
+   +--> | do_futex |                                                                                                               
+        +--|-------+                                                                                                               
+           |                                                                                                                       
+           |--> swtich command                                                                                                     
+           |                                                                                                                       
+           |--> case FUTEX_WAIT                                                                                                    
+           |                                                                                                                       
+           |--> case FUTEX_WAIT_BITSET                                                                                             
+           |                                                                                                                       
+           |        +------------+                                                                                                 
+           |------> | futex_wait | set up key, queue task to sleep, till it's waken                                                
+           |        +------------+                                                                                                 
+           |                                                                                                                       
+           |------> return                                                                                                         
+           |                                                                                                                       
+           |--> case FUTEX_WAKE                                                                                                    
+           |                                                                                                                       
+           |--> case FUTEX_WAKE_BITSET                                                                                             
+           |                                                                                                                       
+           |        +-----------+                                                                                                  
+           |------> | futex_wake| wake up task(s) in hash bucket                                                                   
+           |        +-----------+                                                                                                  
+           |                                                                                                                       
+           |--> case FUTEX_LOCK_PI                                                                                                 
+           |                                                                                                                       
+           |--> case FUTEX_LOCK_PI2                                                                                                
+           |                                                                                                                       
+           |        +---------------+                                                                                              
+           |------> | futex_lock_pi |                                                                                              
+           |        +---------------+                                                                                              
+           |                                                                                                                       
+           |--> case FUTEX_UNLOCK_PI                                                                                               
+           |                                                                                                                       
+           |        +-----------------+                                                                                            
+           +------> | futex_unlock_pi | adjust current task piro and wake up next waiter if any, or otherwise reset user value to 0
+                    +-----------------+                                                                                            
+```
+  
 ```
 +------------+                                                               
 | futex_wait | set up key, queue task to sleep, till it's waken              
@@ -699,7 +780,48 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
         +-----------+                                                 
 ```
   
+<details>
+  
 ## <a name="pi-futex"></a> PI-Futex
+  
+```
++---------------+                                                                                                            
+| futex_lock_pi | acquire lock, wait if it fails                                                                             
++---|-----------+                                                                                                            
+    |    +-----------------------+                                                                                           
+    |--> | refill_pi_state_cache | prepare pi_state and install to current task                                              
+    |    +-----------------------+                                                                                           
+    |    +-------------------+                                                                                               
+    |--> | futex_setup_timer |                                                                                               
+    |    +-------------------+                                                                                               
+    |    +---------------+                                                                                                   
+    |--> | get_futex_key | set up key                                                                                        
+    |    +---------------+                                                                                                   
+    |    +----------------------+                                                                                            
+    |--> | futex_lock_pi_atomic | acquire pi-futex                                                                           
+    |    +----------------------+                                                                                            
+    |    +------------+                                                                                                      
+    |--> | __queue_me | link futex and task, add futex to hash bucket                                                        
+    |    +------------+                                                                                                      
+    |                                                                                                                        
+    |--> (skip the case of trylock)                                                                                          
+    |                                                                                                                        
+    |    +-----------------------------+                                                                                     
+    |--> | __rt_mutex_start_proxy_lock | start lock acquisition for another task, reutrn 0 if blocked, or 1 for lock acquired
+    |    +-----------------------------+                                                                                     
+    |                                                                                                                        
+    |--> if blocked                                                                                                          
+    |                                                                                                                        
+    |        +--------------------------+                                                                                    
+    |------> | rt_mutex_wait_proxy_lock | wait for lock                                                                      
+    |        +--------------------------+                                                                                    
+    |    +-------------+                                                                                                     
+    |--> | fixup_owner | fixup pi-state owner                                                                                
+    |    +-------------+                                                                                                     
+    |    +---------------+                                                                                                   
+    +--> | unqueue_me_pi | remove futex from hash bucket                                                                     
+         +---------------+                                                                                                   
+```
   
 ```
 +-----------------------------+                                                                                     
@@ -853,6 +975,78 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
        |    +-------------------------+                                                                        
        +--> | fixup_rt_mutex_waiters  | remvoe label 'has_waiter' from lock owner if there's no waiter         
             +-------------------------+                                                                        
+```
+  
+```
++-----------------+                                                                                            
+| futex_unlock_pi | adjust current task piro and wake up next waiter if any, or otherwise reset user value to 0
++----|------------+                                                                                            
+     |                                                                                                         
+     |--> get user value from user addr                                                                        
+     |                                                                                                         
+     |    +---------------+                                                                                    
+     |--> | get_futex_key | set up key                                                                         
+     |    +---------------+                                                                                    
+     |    +------------+                                                                                       
+     |--> | hash_futex | get hash bucket from key                                                              
+     |    +------------+                                                                                       
+     |    +------------------+                                                                                 
+     |--> | futex_top_waiter | get the highest priority waiter                                                 
+     |    +------------------+                                                                                 
+     |                                                                                                         
+     |--> if top waiteir exists                                                                                
+     |                                                                                                         
+     |        +---------------+                                                                                
+     |------> | wake_futex_pi | update pi_state owner, adjust current task prio, wake up next waiter           
+     |        +---------------+                                                                                
+     |                                                                                                         
+     |------> return                                                                                           
+     |                                                                                                         
+     +--> write 0 to user addr                                                                                 
+```
+  
+```
++---------------+                                                                            
+| wake_futex_pi | update pi_state owner, adjust current task prio, wake up next waiter       
++---|-----------+                                                                            
+    |    +---------------------+                                                             
+    |--> | rt_mutex_top_waiter | get top waiter of the lock                                  
+    |    +---------------------+                                                             
+    |                                                                                        
+    |--> determine new value = task | flag                                                   
+    |                                                                                        
+    |--> write new value to user addr                                                        
+    |                                                                                        
+    |    +-----------------------+                                                           
+    |--> | pi_state_update_owner | move pi_state from old owner to new owner                 
+    |    +-----------------------+                                                           
+    |    +-------------------------+                                                         
+    |--> | __rt_mutex_futex_unlock |                                                         
+    |    +------|------------------+                                                         
+    |           |                                                                            
+    |           |--> return if lock has no waiter                                            
+    |           |                                                                            
+    |           |    +-------------------------+                                             
+    |           +--> | mark_wakeup_next_waiter |                                             
+    |                +------|------------------+                                             
+    |                       |    +---------------------+                                     
+    |                       |--> | rt_mutex_top_waiter | get the top waiter of lock          
+    |                       |    +---------------------+                                     
+    |                       |    +---------------------+                                     
+    |                       |--> | rt_mutex_dequeue_pi | remove waiter from current task     
+    |                       |    +---------------------+                                     
+    |                       |    +----------------------+                                    
+    |                       |--> | rt_mutex_adjust_prio | adjust piro and sche class of task 
+    |                       |    +----------------------+                                    
+    |                       |    +--------------------+                                      
+    |                       +--> | rt_mutex_wake_q_add| add waiter to queue                  
+    |                            +--------------------+                                      
+    |                                                                                        
+    |--> if there's waiter                                                                   
+    |                                                                                        
+    |        +---------------------+                                                         
+    +------> | rt_mutex_postunlock | wake up the waiter in queue                             
+             +---------------------+                                                         
 ```
   
 ## <a name="reference"></a> Reference
