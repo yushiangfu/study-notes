@@ -170,6 +170,36 @@ When building the kernel image, data under **usr/** will become the initramfs in
 - /dev/console
 - /root
 
+After unpacking the initramfs, the file tree is like this:
+
+```
+      mount
++----------------+
+|      mnt       |
+|  +----------+  |
+|  |+--------+|  |
+|  ||mnt_root-----------------------------------+
+|  |+--------+|  |                              |
+|  +----------+  |                              v
+|+--------------+|                          +------+-----+
+||mnt_mountpoint--------------------------> |dentry|inode|
+|+--------------+|                          +---^--+-----+
+|  +----------+  |                              |
+|  |mnt_parent|  |                              |
+|  +----------+  |                 +------------------------+
++----------------+                 |                        |
+                               +---|--+-----+           +---|--+-----+
+                           dev |dentry|inode|      root |dentry|inode|
+                               +---^--+-----+           +------+-----+
+                                   |
+                                   |
+                                   |
+                                   |
+                               +---|--+-----+
+                       console |dentry|inode|
+                               +------+-----+
+```
+
 And then the complete rootfs either comes from initrd or other mediums:
 
 - Initrd
@@ -199,153 +229,46 @@ And then the complete rootfs either comes from initrd or other mediums:
                            +-----+  +------+   +-------+                    
 ```
 
+After unpacking the initrd, the file tree is like this, which doesn't display them all:
+
+```
+                                            mount                                                                                 
+                                      +----------------+                                                                          
+                                      |      mnt       |                                                                          
+                                      |  +----------+  |                                                                          
+                                      |  |+--------+|  |                                                                          
+                                      |  ||mnt_root-------------+                                                                 
+                                      |  |+--------+|  |        |                                                                 
+                                      |  +----------+  |        |                                                                 
+                                      |+--------------+|        |                                                                 
+                                      ||mnt_mountpoint----------+                                                                 
+                                      |+--------------+|        |                                                                 
+                                      |  +----------+  |        |                                                                 
+                                      |  |mnt_parent|  |        |                                                                 
+                                      |  +----------+  |        v                                                                 
+                                      +----------------+                                                                          
+                                                                /                                                                 
+                                                                |                                                                 
+       +----------+---------------+----------------------+------+---------------------------------------------------------------+ 
+       |          |               |                      |                     |                    |     |          |          | 
+      bin        dev             etc                   init                   lib                  root  sbin       usr        var
+       |          |               |                                            |                                     |            
+       |          |       +---------------+                        +------------------------+                   +----|----+       
+       |          |       |       |       |                        |           |            |                   |    |    |       
+ busybox.suid  console  group  passwd  systemd                 firmware  ld-linux.so.3  libc.so.6              bin  bin  sbin     
+                                          |                        |                                                              
+                                          |                        |                                                              
+                                          |                        |                                                              
+                                       system                cf-fsi-fw.bin                                                        
+                                          |                                                                                       
+                                          |                                                                                       
+                                          |                                                                                       
+                                 sysinit.target.wants                                                                             
+```
+
 ## <a name="vfs-operations"></a> VFS Operations
 
-### Mount
-
-I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
-Even though I raised my questions, I still didn't understand his replies (slow learner?). 
-Fast forward to today, and here are my answers to my poor old questions.
-
-- What does mount do?
-  - To connect the file tree to another one.
-- Why do we need to mount?
-  - To make the isolated file tree visible.
-- Why do Windows users not have to mount?
-  - Automatic mount
-
-We start the introduction by command **mount** usage.
-
-```
-          +------------------------+                    
-          | where the file tree is |                    
-          +------------------------+                    
-                       ^                                
-                       |                                
-                --------------                          
- mount -t jffs2 /dev/mtdblock5 /run/initramfs/rw        
-       --------                -----------------        
-           |                           |                
-           v                           v                
- +------------------+   +------------------------------+
- | file tree format |   | where I want it connects to, |
- +------------------+   | a.k.a. mount point           |
-                        +------------------------------+
-```
-
-The kernel will prepare the below structures for the source tree: **mount**, **dentry**, **inode**. 
-The **mount** doesn't connect to anything yet and isn't visible to the users.
-
-```
-+---------> mount                                     
-|     +----------------+                              
-|     |      mnt       |                              
-|     |  +----------+  |                              
-|     |  |+--------+|  |                              
-|     |  ||mnt_root|---------------+                  
-|     |  |+--------+|  |           |                  
-|     |  +----------+  |           v                  
-|     |+--------------+|        +------+       +-----+
-|     ||mnt_mountpoint--------> |dentry| <---> |inode|
-|     |+--------------+|        +------+       +-----+
-|     |  +----------+  |                              
-+---------mnt_parent|  |                              
-      |  +----------+  |                              
-      +----------------+                              
-```
-
-Later the kernel mounts the source tree onto the dentry of the destination folder, which is also known as the mount point. 
-Also, the mount structure of the mount point acts as the parent mount, and the **mnt_parent** points to the right place. 
-That's how we make the source tree of a specific disk partition visible to us, and now the **lookup** can traverse into it.
-
-```
-+-----------------------------> mount
-|                   |     +----------------+
-|                   |     |      mnt       |
-|                   |     |  +----------+  |
-|                   |     |  |+--------+|  |
-|                   |     |  ||mnt_root-----------------------------------+
-|                   |     |  |+--------+|  |                              |
-|                   |     |  +----------+  |                              v
-|                   |     |+--------------+|                          +------+-----+
-|                   |     ||mnt_mountpoint--------------------------> |dentry|inode|
-|                   |     |+--------------+|                          +---^--+-----+
-|                   |     |  +----------+  |                              |
-|                   +---------mnt_parent|  |                              |
-|                         |  +----------+  |                 +--------------------------------------+
-|                         +----------------+                 |                  |                   |
-|                                                        +---|--+-----+     +---|--+-----+      +---|--+-----+
-|                                                        |dentry|inode|     |dentry|inode|      |dentry|inode|
-|                                                        +---^--+-----+     +------+-----+      +---^--+-----+
-|                                                            |                                      |
-|                                                            |                                      |
-|                                               +----------------------+                       +---------------------+
-|                                               |                      |                       |                     |
-|           mount                           +---|--+-----+         +---|--+-----+          +---|--+-----+        +---|--+-----+
-|     +----------------+        +---------> |dentry|inode|         |dentry|inode|          |dentry|inode|        |dentry|inode|
-|     |      mnt       |        |           +------+-----+         +------+-----+          +------+-----+        +------+-----+
-|     |  +----------+  |        |
-|     |  |+--------+|  |        |               +------+-----+
-|     |  ||mnt_root-------------|-------------> |dentry|inode|
-|     |  |+--------+|  |        |               +---^--+-----+
-|     |  +----------+  |        |                   |
-|     |+--------------+|        |                   |
-|     ||mnt_mountpoint----------+      +-------------------------+
-|     |+--------------+|               |                         |
-|     |  +----------+  |           +---|--+-----+            +---|--+-----+
-+---------mnt_parent|  |           |dentry|inode|            |dentry|inode|
-      |  +----------+  |           +---^--+-----+            +---^--+-----+
-      +----------------+               |                         |
-                                       |                         |
-                                       |                    +---------------+
-                                       |                    |               |
-                                   +---|--+-----+       +---|--+-----+  +---|--+-----+
-                                   |dentry|inode|       |dentry|inode|  |dentry|inode|
-                                   +------+-----+       +------+-----+  +------+-----+
-```
-
-<details>
-  <summary> Code trace </summary>
-
-```
-+------------+                                                                                                                 
-| kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
-+--|---------+                                                                                                                 
-   |    +----------------+                                                                                                     
-   +--> | vfs_kern_mount |                                                                                                     
-        +---|------------+                                                                                                     
-            |    +----------------------+                                                                                      
-            |--> | fs_context_for_mount | allocate fc and fs-specific private data
-            |    +-----|----------------+                                                                                      
-            |          |    +------------------+                                                                               
-            |          +--> | alloc_fs_context | 
-            |               +----|-------------+                                                                               
-            |                    |                                                                                             
-            |                    |--> allcoate fs context (fc)                                                                 
-            |                    |                                                                                             
-            |                    +--> call ->init_fs_context(), e.g.,                                                          
-            |                         +--------------------+                                                                   
-            |                         | bd_init_fs_context | prepare pseudo fs context and install 'bdev_sops'                 
-            |                         +--------------------+                                                                   
-            |    +----------+                                                                                                  
-            +--> | fc_mount |                                                                                                  
-                 +--|-------+                                                                                                  
-                    |    +--------------+                                                                                      
-                    |--> | vfs_get_tree |                                                                                      
-                    |    +---|----------+                                                                                      
-                    |        |                                                                                                 
-                    |        +--> call ->get_tree(), e.g.,                                                                     
-                    |             +--------------------+                                                                       
-                    |             | pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
-                    |             +--------------------+                                                                       
-                    |    +------------------+                                                                                  
-                    +--> | vfs_create_mount | allocate and set up 'mount'                                                      
-                         +------------------+                                                                                  
-```
-
-</details>
-      
-### Lookup
+### Lookup (within the same mount)
 
 <details>
   <summary> Code trace </summary>
@@ -503,6 +426,150 @@ That's how we make the source tree of a specific disk partition visible to us, a
    |--> update path and inode of nd                                               
    |                                                                              
    +--> (ignore the case of link)                                                 
+```
+
+</details>
+
+### Mount
+
+I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
+Even though I raised my questions, I still didn't understand his replies (slow learner?). 
+Fast forward to today, and here are my answers to my poor old questions.
+
+- What does mount do?
+  - To connect the file tree to another one.
+- Why do we need to mount?
+  - To make the isolated file tree visible.
+- Why do Windows users not have to mount?
+  - Automatic mount
+
+We start the introduction by command **mount** usage.
+
+```
+          +------------------------+                    
+          | where the file tree is |                    
+          +------------------------+                    
+                       ^                                
+                       |                                
+                --------------                          
+ mount -t jffs2 /dev/mtdblock5 /run/initramfs/rw        
+       --------                -----------------        
+           |                           |                
+           v                           v                
+ +------------------+   +------------------------------+
+ | file tree format |   | where I want it connects to, |
+ +------------------+   | a.k.a. mount point           |
+                        +------------------------------+
+```
+
+The kernel will prepare the below structures for the source tree: **mount**, **dentry**, **inode**. 
+The **mount** doesn't connect to anything yet and isn't visible to the users.
+
+```
++---------> mount                                     
+|     +----------------+                              
+|     |      mnt       |                              
+|     |  +----------+  |                              
+|     |  |+--------+|  |                              
+|     |  ||mnt_root|---------------+                  
+|     |  |+--------+|  |           |                  
+|     |  +----------+  |           v                  
+|     |+--------------+|        +------+       +-----+
+|     ||mnt_mountpoint--------> |dentry| <---> |inode|
+|     |+--------------+|        +------+       +-----+
+|     |  +----------+  |                              
++---------mnt_parent|  |                              
+      |  +----------+  |                              
+      +----------------+                              
+```
+
+Later the kernel mounts the source tree onto the dentry of the destination folder, which is also known as the mount point. 
+Also, the mount structure of the mount point acts as the parent mount, and the **mnt_parent** points to the right place. 
+That's how we make the source tree of a specific disk partition visible to us, and now the **lookup** can traverse into it.
+
+```
++-----------------------------> mount
+|                   |     +----------------+
+|                   |     |      mnt       |
+|                   |     |  +----------+  |
+|                   |     |  |+--------+|  |
+|                   |     |  ||mnt_root-----------------------------------+
+|                   |     |  |+--------+|  |                              |
+|                   |     |  +----------+  |                              v
+|                   |     |+--------------+|                          +------+-----+
+|                   |     ||mnt_mountpoint--------------------------> |dentry|inode|
+|                   |     |+--------------+|                          +---^--+-----+
+|                   |     |  +----------+  |                              |
+|                   +---------mnt_parent|  |                              |
+|                         |  +----------+  |                 +--------------------------------------+
+|                         +----------------+                 |                  |                   |
+|                                                        +---|--+-----+     +---|--+-----+      +---|--+-----+
+|                                                        |dentry|inode|     |dentry|inode|      |dentry|inode|
+|                                                        +---^--+-----+     +------+-----+      +---^--+-----+
+|                                                            |                                      |
+|                                                            |                                      |
+|                                               +----------------------+                       +---------------------+
+|                                               |                      |                       |                     |
+|           mount                           +---|--+-----+         +---|--+-----+          +---|--+-----+        +---|--+-----+
+|     +----------------+        +---------> |dentry|inode|         |dentry|inode|          |dentry|inode|        |dentry|inode|
+|     |      mnt       |        |           +------+-----+         +------+-----+          +------+-----+        +------+-----+
+|     |  +----------+  |        |
+|     |  |+--------+|  |        |               +------+-----+
+|     |  ||mnt_root-------------|-------------> |dentry|inode|
+|     |  |+--------+|  |        |               +---^--+-----+
+|     |  +----------+  |        |                   |
+|     |+--------------+|        |                   |
+|     ||mnt_mountpoint----------+      +-------------------------+
+|     |+--------------+|               |                         |
+|     |  +----------+  |           +---|--+-----+            +---|--+-----+
++---------mnt_parent|  |           |dentry|inode|            |dentry|inode|
+      |  +----------+  |           +---^--+-----+            +---^--+-----+
+      +----------------+               |                         |
+                                       |                         |
+                                       |                    +---------------+
+                                       |                    |               |
+                                   +---|--+-----+       +---|--+-----+  +---|--+-----+
+                                   |dentry|inode|       |dentry|inode|  |dentry|inode|
+                                   +------+-----+       +------+-----+  +------+-----+
+```
+
+<details>
+  <summary> Code trace </summary>
+
+```
++------------+                                                                                                                 
+| kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
++--|---------+                                                                                                                 
+   |    +----------------+                                                                                                     
+   +--> | vfs_kern_mount |                                                                                                     
+        +---|------------+                                                                                                     
+            |    +----------------------+                                                                                      
+            |--> | fs_context_for_mount | allocate fc and fs-specific private data
+            |    +-----|----------------+                                                                                      
+            |          |    +------------------+                                                                               
+            |          +--> | alloc_fs_context | 
+            |               +----|-------------+                                                                               
+            |                    |                                                                                             
+            |                    |--> allcoate fs context (fc)                                                                 
+            |                    |                                                                                             
+            |                    +--> call ->init_fs_context(), e.g.,                                                          
+            |                         +--------------------+                                                                   
+            |                         | bd_init_fs_context | prepare pseudo fs context and install 'bdev_sops'                 
+            |                         +--------------------+                                                                   
+            |    +----------+                                                                                                  
+            +--> | fc_mount |                                                                                                  
+                 +--|-------+                                                                                                  
+                    |    +--------------+                                                                                      
+                    |--> | vfs_get_tree |                                                                                      
+                    |    +---|----------+                                                                                      
+                    |        |                                                                                                 
+                    |        +--> call ->get_tree(), e.g.,                                                                     
+                    |             +--------------------+                                                                       
+                    |             | pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
+                    |             +--------------------+                                                                       
+                    |    +------------------+                                                                                  
+                    +--> | vfs_create_mount | allocate and set up 'mount'                                                      
+                         +------------------+                                                                                  
 ```
 
 </details>
