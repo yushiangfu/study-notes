@@ -780,7 +780,7 @@ As you can imagine, **unlock** is the **futex_q** removal from the list and waki
         +-----------+                                                 
 ```
   
-<details>
+</details>
   
 ## <a name="pi-futex"></a> PI-Futex
   
@@ -798,7 +798,7 @@ As you can imagine, **unlock** is the **futex_q** removal from the list and waki
     |--> | get_futex_key | set up key                                                                                        
     |    +---------------+                                                                                                   
     |    +----------------------+                                                                                            
-    |--> | futex_lock_pi_atomic | acquire pi-futex                                                                           
+    |--> | futex_lock_pi_atomic | have the arg 'ps' point to either top waiter's pi_state, or to a newly allocated one
     |    +----------------------+                                                                                            
     |    +------------+                                                                                                      
     |--> | __queue_me | link futex and task, add futex to hash bucket                                                        
@@ -821,6 +821,30 @@ As you can imagine, **unlock** is the **futex_q** removal from the list and waki
     |    +---------------+                                                                                                   
     +--> | unqueue_me_pi | remove futex from hash bucket                                                                     
          +---------------+                                                                                                   
+```
+  
+```
++----------------------+                                                                                     
+| futex_lock_pi_atomic | have the arg 'ps' point to either top waiter's pi_state, or to a newly allocated one
++-----|----------------+                                                                                     
+      |    +------------------+                                                                              
+      |--> | futex_top_waiter | get top waiter                                                               
+      |    +------------------+                                                                              
+      |                                                                                                      
+      |--> if top waiter exists                                                                              
+      |                                                                                                      
+      |        +--------------------+                                                                        
+      |------> | attach_to_pi_state | have the arg 'ps' point to top waiter's pi_state                       
+      |        +--------------------+                                                                        
+      |                                                                                                      
+      |------> return                                                                                        
+      |                                                                                                      
+      |    +-----------------------+                                                                         
+      |--> | lock_pi_update_atomic | write uval to uaddr                                                     
+      |    +-----------------------+                                                                         
+      |    +--------------------+                                                                            
+      +--> | attach_to_pi_owner | allocate pi_state and install to task, have arg 'ps' point to it           
+           +--------------------+                                                                            
 ```
   
 ```
@@ -888,9 +912,9 @@ As you can imagine, **unlock** is the **futex_q** removal from the list and waki
       |    +------------------+                                                                     
       +--> | rt_mutex_setprio |                                                                     
            +----|-------------+                                                                     
-                |    +------------------+                                                           
-                |--> | rt_mutex_setprio | get higher prio from bot tasks                            
-                |    +------------------+                                                           
+                |    +---------------------+                                                           
+                |--> | __rt_effective_prio | get higher prio from both tasks                            
+                |    +---------------------+                                                           
                 |                                                                                   
                 |--> return if no need to adjust prio                                               
                 |                                                                                   
