@@ -783,6 +783,114 @@ As you can imagine, **unlock** is the **futex_q** removal from the list and waki
 </details>
   
 ## <a name="pi-futex"></a> PI-Futex
+
+Assuming we have three tasks with different priorities running in the system, high-prio and low-prio tasks share the same lock. 
+Tasks with higher priority are likely to be the next task consuming its time slice of execution. 
+If, for some reason, the low-prio task acquires the lock before the high-prio task, which goes to sleep waiting for the lock release. 
+Here are the known facts:
+  
+- The high-prio task is waiting for the low-prio task to release the lock
+- The med-prio lives a happily-ever-after life.
+- The low-prio task rarely runs because of its low priority nature.
+ 
+```
+                                              time line
+                    ------------------------------------------------------------>
+
+
+                                 lock [X]
+          +------+               sleep                   lock [O]
+high prio | task |  -->-->-->      -->                    -->-->-->      -->-->-->
+          +------+          |      | |                    |       |      |       |
+                            |      | |                    |       |      |       |
+          +------+          |      | |                    |       |      |       |
+ med prio | task |          -->--> | -->--> -->--> -->--> |       -->--> |       -->-->
+          +------+               | |      | |    | |    | |            | |            |
+                                 | |      | |    | |    | |            | |            |
+          +------+               | |      | |    | |    | |            | |            |
+ low prio | task |               -->      -->    -->    -->            -->            -->
+          +------+          lock [O]                    unlock
+```
+  
+And the problem is that high-prio has a lower chance of being the next candidate than the med-prio task during the lock-waiting interval. 
+The scenario is the so-called priority inversion, and the solution to it is the priority-inheritance lock.
+  
+Those intelligent guys introduced the Priority-Inheritance (PI) futex to solve the issue. 
+The spirit is that the lock owner will temporarily boost up to match the top waiter's priority. 
+In a regular futex framework, each task waiting for the lock corresponds to one **futex_q** lining up in a priority-descending order. 
+But in PI futex design, there's only one **futex_q** for each lock, and the kernel organizes the waiting tasks into a tree structure on that lock. 
+The top waiter is the highest-priority task of the tree positioned on the leftmost.
+
+When a task releases the lock:
+  
+1. [Current task] Set owner to the top waiter.
+2. [Current task] Restore the boosted priority
+3. [Current task] Wake up the top waiter
+4. [Top waiter] Remove itself from the tree structure
+  
+```
+    hash table                                                                                         
+                                                                                                       
++-----------------+                                                                                    
+|futex_queues[0]  |                                                                                    
++-----------------+       +-------+       +-------+       +-------+                                    
+|futex_queues[1]  | ----- |futex_q| ----- |futex_q| ----- |futex_q|                                    
++-----------------+       +-------+       +-------+       +-------+                                    
+         -                    |                                                                        
+         -                    |                                                                        
+         -                |--------|                                                                   
+         -                                futex_pi_state                                 task_struct   
+         -                 futex_q         +-----------+                              +---------------+
+         -               +----------+      |  +----+   |                              |+-------------+|
++-----------------+      |   list   |      |  |list|<--|------------------------------->pi_state_list||
+|futex_queues[255]|      | +------+ |      |  +----+   |                              |+-------------+|
++-----------------+      | |+----+| |      | pi_mutex  |                              |  +----------+ |
+         |               | ||prio|| |      |+---------+|                              |  |pi_waiters| |
+         |               | |+----+| |      ||+-------+||               +------+       |  +-----|----+ |
+    |---------|          | +------+ |      |||waiters----------------> |waiter|       +--------|------+
+                         |  +----+  |      ||+-------+||               +------+                |       
+ futex_hash_bucket       |  |task|  |      || +-----+ ||                   |                   |       
+    +---------+          |  +----+  |      || |owner| ||           +-------+---------+         |       
+    |+-------+|          |  +---+   |      || +-----+ ||           |                 |         |       
+    ||waiters||          |  |key|   |      |+---------+|       +------+          +------+      |       
+    |+-------+|          |  +---+   |      |  +-----+  |       |waiter|          |waiter|      |       
+    | +----+  |          |+--------+|      |  |owner|  |       +------+          +------+      |       
+    | |lock|  |          ||pi_state||----> |  +-----+  |           |                 |         |       
+    | +----+  |          |+--------+|      |   +---+   |      +----+----+       +----+----+    |       
+    | +-----+ |          +----------+      |   |key|   |      |         |       |         |    |       
+    | |chain| |                            |   +---+   |   +------+ +------+ +------+ +------+ |       
+    | +-----+ |                            +-----------+   |waiter| |waiter| |waiter| |waiter| |       
+    +---------+                                            +------+ +------+ +------+ +------+ |       
+                                                              ^                                |       
+                                                              |                                |       
+                                                              +--------------------------------+       
+                                                          top waiter                                   
+```
+
+With the help of a temporary priority boost, the original chronological flow becomes:
+  
+```
+                                               time line                          
+                     ------------------------------------------------------------>
+                                                                                  
+                                 lock [X]                                         
+                                 boost owner                                      
+           +------+              sleep       lock [O]                             
+ high prio | task |  -->-->-->      -->       -->-->-->      -->-->-->            
+           +------+          |      | |       |       |      |       |            
+                             |      | |       |       |      |       |            
+           +------+          |      | |       |       |      |       |            
+  med prio | task |          -->--> | |       |       -->--> |       -->-->       
+           +------+               | | |       |            | |            |       
+                                  | | |       |            | |            |       
+           +------+               | | |       |            | |            |       
+  low prio | task |               --> -->-->-->            -->            -->     
+           +------+          lock [O]       deboost  
+                                            unlock   
+```
+  
+<details>
+  <summary> Code trace </summary>
   
 ```
 +---------------+                                                                                                            
@@ -1072,6 +1180,8 @@ As you can imagine, **unlock** is the **futex_q** removal from the list and waki
     +------> | rt_mutex_postunlock | wake up the waiter in queue                             
              +---------------------+                                                         
 ```
+  
+</details>
   
 ## <a name="reference"></a> Reference
 
