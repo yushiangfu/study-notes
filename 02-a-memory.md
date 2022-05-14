@@ -56,6 +56,68 @@ Besides, the application's metadata is also generated dynamically in OS.
 4. Build 'kmem cache' to satisfy the request of a smaller-sized structure.
       - Object(s) allocation becomes available.
 
+<details>
+  <summary> Code trace </summary>
+
+```
++-------+                                                                                      
+| stext |                                                                                      
++-|-----+                                                                                      
+  |    +----------------------+                                                                
+  |--> | safe_svcmode_maskall | mask interrupts and enter svc mode                             
+  |    +----------------------+                                                                
+  |    +-------------------------+                                                             
+  |--> | __lookup_processor_type |                                                             
+  |    +-------------------------+                                                             
+  |                                                                                            
+  |--> r8 = __pa(_text)                                                                        
+  |                                                                                            
+  |    +-------------+                                                                         
+  |--> | __vet_atags | check if dtb pointer is valid                                           
+  |    +-------------+                                                                         
+  |    +----------------------+                                                                
+  |--> | __create_page_tables |                                                                
+  |    +-----|----------------+                                                                
+  |          |                                                                                 
+  |          |--> clear page table                                                             
+  |          |                                                                                 
+  |          |--> do section mapping for range 0x8000_0000 ~ _end                              
+  |          |                                                                                 
+  |          +--> do section mapping from 0xff80_0000 (va) to where dtb is (pa)                
+  |                                                                                            
+  |--> call ->initfn(), e.g.                                                                   
+  |    +------------+                                                                          
+  |    | __v6_setup | init tlb, caches, and mmu state (mmu isn't on yet)                       
+  |    +------------+                                                                          
+  |    +--------------+                                                                        
+  +--> | __enable_mmu |                                                                        
+       +---|----------+                                                                        
+           |                                                                                   
+           |--> set domain access register?                                                    
+           |                                                                                   
+           |--> set TTBR                                                                       
+           |                                                                                   
+           |    +---------------+                                                              
+           +--> | __turn_mmu_on |                                                              
+                +---|-----------+                                                              
+                    |                                                                          
+                    |--> enable mmu                                                            
+                    |                                                                          
+                    |    +-----------------+                                                   
+                    +--> | __mmap_switched |                                                   
+                         +----|------------+                                                   
+                              |                                                                
+                              |--> memset .bss section to 0                                    
+                              |                                                                
+                              |--> save processor id, machin type, and dtb pointer to somewhere
+                              |                                                                
+                              |    +--------------+                                            
+                              +--> | start_kernel |                                            
+                                   +--------------+                                            
+```
+
+</details>
+   
 ## <a name="memblock-allocator"></a> Memblock Allocator
 
 Memblock allocator is the temporary memory management handling the add and reserve of memory blocks during boot time.
