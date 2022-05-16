@@ -270,6 +270,60 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 
 ### Lookup (within the same mount)
 
+```
+/usr/sbin
+```
+
+When looking up downward, we use the dentry of '/' and string 'usr' to calculate the hash and find the dentry of 'sbin' from the hash table. 
+Repeat the same process until the last component, which is the dentry of 'sbin' in our example.
+
+```
+                                    +------+
+             /  ─────────────────── |dentry| + 'usr'
+             |                      +------+
+             |                            |
+ +-----+----------+                       |  lookup hash table
+ |     |          |                       v
+ |     |          |                 +------+
+root  sbin       usr  ───────────── |dentry| + 'sbin'
+                  |                 +------+
+                  |                       |
+             +----|----+                  |  lookup hash table
+             |    |    |                  v
+             |    |    |            +------+
+            bin  lib  sbin  ─────── |dentry|
+                                    +------+
+```
+
+What's the case if our current working directory is at 'sbin' and we'd like to lookup upward, e.g. '../../'?
+It's relatively simple because each dentry has a pointer pointing to its parent, and that's how we follow the path.
+
+```
+                                    +------+
+             /  ─────────────────── |dentry| + 'usr'
+             |                      +------+
+             |                            ^
+ +-----+----------+                       |  poitner to parent
+ |     |          |                       |
+ |     |          |                 +------+
+root  sbin       usr  ───────────── |dentry| + 'sbin'
+                  |                 +------+
+                  |                       ^
+             +----|----+                  |  poitner to parent
+             |    |    |                  |
+             |    |    |            +------+
+            bin  lib  sbin  ─────── |dentry|
+                                    +------+
+```
+
+For the single dot and non-leading slash, the kernel will ignore them and advance till the component is meaningful.
+
+```
+ /usr/./././././//////////././././././sbin
+     |-------------------------------|    
+                   skip                   
+```
+
 <details>
   <summary> Code trace </summary>
 
