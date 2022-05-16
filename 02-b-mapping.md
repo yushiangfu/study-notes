@@ -495,6 +495,132 @@
                                  +----------+                                                                     
 ```
 
+```
++-------------------+                                                                                                                  
+| get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)                                               
++----|--------------+                                                                                                                  
+     |                                                                                                                                 
+     |--> determine get_area(): 1. from mm, 2. from file, 3. from shm                                                                  
+     |                                                                                                                                 
+     +--> call ->get_area(), e.g.,                                                                                                     
+          +--------------------------------+                                                                                           
+          | arch_get_unmapped_area_topdown | lookup a region that satisfies the range ('addr' isn't guaranteed)                        
+          +-------|------------------------+                                                                                           
+                  |                                                                                                                    
+                  |--> if user has specified the 'addr'                                                                                
+                  |                                                                                                                    
+                  |        +----------+                                                                                                
+                  |------> | find_vma | return  the first vma that meets 'addr < vm_end'                                               
+                  |        +----------+                                                                                                
+                  |                                                                                                                    
+                  |------> if no such vma, or it doesn't intersect our target range                                                    
+                  |                                                                                                                    
+                  |----------> return                                                                                                  
+                  |                                                                                                                    
+                  |--> set up info (flag = top_down)                                                                                   
+                  |                                                                                                                    
+                  |    +------------------+                                                                                            
+                  |--> | vm_unmapped_area | find a suitable region and return start addr                                               
+                  |    +----|-------------+                                                                                            
+                  |         |                                                                                                          
+                  |         |--> if flag is top_down                                                                                   
+                  |         |                                                                                                          
+                  |         |        +-----------------------+                                                                         
+                  |         |------> | unmapped_area_topdown | starting from high address, find a suitable region and return start addr
+                  |         |        +-----------------------+                                                                         
+                  |         |                                                                                                          
+                  |         |--> else                                                                                                  
+                  |         |                                                                                                          
+                  |         |        +---------------+                                                                                 
+                  |         +------> | unmapped_area | starting from low address, find a suitable region and return start addr         
+                  |                  +---------------+                                                                                 
+                  |                                                                                                                    
+                  +--> if it fails, try bottom-up lookup                                                                               
+```
+
+```
++-------------+                                                                               
+| mmap_region | ensure there's a vma covering this region, link that vma with framework       
++---|---------+                                                                               
+    |    +------------------+                                                                 
+    |--> | munmap_vma_range | unmap overlapped region                                         
+    |    +------------------+                                                                 
+    |    +-----------+                                                                        
+    |--> | vma_merge | try to expand from existing vma                                        
+    |    +-----------+                                                                        
+    |                                                                                         
+    |--> return if it's successful                                                            
+    |                                                                                         
+    |    +---------------+                                                                    
+    |--> | vm_area_alloc | allocate 'vma'                                                     
+    |    +---------------+                                                                    
+    |                                                                                         
+    |--> set up 'vma' with region info                                                        
+    |                                                                                         
+    |--> if it's a file mapping                                                               
+    |                                                                                         
+    |------> call ->mmap(), e.g.,                                                             
+    |        +----------+                                                                     
+    |        | ovl_mmap |                                                                     
+    |        +----------+                                                                     
+    |                                                                                         
+    |--> else if it's a 'shared' mapping                                                      
+    |                                                                                         
+    |        +------------------+                                                             
+    |------> | shmem_zero_setup |                                                             
+    |        +------------------+                                                             
+    |                                                                                         
+    |--> else                                                                                 
+    |                                                                                         
+    |        +-------------------+                                                            
+    |------> | vma_set_anonymous | set vma ops = NULL                                         
+    |        +-------------------+                                                            
+    |    +----------+                                                                         
+    +--> | vma_link |                                                                         
+         +--|-------+                                                                         
+            |    +------------+                                                               
+            |--> | __vma_link | insert vma into vma list and tree                             
+            |    +------------+                                                               
+            |    +-----------------+                                                          
+            +--> | __vma_link_file | if it's a file mapping, insert vma into file mapping tree
+                 +-----------------+                                                          
+```
+
+```
++-----------+                                                                                                                       
+| sys_mmap2 |                                                                                                                       
++--|--------+                                                                                                                       
+   |    +----------------+                                                                                                          
+   +--> | sys_mmap_pgoff |                                                                                                          
+        +---|------------+                                                                                                          
+            |    +-----------------+                                                                                                
+            +--> | ksys_mmap_pgoff |                                                                                                
+                 +----|------------+                                                                                                
+                      |    +---------------+                                                                                        
+                      +--> | vm_mmap_pgoff |                                                                                        
+                           +---|-----------+                                                                                        
+                               |    +---------+                                                                                     
+                               |--> | do_mmap |                                                                                     
+                               |    +--|------+                                                                                     
+                               |       |    +-------------------+                                                                   
+                               |       |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
+                               |       |    +-------------------+                                                                   
+                               |       |                                                                                            
+                               |       |--> determine vm flags                                                                      
+                               |       |                                                                                            
+                               |       |    +-------------+                                                                         
+                               |       |--> | mmap_region | ensure there's a vma covering this region, link that vma with framework 
+                               |       |    +-------------+                                                                         
+                               |       |                                                                                            
+                               |       +--> determine populate len if the flags ask so                                              
+                               |                                                                                                    
+                               |--> if populate len is determined                                                                   
+                               |                                                                                                    
+                               |        +-------------+                                                                             
+                               +------> | mm_populate | fault in the pages                                                          
+                                        +-------------+                                                                             
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
