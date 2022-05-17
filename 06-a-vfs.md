@@ -300,13 +300,13 @@ It's relatively simple because each dentry has a pointer pointing to its parent,
 
 ```
                                     +------+
-             /  ─────────────────── |dentry| + 'usr'
+             /  ─────────────────── |dentry|
              |                      +------+
              |                            ^
  +-----+----------+                       |  poitner to parent
  |     |          |                       |
  |     |          |                 +------+
-root  sbin       usr  ───────────── |dentry| + 'sbin'
+root  sbin       usr  ───────────── |dentry|
                   |                 +------+
                   |                       ^
              +----|----+                  |  poitner to parent
@@ -327,6 +327,24 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 <details>
   <summary> Code trace </summary>
 
+```
++-----------+                                                                                
+| sys_chdir | chage pwd of current task to given path                                        
++--|--------+                                                                                
+   |    +--------------+                                                                     
+   +--> | user_path_at |                                                                     
+        +---|----------+                                                                     
+            |    +--------------------+                                                      
+            +--> | user_path_at_empty |                                                      
+                 +----|---------------+                                                      
+                      |    +-----------------+                                               
+                      |--> | filename_lookup | lookup the path, save dentry and mnt in 'path'
+                      |    +-----------------+                                               
+                      |    +------------+                                                    
+                      +--> | set_fs_pwd | set pwd to the given 'path'                        
+                           +------------+                                                    
+```
+      
 ```
 +-----------------+                                                                                                              
 | vfs_path_lookup |                                                                                                              
