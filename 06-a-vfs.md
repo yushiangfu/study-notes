@@ -321,13 +321,21 @@ As you might already think, those correspond to two types of the path:
 Taking the below command as an example, it's a downward lookup and consists of three components.
 
 ```
-cd /usr/sbin
+ component     component
+         ^     ^        
+         |     |        
+         -    ---       
+         /bin/usr       
+          ---           
+           |            
+           v            
+       component        
 ```
 
-- 
+When doing lookup downwardly, we use the dentry of the current folder and name string of the following component to find the next dentry from the hash table.
 
-When looking up downward, we use the dentry of '/' and string 'usr' to calculate the hash and find the dentry of 'sbin' from the hash table. 
-Repeat the same process until the last component, which is the dentry of 'sbin' in our example.
+- dentry of / + name string 'usr' --> dentry of **usr**
+- dentry of usr + name string 'sbin' --> dentry of **sbin**
 
 ```
                                     +------+
