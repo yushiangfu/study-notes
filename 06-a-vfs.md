@@ -270,9 +270,61 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 
 ### Lookup (within the same mount)
 
+Command **cd** (change directory) is probably the most used command to change the current working folder to command-line Linux users. 
+It's a built-in shell function and therefore has no independent binary. 
+The cd function eventually calls to syscall **chdir**, and the kernel starts to look up the target of the path string. 
+Before we begin to interpret the path, let's introduce some related fields in the data structure. 
+The **task_struct** has an **fs** pointer pointing to **fs_struct** which contains fields **root** and **path**.
+
+- root
+  - mnt: which mount the dentry belongs to, e.g., root mount
+  - dentry: dentry of **/**.
+- pwd
+  - mnt: which mount the dentry belongs to, e.g., root mount or /dev/mtdblock4
+  - dentry: e.g., dentry of **penguin**.
+
+When parsing the path, we must start with one dentry, either from the **root** or **pwd**. 
+As you might already think, those correspond to two types of the path:
+
+- Absolute path
+  - The path has a leading /, and the kernel starts the lookup with the dentry of the root folder.
+- Relative path
+  - Anything else, and dentry from **pwd** field is where our journey begins.
+
 ```
-/usr/sbin
+           task_struct                                                                                  
+            +--------+                                                                                  
+            | +----+ |                                                                                  
+            | | fs |------------------->  fs_struct                                                     
+            | +----+ |                  +----------+                                                    
+            +--------+                  |   root   |  root folder '/'                                   
+                                        |+--------+|                                                    
++--------+                              ||  +---+ ||                                                    
+|vfsmount| <---------------------------------mnt| ||  which mount the dentry belongs to, e.g. root mount
++--------+                              ||  +---+ ||                                                    
+     ^             +--------+           ||+------+||                                                    
+     |             | dentry | <-----------|dentry|||  dentry of '/'                                     
+     |             +--------+           ||+------+||                                                    
+     |                                  |+--------+|                                                    
+     |                                  |   pwd    |  current working folder, e.g., '/home/penguin'     
+     |                                  |+--------+|                                                    
+     |                                  ||  +---+ ||                                                    
+     +--------------------------------------|mnt| ||  which mount the dentry belongs to, e.g. root mount
+                                        ||  +---+ ||                                                    
+                   +--------+           ||+------+||                                                    
+                   | dentry | <------------dentry|||  dentry of 'penguin'                               
+                   +--------+           ||+------+||                                                    
+                                        |+--------+|                                                    
+                                        +----------+                                                    
 ```
+
+Taking the below command as an example, it's a downward lookup and consists of three components.
+
+```
+cd /usr/sbin
+```
+
+- 
 
 When looking up downward, we use the dentry of '/' and string 'usr' to calculate the hash and find the dentry of 'sbin' from the hash table. 
 Repeat the same process until the last component, which is the dentry of 'sbin' in our example.
