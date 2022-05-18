@@ -2,8 +2,13 @@
 
 - [Introduction](#introduction)
 - [Reference](#reference)
+- [Kmap](#kmap)
 
 ## <a name="introduction"></a> Introduction
+
+
+We've introduced the advantages of virtual mapping and components like page tables and PTEs. 
+This page will focus more on the virtual mapping in user space and related syscalls.
 
 ```
 +------------------------+                                                       
@@ -619,6 +624,241 @@
                                |        +-------------+                                                                             
                                +------> | mm_populate | fault in the pages                                                          
                                         +-------------+                                                                             
+```
+
+```
++------------+
+| sys_munmap |
++--|---------+
+   |    +-------------+
+   +--> | __vm_munmap |
+        +---|---------+
+            |    +-------------+
+            +--> | __do_munmap | clear pte, free page table, and release vma
+                 +---|---------+
+                     |    +-----------------------+
+                     |--> | find_vma_intersection | find the vma that intersects with arg range
+                     |    +-----------------------+
+                     |
+                     |--> if the arg range doens't match the found vma
+                     |
+                     |        +-------------+
+                     |------> | __split_vma |
+                     |        +-------------+
+                     |    +----------------------------+
+                     |--> | detach_vmas_to_be_unmapped | detatch from rb tree
+                     |    +----------------------------+
+                     |    +--------------+
+                     |--> | unmap_region |
+                     |    +---|----------+
+                     |        |    +---------------+
+                     |        |--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
+                     |        |    +---------------+
+                     |        |    +------------+
+                     |        +--> | unmap_vmas | clear pte within range
+                     |        |    +------------+
+                     |        |    +---------------+
+                     |        +--> | free_pgtables | free 2nd-level page table?
+                     |             +---------------+
+                     |    +-----------------+
+                     +--> | remove_vma_list | free vma
+                          +-----------------+                                                                     
+```
+
+```
++--------------+                                                                                          
+| sys_mprotect |                                                                                          
++---|----------+                                                                                          
+    |    +------------------+                                                                             
+    +--> | do_mprotect_pkey |                                                                             
+         +----|-------------+                                                                             
+              |    +----------+                                                                           
+              |--> | find_vma | return  the first vma that meets 'addr < vm_end'                          
+              |    +----------+                                                                           
+              |                                                                                           
+              |--> return if vma doesn't cover the start                                                  
+              |                                                                                           
+              |--> endless loop                                                                           
+              |                                                                                           
+              |------> if ->mprotect exists (only on x86?)                                                
+              |                                                                                           
+              +----------> call ->mprotect()                                                              
+              |                                                                                           
+              |        +----------------+                                                                 
+              |------> | mprotect_fixup |                                                                 
+              |        +---|------------+                                                                 
+              |            |    +-----------+                                                             
+              |            |--> | vma_merge | check if we can merge with prev/next vma with our new flags 
+              |            |    +-----------+                                                             
+              |            |                                                                              
+              |            |--> if the specified range doens't match the whole vma                        
+              |            |                                                                              
+              |            |        +-----------+                                                         
+              |            |------> | split_vma |                                                         
+              |            |        +-----------+                                                         
+              |            |                                                                              
+              |            +--> change attributes in both sw and hw                                       
+              |                                                                                           
+              +--> break loop if we reach the end of range                                                
+```
+
+```
++---------+                                                                                              
+| sys_brk |                                                                                              
++--|------+                                                                                              
+   |                                                                                                     
+   |--> if it's a shrinking request                                                                      
+   |                                                                                                     
+   |        +-------------+                                                                              
+   |------> | __do_munmap | clear pte, free page table, and release vma                                  
+   |        +-------------+                                                                              
+   |                                                                                                     
+   |        go to 'success'                                                                              
+   |                                                                                                     
+   |    +--------------+                                                                                 
+   |--> | do_brk_flags |                                                                                 
+   |    +---|----------+                                                                                 
+   |        |    +-------------------+                                                                   
+   |        |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
+   |        |    +-------------------+                                                                   
+   |        |    +------------------+                                                                    
+   |        |--> | munmap_vma_range | clear old record                                                   
+   |        |    +------------------+                                                                    
+   |        |    +-----------+                                                                           
+   |        |--> | vma_merge | try to expand existing vma to cover our region                            
+   |        |    +-----------+                                                                           
+   |        |                                                                                            
+   |        |--> return if it's successful                                                               
+   |        |                                                                                            
+   |        |    +---------------+                                                                       
+   |        |--> | vm_area_alloc |                                                                       
+   |        |    +---------------+                                                                       
+   |        |                                                                                            
+   |        |--> set up vma based on region info                                                         
+   |        |                                                                                            
+   |        |    +----------+                                                                            
+   |        +--> | vma_link | link vma into framework                                                    
+   |             +----------+                                                                            
+   |                                                                                                     
+   |--> if need to populate                                                                              
+   |                                                                                                     
+   |        +-------------+                                                                              
+   +------> | mm_populate |                                                                              
+            +-------------+                                                                              
+```
+
+```
++-----------------------+                                                    
+| flush_all_zero_pkmaps | release unused pages from pkmap                    
++-----|-----------------+                                                    
+      |                                                                      
+      |--> for each pkmap (512)                                              
+      |                                                                      
+      |------> if nothing we can do, or it's in use                          
+      |                                                                      
+      |----------> continue                                                  
+      |                                                                      
+      |------> pkmap_count[i] = 0                                            
+      |                                                                      
+      |        +----------+                                                  
+      |------> | pte_page | get struct page from pte value (physical address)
+      |        +----------+                                                  
+      |        +-----------+                                                 
+      |------> | pte_clear | clear pte                                       
+      |        +-----------+                                                 
+      |                                                                      
+      +------> remove page from kmap list                                    
+```
+
+## <a name="kmap"></a> Kmap
+
+```
++------+                                                             
+| kmap | ensure the page has a mapped virtual address                
++-|----+                                                             
+  |                                                                  
+  |--> if arg page isn't from highmem                                
+  |                                                                  
+  |        +--------------+                                          
+  |------> | page_address | return mapped virtual address of arg page
+  |        +--------------+                                          
+  |                                                                  
+  |--> else                                                          
+  |                                                                  
+  |        +-----------+                                             
+  +------> | kmap_high | map a highmem page                          
+           +-----------+                                             
+```
+
+```
++-----------+                                                            
+| kmap_high | map a highmem page                                         
++--|--------+                                                            
+   |    +--------------+                                                 
+   |--> | page_address | return mapped virtual address of arg page       
+   |    +--------------+                                                 
+   |                                                                     
+   |--> if the page doesn't have mapped virtual address yet              
+   |                                                                     
+   |--> endless loop                                                     
+   |                                                                     
+   |        +-------------------+                                        
+   |------> | get_next_pkmap_nr | get next index                         
+   |        +-------------------+                                        
+   |                                                                     
+   |------> if no more pkmaps                                            
+   |                                                                     
+   |            +-----------------------+                                
+   |----------> | flush_all_zero_pkmaps | release unused pages from pkmap
+   |            +-----------------------+                                
+   |                                                                     
+   |------> if pkmap_count[idx] == 0 (available)                         
+   |                                                                     
+   |----------> break                                                    
+   |                                                                     
+   |------> if can retry (at most 512 times)                             
+   |                                                                     
+   +----------> continue                                                 
+   |                                                                     
+   |------> sleep to see if anyone unmap some slots                      
+   |                                                                     
+   |--> prepare vaddr based on index                                     
+   |                                                                     
+   |    +------------+                                                   
+   |--> | set_pte_at | set pte                                           
+   |    +------------+                                                   
+   |                                                                     
+   |--> label the index as used                                          
+   |                                                                     
+   |    +------------------+                                             
+   +--> | set_page_address | relate 'page' and 'vaddr'                   
+        +------------------+                                             
+```
+
+```
++--------+                                                               
+| kunmap |                                                               
++-|------+                                                               
+  |                                                                      
+  |--> if arg page isn't from high mem, return                           
+  |                                                                      
+  |    +-------------+                                                   
+  +--> | kunmap_high |                                                   
+       +---|---------+                                                   
+           |    +--------------+                                         
+           |--> | page_address | get virtual addr that the page maps from
+           |    +--------------+                                         
+           |    +----------+                                             
+           |--> | PKMAP_NR | get index from virtual addr                 
+           |    +----------+                                             
+           |                                                             
+           |--> pkmap_count[nr]--                                        
+           |                                                             
+           |--> if there's any task waiting for the unmap, wake it up    
+           |                                                             
+           |        +---------+                                          
+           +------> | wake_up |                                          
+                    +---------+                                          
 ```
 
 ## <a name="reference"></a> Reference
