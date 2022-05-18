@@ -562,6 +562,46 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 
 </details>
 
+### Create
+
+We can use utility touch, echo, or a formal editor like vim and nano for file creation. 
+Here's the strace of touch, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
+
+```
+root@romulus:~# ./strace touch blabla
+...
+openat(AT_FDCWD, "blabla", O_RDWR|O_CREAT|O_LARGEFILE, 0666) = 3
+...
+```
+
+So the operational flow is like this:
+
+- It's a relative path, 
+- Look up till the last component, 'blabla', and it's not there.
+- If the user has specified flag O_CREAT, then parent inode, 'root' in the example, creates the file.
+
+```
+    +--------------------------->     /                                                                                     
+    |                                 |                                                                                     
+    |                                 |                                                                                     
+    |                     +-----------|-----------+                                                                         
+    |                     |           |           |                                                                         
+    |                     |           |           |                                                                         
+    |                    etc        home         lib                                                                        
+                                      |                                                                                     
++------+                              |                                                                                     
+| root |                              |                                                                                     
++------+                              |                                                     +--                             
++-----+                               |                                                     |    ...                        
+| pwd |   ---------------------->   root   inode->i_op = &shmem_dir_inode_operations;  -----+    .create     = shmem_create,
++-----+                               |    inode->i_fop = &simple_dir_operations;           |    ...                        
+                                      |                                                     +--                             
+                                      |                                                                                     
+                                      |                                                                                     
+                                      |                                                                                     
+                                   blabla?                                                                                  
+```
+
 ### Mount
 
 I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
@@ -877,7 +917,7 @@ That's how we make the source tree of a specific disk partition visible to us, a
                      |                 |--> | alloc_empty_file | allocate 'file'                            
                      |                 |    +------------------+                                            
                      |                 |                                                                    
-                     |                 |--> walk path to get the final dentry                               
+                     |                 |--> walk path to get the final dentry (might create new file if flag has O_CREAT)
                      |                 |                                                                    
                      |                 |    +---------+                                                     
                      |                 +--> | do_open |                                                     
