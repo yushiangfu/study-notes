@@ -564,8 +564,8 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 
 ### Create
 
-We can use utility touch, echo, or a formal editor like vim and nano for file creation. 
-Here's the strace of touch, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
+We can use utility **touch**, **echo**, or a formal editor like **vim** and **nano** for file creation. 
+Here's the strace of **touch**, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
 
 ```
 root@romulus:~# ./strace touch blabla
@@ -576,7 +576,7 @@ openat(AT_FDCWD, "blabla", O_RDWR|O_CREAT|O_LARGEFILE, 0666) = 3
 
 So the operational flow is like this:
 
-- It's a relative path, 
+- It's a relative path, and we start from the dentry pointed by pwd.
 - Look up till the last component, 'blabla', and it's not there.
 - If the user has specified flag O_CREAT, then parent inode, 'root' in the example, creates the file.
 
@@ -602,6 +602,85 @@ So the operational flow is like this:
                                    blabla?                                                                                  
 ```
 
+<details>
+  <summary> Code trace </summary>
+
+Function vfs_create() isn't that related to our example here.
+
+```
++------------+                                                                         
+| vfs_create | prepare an inode of regular file and link it with given dentry    
++--|---------+                                                                         
+   |                                                                                   
+   |--> if dir inode has no ->create(), return error                                   
+   |                                                                                   
+   +--> call ->create(), e.g.,                                                         
+        +--------------+                                                               
+        | shmem_create | prepare an inode of regular file and link it with given dentry
+        +--------------+                                                               
+```
+      
+</details>      
+
+### Delete
+
+We use utility **rm** to remove target file, and here's the strace log of it.
+
+```
+root@romulus:~# ./strace rm blabla
+...
+access("blabla", W_OK)                  = 0
+unlink("blabla")                        
+...
+```
+
+<details>
+  <summary> Code trace </summary>
+
+```
++--------+                                                                         
+| unlink |                                                                         
++-|------+                                                                         
+  |    +-------------+                                                             
+  +--> | do_unlinkat |                                                             
+       +---|---------+                                                             
+           |    +-------------------+                                              
+           |--> | filename_parentat | only walk to the parent of the last component
+           |    +-------------------+                                              
+           |    +---------------+                                                  
+           |--> | __lookup_hash | get the dentry of the last component             
+           |    +---------------+                                                  
+           |    +------------+                                                     
+           |--> | vfs_unlink | inode nlink--, dentry ref count--                   
+           |    +------------+                                                     
+           |    +------+                                                           
+           |--> | dput | release dentry if no one uses it                          
+           |    +------+                                                           
+           |    +------+                                                           
+           +--> | iput | release inode if no one uses it                           
+                +------+                                                           
+```
+
+```
++------------+                                                           
+| vfs_unlink |                                                           
++--|---------+                                                           
+   |                                                                     
+   |--> if dir has no ->unlink(), return error                           
+   |                                                                     
+   |--> if dentry is a mount point, return error                         
+   |                                                                     
+   |--> call ->unlink(), e.g.,                                           
+   |    +--------------+                                                 
+   |    | shmem_unlink | inode nlink--, dentry ref count--               
+   |    +--------------+                                                 
+   |    +---------------+                                                
+   +--> | detach_mounts | detach the mount if the dentry is a mount point
+        +---------------+                                                
+```
+
+</details>      
+      
 ### Mount
 
 I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
@@ -1212,19 +1291,6 @@ dir /root 0700 0 0
 ```
 
 ```
-+------------+                                                                         
-| vfs_create | prepare an inode of regular file and link it with given dentry    
-+--|---------+                                                                         
-   |                                                                                   
-   |--> if dir inode has no ->create(), return error                                   
-   |                                                                                   
-   +--> call ->create(), e.g.,                                                         
-        +--------------+                                                               
-        | shmem_create | prepare an inode of regular file and link it with given dentry
-        +--------------+                                                               
-```
-
-```
 +-----------+                                                                                           
 | new_inode | allocate a complex or regular inode, init and add to sb's list                            
 +--|--------+                                                                                           
@@ -1314,24 +1380,6 @@ dir /root 0700 0 0
    |    +----------------------+                                         
    |--> | shrink_dcache_parent | release unused child dentries           
    |    +----------------------+                                         
-   |    +---------------+                                                
-   +--> | detach_mounts | detach the mount if the dentry is a mount point
-        +---------------+                                                
-```
-
-```
-+------------+                                                           
-| vfs_unlink |                                                           
-+--|---------+                                                           
-   |                                                                     
-   |--> if dir has no ->unlink(), return error                           
-   |                                                                     
-   |--> if dentry is a mount point, return error                         
-   |                                                                     
-   |--> call ->unlink(), e.g.,                                           
-   |    +--------------+                                                 
-   |    | shmem_unlink | inode nlink--, dentry ref count--               
-   |    +--------------+                                                 
    |    +---------------+                                                
    +--> | detach_mounts | detach the mount if the dentry is a mount point
         +---------------+                                                
