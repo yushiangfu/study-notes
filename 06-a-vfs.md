@@ -268,7 +268,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 
 ## <a name="vfs-operations"></a> VFS Operations
 
-### Lookup (within the same mount)
+### Change working directory (within the same mount)
 
 Command **cd** (change directory) is probably the most used command to change the current working folder to command-line Linux users. 
 It's a built-in shell function and therefore has no independent binary. 
@@ -562,7 +562,7 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 
 </details>
 
-### Create
+### Create a file
 
 We can use utility **touch**, **echo**, or a formal editor like **vim** and **nano** for file creation. 
 Here's the strace of **touch**, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
@@ -622,9 +622,9 @@ Function vfs_create() isn't that related to our example here.
       
 </details>      
 
-### Delete
+### Delete a file
 
-We use utility **rm** to remove target file, and here's the strace log of it.
+We use utility rm to remove the target file, and here's the strace log.
 
 ```
 root@romulus:~# ./strace rm blabla
@@ -632,6 +632,34 @@ root@romulus:~# ./strace rm blabla
 access("blabla", W_OK)                  = 0
 unlink("blabla")                        
 ...
+```
+
+So the operational flow is like this:
+
+- It's a relative path, and we start from the dentry pointed by pwd.
+- Look up till the parent of the last component, 'root'.
+- Ask the parent to unlink the child 'blabla', which means to release the inode and dentry of it.
+
+```
+    +--------------------------->     /                                                                                     
+    |                                 |                                                                                     
+    |                                 |                                                                                     
+    |                     +-----------|-----------+                                                                         
+    |                     |           |           |                                                                         
+    |                     |           |           |                                                                         
+    |                    etc        home         lib                                                                        
+                                      |                                                                                     
++------+                              |                                                                                     
+| root |                              |                                                                                     
++------+                              |                                                     +--                             
++-----+                               |                                                     |    ...                        
+| pwd |   ---------------------->   root   inode->i_op = &shmem_dir_inode_operations;  -----+    .unlink     = shmem_unlink,
++-----+                               |    inode->i_fop = &simple_dir_operations;           |    ...                        
+                                      |                                                     +--                             
+                                      |                                                                                     
+                                      |                                                                                     
+                                      |                                                                                     
+                                 >>blabla<<  delete 
 ```
 
 <details>
@@ -678,8 +706,170 @@ unlink("blabla")
    +--> | detach_mounts | detach the mount if the dentry is a mount point
         +---------------+                                                
 ```
-
+      
 </details>      
+
+### Create a directory
+
+We use utility **mkdir** to create a folder, and it eventually calls the same name syscall.
+
+```
+root@romulus:~# ./strace mkdir klakla
+...
+mkdir("klakla", 0777)                   = 0
+...
+```
+
+So the operational flow is like this:
+
+- It's a relative path, and we start from the dentry pointed by pwd.
+- Look up till the parent of the last component, 'root'.
+- Ask the parent to create the child folder 'klakla', and install operation sets of directory type.
+
+```
+    +--------------------------->     /                                                                                    
+    |                                 |                                                                                    
+    |                                 |                                                                                    
+    |                     +-----------|-----------+                                                                        
+    |                     |           |           |                                                                        
+    |                     |           |           |                                                                        
+    |                    etc        home         lib                                                                       
+                                      |                                                                                    
++------+                              |                                                                                    
+| root |                              |                                                                                    
++------+                              |                                                     +--                            
++-----+                               |                                                     |    ...                       
+| pwd |   ---------------------->   root   inode->i_op = &shmem_dir_inode_operations;  -----+    .mkdir      = shmem_mkdir,
++-----+                               |    inode->i_fop = &simple_dir_operations;           |    ...                       
+                                      |                                                     +--                            
+                                      |                                                                                    
+                                      |                                                                                    
+                                      |                                                                                    
+                                   klakla  inode->i_op = &shmem_dir_inode_operations;                                      
+                                           inode->i_fop = &simple_dir_operations;                                          
+```
+
+<details>
+  <summary> Code trace </summary>
+
+```
++-----------+                                                                               
+| sys_mkdir |                                                                               
++--|--------+                                                                               
+   |    +------------+                                                                      
+   +--> | do_mkdirat |                                                                      
+        +--|---------+                                                                      
+           |    +-----------------+                                                         
+           |--> | filename_create |                                                         
+           |    +----|------------+                                                         
+           |         |    +-------------------+                                             
+           |         |--> | filename_parentat | lookup till the parent of the last component
+           |         |    +-------------------+                                             
+           |         |    +---------------+                                                 
+           |         +--> | __lookup_hash | either locate target dentry or create one       
+           |              +---------------+                                                 
+           |    +-----------+                                                               
+           +--> | vfs_mkdir |                                                               
+                +-----------+                                                               
+```
+
+```
++-----------+                                                                      
+| vfs_mkdir | prepare an inode of directory and link it with given dentry          
++--|--------+                                                                      
+   |                                                                               
+   |--> if dir inode has no ->mkdir(), return error                                
+   |                                                                               
+   +--> call ->mkdir(), e.g.,                                                      
+        +-------------+                                                            
+        | shmem_mkdir | prepare an inode of directory and link it with given dentry
+        +-------------+                                                            
+```
+
+</details>
+
+### Remove a directory
+
+We can utilize the command **rmdir** to remove the folder for an empty folder, and here's the strace log.
+
+```
+root@romulus:~# ./strace rmdir klakla/
+...
+rmdir("klakla/")                        = 0
+...
+```
+
+So the operational flow is like this:
+
+- It's a relative path, and we start from the dentry pointed by pwd.
+- Look up till the parent of the last component, 'root'.
+- Ask the parent to remove the child folder 'klakla', releasing the inode and dentry.
+
+```
+    +--------------------------->     /                                                                                    
+    |                                 |                                                                                    
+    |                                 |                                                                                    
+    |                     +-----------|-----------+                                                                        
+    |                     |           |           |                                                                        
+    |                     |           |           |                                                                        
+    |                    etc        home         lib                                                                       
+                                      |                                                                                    
++------+                              |                                                                                    
+| root |                              |                                                                                    
++------+                              |                                                     +--                            
++-----+                               |                                                     |    ...                       
+| pwd |   ---------------------->   root   inode->i_op = &shmem_dir_inode_operations;  -----+    .rmdir      = shmem_rmdir,
++-----+                               |    inode->i_fop = &simple_dir_operations;           |    ...                       
+                                      |                                                     +--                            
+                                      |                                                                                    
+                                      |                                                                                    
+                                      |                                                                                    
+                                 >>klakla<<   detete                                                                       
+```
+
+<details>
+  <summary> Code trace </summary>
+
+```
++-----------+                                                                     
+| sys_rmdir |                                                                     
++--|--------+                                                                     
+   |    +----------+                                                              
+   +--> | do_rmdir |                                                              
+        +--|-------+                                                              
+           |    +-------------------+                                             
+           |--> | filename_parentat | lookup till the parent of the last component
+           |    +-------------------+                                             
+           |    +---------------+                                                 
+           |--> | __lookup_hash | either locate target dentry or create one       
+           |    +---------------+                                                 
+           |    +-----------+                                                     
+           +--> | vfs_rmdir |                                                     
+                +-----------+                                                     
+```
+
+```
++-----------+                                                            
+| vfs_rmdir |                                                            
++--|--------+                                                            
+   |                                                                     
+   |--> if dir has no ->rmdir(), return error                            
+   |                                                                     
+   |--> if it's a mount point, return error                              
+   |                                                                     
+   |--> call ->rmdir(), e.g.,                                            
+   |    +-------------+                                                  
+   |    | shmem_rmdir | inode nlink-- -- --, dentry ref count--          
+   |    +-------------+                                                  
+   |    +----------------------+                                         
+   |--> | shrink_dcache_parent | release unused child dentries           
+   |    +----------------------+                                         
+   |    +---------------+                                                
+   +--> | detach_mounts | detach the mount if the dentry is a mount point
+        +---------------+                                                
+```
+
+</details>
       
 ### Mount
 
@@ -1349,40 +1539,6 @@ dir /root 0700 0 0
         +-------------+                                                                 
         | shmem_mknod | prepare an inode of specified type and link it with given dentry
         +-------------+                                                                 
-```
-
-```
-+-----------+                                                                      
-| vfs_mkdir | prepare an inode of directory and link it with given dentry          
-+--|--------+                                                                      
-   |                                                                               
-   |--> if dir inode has no ->mkdir(), return error                                
-   |                                                                               
-   +--> call ->mkdir(), e.g.,                                                      
-        +-------------+                                                            
-        | shmem_mkdir | prepare an inode of directory and link it with given dentry
-        +-------------+                                                            
-```
-
-```
-+-----------+                                                            
-| vfs_rmdir |                                                            
-+--|--------+                                                            
-   |                                                                     
-   |--> if dir has no ->rmdir(), return error                            
-   |                                                                     
-   |--> if it's a mount point, return error                              
-   |                                                                     
-   |--> call ->rmdir(), e.g.,                                            
-   |    +-------------+                                                  
-   |    | shmem_rmdir | inode nlink-- -- --, dentry ref count--          
-   |    +-------------+                                                  
-   |    +----------------------+                                         
-   |--> | shrink_dcache_parent | release unused child dentries           
-   |    +----------------------+                                         
-   |    +---------------+                                                
-   +--> | detach_mounts | detach the mount if the dentry is a mount point
-        +---------------+                                                
 ```
 
 ```
