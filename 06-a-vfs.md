@@ -871,6 +871,37 @@ So the operational flow is like this:
 
 </details>
       
+### Copy a file
+
+When we have to copy a file or a folder, utility **cp** does the job, and here's the strace log.
+
+- It opens both the source and destination files.
+- Start to read from source, and write to the destination till there's no more data.
+- Close both file descriptors.
+
+```
+root@romulus:~# ./strace cp blabla clacla
+...
+openat(AT_FDCWD, "blabla", O_RDONLY|O_LARGEFILE) = 3
+openat(AT_FDCWD, "clacla", O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE, 0100644) = 4
+sendfile64(4, 3, NULL, 16777216)        = 4
+sendfile64(4, 3, NULL, 16777216)        = 0
+close(4)                                = 0
+close(3)  
+...
+```
+
+Here's the strace log of copying a folder.
+
+```
+root@romulus:~# ./strace cp -a src_dir/ dst_dir
+...
+mkdir("dst_dir", 040755)                = 0
+...
+
+...
+```
+
 ### Mount
 
 I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
