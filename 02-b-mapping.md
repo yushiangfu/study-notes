@@ -6,9 +6,116 @@
 
 ## <a name="introduction"></a> Introduction
 
+Virtual mapping relies on page table, MMU, and TLB:
 
-We've introduced the advantages of virtual mapping and components like page tables and PTEs. 
-This page will focus more on the virtual mapping in user space and related syscalls.
+- Page table: It's a collection of entries that specify the virtual-to-physical mapping.
+- MMU: the hardware component that does the lookup behavior.
+- TLB: cache for lookup
+- 
+Page table, a.k.a. PGD table, is a 16Ks-size area including 4096 PMD entries. Each PMD can represent one of the below meanings.
+
+- Not mapped
+- Section (1M) mapping
+- A pointer to the 2nd level page table
+
+If the mapped region is more significant than 1M, then the kernel adopts the section mapping or further allocates a PTE table for page mapping.
+
+```
+        1st level                                  2nd level
+        PGD table                                  PTE table
+
+        +-------+                                 ----------------+
+        |   PMD0| physical addr (1M region)         |PTE0  |      |
+   PGD0 |  ------                                   +------+      |
+        |   PMD1|                                      -          |
+        +-------+                                      -          |
+        |   PMD0| ---+                              +------+      |
+   PGD1 |  ------    |                              |PTE255|      |
+        |   PMD1| -+ |                            ------------    | for SW (Linux) to check attributes
+        +-------+  | |                              |PTE0  |      |
+            -      | |                              +------+      |
+            -      | |                                 -          |
+            -      | |                                 -          |
+            -      | |                              +------+      |
+            -      | |                              |PTE255|      |
+            -      | |                            ------------  --+
+            -      | +--------------------------->  |PTE0  |      |
+            -      |                                +------+      |
+            -      |                                   -          |
+            -      |                                   -          |
+            -      |                                +------+      |
+            -      |                                |PTE255|      |
+            -      |                              ------------    | for HW (MMU) to look up
+            -      +----------------------------->  |PTE0  |      |
+            -                                       +------+      |
+            -                                          -          |
+        +-------+                                      -          |
+        |   PMD0| none                              +------+      |
+PGD2047 |  ------                                   |PTE255| physical addr (4K region)
+        |   PMD1|                                 ----------------+
+        +-------+
+```
+
+(Should I move the introduction from memory.md to here?)
+
+```
+               bit 31       20 19   12 11        0 
+                  +-----------+-------+-----------+
+ virtual address  |  12 bits  |8 bits |  12 bits  |
+                  +-----------+-------+-----------+
+                    1st index             offset   
+                              2nd index            
+```
+
+There's the initial page table for the kernel to create mappings, and it's shared by all the kernel threads. 
+
+```
+bobfu@bobfu-Vostro-5402:~/workspace/oblinux$ head System.map
+00000018 A cpu_v6_suspend_size
+00000024 A cpu_ca15_suspend_size
+00000024 A cpu_ca8_suspend_size
+00000024 A cpu_v7_bpiall_suspend_size
+00000024 A cpu_v7_suspend_size
+0000002c A cpu_ca9mp_suspend_size
+80004000 A swapper_pg_dir    <--------------------- fixed address
+80008000 T _text
+80008000 T stext
+80008080 t __create_page_tables
+```
+
+For the regular userspace process, it has its own page table. 
+For a multi-threaded process, all the threads share the same page table, and therefore they see the same virtual space. 
+The kernel simply has the co-processor (TTBR0 or TTBR1?) point to the corresponding page table when a context switch happens. 
+And that instructs MMU on where to lookup from.
+
+```
+                                  process                         process           
++---------+                     +---------+                     +---------+         
+| kthread | ---+                |+-------+|                     |+-------+|         
++---------+    |                ||thread |-----+                ||thread |-----+    
++---------+    |                |+-------+|    |                |+-------+|    |    
+| kthread | ---|                |         |    |                ||thread ------+    
++---------+    |                |         |    |                |+-------+|    |    
++---------+    |                |         |    |                ||thread ------+    
+| kthread | ---|                |         |    |                |+-------+|    |    
++---------+    |                +---------+    |                +---------+    |    
+               |                               |                               |    
+               |                               |                               |    
+               v                               v                               v    
+          page table                      page table                      page table
+          +--------+                      +--------+                      +--------+
+          |        |                      |        |                      |        |
+          |        |                      |        |                      |        |
+          |        |                      |        |                      |        |
+          |        |                      |        |                      |        |
+          |        |                      |        |                      |        |
+          |        |                      |        |                      |        |
+          |        |                      |        |                      |        |
+          +--------+                      +--------+                      +--------+
+```
+
+<details>
+  <summary> Code trace </summary>
 
 ```
 +------------------------+                                                       
@@ -860,6 +967,8 @@ This page will focus more on the virtual mapping in user space and related sysca
            +------> | wake_up |                                          
                     +---------+                                          
 ```
+      
+</details>
 
 ## <a name="reference"></a> Reference
 
