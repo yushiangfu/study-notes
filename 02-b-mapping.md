@@ -244,6 +244,35 @@ Finally, the flow goes to the **main** function and prints out the famous 'Hello
                          high addr                       
 ```
 
+```
+  +---------------------------------------- virtual address range      
+  |                 +---------------------- p:private, s:share         
+  |                 |    +----------------- page offset                
+  |                 |    |        +-------- major:minor                
+  |                 |    |        |     +-- inode                      
+  |                 |    |        |     |                              
+  |                 |    |        |     |                              
+  +---------------- +--- +------- +---- +--                            
+  00010000-00011000 r-xp 00000000 1f:05 915        /home/root/a.out    
+  00020000-00021000 r--p 00000000 1f:05 915        /home/root/a.out    
+  00021000-00022000 rw-p 00001000 1f:05 915        /home/root/a.out    
+  000ac000-000cd000 rw-p 00000000 00:00 0          [heap]              
+  76db8000-76f11000 r-xp 00000000 1f:04 426        /lib/libc.so.6      
+  76f11000-76f20000 ---p 00159000 1f:04 426        /lib/libc.so.6      
+  76f20000-76f22000 r--p 00158000 1f:04 426        /lib/libc.so.6      
+  76f22000-76f24000 rw-p 0015a000 1f:04 426        /lib/libc.so.6      
+  76f24000-76f2d000 rw-p 00000000 00:00 0                              
+  76f30000-76f56000 r-xp 00000000 1f:04 421        /lib/ld-linux.so.3  
+  76f64000-76f66000 rw-p 00000000 00:00 0                              
+  76f66000-76f67000 r--p 00026000 1f:04 421        /lib/ld-linux.so.3  
+  76f67000-76f68000 rw-p 00027000 1f:04 421        /lib/ld-linux.so.3  
+  7e99e000-7e9bf000 rw-p 00000000 00:00 0          [stack]             
+  7eb92000-7eb93000 r-xp 00000000 00:00 0          [sigpage]           
+  7eb93000-7eb94000 r--p 00000000 00:00 0          [vvar]              
+  7eb94000-7eb95000 r-xp 00000000 00:00 0          [vdso]              
+  ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]           
+```
+
 <details>
   <summary> Mapping and strace log </summary>
 
