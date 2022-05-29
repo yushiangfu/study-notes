@@ -7,8 +7,63 @@
 ## <a name="introduction"></a> Introduction
 
 ```
++---------------+                                                                                                                              
+| do_page_fault |                                                                                                                              
++---|-----------+                                                                                                                              
+    |    +-----------------+                                                                                                                   
+    |--> | __do_page_fault |                                                                                                                   
+    |    +----|------------+                                                                                                                   
+    |         |    +----------+                                                                                                                
+    |         |--> | find_vma | try to find target vma based on faulted addr                                                                   
+    |         |    +----------+                                                                                                                
+    |         |                                                                                                                                
+    |         |--> check if it's a valid fault (covered by vma, or lies in stack)                                                              
+    |         |                                                                                                                                
+    |         |--> return error if not                                                                                                         
+    |         |                                                                                                                                
+    |         |    +-----------------+                                                                                                         
+    |         +--> | handle_mm_fault |                                                                                                         
+    |              +----|------------+                                                                                                         
+    |                   |    +---------------------+                                                                                           
+    |                   |--> | __set_current_state | set state = running                                                                       
+    |                   |    +---------------------+                                                                                           
+    |                   |    +-------------------+                                                                                             
+    |                   +--> | __handle_mm_fault |                                                                                             
+    |                        +----|--------------+                                                                                             
+    |                             |    +------------+                                                                                          
+    |                             |--> | pgd_offset | get target pgd based on addr                                                             
+    |                             |    +------------+                                                                                          
+    |                             |    +-----------+                                                                                           
+    |                             |--> | p4d_alloc | return arg pgd                                                                            
+    |                             |    +-----------+                                                                                           
+    |                             |    +-----------+                                                                                           
+    |                             |--> | pud_alloc | return arg p4d                                                                            
+    |                             |    +-----------+                                                                                           
+    |                             |    +-----------+                                                                                           
+    |                             |--> | pmd_alloc |  return arg pud                                                                           
+    |                             |    +-----------+                                                                                           
+    |                             |    +------------------+                                                                                    
+    |                             +--> | handle_pte_fault | ensure 2nd-level table exists, and either call ->fault() or simply update pte entry
+    |                                  +------------------+                                                                                    
+    |                                                                                                                                          
+    |--> return 0 for valid case                                                                                                               
+    |                                                                                                                                          
+    |--> if it's a real fault from user context                                                                                                
+    |                                                                                                                                          
+    |        +-----------------+                                                                                                               
+    |------> | __do_user_fault | raise signal SIGSEGV                                                                                          
+    |        +-----------------+                                                                                                               
+    |                                                                                                                                          
+    |--> else if it's a real fault from kernel context                                                                                         
+    |                                                                                                                                          
+    |        +-------------------+                                                                                                             
+    +------> | __do_kernel_fault | die                                                                                                         
+             +-------------------+                                                                                                             
+```
+
+```
 +------------------+                                                                                     
-| handle_pte_fault | ensure 2nd-level table exists, do something for file mapping (?), update pte entry  
+| handle_pte_fault | ensure 2nd-level table exists, and either call ->fault() or simply update pte entry
 +----|-------------+                                                                                     
      |                                                                                                   
      |--> if no pet yet                                                                                  
