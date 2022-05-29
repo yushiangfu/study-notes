@@ -7,6 +7,52 @@
 ## <a name="introduction"></a> Introduction
 
 ```
++------------------+                                                                                     
+| handle_pte_fault | ensure 2nd-level table exists, do something for file mapping (?), update pte entry  
++----|-------------+                                                                                     
+     |                                                                                                   
+     |--> if no pet yet                                                                                  
+     |                                                                                                   
+     |------> if vma is anon type                                                                        
+     |                                                                                                   
+     |            +-------------------+                                                                  
+     |----------> | do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
+     |            +-------------------+                                                                  
+     |                                                                                                   
+     |------> else                                                                                       
+     |                                                                                                   
+     |            +----------+                                                                           
+     +----------> | do_fault | ensure 2nd-level table exists, call ->fault()                             
+                  +----------+                                                                           
+```
+
+```
++----------+                                                                                   
+| do_fault | ensure 2nd-level table exists, call ->fault()                                     
++--|-------+                                                                                   
+   |                                                                                           
+   |--> if vm ops doesn't have ->fault(), return error                                         
+   |                                                                                           
+   |--> else if it's not a 'write'                                                             
+   |                                                                                           
+   |        +---------------+                                                                  
+   |------> | do_read_fault | call ->map_pages(), ensure 2nd-level table exists, call ->fault()
+   |        +---------------+                                                                  
+   |                                                                                           
+   |--> else if it's a non-shared mapping                                                      
+   |                                                                                           
+   |        +--------------+                                                                   
+   |------> | do_cow_fault | ensure 2nd-level table exists, call ->fault(), copy data to it    
+   |        +--------------+                                                                   
+   |                                                                                           
+   |--> else                                                                                   
+   |                                                                                           
+   |        +-----------------+                                                                
+   +------> | do_shared_fault | ensure 2nd-level table exists, call ->fault(), dirty the page  
+            +-----------------+                                                                
+```
+
+```
 +-------------------+                                                                  
 | do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
 +----|--------------+                                                                  
@@ -57,6 +103,23 @@
                  +---------------+                             
                  | filemap_fault |                             
                  +---------------+                             
+```
+
+```
++-----------------+                                                              
+| do_shared_fault | ensure 2nd-level table exists, call ->fault(), dirty the page
++----|------------+                                                              
+     |    +------------+                                                         
+     |--> | __do_fault | ensure 2nd-level table exists, call ->fault()           
+     |    +------------+                                                         
+     |                                                                           
+     |--> if ->page_mkwrite() exists                                             
+     |                                                                           
+     |------> (skip, not our case)                                               
+     |                                                                           
+     |    +-------------------------+                                            
+     +--> | fault_dirty_shared_page | dirty the page                             
+          +-------------------------+                                            
 ```
 
 ## <a name="reference"></a> Reference
