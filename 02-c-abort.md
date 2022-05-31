@@ -1,10 +1,51 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Fault](#fault)
 - [Reference](#reference)
 
 
 ## <a name="introduction"></a> Introduction
+
+Dereferencing the NULL pointer or accessing other invalid addresses are the most common reason causing the tasks to crash. 
+The path to crash is as below steps:
+
+1. Accessing an invalid address
+2. CPU exception (abort) happens
+3. Kernel finds out it's a genuine fault and sends a signal to the task for termination.
+
+As the CPU exception, there are two types of abort on ARM architecture.
+
+- Data abort: data fault
+- Prefetch abort: instruction fault
+
+And two separate registers are designed to save the exception status when the corresponding abort happens.
+
+- FSR: fault status register
+- IFSR: instruction fault status register
+
+A fault isn't strictly equivalent to invalid memory access. Instead, a few cases are designed to be that way.
+
+- Copy on write
+- Fault on VMA of anonymous type
+- Fault on VMA of file type
+
+```
+              |-  from user    --+                                                      
+ Prefetch     |                  | (refer to FSR)
+  Abort  -----+                  |                                                      
+              +-  from kernel  --|                             1. copy on write         
+                                 |                             2. valid fault: anonymous
+                                 +-------- handle page fault   3. valid fault: file     
+                                 |                             4. write protect?        
+              |-  from user    --|                             5. genuine fault            
+  Data        |                  |                                                      
+  Abort  -----+                  | (refer to IFSR)                                                    
+              +-  from kernel  --+                                                      
+```
+
+<details>
+  <summary> Code trace </summary>
 
 ```
  +-------------+                                                                       
@@ -30,21 +71,6 @@
     |         +------------+                                                           
     +-------> | __pabt_svc | get ifsr and handle fault accordingly                     
               +------------+                                                           
-```
-
-```
-+------------+                                                                            
-| __pabt_svc | get ifsr and handle fault accordingly                                      
-+--|---------+                                                                            
-   |    +-----------+                                                                     
-   |--> | svc_entry | save registers to stack for later restore                           
-   |    +-----------+                                                                     
-   |    +-------------+                                                                   
-   |--> | pabt_helper | call v6_processor_functions->_prefetch_abort() to handle the fault
-   |    +-------------+                                                                   
-   |    +----------+                                                                      
-   +--> | svc_exit | restore registers from stack                                         
-        +----------+                                                                      
 ```
 
 ```
@@ -93,6 +119,21 @@
 ```
 
 ```
++------------+                                                                            
+| __pabt_svc | get ifsr and handle fault accordingly                                      
++--|---------+                                                                            
+   |    +-----------+                                                                     
+   |--> | svc_entry | save registers to stack for later restore                           
+   |    +-----------+                                                                     
+   |    +-------------+                                                                   
+   |--> | pabt_helper | call v6_processor_functions->_prefetch_abort() to handle the fault
+   |    +-------------+                                                                   
+   |    +----------+                                                                      
+   +--> | svc_exit | restore registers from stack                                         
+        +----------+                                                                      
+```
+
+```
  +-------------+                                                                      
  | vector_dabt |                                                                      
  +--|----------+                                                                      
@@ -116,21 +157,6 @@
     |         +------------+                                                          
     +-------> | __dabt_svc | get fsr and handle fault accordingly                     
               +------------+                                                          
-```
-
-```
-+------------+                                                                     
-| __dabt_svc | get fsr and handle fault accordingly                                
-+--|---------+                                                                     
-   |    +-----------+                                                              
-   |--> | svc_entry | save registers to stack for later restore                    
-   |    +-----------+                                                              
-   |    +-------------+                                                            
-   |--> | dabt_helper | call processor specific ->_data_abort() to handle the fault
-   |    +-------------+                                                            
-   |    +----------+                                                               
-   +--> | svc_exit | restore registers from stack                                  
-        +----------+                                                               
 ```
 
 ```
@@ -177,6 +203,25 @@
              +--> | arm_notify_die |                       
                   +----------------+                       
 ```
+
+```
++------------+                                                                     
+| __dabt_svc | get fsr and handle fault accordingly                                
++--|---------+                                                                     
+   |    +-----------+                                                              
+   |--> | svc_entry | save registers to stack for later restore                    
+   |    +-----------+                                                              
+   |    +-------------+                                                            
+   |--> | dabt_helper | call processor specific ->_data_abort() to handle the fault
+   |    +-------------+                                                            
+   |    +----------+                                                               
+   +--> | svc_exit | restore registers from stack                                  
+        +----------+                                                               
+```
+
+</details>
+
+## <a name="fault"></a> Fault
 
 ```
 +---------------+                                                                                                                              
@@ -234,23 +279,51 @@
 ```
 
 ```
-+------------------+                                                                                     
-| handle_pte_fault | ensure 2nd-level table exists, and either call ->fault() or simply update pte entry
-+----|-------------+                                                                                     
-     |                                                                                                   
-     |--> if no pet yet                                                                                  
-     |                                                                                                   
-     |------> if vma is anon type                                                                        
-     |                                                                                                   
-     |            +-------------------+                                                                  
-     |----------> | do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
-     |            +-------------------+                                                                  
-     |                                                                                                   
-     |------> else                                                                                       
-     |                                                                                                   
-     |            +----------+                                                                           
-     +----------> | do_fault | ensure 2nd-level table exists, call ->fault()                             
-                  +----------+                                                                           
+ +------------------+                                                                                     
+ | handle_pte_fault | ensure 2nd-level table exists, and either call ->fault() or simply update pte entry 
+ +----|-------------+                                                                                     
+      |                                                                                                   
+      |--> if no pet yet                                                                                  
+      |                                                                                                   
+      |------> if vma is anon type                                                                        
+      |                                                                                                   
+      |            +-------------------+                                                                  
+      |----------> | do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
+      |            +-------------------+                                                                  
+      |                                                                                                   
+      |------> else                                                                                       
+      |                                                                                                   
+      |            +----------+                                                                           
+      +----------> | do_fault | ensure 2nd-level table exists, call ->fault()                             
+      |            +----------+                                                                           
+      |                                                                                                   
+      |--> if flag has specified 'write'                                                                  
+      |                                                                                                   
+      |        +------------+                                                                             
+      +------> | do_wp_page | handle the fault of write-protect?
+               +------------+                                                                             
+```
+
+```
++------------+                                                      
+| do_wp_page | handle the fault of copy-on-write                    
++--|---------+                                                      
+   |    +----------------+                                          
+   |--> | vm_normal_page | get struct page of give pte              
+   |    +----------------+                                          
+   |    +--------------+                                            
+   +--> | wp_page_copy |                                            
+        +---|----------+                                            
+            |                                                       
+            |--> allocate a page                                    
+            |                                                       
+            |    +---------------+                                  
+            |--> | cow_user_page | copy data from src to dst page   
+            |    +---------------+                                  
+            |                                                       
+            |    +------------------------+                         
+            +--> | page_add_new_anon_rmap | set up anon rmap of page
+                 +------------------------+                         
 ```
 
 ```
