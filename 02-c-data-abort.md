@@ -6,6 +6,91 @@
 
 ## <a name="introduction"></a> Introduction
 
+```
+ +-------------+                                                                       
+ | vector_pabt |                                                                       
+ +--|----------+                                                                       
+    |                                                                                  
+    +---> save r0, lr_pabt, spsr_pabt to abt stack (size: 4 bytes * 3)                 
+    |                                                                                  
+    +---> switch to SVC mode                                                           
+    |                                                                                  
+    +---> determine which mode we comes from                                           
+    |                                                                                  
+    +---> save abt stack address to r0                                                 
+    |                                                                                  
+    +---> if we were at USR mode                                                       
+    |                                                                                  
+    |         +------------+                                                           
+    +-------> | __pabt_usr | get ifsr and handle fault accordingly, return to user mode
+    |         +------------+                                                           
+    |                                                                                  
+    +---> elif we were at SVC mode                                                     
+    |                                                                                  
+    |         +------------+                                                           
+    +-------> | __pabt_svc | get ifsr and handle fault accordingly                     
+              +------------+                                                           
+```
+
+```
++------------+                                                                            
+| __pabt_svc | get ifsr and handle fault accordingly                                      
++--|---------+                                                                            
+   |    +-----------+                                                                     
+   |--> | svc_entry | save registers to stack for later restore                           
+   |    +-----------+                                                                     
+   |    +-------------+                                                                   
+   |--> | pabt_helper | call v6_processor_functions->_prefetch_abort() to handle the fault
+   |    +-------------+                                                                   
+   |    +----------+                                                                      
+   +--> | svc_exit | restore registers from stack                                         
+        +----------+                                                                      
+```
+
+```
++------------+                                                                             
+| __pabt_usr | get ifsr and handle fault accordingly, return to user mode                  
++--|---------+                                                                             
+   |    +-----------+                                                                      
+   |--> | usr_entry | store r0 ~ r12, sp_usr, lr_usr, old pc to sp_svc                     
+   |    +-----------+                                                                      
+   |    +-------------+                                                                    
+   |--> | pabt_helper |                                                                    
+   |    +---|---------+                                                                    
+   |        |                                                                              
+   |        +--> call v6_processor_functions->_prefetch_abort(), e.g.,                     
+   |             +-----------+                                                             
+   |             | v6_pabort | get ifsr and handle the fault accordingly                   
+   |             +-----------+                                                             
+   |    +--------------------+                                                             
+   +--> | ret_from_exception | handle pending work, restore user mode regs and switch to it
+        +--------------------+                                                             
+```
+
+```
++-----------+                                                
+| v6_pabort | get ifsr and handle the fault accordingly      
++--|--------+                                                
+   |                                                         
+   |--> get ifsr from coprocessor                            
+   |                                                         
+   |    +------------------+                                 
+   +--> | do_PrefetchAbort |                                 
+        +----|-------------+                                 
+             |                                               
+             |--> get target ifsr_info using ifsr as index   
+             |                                               
+             |--> call ->fn(), e.g.,                         
+             |    +---------------+                          
+             |    | do_page_fault | handle page fault        
+             |    +---------------+                          
+             |                                               
+             |--> if it's handled properly, return           
+             |                                               
+             |    +----------------+                         
+             +--> | arm_notify_die |                         
+                  +----------------+                         
+```
 
 ```
  +-------------+                                                                      
@@ -86,9 +171,7 @@
              |    | do_page_fault | handle page fault      
              |    +---------------+                        
              |                                             
-             |--> if it's handled properly                 
-             |                                             
-             |------> return                               
+             |--> if it's handled properly, return
              |                                             
              |    +----------------+                       
              +--> | arm_notify_die |                       
