@@ -6,6 +6,95 @@
 
 ## <a name="introduction"></a> Introduction
 
+
+```
+ +-------------+                                                                      
+ | vector_dabt |                                                                      
+ +--|----------+                                                                      
+    |                                                                                 
+    +---> save r0, lr_dabt, spsr_dabt to abt stack (size: 4 bytes * 3)                
+    |                                                                                 
+    +---> switch to SVC mode                                                          
+    |                                                                                 
+    +---> determine which mode we comes from                                          
+    |                                                                                 
+    +---> save abt stack address to r0                                                
+    |                                                                                 
+    +---> if we were at USR mode                                                      
+    |                                                                                 
+    |         +------------+                                                          
+    +-------> | __dabt_usr | get fsr and handle fault accordingly, return to user mode
+    |         +------------+                                                          
+    |                                                                                 
+    +---> elif we were at SVC mode                                                    
+    |                                                                                 
+    |         +------------+                                                          
+    +-------> | __dabt_svc | get fsr and handle fault accordingly                     
+              +------------+                                                          
+```
+
+```
++------------+                                                                     
+| __dabt_svc | get fsr and handle fault accordingly                                
++--|---------+                                                                     
+   |    +-----------+                                                              
+   |--> | svc_entry | save registers to stack for later restore                    
+   |    +-----------+                                                              
+   |    +-------------+                                                            
+   |--> | dabt_helper | call processor specific ->_data_abort() to handle the fault
+   |    +-------------+                                                            
+   |    +----------+                                                               
+   +--> | svc_exit | restore registers from stack                                  
+        +----------+                                                               
+```
+
+```
++------------+                                                                             
+| __dabt_usr | get fsr and handle fault accordingly, return to user mode                   
++--|---------+                                                                             
+   |    +-----------+                                                                      
+   |--> | usr_entry | store r0 ~ r12, sp_usr, lr_usr, old pc to sp_svc                     
+   |    +-----------+                                                                      
+   |    +-------------+                                                                    
+   |--> | dabt_helper |                                                                    
+   |    +---|---------+                                                                    
+   |        |                                                                              
+   |        +--> call v6_processor_functions->_data_abort(), e.g.,                         
+   |             +----------------+                                                        
+   |             | v6_early_abort | get fsr and handle the fault accordingly               
+   |             +----------------+                                                        
+   |    +--------------------+                                                             
+   +--> | ret_from_exception | handle pending work, restore user mode regs and switch to it
+        +--------------------+                                                             
+```
+
+```
++----------------+                                         
+| v6_early_abort | get fsr and handle the fault accordingly
++---|------------+                                         
+    |                                                      
+    |--> get 'fsr' and 'far' from coprocessor              
+    |                                                      
+    |    +--------------+                                  
+    +--> | do_DataAbort |                                  
+         +---|----------+                                  
+             |                                             
+             |--> get target fsr_info using fsr as index   
+             |                                             
+             |--> call ->fn(), e.g.,                       
+             |    +---------------+                        
+             |    | do_page_fault | handle page fault      
+             |    +---------------+                        
+             |                                             
+             |--> if it's handled properly                 
+             |                                             
+             |------> return                               
+             |                                             
+             |    +----------------+                       
+             +--> | arm_notify_die |                       
+                  +----------------+                       
+```
+
 ```
 +---------------+                                                                                                                              
 | do_page_fault |                                                                                                                              
