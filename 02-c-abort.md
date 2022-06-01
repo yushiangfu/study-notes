@@ -44,6 +44,8 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
               +-  from kernel  --+                                                      
 ```
 
+Based on the index fetched from FSR or IFSR, the corresponding function, mainly **do_page_fault**, will be called to handle the fault correctly.
+
 ```
 static struct fsr_info fsr_info[] = { 
     { do_bad,               SIGSEGV, 0,             "vector exception"         },  
@@ -304,6 +306,42 @@ If either parent or child tries to write data into any of these pages, the actio
                                             -        1. the child tries to write the page              
                                                      2. fault happens and a duplicated page is prepared
                                                      3. update page table entry to point to it         
+```
+
+### Fault on Anonymous Area
+
+When an anonymous area is accessed while its page entry isn't ready yet, the fault happens and is trapped by the processor. 
+The kernel first attempts to look up if that address is a 'valid' fault or not by checking whether it lies in any existent VMA. 
+If that VMA is of an anonymous type, such as heap memory, then the kernel allocates a page frame and fills the corresponding page table entry. 
+Everything is ready, and the flow goes back to the logic following the initial access.
+
+```
+                                  accessing any of                                      
+                                  these areas triggers                                  
+                                  a valid fault                                         
+ physical address                              |           virtual address              
+                                               |                                        
+ |              |                              |           |              |low          
+ |              |                              |           |              |             
+ |%%%%%%%%%%%%%%| ------------+                |-------->  |##############| <---- vma   
+ |%%%%%%%%%%%%%%|             |                |           |              |             
+ |%%%%%%%%%%%%%%|             |                |           |              |             
+ |%%%%%%%%%%%%%%|             |                |-------->  |##############| <---- vma   
+ |              |             |                |           |              |             
+ |              |             |                +-------->  |##############| <---- vma   
+ |              |             |   +------+                 |              |             
+ |              |             |   |      |                 |              | user space  
+ |              |             |   |      |            -------------------------         
+ |              |             |   |      |                 |              | kernel space
+ |              |             |   |      |         |-----  |##############|             
+ |              |             +-- |------|  -------+       |              |             
+ |              |                 +------+                 |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              | high        
 ```
 
 <details>
