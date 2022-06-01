@@ -31,17 +31,59 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
 - Fault on VMA of file type
 
 ```
-              |-  from user    --+                                                      
+              +-  from user    --+                                                      
  Prefetch     |                  | (refer to FSR)
   Abort  -----+                  |                                                      
               +-  from kernel  --|                             1. copy on write         
                                  |                             2. valid fault: anonymous
                                  +-------- handle page fault   3. valid fault: file     
                                  |                             4. write protect?        
-              |-  from user    --|                             5. genuine fault            
+              +-  from user    --|                             5. genuine fault            
   Data        |                  |                                                      
   Abort  -----+                  | (refer to IFSR)                                                    
               +-  from kernel  --+                                                      
+```
+
+```
+static struct fsr_info fsr_info[] = { 
+    { do_bad,               SIGSEGV, 0,             "vector exception"         },  
+    { do_bad,               SIGBUS,  BUS_ADRALN,    "alignment exception"          },  
+    { do_bad,               SIGKILL, 0,             "terminal exception"           },  
+    { do_bad,               SIGBUS,  BUS_ADRALN,    "alignment exception"          },  
+    { do_bad,               SIGBUS,  0,             "external abort on linefetch"      },  
+    { do_translation_fault, SIGSEGV, SEGV_MAPERR,   "section translation fault"    },  
+    { do_bad,               SIGBUS,  0,             "external abort on linefetch"      },  
+    { do_page_fault,        SIGSEGV, SEGV_MAPERR,   "page translation fault"       },  
+    { do_bad,               SIGBUS,  0,             "external abort on non-linefetch"  },  
+    { do_bad,               SIGSEGV, SEGV_ACCERR,   "section domain fault"         },  
+    { do_bad,               SIGBUS,  0,             "external abort on non-linefetch"  },  
+    { do_bad,               SIGSEGV, SEGV_ACCERR,   "page domain fault"        },  
+    { do_bad,               SIGBUS,  0,             "external abort on translation"    },  
+    { do_sect_fault,        SIGSEGV, SEGV_ACCERR,   "section permission fault"     },  
+    { do_bad,               SIGBUS,  0,             "external abort on translation"    },  
+    { do_page_fault,        SIGSEGV, SEGV_ACCERR,   "page permission fault"        },  
+...
+}
+
+static struct fsr_info ifsr_info[] = {
+    { do_bad,               SIGBUS,  0,             "unknown 0"            },
+    { do_bad,               SIGBUS,  0,             "unknown 1"            },
+    { do_bad,               SIGBUS,  0,             "debug event"              },
+    { do_bad,               SIGSEGV, SEGV_ACCERR,   "section access flag fault"    },
+    { do_bad,               SIGBUS,  0,             "unknown 4"            },
+    { do_translation_fault, SIGSEGV, SEGV_MAPERR,   "section translation fault"    },
+    { do_bad,               SIGSEGV, SEGV_ACCERR,   "page access flag fault"       },
+    { do_page_fault,        SIGSEGV, SEGV_MAPERR,   "page translation fault"       },
+    { do_bad,               SIGBUS,  0,             "external abort on non-linefetch"  },
+    { do_bad,               SIGSEGV, SEGV_ACCERR,   "section domain fault"         },
+    { do_bad,               SIGBUS,  0,             "unknown 10"               },
+    { do_bad,               SIGSEGV, SEGV_ACCERR,   "page domain fault"        },
+    { do_bad,               SIGBUS,  0,             "external abort on translation"    },
+    { do_sect_fault,        SIGSEGV, SEGV_ACCERR,   "section permission fault"     },
+    { do_bad,               SIGBUS,  0,             "external abort on translation"    },
+    { do_page_fault,        SIGSEGV, SEGV_ACCERR,   "page permission fault"        },
+...
+}
 ```
 
 <details>
@@ -223,6 +265,50 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
 
 ## <a name="fault"></a> Fault
 
+### Copy on Write
+
+When a task forks a child, the kernel duplicates **mm**-related structures, including page tables, so the child task has its own. 
+However, the family still shares the page frames mostly since **fork** is usually followed by **execve**, making the page copy seem redundant. 
+If either parent or child tries to write data into any of these pages, the action will be trapped, and a duplicated page will be prepared accordingly.
+
+```
+   parent                                                                       child                  
+    task                                                                         task                  
+  +------+                                                                     +------+                
++--- mm  |                                                                     |  mm ---+              
+| +------+                                                                     +------+ |              
+|                                                                                       |              
++--> mm                                                                           mm <--+              
+  +------+                                                                     +------+                
++---pgd  |                             page frames                             | pgd----+              
+| +------+                              +-------+                              +------+ |              
+|                                       +-------+                                       |              
+| 1st level   +-> 2nd level      +->    +-------+    <--+     2nd level <--+  1st level |              
++->+-----+    |    +-----+       |      +-------+       |      +-----+     |   +-----<--+              
+   |-----|    |    |-----|       |      +-------+       -      |-----|     -   |-----|                 
+   |-----| ---|    |-----|    ---|      +-------+       +--    |-----|     +-- |-----|                 
+   |-----|         |-----|              +-------+              |-----|         |-----|                 
+   |-----| ---|    |-----|    ----->    +-------+    <-----    |-----|     +-- |-----|                 
+   +-----+    |    +-----+              +-------+              +-----+     |   +-----+                 
+              |                         +-------+                          |                           
+              +-> 2nd level             +-------+             2nd level <--|                           
+                   +-----+              +-------+              +-----+                                 
+                   |-----|    ----->    +-------+    <-----    |-----|                                 
+                   |-----|              +-------+              |-----|                                 
+                   |-----|              +-------+              |-----|                                 
+                   |-----|    ----->    +-------+       ---    |-----|                                 
+                   +-----+              +-------+    <-/       +-----+                                 
+                                        +-------+                                                      
+                                            -                                                          
+                                            -        e.g.,                                             
+                                            -        1. the child tries to write the page              
+                                                     2. fault happens and a duplicated page is prepared
+                                                     3. update page table entry to point to it         
+```
+
+<details>
+  <summary> Code trace </summary>
+
 ```
 +---------------+                                                                                                                              
 | do_page_fault |                                                                                                                              
@@ -305,25 +391,27 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
 ```
 
 ```
-+------------+                                                      
-| do_wp_page | handle the fault of copy-on-write                    
-+--|---------+                                                      
-   |    +----------------+                                          
-   |--> | vm_normal_page | get struct page of give pte              
-   |    +----------------+                                          
-   |    +--------------+                                            
-   +--> | wp_page_copy |                                            
-        +---|----------+                                            
-            |                                                       
-            |--> allocate a page                                    
-            |                                                       
-            |    +---------------+                                  
-            |--> | cow_user_page | copy data from src to dst page   
-            |    +---------------+                                  
-            |                                                       
-            |    +------------------------+                         
-            +--> | page_add_new_anon_rmap | set up anon rmap of page
-                 +------------------------+                         
++-------------------+                                                                  
+| do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
++----|--------------+                                                                  
+     |    +-----------+                                                                
+     |--> | pte_alloc | ensure the pte table exists                                    
+     |    +-----------+                                                                
+     |    +------------------------------------+                                       
+     |--> | alloc_zeroed_user_highpage_movable | allocate a highmem page               
+     |    +------------------------------------+                                       
+     |    +--------+                                                                   
+     |--> | mk_pte | prepare pte value                                                 
+     |    +--------+                                                                   
+     |    +------------------------+                                                   
+     |--> | page_add_new_anon_rmap | (skip for now)                                    
+     |    +------------------------+                                                   
+     |    +---------------------------------------+                                    
+     |--> | lru_cache_add_inactive_or_unevictable | (skip for now)                     
+     |    +---------------------------------------+                                    
+     |    +------------+                                                               
+     +--> | set_pte_at | update pte entry                                              
+          +------------+                                                               
 ```
 
 ```
@@ -350,30 +438,6 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
    |        +-----------------+                                                                
    +------> | do_shared_fault | ensure 2nd-level table exists, call ->fault(), dirty the page  
             +-----------------+                                                                
-```
-
-```
-+-------------------+                                                                  
-| do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
-+----|--------------+                                                                  
-     |    +-----------+                                                                
-     |--> | pte_alloc | ensure the pte table exists                                    
-     |    +-----------+                                                                
-     |    +------------------------------------+                                       
-     |--> | alloc_zeroed_user_highpage_movable | allocate a highmem page               
-     |    +------------------------------------+                                       
-     |    +--------+                                                                   
-     |--> | mk_pte | prepare pte value                                                 
-     |    +--------+                                                                   
-     |    +------------------------+                                                   
-     |--> | page_add_new_anon_rmap | (skip for now)                                    
-     |    +------------------------+                                                   
-     |    +---------------------------------------+                                    
-     |--> | lru_cache_add_inactive_or_unevictable | (skip for now)                     
-     |    +---------------------------------------+                                    
-     |    +------------+                                                               
-     +--> | set_pte_at | update pte entry                                              
-          +------------+                                                               
 ```
 
 ```
@@ -421,6 +485,30 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
      +--> | fault_dirty_shared_page | dirty the page                             
           +-------------------------+                                            
 ```
+
+```
++------------+                                                      
+| do_wp_page | handle the fault of copy-on-write                    
++--|---------+                                                      
+   |    +----------------+                                          
+   |--> | vm_normal_page | get struct page of give pte              
+   |    +----------------+                                          
+   |    +--------------+                                            
+   +--> | wp_page_copy |                                            
+        +---|----------+                                            
+            |                                                       
+            |--> allocate a page                                    
+            |                                                       
+            |    +---------------+                                  
+            |--> | cow_user_page | copy data from src to dst page   
+            |    +---------------+                                  
+            |                                                       
+            |    +------------------------+                         
+            +--> | page_add_new_anon_rmap | set up anon rmap of page
+                 +------------------------+                         
+```
+  
+</details>
 
 ## <a name="reference"></a> Reference
 
