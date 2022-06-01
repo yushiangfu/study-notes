@@ -344,6 +344,12 @@ Everything is ready, and the flow goes back to the logic following the initial a
  |              |                                          |              | high        
 ```
 
+### Fault on File-Backed Area
+
+The fault on the file-backed area is quite similar to the anonymous one, except it further reads in part of the data from the specified file. 
+And therefore, it involves address space and even a block layer if the data comes from persistent storage. 
+Not gonna dive into that since I know nothing about them right now.
+
 <details>
   <summary> Code trace </summary>
 
