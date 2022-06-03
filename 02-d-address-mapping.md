@@ -766,6 +766,70 @@
       +------> remove page from kmap list                                    
 ```
 
+```
++----------+                                                                                                             
+| ovl_mmap |                                                                                                             
++--|-------+                                                                                                             
+   |                                                                                                                     
+   |--> get read file from private data                                                                                  
+   |                                                                                                                     
+   |    +--------------+                                                                                                 
+   +--> | vma_set_file | vma->vm_file = read_file                                                                        
+        +--------------+                                                                                                 
+        +-----------+                                                                                                    
+        | call_mmap |                                                                                                    
+        +--|--------+                                                                                                    
+           |                                                                                                             
+           +--> call ->mmap(), e.g.,                                                                                     
+                +----------------------------+                                                                           
+                | generic_file_readonly_mmap |                                                                           
+                +------|---------------------+                                                                           
+                       |    +-------------------+                                                                        
+                       +--> | generic_file_mmap | vma->vm_ops = generic_file_vm_ops                                      
+                            +-------------------+                                                                        
+                                                                const struct vm_operations_struct generic_file_vm_ops = {
+                                                                    .fault      = filemap_fault,                         
+                                                                    .map_pages  = filemap_map_pages,                     
+                                                                    .page_mkwrite   = filemap_page_mkwrite,              
+                                                                };                                                       
+```
+
+```
++-------------------+                                                        
+| filemap_map_pages |                                                        
++----|--------------+                                                        
+     |    +----------------+                                                 
+     |--> | first_map_page | get first page of mapping                       
+     |    +----------------+                                                 
+     |    +-----------------+                                                
+     |--> | filemap_map_pmd |                                                
+     |    +----|------------+                                                
+     |         |                                                             
+     |         |--> if pmd isn't set                                         
+     |         |                                                             
+     |         |        +--------------+                                     
+     |         +------> | pmd_populate | have pmd point to the 2nd page table
+     |                  +--------------+                                     
+     |    +---------------------+                                            
+     |--> | pte_offset_map_lock | get pte ptr based on addr                  
+     |    +---------------------+                                            
+     |                                                                       
+     |--> for each page within range                                         
+     |                                                                       
+     |        +--------------+                                               
+     |------> | find_subpage | ???                                           
+     |        +--------------+                                               
+     |                                                                       
+     |------> update addr and offset                                         
+     |                                                                       
+     |        +------------+                                                 
+     |------> | do_set_pte | handle rmap and set pte                         
+     |        +------------+                                                 
+     |    +---------------+                                                  
+     +--> | next_map_page | get next page                                    
+          +---------------+                                                  
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
