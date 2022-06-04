@@ -133,7 +133,7 @@ static struct mtd_blktrans_ops mtdblock_tr = {          --+
 
 ```
 +------------------+                                                              
-| blkdev_readahead |                                                              
+| blkdev_readahead | : prepare a bio, add page buffer to it, and submit that bio
 +----|-------------+                                                              
      |    +-----------------+                                                     
      +--> | mpage_readahead |                                                     
@@ -165,7 +165,7 @@ static struct mtd_blktrans_ops mtdblock_tr = {          --+
 
 ```
 +-----------------+                                         
-| blkdev_readpage |                                         
+| blkdev_readpage | : 
 +----|------------+                                         
      |    +----------------------+                          
      +--> | block_read_full_page |                          
@@ -300,7 +300,7 @@ static struct mtd_blktrans_ops mtdblock_tr = {          --+
 
 ```
 +------------+                                                                                             
-| submit_bio |                                                                                             
+| submit_bio | : append bio to task or wrap as request and add to a queue
 +--|---------+                                                                                             
    |    +-------------------+                                                                              
    +--> | submit_bio_noacct |                                                                              
@@ -329,7 +329,7 @@ static struct mtd_blktrans_ops mtdblock_tr = {          --+
 
 ```
 +--------------+
-| __submit_bio | prepare 'request' and add to a queue
+| __submit_bio | : prepare 'request' and add to a queue
 +---|----------+
     |
     |--> if disk has ->submit_bio()
