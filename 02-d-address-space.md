@@ -92,7 +92,7 @@
                            +--> | do_page_cache_ra |                                                                        
                                 +----|-------------+                                                                        
                                      |    +-------------------------+                                                       
-                                     +--> | page_cache_ra_unbounded |                                                       
+                                     +--> | page_cache_ra_unbounded | : ensure pages exist, and read data to them
                                           +------|------------------+                                                       
                                                  |                                                                          
                                                  |--> for each index in the mapping range                                   
@@ -100,7 +100,7 @@
                                                  |------> if page exist already                         -+                  
                                                  |                                                       |                  
                                                  |            +------------+                             |                  
-                                                 |----------> | read_pages | (traced separately)         |                  
+                                                 |----------> | read_pages | plug, submit read-type bio, unplug
                                                  |            +------------+                             |                  
                                                  |                                                       |                  
                                                  |------> else                                           |  simplified
@@ -118,7 +118,7 @@
 
 ```
 +------------+                                                
-| read_pages |                                                
+| read_pages | : plug, submit read-type bio, unplug
 +--|---------+                                                
    |    +----------------+                                    
    |--> | blk_start_plug | prepare a plug for the current task
@@ -128,7 +128,7 @@
    |                                                          
    |------> call ->readahead(), e.g.,                         
    |        +------------------+                              
-   |        | blkdev_readahead | (refer to the below)         
+   |        | blkdev_readahead | prepare a bio, add page buffer to it, and submit that bio
    |        +------------------+                              
    |                                                          
    |--> else if ->readpages() exists                          
@@ -828,6 +828,42 @@
      |    +---------------+                                                  
      +--> | next_map_page | get next page                                    
           +---------------+                                                  
+```
+
+```
++---------------+                                                                            
+| filemap_fault |                                                                            
++---|-----------+                                                                            
+    |    +---------------+                                                                   
+    |--> | find_get_page | find page in mapping                                              
+    |    +---------------+                                                                   
+    |                                                                                        
+    |--> if found                                                                            
+    |                                                                                        
+    |        +-------------------------+                                                     
+    |------> | do_async_mmap_readahead | asynchronously read ahead if the page has such label
+    |        +-------------------------+                                                     
+    |                                                                                        
+    |--> else                                                                                
+    |                                                                                        
+    |        +------------------------+                                                      
+    +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
+             +------------------------+                                                      
+```
+
+```
++--------------------+                                                                   
+| ondemand_readahead | : set up ra, ensure pages exist, and read data to them            
++----|---------------+                                                                   
+     |                                                                                   
+     |--> set up ra attributes (1: expected, 2: hit ra marker)                           
+     |                                                                                   
+     |    +------------------+                                                           
+     +--> | do_page_cache_ra |                                                           
+          +----|-------------+                                                           
+               |    +-------------------------+                                          
+               +--> | page_cache_ra_unbounded | ensure pages exist, and read data to them
+                    +-------------------------+                                          
 ```
 
 ## <a name="reference"></a> Reference
