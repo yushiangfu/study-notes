@@ -6,6 +6,46 @@
 
 ## <a name="introduction"></a> Introduction
 
+Address space is the concept of either file or device content, and it plays the role of page cache between user applications and content on the device. 
+Usually, backing stores such as drives work relatively slowly compared to the operation in memory, and the page cache is designed to solve the problem. 
+Applications can operate data smoothly in memory while the kernel handles the read, write, and sync action toward the storage.
+
+```
+                                   xarray                     
+                               (or radix tree)                
+                                                              
+                               +-------------+                
+                               | | | | | | | |                
+                               +-------------+                
+                                    |   |                     
+                    +---------------+   +-------+             
+                    v                           v             
+                   +-------------+             +-------------+
+                   | | | | | | | |             | | | | | | | |
+                   +-------------+             +-------------+
+                      |   |                       |       |   
+                      v   v                       v       v   
+                     +-+ +-+                     +-+    +-+   
+                     |p| |p|                     |p|    |p|   
+                     |a| |a|                     |a|    |a|   
+                     |g| |g|                     |g|    |g|   
+   file              |e| |e|                     |e|    |e|   
+    in               +-+ +-+                     +-+    +-+   
+  concept                                                     
+  +-----+             |   |                       |      |    
+  |     |             |   |                       |      |    
+  |||||||  <----------+   |                       |      |    
+  |     |                 |                       |      |    
+  |     |                 |                       |      |    
+  |||||||  <--------------+                       |      |    
+  |     |                                         |      |    
+  |     |                                         |      |    
+  |||||||  <--------------------------------------+      |    
+  |||||||  <---------------------------------------------+    
+  |     |                                                     
+  +-----+                                                     
+```
+
 ```
 +------------------------+                                                       
 | generic_file_read_iter | read data from page of mapping
