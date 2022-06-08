@@ -53,10 +53,29 @@ Each node contains a fixed number of pointers that point to either:
   +-----+                                                     
 ```
 
-Assuming the address space represents the content of a file, only the pieces of interest are within the tree while otheres remain untouced in storage.
-There's the address operation set (aops) installed initially and triggered when operations such as read, write happens.
-Here are the examples of **aops** for block device and file separately.
+Assuming the address space represents the content of a file, only the pieces of interest are within the tree while others remain untouched in storage. 
+The address operation set (aops) is installed initially and triggered when reading and writing operations happen. 
+Here are the examples of **aops** for block devices and files separately.
 
+```
+                  +--------------+                      |                  +----------------+                  
+                  | block device |                      |                  | file＠shmem_fs  |                  
+                  +--------------+                      |                  +----------------+                  
+                                                        |                                                      
+                                                        |                                                      
+ const struct address_space_operations def_blk_aops = { | const struct address_space_operations shmem_aops = { 
+     .set_page_dirty = __set_page_dirty_buffers,        |     .writepage          = shmem_writepage,           
+     .readpage           = blkdev_readpage,             |     .set_page_dirty 	= __set_page_dirty_no_writeback,
+     .readahead          = blkdev_readahead,            |     .write_begin        = shmem_write_begin,         
+     .writepage          = blkdev_writepage,            |     .write_end          = shmem_write_end,           
+     .write_begin        = blkdev_write_begin,          |     .migratepage    	= migrate_page,                 
+     .write_end          = blkdev_write_end,            |     .error_remove_page 	= generic_error_remove_page, 
+     .writepages         = blkdev_writepages,           | };                                                   
+     .direct_IO          = blkdev_direct_IO,            |                                                      
+     .migratepage    	= buffer_migrate_page_norefs,     |                                                      
+     .is_dirty_writeback = buffer_check_dirty_writeback,|                                                      
+ };                                                     |                                                      
+```
 
 ```
 +------------------------+                                                       
