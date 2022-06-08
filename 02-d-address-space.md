@@ -10,6 +10,13 @@ Address space is the concept of either file or device content, and it plays the 
 Usually, backing stores such as drives work relatively slowly compared to the operation in memory, and the page cache is designed to solve the problem. 
 Applications can operate data smoothly in memory while the kernel handles the read, write, and sync action toward the storage.
 
+The management data structure is **xarray**, renamed from the **radix tree** because it acts like a resizable array and has an index-based lookup. 
+Each node contains a fixed number of pointers that point to either:
+
+- nowhere
+- next level node
+- end leaf, usually **page**
+
 ```
                                    xarray                     
                                (or radix tree)                
@@ -45,6 +52,11 @@ Applications can operate data smoothly in memory while the kernel handles the re
   |     |                                                     
   +-----+                                                     
 ```
+
+Assuming the address space represents the content of a file, only the pieces of interest are within the tree while otheres remain untouced in storage.
+There's the address operation set (aops) installed initially and triggered when operations such as read, write happens.
+Here are the examples of **aops** for block device and file separately.
+
 
 ```
 +------------------------+                                                       
