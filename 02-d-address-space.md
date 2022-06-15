@@ -77,79 +77,8 @@ Here are the examples of **aops** for block devices and files separately.
  };                                                     |                                                      
 ```
 
-```
-+------------------+                                                              
-| blkdev_readahead | : prepare a bio, add page buffer to it, and submit that bio
-+----|-------------+                                                              
-     |    +-----------------+                                                     
-     +--> | mpage_readahead |                                                     
-          +----|------------+                                                     
-               |                                                                  
-               |--> while we can get next page buffer from rac (readahead control)
-               |                                                                  
-               |        +-------------------+                                     
-               |------> | do_mpage_readpage |                                     
-               |        +----|--------------+                                     
-               |             |                                                    
-               |             |--> build 'blocks'                                  
-               |             |                                                    
-               |             |--> ensure we have a 'bio'                          
-               |             |                                                    
-               |             |    +--------------+                                
-               |             |--> | bio_add_page | add page to the bio            
-               |             |    +--------------+                                
-               |             |    +------------------+                            
-               |             +--> | mpage_bio_submit | submit bio                 
-               |                  +------------------+                            
-               |                                                                  
-               |--> if it's not yet submitted for any reason                      
-               |                                                                  
-               |        +------------------+                                      
-               +------> | mpage_bio_submit | submit bio                           
-                        +------------------+                                      
-```
-
-```
-+-----------------+                                         
-| blkdev_readpage | : 
-+----|------------+                                         
-     |    +----------------------+                          
-     +--> | block_read_full_page |                          
-          +-----|----------------+                          
-                |    +---------------------+                
-                |--> | create_page_buffers | prepare bh list
-                |    +---------------------+                
-                |                                           
-                |--> build array with the bh list           
-                |                                           
-                |--> for each entity in array               
-                |                                           
-                |        +-----------+                      
-                +------> | submit_bh |                      
-                         +-----------+                      
-```
-
-```
-+------------------+                                    
-| blkdev_writepage |                                    
-+----|-------------+                                    
-     |    +-----------------------+                     
-     +--> | block_write_full_page |                     
-          +-----|-----------------+                     
-                |    +-------------------------+        
-                +--> | __block_write_full_page |        
-                     +------|------------------+        
-                            |    +---------------------+
-                            +--> | create_page_buffers |
-                                 +---------------------+
-                                 +---------------+      
-                                 | submit_bh_wbc |      
-                                 +---|-----------+      
-                                     |    +------------+
-                                     +--> | submit_bio |
-                                          +------------+
-```
-
+<details>
+  <summary> Code trace - VFS layer </summary>
 
 ```
 +-------------+
@@ -182,24 +111,6 @@ Here are the examples of **aops** for block devices and files separately.
      |    +------------------------+                                            
      +--> | generic_file_read_iter | read data from page of mapping
           +------------------------+                                            
-```
-    
-```
-+-------------------+                                                                                        
-| blkdev_write_iter |                                                                                        
-+----|--------------+                                                                                        
-     |    +----------------+                                                                                 
-     |--> | blk_start_plug |                                                                                 
-     |    +----------------+                                                                                 
-     |    +---------------------------+                                                                      
-     |--> | __generic_file_write_iter | copy data to pages of mapping, mark them dirty                       
-     |    +---------------------------+                                                                      
-     |    +--------------------+                                                                             
-     |--> | generic_write_sync | sync back to storage                                                        
-     |    +--------------------+                                                                             
-     |    +-----------------+                                                                                
-     +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
-          +-----------------+                                                                                
 ```
 
 ```
@@ -369,6 +280,89 @@ Here are the examples of **aops** for block devices and files separately.
       +--> | pagevec_add | add the page to pvec                                 
            +-------------+                                                      
 ```
+  
+```
++-------------------+                                                                                        
+| blkdev_write_iter |                                                                                        
++----|--------------+                                                                                        
+     |    +----------------+                                                                                 
+     |--> | blk_start_plug |                                                                                 
+     |    +----------------+                                                                                 
+     |    +---------------------------+                                                                      
+     |--> | __generic_file_write_iter | copy data to pages of mapping, mark them dirty                       
+     |    +---------------------------+                                                                      
+     |    +--------------------+                                                                             
+     |--> | generic_write_sync | sync back to storage                                                        
+     |    +--------------------+                                                                             
+     |    +-----------------+                                                                                
+     +--> | blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
+          +-----------------+                                                                                
+```
+
+```
++---------------------------+                                                      
+| __generic_file_write_iter | copy data to pages of mapping, mark them dirty       
++------|--------------------+                                                      
+       |                                                                           
+       |--> if 'DIRECT' flag is set                                                
+       |                                                                           
+       |------> (skip, not my case here)                                           
+       |                                                                           
+       |--> else                                                                   
+       |                                                                           
+       |        +-----------------------+                                          
+       +------> | generic_perform_write |                                          
+                +-----|-----------------+                                          
+                      |                                                            
+                      |--> while we haven't written enough                         
+                      |                                                            
+                      |------> call ->write_begin(), e.g.,                         
+                      |        +--------------------+                              
+                      |        | blkdev_write_begin | get a page from mapping      
+                      |        +--------------------+                              
+                      |        +----------------------------+                      
+                      |------> | copy_page_from_iter_atomic | copy data to the page
+                      |        +----------------------------+                      
+                      |                                                            
+                      +------> call ->write_end(), e.g.,                           
+                               +------------------+                                
+                               | blkdev_write_end | mark buffer dirty              
+                               +------------------+                                
+```
+
+```
++--------------------+                                                                                
+| blkdev_write_begin |                                                                                
++----|---------------+                                                                                
+     |    +-------------------+                                                                       
+     +--> | block_write_begin |                                                                       
+          +----|--------------+                                                                       
+               |    +-----------------------------+                                                   
+               |--> | grab_cache_page_write_begin | get a page from mapping, or allocate one otherwise
+               |    +-----------------------------+                                                   
+               |    +---------------------+                                                           
+               +--> | __block_write_begin |                                                           
+                    +-----|---------------+                                                           
+                          |    +-------------------------+                                            
+                          +--> | __block_write_begin_int |                                            
+                               +------|------------------+                                            
+                                      |                                                               
+                                      |--> for each block head (bh) in list                           
+                                      |                                                               
+                                      +------> adjust bh status                                       
+```
+
+```
++------------------+                                          
+| blkdev_write_end |                                          
++----|-------------+                                          
+     |    +-----------------+                                 
+     +--> | block_write_end |                                 
+          +----|------------+                                 
+               |    +----------------------+                  
+               +--> | __block_commit_write | mark buffer dirty
+                    +----------------------+                  
+```
 
 ```
 +---------------+                                                                                                                   
@@ -434,71 +428,81 @@ Here are the examples of **aops** for block devices and files separately.
                        +-----------------+                                                                                
 ```
 
+</details>
+  
 ```
-+--------------------+                                                                                
-| blkdev_write_begin |                                                                                
-+----|---------------+                                                                                
-     |    +-------------------+                                                                       
-     +--> | block_write_begin |                                                                       
-          +----|--------------+                                                                       
-               |    +-----------------------------+                                                   
-               |--> | grab_cache_page_write_begin | get a page from mapping, or allocate one otherwise
-               |    +-----------------------------+                                                   
-               |    +---------------------+                                                           
-               +--> | __block_write_begin |                                                           
-                    +-----|---------------+                                                           
-                          |    +-------------------------+                                            
-                          +--> | __block_write_begin_int |                                            
-                               +------|------------------+                                            
-                                      |                                                               
-                                      |--> for each block head (bh) in list                           
-                                      |                                                               
-                                      +------> adjust bh status                                       
++------------------+                                                              
+| blkdev_readahead | : prepare a bio, add page buffer to it, and submit that bio
++----|-------------+                                                              
+     |    +-----------------+                                                     
+     +--> | mpage_readahead |                                                     
+          +----|------------+                                                     
+               |                                                                  
+               |--> while we can get next page buffer from rac (readahead control)
+               |                                                                  
+               |        +-------------------+                                     
+               |------> | do_mpage_readpage |                                     
+               |        +----|--------------+                                     
+               |             |                                                    
+               |             |--> build 'blocks'                                  
+               |             |                                                    
+               |             |--> ensure we have a 'bio'                          
+               |             |                                                    
+               |             |    +--------------+                                
+               |             |--> | bio_add_page | add page to the bio            
+               |             |    +--------------+                                
+               |             |    +------------------+                            
+               |             +--> | mpage_bio_submit | submit bio                 
+               |                  +------------------+                            
+               |                                                                  
+               |--> if it's not yet submitted for any reason                      
+               |                                                                  
+               |        +------------------+                                      
+               +------> | mpage_bio_submit | submit bio                           
+                        +------------------+                                      
+```
+
+```
++-----------------+                                         
+| blkdev_readpage | : 
++----|------------+                                         
+     |    +----------------------+                          
+     +--> | block_read_full_page |                          
+          +-----|----------------+                          
+                |    +---------------------+                
+                |--> | create_page_buffers | prepare bh list
+                |    +---------------------+                
+                |                                           
+                |--> build array with the bh list           
+                |                                           
+                |--> for each entity in array               
+                |                                           
+                |        +-----------+                      
+                +------> | submit_bh |                      
+                         +-----------+                      
 ```
 
 ```
-+------------------+                                          
-| blkdev_write_end |                                          
-+----|-------------+                                          
-     |    +-----------------+                                 
-     +--> | block_write_end |                                 
-          +----|------------+                                 
-               |    +----------------------+                  
-               +--> | __block_commit_write | mark buffer dirty
-                    +----------------------+                  
++------------------+                                    
+| blkdev_writepage |                                    
++----|-------------+                                    
+     |    +-----------------------+                     
+     +--> | block_write_full_page |                     
+          +-----|-----------------+                     
+                |    +-------------------------+        
+                +--> | __block_write_full_page |        
+                     +------|------------------+        
+                            |    +---------------------+
+                            +--> | create_page_buffers |
+                                 +---------------------+
+                                 +---------------+      
+                                 | submit_bh_wbc |      
+                                 +---|-----------+      
+                                     |    +------------+
+                                     +--> | submit_bio |
+                                          +------------+
 ```
-
-```
-+---------------------------+                                                      
-| __generic_file_write_iter | copy data to pages of mapping, mark them dirty       
-+------|--------------------+                                                      
-       |                                                                           
-       |--> if 'DIRECT' flag is set                                                
-       |                                                                           
-       |------> (skip, not my case here)                                           
-       |                                                                           
-       |--> else                                                                   
-       |                                                                           
-       |        +-----------------------+                                          
-       +------> | generic_perform_write |                                          
-                +-----|-----------------+                                          
-                      |                                                            
-                      |--> while we haven't written enough                         
-                      |                                                            
-                      |------> call ->write_begin(), e.g.,                         
-                      |        +--------------------+                              
-                      |        | blkdev_write_begin | get a page from mapping      
-                      |        +--------------------+                              
-                      |        +----------------------------+                      
-                      |------> | copy_page_from_iter_atomic | copy data to the page
-                      |        +----------------------------+                      
-                      |                                                            
-                      +------> call ->write_end(), e.g.,                           
-                               +------------------+                                
-                               | blkdev_write_end | mark buffer dirty              
-                               +------------------+                                
-```
-
+   
 ```
 +---------------------+                                          
 | unmap_mapping_range |                                          
