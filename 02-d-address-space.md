@@ -64,17 +64,58 @@ Here are the examples of **aops** for block devices and files separately.
                                                         |                                                      
                                                         |                                                      
  const struct address_space_operations def_blk_aops = { | const struct address_space_operations shmem_aops = { 
-     .set_page_dirty = __set_page_dirty_buffers,        |     .writepage          = shmem_writepage,           
-     .readpage           = blkdev_readpage,             |     .set_page_dirty 	= __set_page_dirty_no_writeback,
-     .readahead          = blkdev_readahead,            |     .write_begin        = shmem_write_begin,         
-     .writepage          = blkdev_writepage,            |     .write_end          = shmem_write_end,           
-     .write_begin        = blkdev_write_begin,          |     .migratepage    	= migrate_page,                 
-     .write_end          = blkdev_write_end,            |     .error_remove_page 	= generic_error_remove_page, 
+     .set_page_dirty = __set_page_dirty_buffers,        |     .writepage         = shmem_writepage,           
+     .readpage           = blkdev_readpage,             |     .set_page_dirty 	 = __set_page_dirty_no_writeback,
+     .readahead          = blkdev_readahead,            |     .write_begin       = shmem_write_begin,         
+     .writepage          = blkdev_writepage,            |     .write_end         = shmem_write_end,           
+     .write_begin        = blkdev_write_begin,          |     .migratepage    	 = migrate_page,                 
+     .write_end          = blkdev_write_end,            |     .error_remove_page = generic_error_remove_page, 
      .writepages         = blkdev_writepages,           | };                                                   
      .direct_IO          = blkdev_direct_IO,            |                                                      
-     .migratepage    	= buffer_migrate_page_norefs,     |                                                      
+     .migratepage        = buffer_migrate_page_norefs,  |                                                      
      .is_dirty_writeback = buffer_check_dirty_writeback,|                                                      
  };                                                     |                                                      
+```
+
+When a user reads a range within a file, the VFS layer reads data from the xarray, the page cache between applications, and the backing store. 
+For those absent slots, the address space layer submits bio requests queued in the task plug list. 
+The kernel also attempts to perform some asynchronous read, which reduces the waiting time if the following content is accessed soon.
+Then the VFS layer flushes all the bio requests to the block layer for actual IO processing and installs pages to the xarray.
+
+```
+    vfs
+                                       │
+                                       │
+        ───────────────────────────────┼───────────────────────────────────
+                                       │
+                                       ▼
+                                     xarray
+                                 (or radix tree)
+
+                                 +-------------+
+                                 | | | | | | | |
+                                 +-------------+
+                                      |   |
+                      +---------------+   +-------+
+                      v                           v
+address              +-------------+             +-------------+
+  space              | | | | | | | |             | | | | | | | |
+                     +-------------+             +-------------+
+                        |   |     |                 |   |   |
+                        v   v     v                 v   v   v
+                       +-+ +-+                     +-+    +-+
+                       |p| |p|    ?                |p|  ? |p|
+                       |a| |a|                     |a|    |a|
+                       |g| |g|                     |g|    |g|
+                       |e| |e|                     |e|    |e|
+                       +-+ +-+    │                +-+  │ +-+
+                                  │                     │
+        ──────────────────────────┼─────────────────────┼──────────────────
+                                  │                     │
+                                  ▼                     ▼
+  block                         ┌───┐                 ┌───┐
+  layer                         │bio│                 │bio│
+                                └───┘                 └───┘
 ```
 
 <details>
@@ -115,7 +156,7 @@ Here are the examples of **aops** for block devices and files separately.
 
 ```
 +------------------------+                                                       
-| generic_file_read_iter | read data from page of mapping
+| generic_file_read_iter | : read data from page of mapping
 +-----|------------------+                                                       
       |                                                                          
       |--> if 'DIRECT' flag is set                                               
@@ -141,7 +182,7 @@ Here are the examples of **aops** for block devices and files separately.
 
 ```
 +-------------------+                                                                           
-| filemap_get_pages | ensure data is there and up-to-date                                       
+| filemap_get_pages | : ensure data is there and up-to-date                                       
 +----|--------------+                                                                           
      |    +------------------------+                                                            
      |--> | filemap_get_read_batch | save a bunch of page addresses in pvec                     
@@ -301,7 +342,7 @@ Here are the examples of **aops** for block devices and files separately.
 
 ```
 +---------------------------+                                                      
-| __generic_file_write_iter | copy data to pages of mapping, mark them dirty       
+| __generic_file_write_iter | : copy data to pages of mapping, mark them dirty       
 +------|--------------------+                                                      
        |                                                                           
        |--> if 'DIRECT' flag is set                                                
@@ -366,7 +407,7 @@ Here are the examples of **aops** for block devices and files separately.
 
 ```
 +---------------+                                                                                                                   
-| sync_blockdev | sync bdev mapping to back storage                                                                                 
+| sync_blockdev | : sync bdev mapping to back storage                                                                                 
 +---|-----------+                                                                                                                   
     |    +-----------------+                                                                                                        
     +--> | __sync_blockdev |                                                                                                        
@@ -402,7 +443,7 @@ Here are the examples of **aops** for block devices and files separately.
 
 ```
 +---------------+                                                                                                         
-| do_writepages | with specified range, write dirty pages back                                                            
+| do_writepages | : with specified range, write dirty pages back                                                            
 +---|-----------+                                                                                                         
     |                                                                                                                     
     |--> if ->writepages() exists                                                                                         
@@ -464,7 +505,7 @@ Here are the examples of **aops** for block devices and files separately.
 
 ```
 +-----------------+                                         
-| blkdev_readpage | : 
+| blkdev_readpage |
 +----|------------+                                         
      |    +----------------------+                          
      +--> | block_read_full_page |                          
