@@ -172,7 +172,7 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
 ```
 ```
 +-----------------+                                                                                                         
-| blk_finish_plug | for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
+| blk_finish_plug | : for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
 +----|------------+                                                                                                         
      |    +---------------------+                                                                                           
      |--> | blk_flush_plug_list |                                                                                           
@@ -187,7 +187,7 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
      |                     |--> for each entity in mq list                                                                  
      |                     |                                                                                                
      |                     |        +------------------------------+                                                        
-     |                     +------> | blk_mq_sched_insert_requests |                                                        
+     |                     +------> | blk_mq_sched_insert_requests | : deliver rq to elevator or directly to the driver
      |                              +-------|----------------------+                                                        
      |                                      |                                                                               
      |                                      |--> attempt to get elevator from queue                                         
