@@ -82,6 +82,9 @@ For those absent slots, the address space layer submits bio requests queued in t
 The kernel also attempts to perform some asynchronous read, which reduces the waiting time if the following content is accessed soon.
 Then the VFS layer flushes all the bio requests to the block layer for actual IO processing and installs pages to the xarray.
 
+As for the write operation, the kernel first writes data to the xarray and marks involved papes dirty. 
+Later it syncs all the dirtied pages to the backing store in a way specified by address space ops.
+
 ```
     vfs
                                        │
@@ -119,7 +122,7 @@ address              +-------------+             +-------------+
 ```
 
 <details>
-  <summary> Code trace - VFS layer </summary>
+  <summary> Code trace </summary>
 
 ```
 +-------------+
@@ -222,7 +225,7 @@ address              +-------------+             +-------------+
 
 ```
 +---------------------------+                                                                                               
-| page_cache_sync_readahead |                                                                                               
+| page_cache_sync_readahead | : ensure pages exist, and read data to them
 +------|--------------------+                                                                                               
        |                                                                                                                    
        +--> prepare readahead parameters                                                                                    
@@ -299,6 +302,58 @@ address              +-------------+             +-------------+
         +-----------------+                                   
 ```
 
+```
++------------------+                                                              
+| blkdev_readahead | : prepare a bio, add page buffer to it, and submit that bio
++----|-------------+                                                              
+     |    +-----------------+                                                     
+     +--> | mpage_readahead |                                                     
+          +----|------------+                                                     
+               |                                                                  
+               |--> while we can get next page buffer from rac (readahead control)
+               |                                                                  
+               |        +-------------------+                                     
+               |------> | do_mpage_readpage |                                     
+               |        +----|--------------+                                     
+               |             |                                                    
+               |             |--> build 'blocks'                                  
+               |             |                                                    
+               |             |--> ensure we have a 'bio'                          
+               |             |                                                    
+               |             |    +--------------+                                
+               |             |--> | bio_add_page | add page to the bio            
+               |             |    +--------------+                                
+               |             |    +------------------+                            
+               |             +--> | mpage_bio_submit | submit bio                 
+               |                  +------------------+                            
+               |                                                                  
+               |--> if it's not yet submitted for any reason                      
+               |                                                                  
+               |        +------------------+                                      
+               +------> | mpage_bio_submit | submit bio                           
+                        +------------------+                                      
+```
+
+```
++-----------------+                                         
+| blkdev_readpage |
++----|------------+                                         
+     |    +----------------------+                          
+     +--> | block_read_full_page |                          
+          +-----|----------------+                          
+                |    +---------------------+                
+                |--> | create_page_buffers | prepare bh list
+                |    +---------------------+                
+                |                                           
+                |--> build array with the bh list           
+                |                                           
+                |--> for each entity in array               
+                |                                           
+                |        +-----------+                      
+                +------> | submit_bh |                      
+                         +-----------+                      
+```
+  
 ```
 +---------------------+                                                         
 | filemap_create_page |                                                         
@@ -469,60 +524,6 @@ address              +-------------+             +-------------+
                        +-----------------+                                                                                
 ```
 
-</details>
-  
-```
-+------------------+                                                              
-| blkdev_readahead | : prepare a bio, add page buffer to it, and submit that bio
-+----|-------------+                                                              
-     |    +-----------------+                                                     
-     +--> | mpage_readahead |                                                     
-          +----|------------+                                                     
-               |                                                                  
-               |--> while we can get next page buffer from rac (readahead control)
-               |                                                                  
-               |        +-------------------+                                     
-               |------> | do_mpage_readpage |                                     
-               |        +----|--------------+                                     
-               |             |                                                    
-               |             |--> build 'blocks'                                  
-               |             |                                                    
-               |             |--> ensure we have a 'bio'                          
-               |             |                                                    
-               |             |    +--------------+                                
-               |             |--> | bio_add_page | add page to the bio            
-               |             |    +--------------+                                
-               |             |    +------------------+                            
-               |             +--> | mpage_bio_submit | submit bio                 
-               |                  +------------------+                            
-               |                                                                  
-               |--> if it's not yet submitted for any reason                      
-               |                                                                  
-               |        +------------------+                                      
-               +------> | mpage_bio_submit | submit bio                           
-                        +------------------+                                      
-```
-
-```
-+-----------------+                                         
-| blkdev_readpage |
-+----|------------+                                         
-     |    +----------------------+                          
-     +--> | block_read_full_page |                          
-          +-----|----------------+                          
-                |    +---------------------+                
-                |--> | create_page_buffers | prepare bh list
-                |    +---------------------+                
-                |                                           
-                |--> build array with the bh list           
-                |                                           
-                |--> for each entity in array               
-                |                                           
-                |        +-----------+                      
-                +------> | submit_bh |                      
-                         +-----------+                      
-```
-
 ```
 +------------------+                                    
 | blkdev_writepage |                                    
@@ -542,8 +543,11 @@ address              +-------------+             +-------------+
                                      |    +------------+
                                      +--> | submit_bio |
                                           +------------+
-```
-   
+```  
+  
+</details>
+  
+
 ```
 +---------------------+                                          
 | unmap_mapping_range |                                          
