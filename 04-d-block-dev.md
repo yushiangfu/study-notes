@@ -232,6 +232,36 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
 
 </details>
          
+```
++----------+                                                                               
+| add_disk |                                                                               
++--|-------+                                                                               
+   |    +-----------------+                                                                
+   +--> | device_add_disk |                                                                
+        +----|------------+                                                                
+             |    +------------------+                                                     
+             |--> | elevator_init_mq | (skip, there's no any elevator)                     
+             |    +------------------+                                                     
+             |    +------------+                                                           
+             |--> | device_add |                                                           
+             |    +------------+                                                           
+             |    +--------------------+                                                   
+             |--> | blk_register_queue | register the queue to sysfs, label it 'registered'
+             |    +--------------------+                                                   
+             |    +--------------+                                                         
+             |--> | bdi_register | register bdi to bdi_tree and bdi_list                   
+             |    +--------------+                                                         
+             |    +----------------------+                                                 
+             +--> | disk_scan_partitions |                                                 
+                  +----------------------+                                                 
+```
+         
+```
+ loop 	 8  
+ nbd     16
+ mtd      1
+ spi-mtd  7
+```
 ## <a name="reference"></a> Reference
 
 (TBD)
