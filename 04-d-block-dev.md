@@ -237,7 +237,7 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
 | add_disk |                                                                               
 +--|-------+                                                                               
    |    +-----------------+                                                                
-   +--> | device_add_disk |                                                                
+   +--> | device_add_disk | : add device, register bdi, and scan partitions
         +----|------------+                                                                
              |    +------------------+                                                     
              |--> | elevator_init_mq | (skip, there's no any elevator)                     
