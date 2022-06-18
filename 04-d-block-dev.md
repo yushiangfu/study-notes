@@ -262,6 +262,83 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
  mtd      1
  spi-mtd  7
 ```
+
+```
++-------------------+                                                                                                  
+| blk_mq_alloc_disk | : preapre gendisk, and corresponding queue, bdi, and inode                                       
++----|--------------+                                                                                                  
+     |    +---------------------+                                                                                      
+     +--> | __blk_mq_alloc_disk |                                                                                      
+          +-----|---------------+                                                                                      
+                |    +------------------------+                                                                        
+                |--> | blk_mq_init_queue_data |                                                                        
+                |    +-----|------------------+                                                                        
+                |          |    +-----------------+                                                                    
+                |          |--> | blk_alloc_queue | allocate a queue and set up                                        
+                |          |    +-----------------+                                                                    
+                |          |    +-----------------------------+                                                        
+                |          +--> | blk_mq_init_allocated_queue | install ops (e.g., mtd_mq_ops) and further set up queue
+                |               +-----------------------------+                                                        
+                |    +-------------------+                                                                             
+                +--> | __alloc_disk_node | prepare gendisk, bdi, and inode                                             
+                     +----|--------------+                                                                             
+                          |                                                                                            
+                          |--> allocate a gendisk                                                                      
+                          |                                                                                            
+                          |    +-----------+                                                                           
+                          |--> | bdi_alloc | allocate bdi, set up wb and its dwork                                     
+                          |    +-----------+                                                                           
+                          |    +------------+                                                                          
+                          |--> | bdev_alloc | allocate inode for the bdev                                              
+                          |    +------------+                                                                          
+                          |                                                                                            
+                          +--> set up gendisk                                                                          
+```
+
+```
++-----------+                                                                                         
+| bdi_alloc | ： allocate bdi, set up wb and its dwork                                                 
++--|--------+                                                                                         
+   |                                                                                                  
+   |--> allocate a bdi                                                                                
+   |                                                                                                  
+   |    +----------+                                                                                  
+   +--> | bdi_init |                                                                                  
+        +--|-------+                                                                                  
+           |    +---------------+                                                                     
+           +--> | cgwb_bdi_init |                                                                     
+                +---|-----------+                                                                     
+                    |    +---------+                                                                  
+                    +--> | wb_init |                                                                  
+                         +--|------+                                                                  
+                            |                                                                         
+                            |--> set up wb                                                            
+                            |                         +-----------+                                   
+                            +--> init dwork with fn = | wb_workfn |                                   
+                                                      +-----------+                                   
+                                                      rename worker, and wake it up to handle the work
+```
+
+```
++-----------+                                                     
+| wb_workfn | : rename worker, and wake it up to handle the work  
++--|--------+                                                     
+   |                                                              
+   |--> set worker name = "flush-%s"                              
+   |                                                              
+   |--> if there's work on the wb                                 
+   |                                                              
+   |        +-----------+                                         
+   +------> | wb_wakeup | steal a work and queue it               
+   |        +-----------+                                         
+   |                                                              
+   |--> else if wb has dirty io ?                                 
+   |                                                              
+   |        +--------------------+                                
+   +------> | wb_wakeup_delayed  | steal a work and add to a timer
+            +--------------------+                                
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
