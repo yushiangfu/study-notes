@@ -8,6 +8,38 @@
 ## <a name="introduction"></a> Introduction
 
 ```
++----------+                                                                                       
+| sys_sync |                                                                                       
++--|-------+                                                                                       
+   |    +-----------+                                                                              
+   +--> | ksys_sync |                                                                              
+        +--|--------+                                                                              
+           |    +------------------------+                                                         
+           +--> | wakeup_flusher_threads | flush task plug list, wake up flusher for each bdi      
+                +-----|------------------+                                                         
+                      |                                                                            
+                      |--> if task plug list isn't empty                                           
+                      |                                                                            
+                      |        +-------------------------+                                         
+                      |------> | blk_schedule_flush_plug | flush both cb and mq list in task plug  
+                      |        +-------------------------+                                         
+                      |                                                                            
+                      |--> for each bdi on list                                                    
+                      |                                                                            
+                      |        +------------------------------+                                    
+                      +------> | __wakeup_flusher_threads_bdi |                                    
+                               +-------|----------------------+                                    
+                                       |                                                           
+                                       |--> return if bdi has no dirty io                          
+                                       |                                                           
+                                       |--> for each wb on bdi                                     
+                                       |                                                           
+                                       |        +--------------------+                             
+                                       +------> | wb_start_writeback | steal a work and add to pool
+                                                +--------------------+                             
+```
+
+```
 +-------------------------+                                                                                 
 | blk_schedule_flush_plug | : flush both cb and mq list in task plug                                        
 +------|------------------+                                                                                 
