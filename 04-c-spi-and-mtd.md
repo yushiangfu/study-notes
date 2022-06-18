@@ -392,39 +392,47 @@ static struct mtd_blktrans_ops mtdblock_tr = {
   <summary> Code trace of 'mtdblock_tr' </summary>
   
 ```
-+------------------+                                                                                      
-| mtdblock_tr_init |                                                                                      
-+----|-------------+                                                                                      
-     |    +-----------------------+                                                                       
-     +--> | register_mtd_blktrans |                                                                       
-          +-----|-----------------+                                                                       
-                |    +-----------------+                                                                  
-                |--> | register_blkdev | register name to major_names[major]                              
-                |    +-----------------+                                                                  
-                |                                                                                         
-                |--> add arg tr to 'blktrans_majors' list                                                 
-                |                                                                                         
-                |--> for each mtd                                                                         
-                |                                                                                         
-                +------> call ->add_mtd(), e.g.,                                                          
-                         +------------------+                                                             
-                         | mtdblock_add_mtd |                                                             
-                         +----|-------------+                                                             
-                              |    +----------------------+                                               
-                              +--> | add_mtd_blktrans_dev |                                               
-                                   +-----|----------------+                                               
-                                         |                                                                
-                                         |--> add mtd to tr                                               
-                                         |                                                                
-                                         |    +-------------------+                                       
-                                         |--> | blk_mq_alloc_disk | allocate gendisk and queue            
-                                         |    +-------------------+                                       
-                                         |                                                                
-                                         |--> set up gendisk (major, minor, fops = 'mtd_block_ops')         
-                                         |                                                                
-                                         |    +-----------------+                                         
-                                         +--> | device_add_disk | add disk information to kernel list     
-                                              +-----------------+                                         
+ (defined by macro in drivers/mtd/mtdblock.c)
++------------------+
+| mtdblock_tr_init | :
++----|-------------+
+     |    +-----------------------+
+     +--> | register_mtd_blktrans |
+          +-----|-----------------+
+                |
+                |--> if the notifier isn't registered yet
+                |
+                |        +-------------------+
+                |------> | register_mtd_user | register notifier and apply to existing mtd devices first
+                |        +-------------------+
+                |
+                |    +-----------------+
+                |--> | register_blkdev | register name to major_names[major]
+                |    +-----------------+
+                |
+                |--> add arg tr to 'blktrans_majors' list
+                |
+                |--> for each mtd
+                |
+                +------> call ->add_mtd(), e.g.,
+                         +------------------+
+                         | mtdblock_add_mtd | : prepare gendisk and queue
+                         +----|-------------+
+                              |    +----------------------+
+                              +--> | add_mtd_blktrans_dev | : prepare gendisk and queue
+                                   +-----|----------------+
+                                         |
+                                         |--> add mtd to tr
+                                         |
+                                         |    +-------------------+
+                                         |--> | blk_mq_alloc_disk | allocate gendisk and queue
+                                         |    +-------------------+
+                                         |
+                                         |--> set up gendisk (major, minor, fops = 'mtd_block_ops')
+                                         |
+                                         |    +-----------------+
+                                         +--> | device_add_disk | add device, register bdi, and scan partitions
+                                              +-----------------+
 ```
 
 ```
@@ -669,6 +677,41 @@ The probing and parsing procedure generates the below kernel boot log.
                                            |        +----------------+
                                            +------> | add_mtd_device | register the mtd as mtd device and nvmem device
                                                     +----------------+
+```
+  
+```
++----------------+                                                                     
+| add_mtd_device | : register mtd dev, create its ro dev, and prepare gendisk and queue
++---|------------+                                                                     
+    |    +-----------+                                                                 
+    |--> | idr_alloc | get an unique id                                                
+    |    +-----------+                                                                 
+    |    +-----------------+                                                           
+    |--> | device_register | registe the mtd device                                    
+    |    +-----------------+                                                           
+    |                                                                                  
+    |--> set up mtd                                                                    
+    |                                                                                  
+    |    +---------------+                                                             
+    |--> | mtd_nvmem_add | (skip)                                                      
+    |    +---------------+                                                             
+    |    +---------------+                                                             
+    |--> | device_create | create a read-only device of the mtd                        
+    |    +---------------+                                                             
+    |                                                                                  
+    |--> for each mtd notifier                                                         
+    |                                                                                  
+    +------> call ->add(), e.g.,                                                       
+             +---------------------+                                                   
+             | blktrans_notify_add | prepare gendisk and queue                         
+             +-----|---------------+                                                   
+                   |                                                                   
+                   |--> for each blktrans_majors                                       
+                   |                                                                   
+                   +------> call ->add_mtd(), e.g.,                                    
+                            +------------------+                                       
+                            | mtdblock_add_mtd | prepare gendisk and queue             
+                            +------------------+                                       
 ```
 
 ```
