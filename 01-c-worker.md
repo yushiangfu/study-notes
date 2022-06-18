@@ -102,6 +102,71 @@
           +--> go to 'woke_up'                                                    
 ```
 
+```
++------------------+                                                                                                                 
+| mod_delayed_work | : steal a work, and either add to a pool or to a timer                                                          
++----|-------------+                                                                                                                 
+     |    +---------------------+                                                                                                    
+     +--> | mod_delayed_work_on |                                                                                                    
+          +-----|---------------+                                                                                                    
+                |    +---------------------+                                                                                         
+                |--> | try_to_grab_pending | unlink the work and label it 'pending'                                                  
+                |    +---------------------+                                                                                         
+                |    +----------------------+                                                                                        
+                +--> | __queue_delayed_work | : queue work or set a timer for dwork                                                  
+                     +-----|----------------+                                                                                        
+                           |                                                                                                         
+                           |--> if no delay                                                                                          
+                           |                                                                                                         
+                           |        +--------------+                                                                                 
+                           |------> | __queue_work | : queue work to the appropriate pool                                            
+                           |        +---|----------+                                                                                 
+                           |            |                                                                                            
+                           |            |--> determine pwq                                                                           
+                           |            |                                                                                            
+                           |            |--> determine which list to insert: active (likely) or inactive (pool has reached max usage)
+                           |            |                                                                                            
+                           |            |    +-------------+                                                                         
+                           |            +--> | insert_work | queue work to that specified list                                       
+                           |                 +-------------+                                                                         
+                           |                                                                                                         
+                           |------> return                                                                                           
+                           |                                                                                                         
+                           |    +-----------+                                                                                        
+                           +--> | add_timer | add dwork timer                                                                        
+                                +-----------+                                                                                        
+```
+
+```
++---------------------+                                                                 
+| try_to_grab_pending | : unlink the work and label it 'pending'                        
++-----|---------------+                                                                 
+      |                                                                                 
+      |--> if it's a dwork                                                              
+      |                                                                                 
+      |        +-----------+                                                            
+      |------> | del_timer | deactivate the dwork timer                                 
+      |        +-----------+                                                            
+      |                                                                                 
+      |------> return 1 if the timer is active                                          
+      |    (reaching here means it's not a dwork or an inactive dwork)                  
+      |    +---------------+                                                            
+      |--> | get_work_pool | get the worker pool give the work                          
+      |    +---------------+                                                            
+      |                                                                                 
+      |--> if the work is inactive                                                      
+      |                                                                                 
+      |        +----------------------------+                                           
+      |------> | pwq_activate_inactive_work | move work to pool and clear 'inactive' bit
+      |        +----------------------------+                                           
+      |                                                                                 
+      |--> remove work from list                                                        
+      |                                                                                 
+      |    +--------------------------------+                                           
+      +--> | set_work_pool_and_keep_pending | label the work 'pending'                  
+           +--------------------------------+                                           
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
