@@ -60,6 +60,39 @@
                                +------------------------+                                                   
 ```
 
+```
++----------+                                                                           
+| queue_io | : move inodes from b_more_io, b_dirty, and b_dirty_time to b_io list      
++--|-------+                                                                           
+   |                                                                                   
+   |--> splice list from b_more_io to b_io                                             
+   |                                                                                   
+   |    +---------------------+                                                        
+   |--> | move_expired_inodes | move expired inodes from b_dirty list to arg list      
+   |    +---------------------+                                                        
+   |    +---------------------+                                                        
+   +--> | move_expired_inodes | move expired inodes from b_dirty_time list to arg list 
+        +---------------------+                                                        
+```
+
+```
++---------------------+                                                                               
+| move_expired_inodes | : move expired inodes to arg list                                             
++-----|---------------+                                                                               
+      |                                                                                               
+      |--> while list has something              the youngest                               the oldest
+      |                                                                                               
+      |------> get the last inode from list         +-----+       +-----+       +-----+       +-----+ 
+      |                                             |inode| <---> |inode| <---> |inode| <---> |inode| 
+      |------> break if inode is old enough         +-----+       +-----+       +-----+       +-----+ 
+      |                                                                                               
+      |        +-----------+                                                                          
+      |------> | list_move | move younger inode to a tmp list                                         
+      |        +-----------+                                                                          
+      |                                                                                               
+      +--> splic list from tmp to arg dispatch_queue, sort first if necessary                         
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
