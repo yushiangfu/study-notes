@@ -319,26 +319,6 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
                                                       rename worker, and wake it up to handle the work
 ```
 
-```
-+-----------+                                                     
-| wb_workfn | : rename worker, and wake it up to handle the work  
-+--|--------+                                                     
-   |                                                              
-   |--> set worker name = "flush-%s"                              
-   |                                                              
-   |--> if there's work on the wb                                 
-   |                                                              
-   |        +-----------+                                         
-   +------> | wb_wakeup | steal a work and queue it               
-   |        +-----------+                                         
-   |                                                              
-   |--> else if wb has dirty io ?                                 
-   |                                                              
-   |        +--------------------+                                
-   +------> | wb_wakeup_delayed  | steal a work and add to a timer
-            +--------------------+                                
-```
-
 ## <a name="reference"></a> Reference
 
 (TBD)
