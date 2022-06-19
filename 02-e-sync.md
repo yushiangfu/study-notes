@@ -61,6 +61,97 @@
 ```
 
 ```
++-----------+
+| wb_workfn | : rename worker, and wake it up to handle the work
++--|--------+
+   |
+   |--> set worker name = "flush-%s"
+   |
+   |    +-----------------+
+   |--> | wb_do_writeback |
+   |    +-----------------+
+   |
+   |--> if there's work on the wb
+   |
+   |        +-----------+
+   +------> | wb_wakeup | steal a work and queue it
+   |        +-----------+
+   |
+   |--> else if wb has dirty io ?
+   |
+   |        +--------------------+
+   +------> | wb_wakeup_delayed  | steal a work and add to a timer
+            +--------------------+                              
+```
+
+```
++-----------------+                                                                                       
+| wb_do_writeback | perform all kinds of writeback                                                        
++----|------------+                                                                                       
+     |                                                                                                    
+     |--> while there's work in wb                                                                        
+     |                                                                                                    
+     |        +--------------+                                                                            
+     |------> | wb_writeback | plug, writeback inodes on b_io list and wait till 'sync' is cleared, unplug
+     |        +--------------+                                                                            
+     |    +--------------------+                                                                          
+     |--> | wb_check_start_all | writeback if 'start_all'                                                 
+     |    +--------------------+                                                                          
+     |    +-------------------------+                                                                     
+     |--> | wb_check_old_data_flush | writeback if dirty_writeback_interval is set (yes, 500)             
+     |    +-------------------------+                                                                     
+     |    +---------------------------+                                                                   
+     |--> | wb_check_background_flush | writeback if thresh is exceeded                                   
+     |    +---------------------------+                                                                   
+     |                                                                                                    
+     +--> clear 'writeback_running'                                                                       vv
+```
+
+```
++--------------+                                                                                
+| wb_writeback | : plug, writeback inodes on b_io list and wait till 'sync' is cleared, unplug  
++---|----------+                                                                                
+    |    +----------------+                                                                     
+    |--> | blk_start_plug |                                                                     
+    |    +----------------+                                                                     
+    |                                                                                           
+    |--> endless loop                                                                           
+    |                                                                                           
+    |------> break if we finish the work                                                        
+    |                                                                                           
+    |------> break if we are in the background and below the dirty threshold                    
+    |                                                                                           
+    |------> if wb b_io list is empty                                                           
+    |                                                                                           
+    |            +----------+                                                                   
+    |----------> | queue_io | move inodes from b_more_io, b_dirty, and b_dirty_time to b_io list
+    |            +----------+                                                                   
+    |                                                                                           
+    |------> if work has sb specified                                                           
+    |                                                                                           
+    |            +---------------------+                                                        
+    |----------> | writeback_sb_inodes | writeback part of inode@b_io that belongs to sb        
+    |            +---------------------+                                                        
+    |                                                                                           
+    |------> else                                                                               
+    |                                                                                           
+    |            +-----------------------+                                                      
+    |----------> | __writeback_inodes_wb | writeback part of inode@b_io                         
+    |            +-----------------------+                                                      
+    |                                                                                           
+    |------> continu if we have progress                                                        
+    |                                                                                           
+    |------> break if no inode on b_more_io                                                     
+    |                                                                                           
+    |        +--------------------------+                                                       
+    |------> | inode_sleep_on_writeback | wait till 'sync' is cleared                           
+    |        +--------------------------+                                                       
+    |    +-----------------+                                                                    
+    +--> | blk_finish_plug |                                                                    
+         +-----------------+                                                                    
+```
+
+```
 +----------+                                                                           
 | queue_io | : move inodes from b_more_io, b_dirty, and b_dirty_time to b_io list      
 +--|-------+                                                                           
@@ -91,6 +182,83 @@
       |        +-----------+                                                                          
       |                                                                                               
       +--> splic list from tmp to arg dispatch_queue, sort first if necessary                         
+```
+
+```
++---------------------+                                                                  
+| writeback_sb_inodes | : writeback part of inode@b_io that belongs to sb                
++-----|---------------+                                                                  
+      |                                                                                  
+      |--> set up wbc (writeback control)                                                
+      |                                                                                  
+      |--> while b_io list has something                                                 
+      |                                                                                  
+      |------> break if the inode belongs to a different sb                              
+      |                                                                                  
+      |------> if inode isn't suitable for writeback                                     
+      |                                                                                  
+      |            +------------+                                                        
+      |----------> | requeue_io | move inode to b_more_io list                           
+      |            +------------+                                                        
+      |                                                                                  
+      |----------> continue                                                              
+      |                                                                                  
+      |------> if inode is in 'sync' already                                             
+      |                                                                                  
+      |            +--------------------------+                                          
+      |----------> | inode_sleep_on_writeback | wait for its finish                      
+      |            +--------------------------+                                          
+      |                                                                                  
+      |----------> continue                                                              
+      |                                                                                  
+      |------> label inode 'sync'                                                        
+      |                                                                                  
+      |        +--------------------------+                                              
+      |------> | __writeback_single_inode | writeback the given inode and its dirty pages
+      |        +--------------------------+                                              
+      |        +---------------+                                                         
+      |------> | requeue_inode | (skip)                                                  
+      |        +---------------+                                                         
+      |        +---------------------+                                                   
+      |------> | inode_sync_complete | wait till 'sync' is cleared                       
+      |        +---------------------+                                                   
+      |                                                                                  
+      +------>  break if we spent too much time already                                  
+```
+
+```
++--------------------------+                                                
+| __writeback_single_inode | : writeback the given inode and its dirty pages
++------|-------------------+                                                
+       |    +---------------+                                               
+       |--> | do_writepages | with specified range, write dirty pages back  
+       |    +---------------+                                               
+       |                                                                    
+       |--> mark inode 'dirty_sync' if it expires                           
+       |                                                                    
+       |--> clear inode 'dirty'                                             
+       |                                                                    
+       |--> label inode 'dirty_pages' if mapping has 'dirty' tag            
+       |                                                                    
+       |--> if there are dirty bits other than 'dirty_pages'                
+       |                                                                    
+       |        +-------------+                                             
+       +------> | write_inode | call ->write_inode() if it exists           
+                +-------------+                                             
+```
+
+```
++-----------------------+                                                             
+| __writeback_inodes_wb | ： writeback part of inode@b_io                
++-----|-----------------+                                                             
+      |                                                                               
+      |--> while b_io list has something                                              
+      |                                                                               
+      |        +---------------------+                                                
+      |------> | writeback_sb_inodes | writeback part of inode@b_io that belongs to sb
+      |        +---------------------+                                                
+      |                                                                               
+      +------> break if we spent too much time already                                
 ```
 
 ## <a name="reference"></a> Reference
