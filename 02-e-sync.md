@@ -227,24 +227,30 @@
 ```
 
 ```
-+--------------------------+                                                
++--------------------------+
 | __writeback_single_inode | : writeback the given inode and its dirty pages
-+------|-------------------+                                                
-       |    +---------------+                                               
-       |--> | do_writepages | with specified range, write dirty pages back  
-       |    +---------------+                                               
-       |                                                                    
-       |--> mark inode 'dirty_sync' if it expires                           
-       |                                                                    
-       |--> clear inode 'dirty'                                             
-       |                                                                    
-       |--> label inode 'dirty_pages' if mapping has 'dirty' tag            
-       |                                                                    
-       |--> if there are dirty bits other than 'dirty_pages'                
-       |                                                                    
-       |        +-------------+                                             
-       +------> | write_inode | call ->write_inode() if it exists           
-                +-------------+                                             
++------|-------------------+
+       |    +---------------+
+       |--> | do_writepages | with specified range, write dirty pages back
+       |    +---------------+
+       |
+       |--> if mode is 'sync_all'
+       |
+       |        +-------------------+
+       |------> | filemap_fdatawait | wait till WRITEBACK pages finish
+       |        +-------------------+
+       |
+       |--> mark inode 'dirty_sync' if it expires
+       |
+       |--> clear inode 'dirty'
+       |
+       |--> label inode 'dirty_pages' if mapping has 'dirty' tag
+       |
+       |--> if there are dirty bits other than 'dirty_pages'
+       |
+       |        +-------------+
+       +------> | write_inode | call ->write_inode() if it exists
+                +-------------+
 ```
 
 ```
