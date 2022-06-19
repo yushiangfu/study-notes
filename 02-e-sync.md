@@ -267,6 +267,43 @@
       +------> break if we spent too much time already                                
 ```
 
+```
+     +-----------+                                               
++----| sys_fsync |                                               
+|    +-----------+                                               
+|    +---------------+                                           
++----| sys_fdatasync |                                           
+|    +---------------+                                           
+|    +----------+                                                
++--> | do_fsync |                                                
+     +--|-------+                                                
+        |    +-----------+                                       
+        +--> | vfs_fsync |                                       
+             +--|--------+                                       
+                |    +-----------------+                         
+                +--> | vfs_fsync_range |                         
+                     +----|------------+                         
+                          |                                      
+                          +--> call ->fsync() if it exists, e.g.,
+                               +----------------+                
+                               | ext4_sync_file |                
+                               +----------------+                
+```
+
+```
++-----------+                                                      
+| sys_msync | for vma within range, call ->fsync()                 
++--|--------+                                                      
+   |                                                               
+   |--> for vma within range                                       
+   |                                                               
+   |------> if user specifies 'sync' and it's a shared file mapping
+   |                                                               
+   |            +-----------------+                                
+   +----------> | vfs_fsync_range | call ->fsync()                 
+                +-----------------+                                
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
