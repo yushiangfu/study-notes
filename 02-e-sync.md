@@ -304,6 +304,42 @@
                 +-----------------+                                
 ```
 
+```
++---------------------+                                                                                                            
+| writeback_inodes_sb | : writeback dirty inodes of given sb                                                                         
++-----|---------------+                                                                                                            
+      |    +------------------------+                                                                                              
+      +--> | writeback_inodes_sb_nr |                                                                                              
+           +-----|------------------+                                                                                              
+                 |    +--------------------------+                                                                                 
+                 +--> | __writeback_inodes_sb_nr |                                                                                 
+                      +------|-------------------+                                                                                 
+                             |    +-----------------------+                                                                        
+                             |--> | bdi_split_work_to_wbs |                                                                        
+                             |    +-----|-----------------+                                                                        
+                             |          |    +---------------+                                                                     
+                             |          +--> | wb_queue_work |                                                                     
+                             |               +---|-----------+                                                                     
+                             |                   |                                                                                 
+                             |                   |--> if the bdi wb is labeled 'registered'                                        
+                             |                   |                                                                                 
+                             |                   |        +---------------+                                                        
+                             |                   |------> | list_add_tail | queue work to bdi wb                                   
+                             |                   |        +---------------+                                                        
+                             |                   |        +------------------+                                                     
+                             |                   |------> | mod_delayed_work | steal a work, and either add to a pool or to a timer
+                             |                   |        +------------------+                                                     
+                             |                   |                                                                                 
+                             |                   |--> else                                                                         
+                             |                   |                                                                                 
+                             |                   |        +-----------------------+                                                
+                             |                   +------> | finish_writeback_work | wake up all the tasks waiting on this          
+                             |                            +-----------------------+                                                
+                             |    +------------------------+                                                                       
+                             +--> | wb_wait_for_completion | wait for the completion of bdi writeback works                        
+                                  +------------------------+                                                                       
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
