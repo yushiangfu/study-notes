@@ -104,7 +104,7 @@
      |--> | wb_check_background_flush | writeback if thresh is exceeded                                   
      |    +---------------------------+                                                                   
      |                                                                                                    
-     +--> clear 'writeback_running'                                                                       vv
+     +--> clear 'writeback_running' 
 ```
 
 ```
@@ -318,7 +318,7 @@
                              |--> | bdi_split_work_to_wbs |                                                                        
                              |    +-----|-----------------+                                                                        
                              |          |    +---------------+                                                                     
-                             |          +--> | wb_queue_work |                                                                     
+                             |          +--> | wb_queue_work | : queue work to pool
                              |               +---|-----------+                                                                     
                              |                   |                                                                                 
                              |                   |--> if the bdi wb is labeled 'registered'                                        
@@ -338,6 +338,130 @@
                              |    +------------------------+                                                                       
                              +--> | wb_wait_for_completion | wait for the completion of bdi writeback works                        
                                   +------------------------+                                                                       
+```
+
+```
++---------------+                                                                                        
+| filemap_flush | : writeback dirty pages in mapping                                                       
++---|-----------+                                                                                        
+    |    +----------------------+                                                                        
+    +--> | __filemap_fdatawrite |                                                                        
+         +-----|----------------+                                                                        
+               |    +----------------------------+                                                       
+               +--> | __filemap_fdatawrite_range |                                                       
+                    +------|---------------------+                                                       
+                           |                                                                             
+                           |--> set up writeback control                                                 
+                           |                                                                             
+                           |    +------------------------+                                               
+                           +--> | filemap_fdatawrite_wbc |                                               
+                                +-----|------------------+                                               
+                                      |    +---------------+                                             
+                                      +--> | do_writepages | with specified range, write dirty pages back
+                                           +---------------+                                             
+```
+
++------------+                                                                        
+| sys_syncfs | : writeback dirty pages and wait till 'writeback' cleared              
++--|---------+                                                                        
+   |                                                                                  
+   |--> get sb from file                                                              
+   |                                                                                  
+   |    +-----------------+                                                           
+   +--> | sync_filesystem | given sb, writeback dirty inodes and wait till it finishes
+        +-----------------+                                                           
+
+```
++-----------------+                                                                    
+| sync_filesystem | : given sb, writeback dirty inodes and wait till it finishes       
++----|------------+                                                                    
+     |                                                                                 
+     |--> return if it's read only                                                     
+     |                                                                                 
+     |    +---------------------+                                                      
+     |--> | writeback_inodes_sb | writeback dirty inodes of given sb                   
+     |    +---------------------+                                                      
+     |                                                                                 
+     |--> if ->sync_fs() exists                                                        
+     |                                                                                 
+     +------> call ->sync_fs(), e.g.,                                                  
+     |        +--------------+                                                         
+     |        | ext4_sync_fs | (arg = no wait)                                         
+     |        +--------------+                                                         
+     |    +----------------------+                                                     
+     |--> | sync_blockdev_nowait | writeback dirty pages in mapping                    
+     |    +----------------------+                                                     
+     |    +----------------+                                                           
+     |--> | sync_inodes_sb | given sb, writeback dirty inodes and wait till it finishes
+     |    +----------------+                                                           
+     |                                                                                 
+     |--> if ->sync_fs() exists                                                        
+     |                                                                                 
+     |------> call ->sync_fs(), e.g.,                                                  
+     |        +--------------+                                                         
+     |        | ext4_sync_fs | (arg = wait)                                            
+     |        +--------------+                                                         
+     |    +---------------+                                                            
+     +--> | sync_blockdev | writeback dirty pages and wait till 'writeback' cleared    
+          +---------------+                                                            
+```
+
+```
++----------------+                                                                                             
+| sync_inodes_sb | : given sb, writeback dirty inodes and wait till it finishes                                
++---|------------+                                                                                             
+    |                                                                                                          
+    |--> set up wb work                                                                                        
+    |                                                                                                          
+    |--> return if bdi is noop_backing_dev_info                                                                
+    |                                                                                                          
+    |   +-----------------------+                                                                              
+    |-->| bdi_split_work_to_wbs | queue work to pool                                                           
+    |   +-----------------------+                                                                              
+    |   +------------------------+                                                                             
+    |-->| wb_wait_for_completion |                                                                             
+    |   +------------------------+                                                                             
+    |   +----------------+                                                                                     
+    +-->| wait_sb_inodes | for each inode on wb list, weait till each page with 'writeback' tag loses the label
+        +----------------+                                                                                     
+```
+
+```
++----------------+                                                                                              
+| wait_sb_inodes | : for each inode on wb list, weait till each page with 'writeback' tag loses the label       
++---|------------+                                                                                              
+    |                                                                                                           
+    |--> move the writeback inode list from sb to local                                                         
+    |                                                                                                           
+    |--> while the list has something                                                                           
+    |                                                                                                           
+    |------> take the first inode on list                                                                       
+    |                                                                                                           
+    |------> move inode back to sb                                                                              
+    |                                                                                                           
+    |------> continue if the inode mapping has no 'writeback' tag                                               
+    |                                                                                                           
+    |        +-------------------------------+                                                                  
+    +------> | filemap_fdatawait_keep_errors | for each page with 'writeback' tag, wait till their label cleared
+             +-------------------------------+                                                                  
+```
+
+```
++---------------------------+                                                                          
+| __filemap_fdatawait_range | : for each page with 'writeback' tag, wait till their label cleared        
++------|--------------------+                                                                          
+       |                                                                                               
+       |--> while index <= end                                                                         
+       |                                                                                               
+       |        +--------------------------+                                                           
+       |------> | pagevec_lookup_range_tag | find page with specified tag from mapping and fill pagevec
+       |        +--------------------------+                                                           
+       |                                                                                               
+       |------> for each page in pagevec                                                               
+       |                                                                                               
+       |            +------------------------+                                                         
+       +----------> | wait_on_page_writeback | wait till the page 'writeback' cleared                  
+                    +------------------------+                                                         
 ```
 
 ## <a name="reference"></a> Reference
