@@ -480,7 +480,7 @@ address              +-------------+             +-------------+
               +------> | filemap_write_and_wait |                                                                                   
                        +-----|------------------+                                                                                   
                              |    +------------------------------+                                                                  
-                             +--> | filemap_write_and_wait_range |                                                                  
+                             +--> | filemap_write_and_wait_range | : writeback dirty pages and wait till 'writeback' cleared
                                   +-------|----------------------+                                                                  
                                           |    +----------------------------+                                                       
                                           |--> | __filemap_fdatawrite_range |                                                       
