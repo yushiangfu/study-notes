@@ -361,6 +361,7 @@
                                            +---------------+                                             
 ```
 
+```
 +------------+                                                                        
 | sys_syncfs | : writeback dirty pages and wait till 'writeback' cleared              
 +--|---------+                                                                        
@@ -370,6 +371,7 @@
    |    +-----------------+                                                           
    +--> | sync_filesystem | given sb, writeback dirty inodes and wait till it finishes
         +-----------------+                                                           
+```
 
 ```
 +-----------------+                                                                    
@@ -462,6 +464,36 @@
        |            +------------------------+                                                         
        +----------> | wait_on_page_writeback | wait till the page 'writeback' cleared                  
                     +------------------------+                                                         
+```
+
+```
++---------------------+                                                                                                       
+| sys_sync_file_range | writeback the file, wait if it's specified                                                            
++-----|---------------+                                                                                                       
+      |    +----------------------+                                                                                           
+      +--> | ksys_sync_file_range |                                                                                           
+           +-----|----------------+                                                                                           
+                 |    +-----------------+                                                                                     
+                 +--> | sync_file_range |                                                                                     
+                      +----|------------+                                                                                     
+                           |                                                                                                  
+                           |--> if flag specifies 'wait_before'                                                               
+                           |                                                                                                  
+                           |        +----------------------+                                                                  
+                           |------> | file_fdatawait_range | for each page with 'writeback' tag, wait till their label cleared
+                           |        +----------------------+                                                                  
+                           |                                                                                                  
+                           |--> if flag specifies 'write'                                                                     
+                           |                                                                                                  
+                           |        +----------------------------+                                                            
+                           |------> | __filemap_fdatawrite_range | writeback dirty pages in mapping                           
+                           |        +----------------------------+                                                            
+                           |                                                                                                  
+                           |--> if flag specifes 'wait_after'                                                                 
+                           |                                                                                                  
+                           |        +----------------------+                                                                  
+                           +------> | file_fdatawait_range | for each page with 'writeback' tag, wait till their label cleared
+                                    +----------------------+                                                                  
 ```
 
 ## <a name="reference"></a> Reference
