@@ -496,6 +496,46 @@
                                     +----------------------+                                                                  
 ```
 
+```
++----------------------+                                                               
+| sync_mapping_buffers | submit all the dirty bh and wait for them to finish           
++-----|----------------+                                                               
+      |    +--------------------+                                                      
+      +--> | fsync_buffers_list |                                                      
+           +----|---------------+                                                      
+                |    +----------------+                                                
+                |--> | blk_start_plug |                                                
+                |    +----------------+                                                
+                |                                                                      
+                |--> while arg list has something                                      
+                |                                                                      
+                |------> get bh from list                                              
+                |                                                                      
+                |        +----------------------+                                      
+                |------> | __remove_assoc_queue | remove bh from associated mapping    
+                |        +----------------------+                                      
+                |                                                                      
+                |------> if bh is dirty or locked                                      
+                |                                                                      
+                |            +----------+                                              
+                |----------> | list_add | add bh to the local list                     
+                |            +----------+                                              
+                |            +--------------------+                                    
+                |----------> | write_dirty_buffer | clear 'dirty' and submit bh        
+                |            +--------------------+                                    
+                |    +-----------------+                                               
+                |--> | blk_finish_plug |                                               
+                |    +-----------------+                                               
+                |                                                                      
+                |--> while tmp list has something                                      
+                |                                                                      
+                |------> reelase bh or add it back to mapping if it's dirty            
+                |                                                                      
+                |    +--------------------+                                            
+                +--> | osync_buffers_list | wait for the already-submitted bh to finish
+                     +--------------------+                                            
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
