@@ -696,7 +696,7 @@ address              +-------------+             +-------------+
       |--> else                                                                                   
       |                                                                                           
       |        +---------------------+                                                            
-      +------> | try_to_free_buffers |                                                            
+      +------> | try_to_free_buffers | : detatch bh list from page and free those bh
                +-----|---------------+                                                            
                      |    +--------------+                                                        
                      |--> | drop_buffers | move the bh list to a local head, and detatch from page
