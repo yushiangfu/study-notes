@@ -619,6 +619,77 @@
              +-----------------+                                               
 ```
 
+```
++------------------+                                                                           
+| shrink_page_list | : try to reclaim the given page list                                      
++----|-------------+                                                                           
+     |                                                                                         
+     |--> while page_list has something                                                        
+     |                                                                                         
+     |------> remove the last page from list                                                   
+     |                                                                                         
+     |------> if page is mapped                                                                
+     |                                                                                         
+     |            +--------------+                                                             
+     |----------> | try_to_unmap | unmap the given page in each mapping                        
+     |            +--------------+                                                             
+     |                                                                                         
+     |------> if page is dirty                                                                 
+     |                                                                                         
+     |            +---------+                                                                  
+     |----------> | pageout | call ->writepage(), return status (e.g., 'success', 'clean', ...)
+     |            +---------+                                                                  
+     |                                                                                         
+     |------> if page has buffer                                                               
+     |                                                                                         
+     |            +---------------------+                                                      
+     |----------> | try_to_release_page | detatch bh list from page and free them              
+     |            +---------------------+                                                      
+     |                                                                                         
+     |--> handle pages on demote list (what is demotion?)                                      
+     |                                                                                         
+     |--> handle pages on free list (what is demotion?)                                        
+     |                                                                                         
+     +--> handle pages on ret list (what is demotion?)                                         
+```
+
+```
++---------+                                                                        
+| pageout | : call ->writepage(), return status (e.g., 'success', 'clean', ...)    
++--|------+                                                                        
+   |                                                                               
+   |--> return 'keep' if the page isn't freeable                                   
+   |                                                                               
+   |--> if mapping isn't provided                                                  
+   |                                                                               
+   |------> if page has private                                                    
+   |                                                                               
+   |            +---------------------+                                            
+   |----------> | try_to_free_buffers | detatch bh list from page and free those bh
+   |            +---------------------+                                            
+   |                                                                               
+   |----------> return 'clean' if buffer is dropped                                
+   |                                                                               
+   |------> return 'keep'                                                          
+   |                                                                               
+   |--> if mapping has no ->writepage()                                            
+   |                                                                               
+   |------> return 'activate'                                                      
+   |                                                                               
+   |--> if page is dirty                                                           
+   |                                                                               
+   |------> set up wbc                                                             
+   |                                                                               
+   |------> call ->writepage(), e.g.,                                              
+   |        +----------------+                                                     
+   |        | ext4_writepage |                                                     
+   |        +----------------+                                                     
+   |                                                                               
+   |------> return 'success'                                                       
+   |                                                                               
+   +--> return 'clean'                                                             
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
