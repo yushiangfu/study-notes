@@ -615,7 +615,7 @@ address              +-------------+             +-------------+
 
 ```
 +---------------+                                                                                         
-| lru_add_drain | collect pages from other lru lists to memory node, and release them                     
+| lru_add_drain | : collect pages from other lru lists to memory node, and release them                     
 +---|-----------+                                                                                         
     |                                                                                                     
     |--> get pvec from 'lru_pvecs.lru_add'                                                                
