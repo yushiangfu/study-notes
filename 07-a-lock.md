@@ -500,6 +500,10 @@ Of course, a semaphore with n equals one is equivalent to a mutex conceptually.
   <summary> Code trace </summary>
   
 ```
+ipcs -s -i <semaphore id>
+```
+  
+```
 +--------------------+                                                                  
 | down_interruptible |                                                                  
 +----|---------------+                                                                  
