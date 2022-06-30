@@ -1145,6 +1145,28 @@ address              +-------------+             +-------------+
                     +-------------------------+                                          
 ```
 
+```
++-----------------------+                                                                       
+| invalidate_inode_page | : detatch page from mapping                                           
++-----|-----------------+                                                                       
+      |    +--------------------------+                                                         
+      +--> | invalidate_complete_page |                                                         
+           +------|-------------------+                                                         
+                  |    +----------------+                                                       
+                  +--> | remove_mapping |                                                       
+                       +---|------------+                                                       
+                           |    +------------------+                                            
+                           +--> | __remove_mapping |                                            
+                                +----|-------------+                                            
+                                     |    +--------------------------+                          
+                                     |--> | __delete_from_page_cache | detatch page from mapping
+                                     |    +--------------------------+                          
+                                     |                                                          
+                                     |--> if mapping has ->freepage() (usually not)             
+                                     |                                                          
+                                     +------> call ->freepage()                                 
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
