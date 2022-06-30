@@ -257,6 +257,40 @@ Therefore we have no idea which task will be the next one that consumes signal b
                          +---------------+                                                                                                       
 ```
 
+```
++--------------+                                                                               
+| sys_signalfd | : determine the file (newly allocated or existing one), update its mask       
++---|----------+                                                                               
+    |    +----------------+                                                                    
+    |--> | copy_from_user | copy mask info from userspace                                      
+    |    +----------------+                                                                    
+    |    +--------------+                                                                      
+    +--> | do_signalfd4 | determine the file (newly allocated or existing one), update its mask
+         +--------------+                                                                      
+```
+
+```
++--------------+                                                                        
+| do_signalfd4 | : determine the file (newly allocated or existing one), update its mask
++---|----------+                                                                        
+    |                                                                                   
+    |--> if ufd isn't specified                                                         
+    |                                                                                   
+    |------> allocate ctx                                                               
+    |                                                                                   
+    |        +------------------+                                                       
+    |------> | anon_inode_getfd | prepare an anon file and install to fd table          
+    |        +------------------+                                                       
+    |                                                                                   
+    |--> else                                                                           
+    |                                                                                   
+    |------> get ctx from file and update its mask                                      
+    |                                                                                   
+    |        +---------+                                                                
+    +------> | wake_up |                                                                
+             +---------+                                                                
+```
+
 ## <a name="system-calls"></a> System Calls
 
 (TBD)
