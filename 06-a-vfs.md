@@ -2013,6 +2013,53 @@ dir /root 0700 0 0
           +-------------+                                                                
 ```
 
+```
++------------------+                                                                              
+| anon_inode_getfd | : prepare an anon file and install to fd table                               
++----|-------------+                                                                              
+     |    +--------------------+                                                                  
+     +--> | __anon_inode_getfd |                                                                  
+          +----|---------------+                                                                  
+               |    +---------------------+                                                       
+               |--> | get_unused_fd_flags | find an unused fd from file desc table                
+               |    +---------------------+                                                       
+               |    +----------------------+                                                      
+               |--> | __anon_inode_getfile | prepare file (and its inode/dentry), set up that file
+               |    +----------------------+                                                      
+               |    +------------+                                                                
+               +--> | fd_install | table[fd] = file                                               
+                    +------------+                                                                
+```
+
+```
++----------------------+                                                        
+| __anon_inode_getfile | : prepare file (and its inode/dentry), set up that file
++-----|----------------+                                                        
+      |                                                                         
+      |--> inode = anon_inode_inode                                             
+      |                                                                         
+      |    +-------------------+                                                
+      |--> | alloc_file_pseudo | allocate a file (and its dentry)               
+      |    +-------------------+                                                
+      |                                                                         
+      +--> set up file                                                          
+```
+
+```
++-------------------+                                                   
+| alloc_file_pseudo | : allocate a file (and its dentry)                
++----|--------------+                                                   
+     |    +----------------+                                            
+     |--> | d_alloc_pseudo | allocate a dentry (no support for 'lookup')
+     |    +----------------+                                            
+     |    +---------------+                                             
+     |--> | d_instantiate | fill dentry info based on the given inode   
+     |    +---------------+                                             
+     |    +------------+                                                
+     +--> | alloc_file | allocate a file                                
+          +------------+                                                
+```
+
 ## <a name="reference"></a> Reference
 
 - [Shared Subtrees](https://www.kernel.org/doc/Documentation/filesystems/sharedsubtree.txt)
