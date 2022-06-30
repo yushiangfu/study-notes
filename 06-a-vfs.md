@@ -2060,6 +2060,17 @@ dir /root 0700 0 0
           +------------+                                                
 ```
 
+```
++----------+                                                        
+| vfs_poll | : e.g., return 'poll_in' if there's pending signal     
++--|-------+                                                        
+   |                                                                
+   +--> call ->poll(), e.g.,                                        
+        +---------------+                                           
+        | signalfd_poll | return 'poll_in' if there's pending signal
+        +---------------+                                           
+```
+
 ## <a name="reference"></a> Reference
 
 - [Shared Subtrees](https://www.kernel.org/doc/Documentation/filesystems/sharedsubtree.txt)
