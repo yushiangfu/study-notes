@@ -690,6 +690,70 @@
    +--> return 'clean'                                                             
 ```
 
+```
++--------------------+                                                                         
+| shrink_active_list | : move pages from inactive lru to active lru list                       
++----|---------------+                                                                         
+     |                                                                                         
+     |-> if the give lru list is active                                                        
+     |                                                                                         
+     |    +---------------+                                                                    
+     |--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
+     |    +---------------+                                                                    
+     |    +-------------------+                                                                
+     |--> | isolate_lru_pages | move a number of pages to dst list                             
+     |    +-------------------+                                                                
+     |                                                                                         
+     |--> while the 'hold' list has something                                                  
+     |                                                                                         
+     |------> remove the first page from it                                                    
+     |                                                                                         
+     |------> clear page 'active' label                                                        
+     |                                                                                         
+     |------> move page to local 'inactive' list                                               
+     |                                                                                         
+     |    +-------------------+                                                                
+     |--> | move_pages_to_lru | for each page in list, label 'lru' and move to lru list        
+     |    +-------------------+                                                                
+     |    +-------------------+                                                                
+     |--> | move_pages_to_lru | for each page in list, label 'lru' and move to lru list        
+     |    +-------------------+                                                                
+     |    +----------------------+                                                             
+     +--> | free_unref_page_list | free those unused pages                                     
+          +----------------------+                                                             
+```
+
+```
++-------------------+                                     
+| isolate_lru_pages | : move a number of pages to dst list
++----|--------------+                                     
+     |                                                    
+     +--> while the work isn't done                       
+     |                                                    
+     |        +-------------+                             
+     |------> | lru_to_page | get page from lru list      
+     |        +-------------+                             
+     |        +-----------+                               
+     +------> | list_move | move page to dst list         
+              +-----------+                               
+```
+
+```
++-------------------+                                                          
+| move_pages_to_lru | : for each page in list, label 'lru' and move to lru list
++----|--------------+                                                          
+     |                                                                         
+     |--> while list has something                                             
+     |                                                                         
+     |------> remove the first page from list                                  
+     |                                                                         
+     |------> set label 'lru' on page                                          
+     |                                                                         
+     |        +----------------------+                                         
+     +------> | add_page_to_lru_list | move page to the corresponding lru list 
+              +----------------------+                                         
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
