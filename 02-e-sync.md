@@ -825,6 +825,66 @@
            +----------------------+                                                             
 ```
 
+```
++----------------------+                                                                                        
+| list_lru_shrink_walk | : for each item in list, apply callback isolate(), return isolated#                    
++-----|----------------+                                                                                        
+      |    +-------------------+                                                                                
+      +--> | list_lru_walk_one |                                                                                
+           +----|--------------+                                                                                
+                |    +---------------------+                                                                    
+                +--> | __list_lru_walk_one | : for each item in list, apply callback isolate(), return isolated#
+                     +-----|---------------+                                                                    
+                           |                                                                                    
+                           |--> for each item in list                                                           
+                           |                                                                                    
+                           |------> break if no more to talk                                                    
+                           |                                                                                    
+                           |------> nr_to_walk--                                                                
+                           |                                                                                    
+                           +------> call isolate(), e.g.,                                                       
+                                    +--------------------+                                                      
+                                    | dentry_lru_isolate | either remove dentry from list, or add to arg list   
+                                    +--------------------+                                                      
+```
+
+```
++--------------------+                                                            
+| dentry_lru_isolate | : either remove dentry from list, or add to arg list       
++----|---------------+                                                            
+     |                                                                            
+     |--> if dentry still has ref count                                           
+     |                                                                            
+     |        +---------------+                                                   
+     |------> | d_lru_isolate | clear 'lru_list' in flags, remove dentry from list
+     |        +---------------+                                                   
+     |                                                                            
+     |------> return 'removed'                                                    
+     |                                                                            
+     |    +-------------------+                                                   
+     |--> | d_lru_shrink_move | set 'lru_list' in flags, add dentry to arg list   
+     |    +-------------------+                                                   
+     |                                                                            
+     +--> return 'removed'                                                        
+```
+
+```
++--------------------+                                     
+| shrink_dentry_list | : try to release each dentry in list
++----|---------------+                                     
+     |                                                     
+     |--> while list has something                         
+     |                                                     
+     |------> get dentry from list                         
+     |                                                     
+     |        +--------------+                             
+     |------> | d_shrink_del | remove dentry from list     
+     |        +--------------+                             
+     |        +---------------+                            
+     +------> | __dentry_kill | release dentry             
+              +---------------+                            
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
