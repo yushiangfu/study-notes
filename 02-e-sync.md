@@ -691,6 +691,38 @@
 ```
 
 ```
++---------------+                                                                  
+| shrink_lruvec | : shrink active and inactive lists                               
++---|-----------+                                                                  
+    |    +----------------+                                                        
+    |--> | get_scan_count | determine how much we should scan the lru lists        
+    |    +----------------+                                                        
+    |    +----------------+                                                        
+    |--> | blk_start_plug |                                                        
+    |    +----------------+                           nr[0] = anon inactive        
+    |                                                 nr[1] = anon active          
+    |--> while nr[0] or nr[2] or nr[3] has value      nr[2] = file inactive        
+    |                                                 nr[3] = file active          
+    |------> for each evictable lru list                                           
+    |                                                                              
+    |            +-------------+                                                   
+    |----------> | shrink_list | shrink the active or inactive list                
+    |            +-------------+                                                   
+    |                                                                              
+    |------> update nr[ ]                                                          
+    |                                                                              
+    |    +-----------------+                                                       
+    |--> | blk_finish_plug |                                                       
+    |    +-----------------+                                                       
+    |                                                                              
+    |--> if inactive lru is low                                                    
+    |                                                                              
+    |        +--------------------+                                                
+    +------> | shrink_active_list | move pages from inactive lru to active lru list
+             +--------------------+                                                
+```
+
+```
 +-------------+                                                                    
 | shrink_list | : shrink the active or inactive list                               
 +---|---------+                                                                    
