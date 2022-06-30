@@ -826,6 +826,18 @@
 ```
 
 ```
++-----------------+                                                                                 
+| prune_dcache_sb | : isolate dentries to a local list, and try to release each of them             
++----|------------+                                                                                 
+     |    +----------------------+                                                                  
+     |--> | list_lru_shrink_walk | for each item in list, apply callback isolate(), return isolated#
+     |    +----------------------+                                                                  
+     |    +--------------------+                                                                    
+     +--> | shrink_dentry_list | try to release each dentry in list                                 
+          +--------------------+                                                                    
+```
+
+```
 +----------------------+                                                                                        
 | list_lru_shrink_walk | : for each item in list, apply callback isolate(), return isolated#                    
 +-----|----------------+                                                                                        
