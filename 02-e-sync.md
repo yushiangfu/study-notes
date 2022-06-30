@@ -691,6 +691,24 @@
 ```
 
 ```
++-------------+                                                                    
+| shrink_list | : shrink the active or inactive list                               
++---|---------+                                                                    
+    |                                                                              
+    |--> if the given lru is active                                                
+    |                                                                              
+    |        +--------------------+                                                
+    |------> | shrink_active_list | r
+    |        +--------------------+                                                
+    |                                                                              
+    |--> else                                                                      
+    |                                                                              
+    |        +----------------------+                                              
+    +------> | shrink_inactive_list | reclaim the inactive list                    
+             +----------------------+                                              
+```
+
+```
 +--------------------+                                                                         
 | shrink_active_list | : move pages from inactive lru to active lru list                       
 +----|---------------+                                                                         
@@ -752,6 +770,27 @@
      |        +----------------------+                                         
      +------> | add_page_to_lru_list | move page to the corresponding lru list 
               +----------------------+                                         
+```
+
+```
++----------------------+                                                                        
+| shrink_inactive_list | : reclaim the inactive list                                            
++-----|----------------+                                                                        
+      |    +---------------+                                                                    
+      |--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
+      |    +---------------+                                                                    
+      |    +-------------------+                                                                
+      |--> | isolate_lru_pages | move a number of pages to dst list                             
+      |    +-------------------+                                                                
+      |    +------------------+                                                                 
+      |--> | shrink_page_list | try to reclaim the given page list                              
+      |    +------------------+                                                                 
+      |    +-------------------+                                                                
+      |--> | move_pages_to_lru | for each page in list, label 'lru' and move to lru list        
+      |    +-------------------+                                                                
+      |    +----------------------+                                                             
+      +--> | free_unref_page_list | free those unused pages                                     
+           +----------------------+                                                             
 ```
 
 ## <a name="reference"></a> Reference
