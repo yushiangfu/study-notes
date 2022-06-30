@@ -291,6 +291,75 @@ Therefore we have no idea which task will be the next one that consumes signal b
              +---------+                                                                
 ```
 
+```
++------------+                                                                  
+| sys_select |                                                                  
++--|---------+                                                                  
+   |    +-------------+                                                         
+   +--> | kern_select | : poll files, copy bitmaps and time info to userspace   
+        +---|---------+                                                         
+            |                                                                   
+            |--> if time value is provided                                      
+            |                                                                   
+            |        +-------------------------+                                
+            |------> | poll_select_set_timeout | determine timeout value        
+            |        +-------------------------+                                
+            |    +-----------------+                                            
+            |--> | core_sys_select | poll files and copy fd bitmaps to userspace
+            |    +-----------------+                                            
+            |    +--------------------+                                         
+            +--> | poll_select_finish | copy time info to userspace             
+                 +--------------------+                                         
+```
+
+```
++-----------------+                                                              
+| core_sys_select | : poll files and copy fd bitmaps to userspace                
++----|------------+                                                              
+     |                                                                           
+     |--> prepare 6 sets of bitmap                                               
+     |                                                                           
+     |    +-----------+                                                          
+     |--> | do_select | poll each file till any of them returns something we want
+     |    +-----------+                                                          
+     |                                                                           
+     +--> copy bitmaps to userspace                                              
+```
+
+```
++-----------+                                                                      
+| do_select | : poll each file till any of them returns something we want          
++--|--------+                                                                      
+   |    +---------------+                                                          
+   |--> | poll_initwait | init pwq (poll wait queue)                               
+   |    +---------------+                                                          
+   |                                                                               
+   |--> endless loop                                                               
+   |                                                                               
+   |------> for each set bit                                                       
+   |                                                                               
+   |----------> if file exists                                                     
+   |                                                                               
+   |                +--------------+                                               
+   |--------------> | wait_key_set | set up wait key                               
+   |                +--------------+                                               
+   |                +----------+                                                   
+   |--------------> | vfs_poll | : e.g., return 'poll_in' if there's pending signal
+   |                +----------+                                                   
+   |                                                                               
+   |----------> set bit in corresponding bitmap                                    
+   |                                                                               
+   |                                                                               
+   |------> break loop if ->poll() returns someothing we're interested in          
+   |                                                                               
+   |        +-----------------------+                                              
+   +------> | poll_schedule_timeout | schedule with timeout                        
+   |        +-----------------------+                                              
+   |    +---------------+                                                          
+   +--> | poll_freewait | free pwq (poll wait queue)                               
+        +---------------+                                                          
+```
+
 ## <a name="system-calls"></a> System Calls
 
 (TBD)
