@@ -194,6 +194,29 @@
          +--------------+                                                                                    
 ```
 
+```
++-------------------+                                                                                     
+| shmem_evict_inode | : truncate inode mapping, set 'freeing' and 'clear' in inode state                  
++----|--------------+                                                                                     
+     |                                                                                                    
+     |--> if the given inode has shmem mapping                                                            
+     |                                                                                                    
+     |        +----------------------+                                                                    
+     |------> | shmem_truncate_range | for each page in truncated range, unmap and detatch it from mapping
+     |        +----------------------+                                                                    
+     |                                                                                                    
+     |------> ensure inode info isn't on any shrink list                                                  
+     |                                                                                                    
+     |------> ensure inode info isn't on any swap list                                                    
+     |                                                                                                    
+     |    +------------------+                                                                            
+     |--> | shmem_free_inode | accounting                                                                 
+     |    +------------------+                                                                            
+     |    +-------------+                                                                                 
+     +--> | clear_inode | set 'freeing' and 'clear' in inode state                                        
+          +-------------+                                                                                 
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
