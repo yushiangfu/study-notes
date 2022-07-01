@@ -897,6 +897,85 @@
               +---------------+                            
 ```
 
+```
++------------------------+                                     
+| lru_deactivate_file_fn | : move page to inactive list        
++-----|------------------+                                     
+      |    +------------------------+                          
+      |--> | del_page_from_lru_list | remove page from lru list
+      |    +------------------------+                          
+      |    +-----------------+                                 
+      |--> | ClearPageActive |                                 
+      |    +-----------------+                                 
+      |                                                        
+      |--> if page has 'writeback' or 'dirty' label            
+      |                                                        
+      |        +----------------------+                        
+      |------> | add_page_to_lru_list | add page to lru list   
+      |        +----------------------+                        
+      |        +----------------+                              
+      |------> | SetPageReclaim |                              
+      |        +----------------+                              
+      |                                                        
+      |--> else (writeback finishes)                           
+      |                                                        
+      |        +---------------------------+                   
+      +------> | add_page_to_lru_list_tail |                   
+               +---------------------------+                   
+```
+
+```
++----------------------+                                                                             
+| deactivate_file_page | : deactivate a file page (add it to pvec, flush them if full)               
++-----|----------------+                                                                             
+      |    +----------------------------+                                                            
+      |--> | pagevec_add_and_need_flush | add page to pvec                                           
+      |    +----------------------------+                                                            
+      |                                                                                              
+      |--> if pvec is full afterwards                                                                
+      |                                                                                              
+      |        +---------------------+                                                               
+      +------> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them
+               +---------------------+                                                               
+```
+
+```
++-------------------+                                                              
+| inode_lru_isolate | : isolate inode from lru list for release preparation        
++---|---------------+                                                              
+    |                                                                              
+    |--> if inode is still in use                                                  
+    |                                                                              
+    |        +------------------+                                                  
+    |------> | list_lru_isolate | remove inode from list                           
+    |        +------------------+                                                  
+    |                                                                              
+    |------> return 'removed'                                                      
+    |                                                                              
+    |                                                                              
+    |--> if inode has buffer or it has no mapping                                  
+    |                                                                              
+    |        +----------------------+                                              
+    |------> | remove_inode_buffers | remove clean buffers from inode              
+    |        +----------------------+                                              
+    |                                                                              
+    |------> if all buffers are removed                                            
+    |                                                                              
+    |            +--------------------------+                                      
+    |----------> | invalidate_mapping_pages | invalidate all clean pages in mapping
+    |            +--------------------------+                                      
+    |                                                                              
+    +------> return 'retry'                                                        
+    |                                                                              
+    +--> set 'freeing' in inode state                                              
+    |                                                                              
+    |    +-----------------------+                                                 
+    |--> | list_lru_isolate_move | move inode to arg list                          
+    |    +-----------------------+                                                 
+    |                                                                              
+    +--> return 'removed'                                                          
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
