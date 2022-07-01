@@ -2071,6 +2071,60 @@ dir /root 0700 0 0
         +---------------+                                           
 ```
 
+```
++--------------+                                                        
+| dispose_list | : evict each inode in list                             
++---|----------+                                                        
+    |                                                                   
+    |--> while list has something                                       
+    |                                                                   
+    |------> remove first inode from list                               
+    |                                                                   
+    |        +-------+                                                  
+    +------> | evict | unlink inode, truncate mapping, and release inode
+             +-------+                                                  
+```
+
+```
++-------+                                                                                        
+| evict | : unlink inode, truncate mapping, and release inode                                    
++-|-----+                                                                                        
+  |                                                                                              
+  |--> ensure inode isn't on writeback list                                                      
+  |                                                                                              
+  |    +-------------------+                                                                     
+  |--> | inode_sb_list_del | remove inode from sb                                                
+  |    +-------------------+                                                                     
+  |    +--------------------------+                                                              
+  |--> | inode_wait_for_writeback | wait till the writeback on inode finishes                    
+  |    +--------------------------+                                                              
+  |                                                                                              
+  |--> if ->evict_inode() exists                                                                 
+  |                                                                                              
+  |------> call ->evict_inode(), e.g.,                                                           
+  |        +-------------------+                                                                 
+  |        | shmem_evict_inode | truncate inode mapping, set 'freeing' and 'clear' in inode state
+  |        +-------------------+                                                                 
+  |                                                                                              
+  |--> else                                                                                      
+  |                                                                                              
+  |        +----------------------------+                                                        
+  |------> | truncate_inode_pages_final | remove all pages from mapping and release them         
+  |        +----------------------------+                                                        
+  |        +-------------+                                                                       
+  |------> | clear_inode |                                                                       
+  |        +-------------+                                                                       
+  |    +-------------------+                                                                     
+  |--> | remove_inode_hash |                                                                     
+  |    +-------------------+                                                                     
+  |    +-------------+                                                                           
+  |--> | wake_up_bit | who's waiting?                                                            
+  |    +-------------+                                                                           
+  |    +---------------+                                                                         
+  +--> | destroy_inode |                                                                         
+       +---------------+                                                                         
+```
+
 ## <a name="reference"></a> Reference
 
 - [Shared Subtrees](https://www.kernel.org/doc/Documentation/filesystems/sharedsubtree.txt)
