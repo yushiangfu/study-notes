@@ -1193,6 +1193,56 @@ address              +-------------+             +-------------+
                             +-----------------+                                                                         
 ```
 
+```
++----------------------------+                                                                                                      
+| truncate_inode_pages_final | : remove all pages from mapping and release them                                                     
++------|---------------------+                                                                                                      
+       |                                                                                                                            
+       |--> set 'exiting' in mapping flags                                                                                          
+       |                                                                                                                            
+       |    +----------------------+                                                                                                
+       +--> | truncate_inode_pages |                                                                                                
+            +-----|----------------+                                                                                                
+                  |    +----------------------------+                                                                               
+                  +--> | truncate_inode_pages_range | : for each page within range, remove it mapping and release it                
+                       +------|---------------------+                                                                               
+                              |                                                                                                     
+                              |--> while we can still fill pvec                                                                     
+                              |                                                                                                     
+                              |------> for each page in pvec                                                                        
+                              |                                                                                                     
+                              |            +-----------------------+                                                                
+                              |----------> | truncate_cleanup_page | unmap and invalidate page                                      
+                              |            +-----------------------+                                                                
+                              |        +------------------------------+                                                             
+                              |------> | delete_from_page_cache_batch | for each page in pvec, remove it from mapping and release it
+                              |        +------------------------------+                                                             
+                              |        +-----------------+                                                                          
+                              |------> | pagevec_release | release pages in pvec                                                    
+                              |        +-----------------+                                                                          
+                              |                                                                                                     
+                              |--> if necessary, wait till all pages are gone                                                       
+                              |                                                                                                     
+                              |    +-----------------------------+                                                                  
+                              +--> | cleancache_invalidate_inode | (disabled config)                                                
+                                   +-----------------------------+                                                                  
+```
+
+```
++------------------------------+                                                               
+| delete_from_page_cache_batch | : for each page in pvec, remove it from mapping and release it
++-------|----------------------+                                                               
+        |    +-------------------------+                                                       
+        |--> | page_cache_delete_batch | delete a bunch of pages from page cache               
+        |    +-------------------------+                                                       
+        |                                                                                      
+        |--> for each page in pvec                                                             
+        |                                                                                      
+        |        +----------------------+                                                      
+        +------> | page_cache_free_page |                                                      
+                 +----------------------+                                                      
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
