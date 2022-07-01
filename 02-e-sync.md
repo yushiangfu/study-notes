@@ -687,10 +687,60 @@
    |                                                                               
    |------> return 'success'                                                       
    |                                                                               
-   +--> return 'clean'                                                             
-```
+   +--> return 'clean'       
+   
++-------------------+                                                                                                
+| try_to_free_pages | : set up scan control and shrink memory node                                                   
++----|--------------+                                                                                                
+     |                                                                                                               
+     |--> set up scan control                                                                                        
+     |                                                                                                               
+     |    +-------------------------+                                                                                
+     |--> | throttle_direct_reclaim | check if we should throttole (disallow) task to reclaim                        
+     |    +-------------------------+                                                                                
+     |                                                                                                               
+     |--> return if it should be throttled                                                                           
+     |                                                                                                               
+     |    +----------------------+                                                                                   
+     +--> | do_try_to_free_pages | : shrink memory node                                                              
+          +-----|----------------+                                                                                   
+                |                                                                                                    
+                |--> while priority >= 0                                                                             
+                |                                                                                                    
+                |        +--------------+                                                                            
+                +------> | shrink_zones | : for each zone zonelist, shrink its memory node                           
+                         +---|----------+                                                                            
+                             |                                                                                       
+                             |--> for each zone zonelist                                                             
+                             |                                                                                       
+                             |        +-------------+                                                                
+                             +------> | shrink_node | shrink lru lists and slabs of the given memory node till enough
+                                      +-------------+                                                                
 
-```
+ +-------------+                                                                      
+ | shrink_node | ： shrink lru lists and slabs of the given memory node till enough    
+ +---|---------+                                                                      
+     |                                                                                
+     |--> get lru list from node                                                      
+ again:                                                                               
+     |    +--------------------+                                                      
+     |--> | shrink_node_memcgs | : shrink lru lists and slabs of the given memory node
+     |    +----|---------------+                                                      
+     |         |                                                                      
+     | `       |--> get lru list from node                                            
+     |         |                                                                      
+     |         |    +---------------+                                                 
+     |         |--> | shrink_lruvec | shrink active and inactive lists                
+     |         |    +---------------+                                                 
+     |         |    +-------------+                                                   
+     |         +--> | shrink_slab | ask each shrinker to reclaim memory               
+     |              +-------------+                                                   
+     |    +-------------------------+                                                 
+     |--> | should_continue_reclaim |                                                 
+     |    +-------------------------+                                                 
+     |                                                                                
+     +--> go to 'again:' if we should                                                 
+
 +---------------+                                                                  
 | shrink_lruvec | : shrink active and inactive lists                               
 +---|-----------+                                                                  
@@ -823,9 +873,35 @@
       |    +----------------------+                                                             
       +--> | free_unref_page_list | free those unused pages                                     
            +----------------------+                                                             
-```
 
-```
++-------------+                                                                        
+| shrink_slab | : ask each shrinker to reclaim memory                                  
++---|---------+                                                                        
+    |                                                                                  
+    |--> for each shrinker                                                             
+    |                                                                                  
+    |        +----------------+                                                        
+    +------> | do_shrink_slab | : shrink slab                                          
+             +---|------------+                                                        
+                 |                                                                     
+                 +--> call ->scan_objects(), e.g.,                                     
+                      +------------------+                                             
+                      | super_cache_scan | : shrink dentries and inodes of the given sb
+                      +------------------+                                             
+
++------------------+                                                                           
+| super_cache_scan | : shrink dentries and inodes of the given sb                              
++----|-------------+                                                                           
+     |                                                                                         
+     |--> get 'sb' struct                                                                      
+     |                                                                                         
+     |    +-----------------+                                                                  
+     |--> | prune_dcache_sb | isolate dentries to a local list, and try to release each of them
+     |    +-----------------+                                                                  
+     |    +-----------------+                                                                  
+     +--> | prune_icache_sb | isolate inodes to a local list, and try to release each of them  
+          +-----------------+                                                                  
+
 +-----------------+                                                                                 
 | prune_dcache_sb | : isolate dentries to a local list, and try to release each of them             
 +----|------------+                                                                                 
@@ -937,6 +1013,18 @@
       |        +---------------------+                                                               
       +------> | pagevec_lru_move_fn | move pages in pvec to lru list of memory node and release them
                +---------------------+                                                               
+```
+
+```
++-----------------+                                                                                 
+| prune_icache_sb | : isolate inodes to a local list, and try to release each of them               
++----|------------+                                                                                 
+     |    +----------------------+                                                                  
+     |--> | list_lru_shrink_walk | for each item in list, apply callback isolate(), return isolated#
+     |    +----------------------+                                                                  
+     |    +--------------+                                                                          
+     +--> | dispose_list | evict each inode in list                                                 
+          +--------------+                                                                          
 ```
 
 ```
