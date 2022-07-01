@@ -1062,6 +1062,24 @@
     |    +-----------------------+                                                 
     |                                                                              
     +--> return 'removed'                                                          
+    
+    
+    
++---------------+                                                                                
+| lru_cache_add | : add page to percpu pvec, if full, flush to node lru list                     
++---|-----------+                                                                                
+    |                                                                                            
+    |--> get per cpu pvec                                                                        
+    |                                                                                            
+    |    +----------------------------+                                                          
+    |--> | pagevec_add_and_need_flush |                                                          
+    |    +----------------------------+                                                          
+    |                                                                                            
+    |--> if pvec if full after addition                                                          
+    |                                                                                            
+    |        +-------------------+                                                               
+    +------> | __pagevec_lru_add | move pages in pvec to lru list of memory node and release them
+             +-------------------+                                                                   
 ```
 
 ## <a name="reference"></a> Reference
