@@ -1167,6 +1167,32 @@ address              +-------------+             +-------------+
                                      +------> call ->freepage()                                 
 ```
 
+```
++--------------------------+                                                                                            
+| invalidate_mapping_pages | : invalidate all clean pages in mapping                                                    
++------|-------------------+                                                                                            
+       |    +----------------------------+                                                                              
+       +--> | __invalidate_mapping_pages |                                                                              
+            +------|---------------------+                                                                              
+                   |                                                                                                    
+                   |--> while we can still fill pvec                                                                    
+                   |                                                                                                    
+                   |------> for each page in pvec                                                                       
+                   |                                                                                                    
+                   |            +-----------------------+                                                               
+                   |----------> | invalidate_inode_page | detatch page from mapping                                     
+                   |            +-----------------------+                                                               
+                   |                                                                                                    
+                   |----------> if we invalidate nothing                                                                
+                   |                                                                                                    
+                   |                +----------------------+                                                            
+                   |--------------> | deactivate_file_page | deactivate a file page (add it to pvec, flush them if full)
+                   |                +----------------------+                                                            
+                   |        +-----------------+                                                                         
+                   +------> | pagevec_release | releases pages in pvec                                                  
+                            +-----------------+                                                                         
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
