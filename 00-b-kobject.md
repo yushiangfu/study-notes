@@ -14,14 +14,22 @@ struct kobject {
     struct kobj_type    *ktype;   // provide more info of the outer structure
     struct kernfs_node  *sd;      // sysfs directory entry
     struct kref     kref;         // for reference management
-#ifdef CONFIG_DEBUG_KOBJECT_RELEASE
-    struct delayed_work release;
-#endif
-    unsigned int state_initialized:1;
-    unsigned int state_in_sysfs:1;
-    unsigned int state_add_uevent_sent:1;
-    unsigned int state_remove_uevent_sent:1;
-    unsigned int uevent_suppress:1;
+};
+```
+
+```
+struct kset {
+    struct list_head list;                      // to group the set members
+    struct kobject kobj;                        // to manage the kset properties
+    const struct kset_uevent_ops *uevent_ops;   // to inform the userspace of the set state
+} __randomize_layout;
+
+```
+
+```
+struct kobj_type {  // it defines how to export the info to sysfs
+    const struct sysfs_ops *sysfs_ops;
+    struct attribute **default_attrs;
 };
 ```
 
