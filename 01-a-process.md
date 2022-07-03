@@ -416,8 +416,64 @@ struct task_struct {
 #define __TASK_TRACED           0x0008      // task is ptraced
   
 /* Used in tsk->exit_state: */
-#define EXIT_DEAD           0x0010
+#define EXIT_DEAD           0x0010          // after parent's ack, before it totally vanishes
 #define EXIT_ZOMBIE         0x0020          // after task termination, before parent's ack
+```
+  
+```
+struct signal_struct {
+    struct rlimit rlim[RLIM_NLIMITS];
+}
+
+struct rlimit {
+    __kernel_ulong_t    rlim_cur;   // soft limit
+    __kernel_ulong_t    rlim_max;   // hard limit
+};
+```
+
+```
++---------------+                           
+| sys_setrlimit | : set rlimit              
++---|-----------+                           
+    |    +----------------+                 
+    +--> | copy_from_user |                 
+    |    +----------------+                 
+    |    +------------+                     
+    +--> | do_prlimit |                     
+         +--|---------+                     
+            |                               
+            |--> get rlimit from task signal
+            |                               
+            |--> if old is provided         
+            |                               
+            |------> *old = *rlimit         
+            |                               
+            |--> if new is provided         
+            |                               
+            +------> *rlimit = *new         
+```
+
+```
++---------------+                           
+| sys_getrlimit | : get rlimit              
++---|-----------+                           
+    |    +------------+                     
+    +--> | do_prlimit |                     
+    |    +--|---------+                     
+    |       |                               
+    |       |--> get rlimit from task signal
+    |       |                               
+    |       |--> if old is provided         
+    |       |                               
+    |       |------> *old = *rlimit         
+    |       |                               
+    |       |--> if new is provided         
+    |       |                               
+    |       +------> *rlimit = *new         
+    |                                       
+    |    +----------------+                 
+    +--> | copy_from_user |                 
+         +----------------+                 
 ```
   
 </details>
