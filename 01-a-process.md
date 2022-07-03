@@ -476,6 +476,49 @@ struct rlimit {
          +----------------+                 
 ```
   
+| Name              | Value  | Note                               |
+| ---               | ---    | ---                                |
+| RLIMIT_CPU        | 0      | CPU time in sec                    |   
+| RLIMIT_FSIZE      | 1      | Maximum filesize                   |   
+| RLIMIT_DATA       | 2      | max data size                      |   
+| RLIMIT_STACK      | 3      | max stack size                     |   
+| RLIMIT_CORE       | 4      | max core file size                 |   
+| RLIMIT_RSS        | 5      | max resident set size              |   
+| RLIMIT_NPROC      | 6      | max number of processes            |   
+| RLIMIT_NOFILE     | 7      | max number of open files           |   
+| RLIMIT_MEMLOCK    | 8      | max locked-in-memory address space |
+| RLIMIT_AS         | 9      | address space limit                |   
+| RLIMIT_LOCKS      | 10     | maximum file locks held            |   
+| RLIMIT_SIGPENDING | 11     | max number of pending signals      |   
+| RLIMIT_MSGQUEUE   | 12     | maximum bytes in POSIX mqueues     |   
+| RLIMIT_NICE       | 13     | max nice prio allowed to raise to 0-39 for nice level 19 .. -20 |
+| RLIMIT_RTPRIO     | 14     | maximum realtime priority          |   
+| RLIMIT_RTTIME     | 15     | timeout for RT tasks in us         |   
+| RLIM_NLIMITS      | 16     |                                    |   
+| RLIM_INFINITY     | (~0UL) |                                    |
+  
+  
+```
+root@romulus:~# cat /proc/self/limits 
+Limit                     Soft Limit           Hard Limit           Units     
+Max cpu time              unlimited            unlimited            seconds   
+Max file size             unlimited            unlimited            bytes     
+Max data size             unlimited            unlimited            bytes     
+Max stack size            8388608              unlimited            bytes     
+Max core file size        unlimited            unlimited            bytes     
+Max resident set          unlimited            unlimited            bytes     
+Max processes             2770                 2770                 processes 
+Max open files            1024                 524288               files     
+Max locked memory         65536                65536                bytes     
+Max address space         unlimited            unlimited            bytes     
+Max file locks            unlimited            unlimited            locks     
+Max pending signals       2770                 2770                 signals   
+Max msgqueue size         819200               819200               bytes     
+Max nice priority         0                    0                    
+Max realtime priority     0                    0                    
+Max realtime timeout      unlimited            unlimited            us
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
