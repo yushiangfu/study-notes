@@ -341,9 +341,9 @@ When a task is created but not yet added to any run queue, it is NEW.
 Once positioned in a run queue or selected to be run on CPU, the state turns to the RUNNING.
 If operations involve a longer waiting time, the task will temporarily wait in a queue with the task state set INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
 
-- STATE_INTERRUPTIBLE: can receive signal
-- STATE_UNINTERRUPTIBLE: can't receive signal
-- STATE_KILLABLE: can receive 'kill' signal only
+- TASK_INTERRUPTIBLE: can receive signal
+- TASK_UNINTERRUPTIBLE: can't receive signal
+- TASK_KILLABLE: can receive 'kill' signal only
 
 ```
                                              run queue                                
@@ -379,7 +379,8 @@ If operations involve a longer waiting time, the task will temporarily wait in a
                                  +--------------------------------+                                    
 ```
 
-- Code flow
+<details>
+  <summary> Code trace </summary>
 
 ```
 +------------+           
@@ -398,6 +399,28 @@ If operations involve a longer waiting time, the task will temporarily wait in a
           +--| state = RUNNING |
              +-----------------+
 ```
+  
+```
+struct task_struct {
+    unsigned int            __state;  // current running state
+    int             exit_state;       // state for exiting process
+}
+```
+  
+```
+/* Used in tsk->state: */
+#define TASK_RUNNING            0x0000      // the task is running or ready to run
+#define TASK_INTERRUPTIBLE      0x0001      // sleeping (accept signal)
+#define TASK_UNINTERRUPTIBLE        0x0002  // sleeping (ignore signal)
+#define __TASK_STOPPED          0x0004      // task is stopped by intention, e.g., debug
+#define __TASK_TRACED           0x0008      // task is ptraced
+  
+/* Used in tsk->exit_state: */
+#define EXIT_DEAD           0x0010
+#define EXIT_ZOMBIE         0x0020          // after task termination, before parent's ack
+```
+  
+</details>
 
 ## <a name="task-creation"></a> Task Creation
 
