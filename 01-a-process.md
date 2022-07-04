@@ -519,6 +519,62 @@ Max realtime priority     0                    0
 Max realtime timeout      unlimited            unlimited            us
 ```
   
+```
++-------------+                                                                                              
+| sys_unshare | : based on flags, unshare specified resources and switch to the newly created ones           
++---|---------+                                                                                              
+    |    +--------------+                                                                                    
+    +--> | ksys_unshare |                                                                                    
+         +---|----------+                                                                                    
+             |    +------------+                                                                             
+             |--> | unshare_fs | uhsnare fs (root, pwd) if specified                                         
+             |    +------------+                                                                             
+             |    +------------+                                                                             
+             |--> | unshare_fd | unshare file descriptors if specified                                       
+             |    +------------+                                                                             
+             |    +----------------+                                                                         
+             |--> | unshare_userns | (disabled config)                                                       
+             |    +----------------+                                                                         
+             |    +----------------------------+                                                             
+             |--> | unshare_nsproxy_namespaces | allocate nsproxy, determine to share or clone each namespace
+             |    +----------------------------+                                                             
+             |                                                                                               
+             +--> switch to the newly created resource                                                       
+```
+  
+```
++----------------------------+                                                                      
+| unshare_nsproxy_namespaces | : allocate nsproxy, determine to share or clone each namespace       
++------|---------------------+                                                                      
+       |                                                                                            
+       |--> determine user namespace                                                                
+       |                                                                                            
+       |    +-----------------------+                                                               
+       +--> | create_new_namespaces | : allocate nsproxy, determine to share or clone each namespace
+            +-----|-----------------+                                                               
+                  |    +----------------+                                                           
+                  |--> | create_nsproxy | allocate nsproxy                                          
+                  |    +----------------+                                                           
+                  |    +-------------+                                                              
+                  |--> | copy_mnt_ns | share or clone mnt namespace based on flags                  
+                  |    +-------------+                                                              
+                  |    +--------------+                                                             
+                  |--> | copy_utsname | share or clone uts namespace based on flags                 
+                  |    +--------------+                                                             
+                  |    +-------------+                                                              
+                  |--> | copy_pid_ns | share or clone pid namespace based on flags                  
+                  |    +-------------+                                                              
+                  |    +----------------+                                                           
+                  |--> | copy_cgroup_ns | share or clone cgroup namespace based on flags            
+                  |    +----------------+                                                           
+                  |    +-------------+                                                              
+                  |--> | copy_net_ns | share or clone net namespace based on flags                  
+                  |    +-------------+                                                              
+                  |    +--------------+                                                             
+                  +--> | copy_time_ns | (disabled config)                                           
+                       +--------------+                                                             
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
