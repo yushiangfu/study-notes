@@ -575,6 +575,69 @@ Max realtime timeout      unlimited            unlimited            us
                        +--------------+                                                             
 ```
   
+```
++------------+                                                      
+| sys_setsid | : set task special pid = group leader's pid          
++--|---------+                                                      
+   |    +-------------+                                             
+   +--> | ksys_setsid |                                             
+        +---|---------+                                             
+            |                                                       
+            |--> get group leader                                   
+            |                                                       
+            |--> group_leader->signal->leader = 1                   
+            |                                                       
+            |    +------------------+                               
+            +--> | set_special_pids | set task special pid = arg pid
+                 +------------------+                               
+```
+  
+```
++------------------+                                                
+| set_special_pids | : set task special pid = arg pid               
++----|-------------+                                                
+     |                                                              
+     |--> get group leader                                          
+     |                                                              
+     |--> if leader's session != arg pid                            
+     |                                                              
+     |        +------------+                                        
+     |------> | change_pid | change task pid, and attach task to pid
+     |        +------------+                                        
+     |                                                              
+     |--> if leader's pgrp != arg pid                               
+     |                                                              
+     |        +------------+                                        
+     +------> | change_pid | change task pid, and attach task to pid
+              +------------+                                        
+```
+  
+```
++------------+                                                 
+| change_pid | : change task pid, and attach task to pid       
++--|---------+                                                 
+   |    +--------------+                                       
+   |--> | __change_pid | change pid, free the old one if unused
+   |    +--------------+                                       
+   |    +------------+                                         
+   +--> | attach_pid | attach task to pid                      
+        +------------+                                         
+```
+  
+```
++--------------+                                         
+| __change_pid | : change pid, free the old one if unused
++---|----------+                                         
+    |                                                    
+    |-> replace pid_links[type] = arg pid                
+    |                                                    
+    |--> return if the old one is in use                 
+    |                                                    
+    |    +----------+                                    
+    +--> | free_pid |                                    
+         +----------+                                    
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
