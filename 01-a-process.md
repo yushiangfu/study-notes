@@ -638,6 +638,14 @@ Max realtime timeout      unlimited            unlimited            us
          +----------+                                    
 ```
   
+```
+struct pid_namespace {
+    struct task_struct *child_reaper; // the task to call wait4 when other tasks terminate
+    unsigned int level;               // the depth of namespace (0: root, 1: child, ...)
+    struct pid_namespace *parent;     // points to the parent namespace
+}
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
