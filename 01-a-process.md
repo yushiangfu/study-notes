@@ -644,6 +644,28 @@ struct pid_namespace {
     unsigned int level;               // the depth of namespace (0: root, 1: child, ...)
     struct pid_namespace *parent;     // points to the parent namespace
 }
+  
+struct upid {
+    int nr;                   // pid value
+    struct pid_namespace *ns; // points to namespace that contains the pid value
+};
+
+struct pid
+{
+    refcount_t count;                     // ref counter
+    unsigned int level;
+    struct hlist_head tasks[PIDTYPE_MAX]; // array of hlist head
+    struct upid numbers[1];
+};
+  
+enum pid_type
+{
+    PIDTYPE_PID,
+    PIDTYPE_TGID,
+    PIDTYPE_PGID,
+    PIDTYPE_SID,
+    PIDTYPE_MAX,
+};
 ```
   
 </details>
