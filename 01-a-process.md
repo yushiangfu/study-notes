@@ -653,9 +653,9 @@ struct upid {
 struct pid
 {
     refcount_t count;                     // ref counter
-    unsigned int level;
+    unsigned int level;                   // the number of namespaces that the struct pid is visible in
     struct hlist_head tasks[PIDTYPE_MAX]; // array of hlist head
-    struct upid numbers[1];
+    struct upid numbers[1];               // upid array for each level
 };
   
 enum pid_type
@@ -666,6 +666,36 @@ enum pid_type
     PIDTYPE_SID,
     PIDTYPE_MAX,
 };
+```
+  
+```
++----------+                                           
+| task_pid | return task->thread_pid                   
++----------+                                           
+                                                       
++-----------+                                          
+| task_tgid | return task->signal->pids[PIDTYPE_TGID]  
++-----------+                                          
+                                                       
++-----------+                                          
+| task_pgrp | return task->signal->pids[PIDTYPE_PGID]  
++-----------+                                          
+                                                       
++--------------+                                       
+| task_session | return task->signal->pids[PIDTYPE_SID]
++--------------+                                       
+```
+  
+```
++-----------+                                                               
+| pid_nr_ns | get pid value from struct pid based on level of arg namespace 
++-----------+                                                               
++---------+                                                                 
+| pid_vnr | get pid value from struct pid based on level of active namespace
++---------+                                                                 
++--------+                                                                  
+| pid_nr | get pid value from struct pid based on level of init namespace   
++--------+                                                                  
 ```
   
 </details>
