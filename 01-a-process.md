@@ -672,15 +672,12 @@ enum pid_type
 +----------+                                           
 | task_pid | return task->thread_pid                   
 +----------+                                           
-                                                       
 +-----------+                                          
 | task_tgid | return task->signal->pids[PIDTYPE_TGID]  
 +-----------+                                          
-                                                       
 +-----------+                                          
 | task_pgrp | return task->signal->pids[PIDTYPE_PGID]  
 +-----------+                                          
-                                                       
 +--------------+                                       
 | task_session | return task->signal->pids[PIDTYPE_SID]
 +--------------+                                       
@@ -696,6 +693,21 @@ enum pid_type
 +--------+                                                                  
 | pid_nr | get pid value from struct pid based on level of init namespace   
 +--------+                                                                  
+```
+  
+```
++----------------+                                                 
+| task_pid_nr_ns | get pid value of task in given namespace        
++----------------+                                                 
++-----------------+                                                
+| task_tgid_nr_ns | get tgid value of task in given namespace      
++-----------------+                                                
++-----------------+                                                
+| task_pgrp_nr_ns | get pgrp value of task in given namespace      
++-----------------+                                                
++--------------------+                                             
+| task_session_nr_ns | get session value of task in given namespace
++--------------------+                                             
 ```
   
 </details>
