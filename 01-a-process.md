@@ -710,6 +710,23 @@ enum pid_type
 +--------------------+                                             
 ```
   
+```
++-------------+                                                                        
+| find_pid_ns | find struct pid by pid value from the given namespace                  
++-------------+                                                                        
++----------+                                                                           
+| pid_task | get the first task of the type from struct pid                            
++----------+                                                                           
+                                                                                       
+                                                                                       
++---------------------+                                                                
+| find_task_by_pid_ns | get the first task of type from the given pid value and ns     
++---------------------+                                                                
++-------------------+                                                                  
+| find_task_by_vpid | get the first task of type from the given pid value and active ns
++-------------------+                                                                  
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
