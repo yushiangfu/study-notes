@@ -735,7 +735,7 @@ enum pid_type
     |--> | copy_process | allocate task, clone or share resource based on flags, set pid value and attach to struct pid
     |    +--------------+                                                                                              
     |    +------------------+                                                                                          
-    +--> | wake_up_new_task |                                                                                          
+    +--> | wake_up_new_task | state = RUNNING, place task onto the suitable runqueue, resched if necessary
          +------------------+                                                                                          
 ```
   
@@ -810,6 +810,30 @@ enum pid_type
    |------> set up pid number of that level                       
    |                                                              
    +--> for each level, install pid to that ns                    
+```
+  
+```
++------------------+                                                                               
+| wake_up_new_task | : state = RUNNING, place task onto the suitable runqueue, resched if necessary
++----|-------------+                                                                               
+     |                                                                                             
+     |--> task state = RUNNING                                                                     
+     |                                                                                             
+     |--> determine runqueue to place into and set that cpu to task                                
+     |                                                                                             
+     |    +---------------+                                                                        
+     |--> | activate_task | e.g., place task into runqueue                                         
+     |    +---------------+                                                                        
+     |    +--------------------+                                                                   
+     |--> | check_preempt_curr | mark current running task 'resched' if appropriate                
+     |    +--------------------+                                                                   
+     |                                                                                             
+     |--> if ->task_woken() exists                                                                 
+     |                                                                                             
+     +------> call ->task_woken(), e.g.,                                                           
+              +---------------+                                                                    
+              | task_woken_rt |                                                                    
+              +---------------+                                                                    
 ```
   
 </details>
