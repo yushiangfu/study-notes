@@ -784,6 +784,43 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
                              +------------------+                                                                                 
 ```
 
+```
++-----------------+                                                                         
+| dup_task_struct | : allocate task and thread stack, copy from parent and reset some fields
++----|------------+                                                                         
+     |    +------------------------+                                                        
+     |--> | alloc_task_struct_node | allocate 'task'                                        
+     |    +------------------------+                                                        
+     |    +-------------------------+                                                       
+     |--> | alloc_thread_stack_node | allocate two pages (4K * 2) as task stack             
+     |    +-------------------------+                                                       
+     |    +----------------------+                                                          
+     |--> | arch_dup_task_struct | copy content from parent task to child's                 
+     |    +----------------------+                                                          
+     |    +--------------------+                                                            
+     |--> | setup_thread_stack | copy 'thread info' from parent's                           
+     |    +--------------------+                                                            
+     |                                                                                      
+     +--> reset some task fields                                                            
+```
+
+```
++------------+                                                            
+| sched_fork | : state = NEW, set prio & sched class                      
++--|---------+                                                            
+   |    +--------------+                                                  
+   |--> | __sched_fork | init sched related fields                        
+   |    +--------------+                                                  
+   |                                                                      
+   |--> task state = NEW                                                  
+   |                                                                      
+   |--> child prio = parent normal prio (to avoid booted prio inheritance)
+   |                                                                      
+   |--> determine shed class based on prio                                
+   |                                                                      
+   +--> task preempt count = 0 in our config                              
+```
+
 ## <a name="task-termination"></a> Task Termination
 
 When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
