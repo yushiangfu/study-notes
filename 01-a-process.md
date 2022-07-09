@@ -727,6 +727,91 @@ enum pid_type
 +-------------------+                                                                  
 ```
   
+```
++--------------+                                                                                                       
+| kernel_clone | : prepare new task and wake it up                                                                     
++---|----------+                                                                                                       
+    |    +--------------+                                                                                              
+    |--> | copy_process | allocate task, clone or share resource based on flags, set pid value and attach to struct pid
+    |    +--------------+                                                                                              
+    |    +------------------+                                                                                          
+    +--> | wake_up_new_task |                                                                                          
+         +------------------+                                                                                          
+```
+  
+```
++--------------+                                                                                                
+| copy_process | : allocate task, clone or share resource based on flags, set pid value and attach to struct pid
++---|----------+                                                                                                
+    |    +-----------------+                                                                                    
+    |--> | dup_task_struct | allocate task and thread stack, copy from parent and reset some fields             
+    |    +-----------------+                                                                                    
+    |    +-----------------+                                                                                    
+    |--> | init_sigpending | empty signals                                                                      
+    |    +-----------------+                                                                                    
+    |    +------------+                                                                                         
+    |--> | sched_fork | state = NEW, set prio & sched class                                                     
+    |    +------------+                                                                                         
+    |    +--------------+                                                                                       
+    |--> | copy_semundo | clone sem undo list if CLONE_SYSVSEM is specified                                     
+    |    +--------------+                                                                                       
+    |    +------------+                                                                                         
+    |--> | copy_files | share files if CLONE_FILES is specfied                                                  
+    |    +------------+                                                                                         
+    |    +---------+                                                                                            
+    |--> | copy_fs | share fs if CLONE_FS is specified                                                          
+    |    +---------+                                                                                            
+    |    +--------------+                                                                                       
+    |--> | copy_sighand | share sighand if CLONE_SIGHAND is specified                                           
+    |    +--------------+                                                                                       
+    |    +-------------+                                                                                        
+    |--> | copy_signal | share signal is CLONE_THREAD is specified                                              
+    |    +-------------+                                                                                        
+    |    +---------+                                                                                            
+    |--> | copy_mm | share mm if CLONE_VM is specified                                                          
+    |    +---------+                                                                                            
+    |    +-----------------+                                                                                    
+    |--> | copy_namespaces | create new namespace if any related flag is specified                              
+    |    +-----------------+                                                                                    
+    |    +---------+                                                                                            
+    |--> | copy_io | share io contect if CLONE_IO is specified                                                  
+    |    +---------+                                                                                            
+    |    +-------------+                                                                                        
+    |--> | copy_thread | set tls if CLONE_SETTLS is specified                                                   
+    |    +-------------+                                                                                        
+    |    +-----------+                                                                                          
+    |--> | alloc_pid | allocate 'pid' and set up pid value for each level                                       
+    |    +-----------+                                                                                          
+    |                                                                                                           
+    |--> set task pid value                                                                                     
+    |                                                                                                           
+    |    +-------------------+                                                                                  
+    |--> | sched_cgroup_fork | e.g., place task onto runqueue                                                   
+    |    +-------------------+                                                                                  
+    |                                                                                                           
+    |--> determine parent and exit signal                                                                       
+    |                                                                                                           
+    +--> attach task to all types of struct pid                                                                 
+```
+  
+```
++-----------+                                                     
+| alloc_pid | : allocate 'pid' and set up pid value for each level
++--|--------+                                                     
+   |                                                              
+   |--> allocate 'pid'                                            
+   |                                                              
+   |--> pid level = ns level                                      
+   |                                                              
+   |--> from child to root namespace                              
+   |                                                              
+   |------> prepare pid value                                     
+   |                                                              
+   |------> set up pid number of that level                       
+   |                                                              
+   +--> for each level, install pid to that ns                    
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
