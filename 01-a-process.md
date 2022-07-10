@@ -716,11 +716,16 @@ enum pid_type
     |    +--------------+                                                                                              
     |--> | copy_process | allocate task, clone or share resource based on flags, set pid value and attach to struct pid
     |    +--------------+                                                                                              
+    |                                                                                                                  
+    |--> if CLONE_PARENT_SETTID is specified                                                                           
+    |                                                                                                                  
+    +------> write the pid value to the given userspace address                                                        
+    |                                                                                                                  
     |    +------------------+                                                                                          
     |--> | wake_up_new_task |                                                                                          
     |    +------------------+                                                                                          
     |                                                                                                                  
-    |--> if child is traced                                                                                            
+    +--> if child is traced                                                                                            
     |                                                                                                                  
     |        +------------------+                                                                                      
     +------> | ptrace_event_pid | notify tracer of the event                                                           
@@ -733,7 +738,10 @@ enum pid_type
 +---|----------+                                                                                                
     |    +-----------------+                                                                                    
     |--> | dup_task_struct | allocate task and thread stack, copy from parent and reset some fields             
-    |    +-----------------+                                                                                    
+    |    +-----------------+      
+    |   
+    |--> save child_tid to task struct for later use if CLONE_CHILD_SETTID is speficied
+    | 
     |    +-----------------+                                                                                    
     |--> | init_sigpending | empty signals                                                                      
     |    +-----------------+                                                                                    
@@ -741,7 +749,7 @@ enum pid_type
     |--> | sched_fork | state = NEW, set prio & sched class                                                     
     |    +------------+                                                                                         
     |    +--------------+                                                                                       
-    |--> | copy_semundo | clone sem undo list if CLONE_SYSVSEM is specified                                     
+    |--> | copy_semundo | share sem undo list if CLONE_SYSVSEM is specified                                     
     |    +--------------+                                                                                       
     |    +------------+                                                                                         
     |--> | copy_files | share files if CLONE_FILES is specfied                                                  
@@ -823,7 +831,23 @@ enum pid_type
               | task_woken_rt |                                                                    
               +---------------+                                                                    
 ```
-
+  
+```
++---------------+                                                              
+| schedule_tail | : write pid value to the given userspace address if necessary
++---|-----------+                                                              
+    |    +--------------------+                                                
+    |--> | finish_task_switch |                                                
+    |    +--------------------+                                                
+    |    +----------------+                                                    
+    |--> | preempt_enable | (disabled config)                                  
+    |    +----------------+                                                    
+    |                                                                          
+    |--> if task set_child_tid is saved during copy_process()                  
+    |                                                                          
+    +------> write the pid value to the given userspace address                
+```
+  
 ```
      low addr  +--+-----------+                
                |  |thread_info|                
@@ -846,23 +870,13 @@ enum pid_type
   
 ```
 struct thread_info {
-    unsigned long       flags;      /* low level flags */
-    int         preempt_count;  /* 0 => preemptable, <0 => bug */
-    struct task_struct  *task;      /* main task structure */
-    __u32           cpu;        /* cpu */
-    __u32           cpu_domain; /* cpu domain */
-#ifdef CONFIG_STACKPROTECTOR_PER_TASK
-    unsigned long       stack_canary;
-#endif
-    struct cpu_context_save cpu_context;    /* cpu context */
-    __u32           abi_syscall;    /* ABI type and syscall nr */
-    __u8            used_cp[16];    /* thread used copro */
-    unsigned long       tp_value[2];    /* TLS registers */
-    union fp_state      fpstate __attribute__((aligned(8)));
-    union vfp_state     vfpstate;
-#ifdef CONFIG_ARM_THUMBEE
-    unsigned long       thumbee_state;  /* ThumbEE Handler Base register */
-#endif
+    unsigned long       flags;  // TIF_SIGPENDING: signal pending
+                                // TIF_NEED_RESCHED: rescheduling necessary
+    int         preempt_count;  // for preemption, which is disabled in our config
+    struct task_struct  *task;  // point to the task_struct
+    __u32           cpu;        // where the process is running on
+    struct cpu_context_save cpu_context;
+
 };
 ```
   
