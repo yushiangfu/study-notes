@@ -381,24 +381,6 @@ If operations involve a longer waiting time, the task will temporarily wait in a
 
 <details>
   <summary> Code trace </summary>
-
-```
-+------------+           
-| sched_fork |           
-+------|-----+           
-       |  +-------------+
-       +--| state = NEW |
-          +-------------+                                                                
-```
-
-```
-+------------------+            
-| wake_up_new_task |            
-+---------|--------+            
-          |  +-----------------+
-          +--| state = RUNNING |
-             +-----------------+
-```
   
 ```
 struct task_struct {
@@ -735,8 +717,14 @@ enum pid_type
     |--> | copy_process | allocate task, clone or share resource based on flags, set pid value and attach to struct pid
     |    +--------------+                                                                                              
     |    +------------------+                                                                                          
-    +--> | wake_up_new_task | state = RUNNING, place task onto the suitable runqueue, resched if necessary
-         +------------------+                                                                                          
+    |--> | wake_up_new_task |                                                                                          
+    |    +------------------+                                                                                          
+    |                                                                                                                  
+    |--> if child is traced                                                                                            
+    |                                                                                                                  
+    |        +------------------+                                                                                      
+    +------> | ptrace_event_pid | notify tracer of the event                                                           
+             +------------------+                                                                                      
 ```
   
 ```
@@ -834,6 +822,48 @@ enum pid_type
               +---------------+                                                                    
               | task_woken_rt |                                                                    
               +---------------+                                                                    
+```
+
+```
+     low addr  +--+-----------+                
+               |  |thread_info|                
+               |  +-----------+                
+           ^   |  |0x57AC6E9D | stack end magic
+           |   |  +-----------+                
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   +-----------+                   
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   |  +-----------+                
+           |   |  |  pt_regs  |                
+ stack  ---+   |  +-----------+                
+               |  |  reserved | 8 bytes        
+    high addr  +--+-----------+                    
+```
+  
+```
+struct thread_info {
+    unsigned long       flags;      /* low level flags */
+    int         preempt_count;  /* 0 => preemptable, <0 => bug */
+    struct task_struct  *task;      /* main task structure */
+    __u32           cpu;        /* cpu */
+    __u32           cpu_domain; /* cpu domain */
+#ifdef CONFIG_STACKPROTECTOR_PER_TASK
+    unsigned long       stack_canary;
+#endif
+    struct cpu_context_save cpu_context;    /* cpu context */
+    __u32           abi_syscall;    /* ABI type and syscall nr */
+    __u8            used_cp[16];    /* thread used copro */
+    unsigned long       tp_value[2];    /* TLS registers */
+    union fp_state      fpstate __attribute__((aligned(8)));
+    union vfp_state     vfpstate;
+#ifdef CONFIG_ARM_THUMBEE
+    unsigned long       thumbee_state;  /* ThumbEE Handler Base register */
+#endif
+};
 ```
   
 </details>
