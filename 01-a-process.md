@@ -740,11 +740,10 @@ enum pid_type
     |--> | dup_task_struct | allocate task and thread stack, copy from parent and reset some fields             
     |    +-----------------+      
     |   
-    |--> save child_tid to task struct for later use if CLONE_CHILD_SETTID is speficied
-    | 
-    |    +-----------------+                                                                                    
-    |--> | init_sigpending | empty signals                                                                      
-    |    +-----------------+                                                                                    
+    |--> save child_tid to ->set_child_tid for later use if CLONE_CHILD_SETTID is speficied
+    |
+    |--> save child_tid to ->clear_child_tid for later use if CLONE_CHILD_CLEARTID is speficied
+    |                                                                            
     |    +------------+                                                                                         
     |--> | sched_fork | state = NEW, set prio & sched class                                                     
     |    +------------+                                                                                         
@@ -780,10 +779,6 @@ enum pid_type
     |    +-----------+                                                                                          
     |                                                                                                           
     |--> set task pid value                                                                                     
-    |                                                                                                           
-    |    +-------------------+                                                                                  
-    |--> | sched_cgroup_fork | e.g., place task onto runqueue                                                   
-    |    +-------------------+                                                                                  
     |                                                                                                           
     |--> determine parent and exit signal                                                                       
     |                                                                                                           
@@ -878,6 +873,68 @@ struct thread_info {
     struct cpu_context_save cpu_context;
 
 };
+```
+  
+```
++----------------+                                                                                                              
+| kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask                              
++---|------------+                                                                                                              
+    |    +------------------------+                                                                                             
+    +--> | kthread_create_on_node |                                                                                             
+         +-----|------------------+                                                                                             
+               |    +--------------------------+                                                                                
+               +--> | __kthread_create_on_node | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
+                    +------|-------------------+                                                                                
+                           |                                                                                                    
+                           |--> allocate and setup 'create'                                                                     
+                           |                                                                                                    
+                           |--> add 'create' to the end of kthread_create_list                                                  
+                           |                                                                                                    
+                           |    +-----------------+                                                                             
+                           |--> | wake_up_process | wake up kthreadd_task                                                       
+                           |    +-----------------+                                                                             
+                           |    +------------------------------+                                                                
+                           |--> | wait_for_completion_killable | wait for completion                                            
+                           |    +------------------------------+                                                                
+                           |    +---------------+                                                                               
+                           |--> | set_task_comm | set task name                                                                 
+                           |    +---------------+                                                                               
+                           |    +----------------------------+                                                                  
+                           |--> | sched_setscheduler_nocheck | set schedule-related fields in task                              
+                           |    +----------------------------+                                                                  
+                           |    +----------------------+                                                                        
+                           +--> | set_cpus_allowed_ptr | set cpu mask                                                           
+                                +----------------------+                                                                        
+```
+  
+```
++----------------------------+                                                                           
+| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
++------|---------------------+                                                                           
+       |    +---------------------+                                                                      
+       +--> | _sched_setscheduler |                                                                      
+            +-----|---------------+                                                                      
+                  |                                                                                      
+                  |--> set up 'sched attr'                                                               
+                  |                                                                                      
+                  |    +----------------------+                                                          
+                  +--> | __sched_setscheduler |                                                          
+                       +-----|----------------+                                                          
+                             |                                                                           
+                             |--> dequeue task if it's queued                                            
+                             |                                                                           
+                             +--> put task if it's running                                               
+                             |                                                                           
+                             |    +-----------------------+                                              
+                             |    | __setscheduler_params | set task policy, static prio, and normal prio
+                             |--> +-----------------------+                                              
+                             |    +---------------------+                                                
+                             |    | __setscheduler_prio | set task sched class and prio                  
+                             |--> +---------------------+                                                
+                             |                                                                           
+                             |--> queue it back if it was queued                                         
+                             |                                                                           
+                             +--> set task as next if it was running                                     
 ```
   
 </details>
@@ -1226,7 +1283,7 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
   
 ```
 +---------+                                                                                               
-| kthread | run argument 'threadfn'                                                                       
+| kthread | : run argument 'threadfn'                                                                       
 +--|------+                                                                                               
    |                                                                                                      
    |--> allocate struct 'kthread' and set up                                                              
