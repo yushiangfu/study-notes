@@ -904,6 +904,23 @@ kmem_cache_free()       free
 - before remapping lowmem, why can memblock allocator work?
 - free of *init text* and *init data*
 
-
-
+```
++------------+                                                        
+| mm_release | : handle ->clear_child_tid and wake up a waiting task  
++--|---------+                                                        
+   |    +---------------+                                             
+   |--> | deactivate_mm | (do nothing on our arch)                    
+   |    +---------------+                                             
+   |                                                                  
+   |--> if task->clear_child_tid is set in copy_process()             
+   |                                                                  
+   |------> write 0 to the userspace addr pointed by ->clear_child_tid
+   |                                                                  
+   |        +----------+                                              
+   |------> | do_futex | wake up a task                               
+   |        +----------+                                              
+   |                                                                  
+   +------> task->clear_child_tid = NULL                              
+```
+</details>
 
