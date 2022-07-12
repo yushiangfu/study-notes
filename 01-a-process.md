@@ -1031,6 +1031,96 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
    +--> task preempt count = 0 in our config                              
 ```
 
+```
++------------+                                                                                              
+| sys_execve |                                                                                              
++--|---------+                                                                                              
+   |    +-----------+                                                                                       
+   +--> | do_execve |                                                                                       
+        +--|--------+                                                                                       
+           |    +--------------------+                                                                      
+           +--> | do_execveat_common |                                                                      
+                +----|---------------+                                                                      
+                     |    +------------+                                                                    
+                     |--> | alloc_bprm |                                                                    
+                     |    +--|---------+                                                                    
+                     |       |                                                                              
+                     |       |--> allocate 'bprm'                                                           
+                     |       |                                                                              
+                     |       |--> set filename and interp of bprm                                           
+                     |       |                                                                              
+                     |       |    +--------------+                                                          
+                     |       +--> | bprm_mm_init |                                                          
+                     |            +---|----------+                                                          
+                     |                |    +----------+                                                     
+                     |                |--> | mm_alloc | prepare mm and page table                           
+                     |                |    +----------+                                                     
+                     |                |    +----------------+                                               
+                     |                +--> | __bprm_mm_init | prepare vma of stack, and link it to framework
+                     |                     +----------------+                                               
+                     |    +--------------+                                                                  
+                     |--> | copy_strings | copy env to somewhere                                            
+                     |    +--------------+                                                                  
+                     |    +--------------+                                                                  
+                     |--> | copy_strings | copy arg to somewhere                                            
+                     |    +--------------+                                                                  
+                     |    +-------------+                                                                   
+                     +--> | bprm_execve | move to a proper rq, clear old mapping, map exec and interp       
+                          +-------------+                                                                   
+```
+
+```
++-------------+                                                                                                                    
+| bprm_execve | move to a proper rq, clear old mapping, map exec and interp                                                        
++---|---------+                                                                                                                    
+    |    +----------------+                                                                                                        
+    |--> | do_open_execat |                                                                                                        
+    |    +---|------------+                                                                                                        
+    |        |                                                                                                                     
+    |        |--> determine flags                                                                                                  
+    |        |                                                                                                                     
+    |        |    +--------------+                                                                                                 
+    |        +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()                              
+    |             +--------------+                                                                                                 
+    |    +------------+                                                                                                            
+    |--> | sched_exec | select rq and migrate task onto it                                                                         
+    |    +------------+                                                                                                            
+    |    +-------------+                                                                                                           
+    +--> | exec_binprm |                                                                                                           
+         +---|---------+                                                                                                           
+             |                                                                                                                     
+             |--> for 1 exec and at most 5 interpreters                                                                            
+             |                                                                                                                     
+             |        +-----------------------+                                                                                    
+             |------> | search_binary_handler |                                                                                    
+             |        +-----|-----------------+                                                                                    
+             |              |    +----------------+                                                                                
+             |              |--> | prepare_binprm | read file into buffer                                                          
+             |              |    +----------------+                                                                                
+             |              |                                                                                                      
+             |              |--> for each registered format (e.g., script, elf)                                                    
+             |              |                                                                                                      
+             |              |------> call ->load_binary(), e.g.,                                                                   
+             |              |        +-----------------+                                                                           
+             |              |        | load_elf_binary | map segments of exec and interp, copy and env to stack, regs->pc to interp
+             |              |        +-----------------+                                                                           
+             |              |                                                                                                      
+             |              +------> return if ok                                                                                  
+             |                                                                                                                     
+             +------> break if brpm->interpreter isn't set (though elf has interpreter, it doesn't set this field)                 
+```
+
+```
+struct linux_binfmt {
+    struct list_head lh;                            // list node
+    struct module *module;
+    int (*load_binary)(struct linux_binprm *);      // to load the program into memory
+    int (*load_shlib)(struct file *);               // to load the shared library
+    int (*core_dump)(struct coredump_params *cprm); // to write out the core dump when process crashes
+    unsigned long min_coredump;                     // minimum size of a core dump file
+}
+```
+
 ## <a name="task-termination"></a> Task Termination
 
 When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
