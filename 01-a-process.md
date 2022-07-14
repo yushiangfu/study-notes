@@ -937,6 +937,26 @@ struct thread_info {
                              +--> set task as next if it was running                                     
 ```
   
+```
+struct task_struct {
+    int             prio;
+    int             static_prio;              // the initial prio and can be changed by 'nice'
+    int             normal_prio;
+    unsigned int            rt_priority;
+
+    const struct sched_class    *sched_class; 
+    struct sched_entity     se;
+    struct sched_rt_entity      rt;
+    struct sched_dl_entity      dl;
+```
+  
+```
+struct sched_rt_entity {
+    struct list_head        run_list;
+    unsigned int            time_slice;
+}
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
