@@ -1001,6 +1001,39 @@ struct thread_info {
 ```
   
 ```
++-----------------------+                                                                            
+| sys_sched_setaffinity | : set cpu affinity of task                                                 
++-----|-----------------+                                                                            
+      |    +-------------------+                                                                     
+      |--> | get_user_cpu_mask | copy cpumask from userspace to the newly generated one              
+      |    +-------------------+                                                                     
+      |    +-------------------+                                                                     
+      +--> | sched_setaffinity |                                                                     
+           +----|--------------+                                                                     
+                |    +---------------------+                                                         
+                |--> | find_process_by_pid | find task from pid value                                
+                |    +---------------------+                                                         
+                |    +---------------------+                                                         
+                +--> | __sched_setaffinity |                                                         
+                     +-----|---------------+                                                         
+                           |                                                                         
+                           |--> new mask = arg mask & current mask                                   
+                           |                                                                         
+                           |    +------------------------+                                           
+                           +--> | __set_cpus_allowed_ptr |                                           
+                                +-----|------------------+                                           
+                                      |    +-------------------------------+                         
+                                      +--> | __set_cpus_allowed_ptr_locked |                         
+                                           +-------|-----------------------+                         
+                                                   |    +-----------------------+                    
+                                                   |--> | __do_set_cpus_allowed | set tasl->cpus_mask
+                                                   |    +-----------------------+                    
+                                                   |    +------------------+                         
+                                                   +--> | affine_move_task |                         
+                                                        +------------------+                         
+```
+  
+```
 struct task_struct {
     int             prio;                     // it might boost temporarily
     int             static_prio;              // the initial prio and can be changed by 'nice'
@@ -1012,16 +1045,13 @@ struct task_struct {
     struct sched_rt_entity      rt;
     struct sched_dl_entity      dl;
     unsigned int            policy;           // NORMAL, BATCH, IDLE, RR, FIFO, DEADLINE
-    int             nr_cpus_allowed;
-    const cpumask_t         *cpus_ptr;
-    cpumask_t           *user_cpus_ptr;
     cpumask_t           cpus_mask;            // specify which cpu the task can run
 ```
   
 ```
 struct sched_rt_entity {
-    struct list_head        run_list;
-    unsigned int            time_slice;
+    struct list_head        run_list;   // list node
+    unsigned int            time_slice; // remaining time for execution
 }
 ```
   
