@@ -912,7 +912,7 @@ struct thread_info {
 | sched_setscheduler_nocheck | : set schedule-related fields in task                                     
 +------|---------------------+                                                                           
        |    +---------------------+                                                                      
-       +--> | _sched_setscheduler |                                                                      
+       +--> | _sched_setscheduler | : set schedule-related fields in task
             +-----|---------------+                                                                      
                   |                                                                                      
                   |--> set up 'sched attr'                                                               
@@ -938,16 +938,84 @@ struct thread_info {
 ```
   
 ```
++------------------------+                                                                 
+| sys_sched_setscheduler | : set schedule-related fields in task                           
++-----|------------------+                                                                 
+      |    +-----------------------+                                                       
+      +--> | do_sched_setscheduler |                                                       
+           +-----|-----------------+                                                       
+                 |    +----------------+                                                   
+                 |--> | copy_from_user | copy param from userspace                         
+                 |    +----------------+                                                   
+                 |    +---------------------+                                              
+                 |--> | find_process_by_pid | find task from pid value                     
+                 |    +---------------------+                                              
+                 |    +--------------------+                                               
+                 +--> | sched_setscheduler |                                               
+                      +----|---------------+                                               
+                           |    +---------------------+                                    
+                           +--> | _sched_setscheduler | set schedule-related fields in task
+                                +---------------------+                                    
+```
+  
+```
++----------+                                                           
+| sys_nice | : adjust task prio                                        
++--|-------+                                                           
+   |    +---------------+                                              
+   +--> | set_user_nice |                                              
+        +---|-----------+                                              
+            |                                                          
+            |--> if current task is queued                             
+            |                                                          
+            |        +--------------+                                  
+            |------> | dequeue_task |                                  
+            |        +--------------+                                  
+            |                                                          
+            +--> if current task is running                            
+            |                                                          
+            |        +---------------+                                 
+            |------> | put_prev_task |                                 
+            |        +---------------+                                 
+            |                                                          
+            |--> set ->static_prio based on nice value                 
+            |                                                          
+            |--> adjust ->normal_prio and ->prio based on ->static_prio
+            |                                                          
+            |--> if current task was queued                            
+            |                                                          
+            |        +--------------+                                  
+            |------> | enqueue_task |                                  
+            |        +--------------+                                  
+            |                                                          
+            |--> if current task was running                           
+            |                                                          
+            |        +---------------+                                 
+            |------> | set_next_task |                                 
+            |        +---------------+                                 
+            |                                                          
+            +--> call ->prio_changed(), e.g.,                          
+                 +-------------------+                                 
+                 | prio_changed_fair |                                 
+                 +-------------------+                                 
+```
+  
+```
 struct task_struct {
-    int             prio;
+    int             prio;                     // it might boost temporarily
     int             static_prio;              // the initial prio and can be changed by 'nice'
-    int             normal_prio;
-    unsigned int            rt_priority;
+    int             normal_prio;              // calculated from static prio, and inherited by children
+    unsigned int            rt_priority;      // real-time priority: 0 to 99
 
-    const struct sched_class    *sched_class; 
-    struct sched_entity     se;
+    const struct sched_class    *sched_class; // scheduler class of the task
+    struct sched_entity     se;               // schedulable entity
     struct sched_rt_entity      rt;
     struct sched_dl_entity      dl;
+    unsigned int            policy;           // NORMAL, BATCH, IDLE, RR, FIFO, DEADLINE
+    int             nr_cpus_allowed;
+    const cpumask_t         *cpus_ptr;
+    cpumask_t           *user_cpus_ptr;
+    cpumask_t           cpus_mask;            // specify which cpu the task can run
 ```
   
 ```
