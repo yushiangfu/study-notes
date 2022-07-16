@@ -1054,6 +1054,29 @@ struct sched_rt_entity {
     unsigned int            time_slice; // remaining time for execution
 }
 ```
+ 
+```
+struct sched_class {
+    void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);       // add the task into the rq, e.g., wake up
+    void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);       // remove the task from the rq, e.g., change prio
+    void (*yield_task)   (struct rq *rq);                                         // yield the cpu to other tasks
+    void (*check_preempt_curr)(struct rq *rq, struct task_struct *p, int flags);  // check if current task should be preempted
+    struct task_struct *(*pick_next_task)(struct rq *rq);                         // select the next task to run on the cpu
+    void (*put_prev_task)(struct rq *rq, struct task_struct *p);                  // prepare to withdraw cpu control from current task
+    void (*set_next_task)(struct rq *rq, struct task_struct *p, bool first);     
+    void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);          // called when timer interrupt happens
+```
+  
+```
+struct rq {
+    unsigned int        nr_running;     // number of tasks on the run queue
+    struct cfs_rq       cfs;            // sub runqueue
+    struct rt_rq        rt;             // sub runqueue
+    struct dl_rq        dl;             // sub runqueue
+    struct task_struct __rcu    *curr;  // point to the current running task
+    struct task_struct  *idle;          // point to the idle task of the runqueue
+    u64         clock;                  // per runqueue clock
+```
   
 </details>
 
