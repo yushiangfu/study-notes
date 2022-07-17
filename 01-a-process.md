@@ -1078,6 +1078,40 @@ struct rq {
     u64         clock;                  // per runqueue clock
 ```
   
+```
+struct sched_entity {
+    struct load_weight      load;           // weight of the task
+    struct rb_node          run_node;       // tree node
+    unsigned int            on_rq;          // indicate whether the task is on rq or not
+    u64             exec_start;             // indicate when the task starts running
+    u64             sum_exec_runtime;       // sum of past running time
+    u64             vruntime;               // sum of curr running time
+    u64             prev_sum_exec_runtime;  // copy of sum_exec_runtime, for preemption handling
+}
+```
+  
+```
++----------------+                                                         
+| effective_prio | : get effective prio                                    
++---|------------+                                                         
+    |    +-------------+                                                   
+    |--> | normal_prio |                                                   
+    |    +---|---------+                                                   
+    |        |    +---------------+                                        
+    |        +--> | __normal_prio | determine prio based on policy and nice
+    |             +---------------+                                        
+    |                                                                      
+    |--> ->normal_prio = return value                                      
+    |                                                                      
+    |--> if it's a regular task                                            
+    |                                                                      
+    |------> return ->normal_prio                                          
+    |                                                                      
+    |--> else                                                              
+    |                                                                      
+    +------> return ->prio (might get boosted temporarily)                 
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
