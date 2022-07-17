@@ -310,7 +310,7 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
 
 ```
  +-------------+                                                                                          
- | update_curr |                                                                                          
+ | update_curr | : determine vruntime, update related fields of current task
  +------|------+                                                                                          
         |                                                                                                 
         |-- calculate the delta runtime                                                                   
@@ -1110,6 +1110,26 @@ struct sched_entity {
     |--> else                                                              
     |                                                                      
     +------> return ->prio (might get boosted temporarily)                 
+```
+  
+```
++-----------------+                                   
+| set_load_weight | : set task's weight and inv_weight
++----|------------+                                   
+     |                                                
+     |--> if policy is idle                           
+     |                                                
+     |------> specially set weight and return         
+     |                                                
+     |--> if it's in cfs sched class                  
+     |                                                
+     |        +---------------+                       
+     |------> | reweight_task |                       
+     |        +---------------+                       
+     |                                                
+     |--> else                                        
+     |                                                
+     +------> set weight and inv_weight               
 ```
   
 </details>
