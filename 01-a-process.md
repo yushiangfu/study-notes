@@ -309,20 +309,6 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
 - Code flow
 
 ```
- +-------------+                                                                                          
- | update_curr | : determine vruntime, update related fields of current task
- +------|------+                                                                                          
-        |                                                                                                 
-        |-- calculate the delta runtime                                                                   
-        |                                                                                                 
-        |  +-----------------+                                                                            
-        +--| calc_delta_fair | calculate the adjusted runtime (vruntime)                                  
-        |  +-----------------+                                                                            
-        |                                                                                                 
-        +-- accumulate the vruntime into the task entity
-```
-
-```
 +------------------+                                                                                          
 | __enqueue_entity |                                                                                          
 +------------------+                                                                                          
@@ -1130,6 +1116,126 @@ struct sched_entity {
      |--> else                                        
      |                                                
      +------> set weight and inv_weight               
+```
+  
+```
++--------------------+                                                                            
+| check_preempt_tick | : check a few conditions, and set 'NEED_RESCHED' on rq current if necessary
++----|---------------+                                                                            
+     |    +-------------+                                                                         
+     |--> | sched_slice | calc how much time I can run                                            
+     |    +-------------+                                                                         
+     |                                                                                            
+     |--> calc how much time I've run                                                             
+     |                                                                                            
+     |--> if it's already exceeded                                                                
+     |                                                                                            
+     |        +--------------+                                                                    
+     |------> | resched_curr | set 'NEED_RESCHED' on task                                         
+     |        +--------------+                                                                    
+     |                                                                                            
+     |------> return                                                                              
+     |                                                                                            
+     |    +---------------------+                                                                 
+     |--> | __pick_first_entity | select the leftmost task                                        
+     |    +---------------------+                                                                 
+     |                                                                                            
+     |--> if curr vruntime < next vruntime                                                        
+     |                                                                                            
+     |------> return                                                                              
+     |                                                                                            
+     |--> if curr vruntime >> next vruntime                                                       
+     |                                                                                            
+     |        +--------------+                                                                    
+     +------> | resched_curr | set 'NEED_RESCHED' on task                                         
+              +--------------+                                                                    
+```
+
+```
++----------------+                                                         
+| task_tick_fair | : update vruntime, resched current task if necessary    
++---|------------+                                                         
+    |    +-------------+                                                   
+    |--> | entity_tick | update vruntime, resched current task if necessary
+    |    +-------------+                                                   
+    |    +----------------+                                                
+    +--> | task_tick_core | (disabled config)                              
+         +----------------+                                                
+```
+  
+```
++-------------+                                                                                              
+| entity_tick | : update vruntime, resched current task if necessary                                         
++---|---------+                                                                                              
+    |    +-------------+                                                                                     
+    |--> | update_curr | update vruntime and related fields of current task                                  
+    |    +-------------+                                                                                     
+    |    +-----------------+                                                                                 
+    |--> | update_load_avg | update average load                                                             
+    |    +-----------------+                                                                                 
+    |                                                                                                        
+    |--> if queued                                                                                           
+    |                                                                                                        
+    |        +--------------+                                                                                
+    |------> | resched_curr | set 'NEED_RESCHED' on task                                                     
+    |        +--------------+                                                                                
+    |                                                                                                        
+    |------> return                                                                                          
+    |                                                                                                        
+    |--> if there's other task(s) in the rq                                                                  
+    |                                                                                                        
+    |        +--------------------+                                                                          
+    +------> | check_preempt_tick | check a few conditions, and set 'NEED_RESCHED' on rq current if necessary
+             +--------------------+                                                                          
+```
+  
+```
+ +-------------+                                                                                          
+ | update_curr | : update vruntime and related fields of current task
+ +------|------+                                                                                          
+        |                                                                                                 
+        |-- calculate the delta runtime                                                                   
+        |                                                                                                 
+        |  +-----------------+                                                                            
+        +--| calc_delta_fair | calculate the adjusted runtime (vruntime)                                  
+        |  +-----------------+                                                                            
+        |                                                                                                 
+        +-- accumulate the vruntime into the task entity
+```
+  
+```
++--------------+                                                
+| resched_curr | : set 'NEED_RESCHED' on task                   
++---|----------+                                                
+    |                                                           
+    |--> return if current need resched                         
+    |                                                           
+    |--> if target rq == this rq                                
+    |                                                           
+    |        +----------------------+                           
+    |------> | set_tsk_need_resched | set 'NEED_RESCHED' on task
+    |        +----------------------+                           
+    |                                                           
+    |------> return                                             
+    |                                                           
+    |    +------------------------+                             
+    |--> | set_nr_and_not_polling |                             
+    |    +------------------------+  set 'NEED_RESCHED' on task 
+    |    +---------------------+                                
+    +--> | smp_send_reschedule | (probably do nothing)          
+         +---------------------+                                
+```
+  
+```
++-------------+                                                     
+| sched_slice | : calc time slice for the given sched entity        
++---|---------+                                                     
+    |    +----------------+                                         
+    |--> | __sched_period | get total time slice                    
+    |    +----------------+                                         
+    |    +--------------+                                           
+    +--> | __calc_delta | calc time slice for the given sched entity
+         +--------------+                                           
 ```
   
 </details>
