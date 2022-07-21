@@ -1238,6 +1238,107 @@ struct sched_entity {
          +--------------+                                           
 ```
   
+```
++----------------+                                                                                           
+| scheduler_tick | : update rq clock, call ->task_tick(), balance runqueues if necessary                     
++---|------------+                                                                                           
+    |    +-----------------+                                                                                 
+    |--> | update_rq_clock |                                                                                 
+    |    +-----------------+                                                                                 
+    |                                                                                                        
+    |--> call ->task_tick, e.g.,                                                                             
+    |    +----------------+                                                                                  
+    |    | task_tick_fair | update vruntime, resched current task if necessary                               
+    |    +----------------+                                                                                  
+    |    +----------------------+                                                                            
+    +--> | trigger_load_balance | : if it's about time, balance loading between the busiest rq and this one  
+         +-----|----------------+                                                                            
+               |                                                                                             
+               |--> if it's time to do balance again                                                         
+               |                                                                                             
+               |        +---------------+                                                                    
+               +------> | raise_softirq | label SCHED_SOFTIRQ and somewhere will call run_rebalance_domains()
+                        +---------------+                                                                    
+                                                                                                             
+                                                                                                             
+                                                                                                             
+                                                                                                             
+                                                                                                             
+                                                                                                             
+         +-----------------------+                                                                           
+         | run_rebalance_domains | if it's about time, balance loading between the busiest rq and this one   
+         +-----------------------+                                                                           
+```
+  
+```
++-----------------------+                                                                                 
+| run_rebalance_domains | : if it's about time, balance loading between the busiest rq and this one       
++-----|-----------------+                                                                                 
+      |    +-------------------+                                                                          
+      |--> | nohz_idle_balance | (idle balance related, skip for now)                                     
+      |    +-------------------+                                                                          
+      |    +-------------------+                                                                          
+      +--> | rebalance_domains | : if it's about time, balance loading between the busiest rq and this one
+           +----|--------------+                                                                          
+                |                                                                                         
+                |--> for each domain (probably only 1 to us)                                              
+                |                                                                                         
+                |        +-------------------------+                                                      
+                |------> | get_sd_balance_interval | determine balance 'interval'                         
+                |        +-------------------------+                                                      
+                |                                                                                         
+                |------> if it's time to do balance                                                       
+                |                                                                                         
+                |            +--------------+                                                             
+                +----------> | load_balance | move tasks from the busiest rq to this one                  
+                             +--------------+                                                             
+```
+  
+```
++--------------+                                                             
+| load_balance | : move tasks from the busiest rq to this one                
++---|----------+                                                             
+    |                                                                        
+    |--> set up parameters                                                   
+    |                                                                        
+    |    +--------------------+                                              
+    |--> | find_busiest_group |                                              
+    |    +--------------------+                                              
+    |    +--------------------+                                              
+    |--> | find_busiest_queue |                                              
+    |    +--------------------+                                              
+    |    +--------------+                                                    
+    |--> | detach_tasks | remove enough tasks from rq and add to another list
+    |    +--------------+                                                    
+    |                                                                        
+    |--> if we did detatch tasks                                             
+    |                                                                        
+    |        +--------------+                                                
+    +------> | attach_tasks | move tasks to dst rq, preemption might happen  
+             +--------------+                                                
+```
+  
+```
++--------------+                                                      
+| detach_tasks | : remove enough tasks from rq and add to another list
++---|----------+                                                      
+    |                                                                 
+    |--> while rq still has task                                      
+    |                                                                 
+    |        +-----------------+                                      
+    |------> | list_last_entry | get last task on the list            
+    |        +-----------------+                                      
+    |                                                                 
+    |------> break loop if condition is met                           
+    |                                                                 
+    |        +-------------+                                          
+    |------> | detach_task | remove task from rq                      
+    |        +-------------+                                          
+    |        +----------+                                             
+    +------> | list_add | move task to another list                   
+             +----------+                                             
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
