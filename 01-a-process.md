@@ -1239,6 +1239,26 @@ struct sched_entity {
 ```
   
 ```
++--------------------------+                                                                                                        
+| fttmr010_timer_interrupt |                                                                                                        
++------|-------------------+                                                                                                        
+       |                                                                                                                            
+       +--> call ->event_handler(), e.g.,                                                                                           
+            +----------------------+                                                                                                
+            | tick_handle_periodic |                                                                                                
+            +-----|----------------+                                                                                                
+                  |    +---------------+                                                                                            
+                  +--> | tick_periodic |                                                                                            
+                       +---|-----------+                                                                                            
+                           |    +----------------------+                                                                            
+                           +--> | update_process_times |                                                                            
+                                +-----|----------------+                                                                            
+                                      |    +----------------+                                                                       
+                                      +--> | scheduler_tick | update rq clock, call ->task_tick(), balance runqueues if necessary   
+                                           +----------------+                                                                       
+```
+  
+```
 +----------------+                                                                                           
 | scheduler_tick | : update rq clock, call ->task_tick(), balance runqueues if necessary                     
 +---|------------+                                                                                           
@@ -1246,7 +1266,7 @@ struct sched_entity {
     |--> | update_rq_clock |                                                                                 
     |    +-----------------+                                                                                 
     |                                                                                                        
-    |--> call ->task_tick, e.g.,                                                                             
+    |--> call ->task_tick(), e.g.,                                                                             
     |    +----------------+                                                                                  
     |    | task_tick_fair | update vruntime, resched current task if necessary                               
     |    +----------------+                                                                                  
