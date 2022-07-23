@@ -1359,6 +1359,56 @@ struct sched_entity {
              +----------+                                             
 ```
   
+```
++----------+                                                                     
+| schedule | : select next task and switch to it                                 
++--|-------+                                                                     
+   |    +-------------------+                                                    
+   |--> | sched_submit_work | if there's io requests, submit them before sleeping
+   |    +-------------------+                                                    
+   |    +------------+                                                           
+   +--> | __schedule | : select next task and switch to it                       
+        +--|---------+                                                           
+           |    +----------------+                                               
+           |--> | pick_next_task | next                                          
+           |    +----------------+                                               
+           |    +------------------------+                                       
+           |--> | clear_tsk_need_resched | prev                                  
+           |    +------------------------+                                       
+           |    +----------------+                                               
+           +--> | context_switch | switch page table and cpu registers           
+                +----------------+                                               
+```
+  
+```
++----------------+                                                                 
+| context_switch | : switch page table and cpu registers                           
++---|------------+                                                                 
+    |    +---------------------+                                                   
+    |--> | prepare_task_switch | next->on_cpu = 1                                  
+    |    +---------------------+                                                   
+    |                                                                              
+    |--> if next task has userspace maps                                           
+    |                                                                              
+    |        +--------------------+                                                
+    |------> | switch_mm_irqs_off | switch to next task's page table               
+    |        +--------------------+                                                
+    |    +-----------+                                                             
+    |--> | switch_to |                                                             
+    |    +--|--------+                                                             
+    |       |    +-------------+                                                   
+    |       +--> | __switch_to | : save prev's registers, and load next's registers
+    |            +---|---------+                                                   
+    |                |                                                             
+    |                |--> save registers of 'prev' to stack                        
+    |                |                                                             
+    |                +--> load registers of 'next' from stack                      
+    |                                                                              
+    |    +--------------------+                                                    
+    +--> | finish_task_switch | prev->on_cpu = 0                                   
+         +--------------------+                                                    
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
