@@ -1360,24 +1360,37 @@ struct sched_entity {
 ```
   
 ```
-+----------+                                                                     
-| schedule | : select next task and switch to it                                 
-+--|-------+                                                                     
-   |    +-------------------+                                                    
++----------+
+| schedule | : select next task and switch to it
++--|-------+
+   |    +-------------------+
    |--> | sched_submit_work | if there's io requests, submit them before sleeping
-   |    +-------------------+                                                    
-   |    +------------+                                                           
-   +--> | __schedule | : select next task and switch to it                       
-        +--|---------+                                                           
-           |    +----------------+                                               
-           |--> | pick_next_task | next                                          
-           |    +----------------+                                               
-           |    +------------------------+                                       
-           |--> | clear_tsk_need_resched | prev                                  
-           |    +------------------------+                                       
-           |    +----------------+                                               
-           +--> | context_switch | switch page table and cpu registers           
-                +----------------+                                               
+   |    +-------------------+
+repeat
+   |    +------------+
+   +--> | __schedule | : select next task and switch to it
+   |    +--|---------+
+   |       |
+   |       |--> if there's pending signal
+   |       |
+   |       |------> task->__state = 'RUNNING'
+   |       |
+   |       |--> else
+   |       |
+   |       |        +-----------------+
+   |       |------> | deactivate_task | prev
+   |       |        +-----------------+
+   |       |    +----------------+
+   |       |--> | pick_next_task | next
+   |       |    +----------------+
+   |       |    +------------------------+
+   |       |--> | clear_tsk_need_resched | prev
+   |       |    +------------------------+
+   |       |    +----------------+
+   |       +--> | context_switch | switch page table and cpu registers
+   |            +----------------+
+   |
+   +--> go to 'repeat' if need resched                                      
 ```
   
 ```
@@ -1407,6 +1420,16 @@ struct sched_entity {
     |    +--------------------+                                                    
     +--> | finish_task_switch | prev->on_cpu = 0                                   
          +--------------------+                                                    
+```
+  
+```
+struct cfs_rq {
+    struct load_weight  load;               // total load of the tasks
+    unsigned int        nr_running;         // number of runnable tasks
+    u64         min_vruntime;               // minimum vruntime of all tasks
+    struct rb_root_cached   tasks_timeline; // rb tree
+    struct sched_entity *curr;              // point to currently running task
+}
 ```
   
 </details>
