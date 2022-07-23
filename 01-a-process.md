@@ -1432,6 +1432,42 @@ struct cfs_rq {
 }
 ```
   
+```
++-------------------+                                 
+| enqueue_task_fair | : add task to rb tree           
++----|--------------+                                 
+     |                                                
+     |--> if flag specifies 'wakeup'                  
+     |                                                
+     |        +--------------+                        
+     |------> | place_entity | update se's vruntime   
+     |        +--------------+                        
+     |                                                
+     |--> if it's not the curr                        
+     |                                                
+     |        +----------------+                      
+     +------> | enqueue_entity | add entity to rb tree
+              +----------------+                      
+```
+  
+```
++---------------------+                                                    
+| pick_next_task_fair | : select next task for running, dequeue if needed  
++-----|---------------+                                                    
+      |                                                                    
+      |--> return if no runnable task                                      
+      |                                                                    
+      |    +------------------+                                            
+      |--> | pick_next_entity | pick next proper task for running          
+      |    +------------------+                                            
+      |    +-----------------+                                             
+      |--> | set_next_entity | dequeue if it's on rq, cfs_rq->curr = entity
+      |    +-----------------+                                             
+      |    +-----------+                                                   
+      +--> | list_move | move task to mru (most) list of rq                
+           +-----------+                                                   
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
