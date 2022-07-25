@@ -1378,7 +1378,7 @@ repeat
    |       |--> else
    |       |
    |       |        +-----------------+
-   |       |------> | deactivate_task | prev
+   |       |------> | deactivate_task | prev (prev->on_rq is set here, and later put_prev_task will add it to rq accordingly)
    |       |        +-----------------+
    |       |    +----------------+
    |       |--> | pick_next_task | next
@@ -1451,21 +1451,49 @@ struct cfs_rq {
 ```
   
 ```
-+---------------------+                                                    
-| pick_next_task_fair | : select next task for running, dequeue if needed  
-+-----|---------------+                                                    
-      |                                                                    
-      |--> return if no runnable task                                      
-      |                                                                    
-      |    +------------------+                                            
-      |--> | pick_next_entity | pick next proper task for running          
-      |    +------------------+                                            
-      |    +-----------------+                                             
-      |--> | set_next_entity | dequeue if it's on rq, cfs_rq->curr = entity
-      |    +-----------------+                                             
-      |    +-----------+                                                   
-      +--> | list_move | move task to mru (most) list of rq                
-           +-----------+                                                   
+ +---------------------+                                                                
+ | pick_next_task_fair | : enqueue prev, select next task for running and dequeue it
+ +-----|---------------+                                                                
+       |                                                                                
+       |--> return if no runnable task                                                  
+       |                                                                                
+       +--> if prev exists                                                              
+       |                                                                                
+       |        +---------------+                                                       
+       |------> | put_prev_task | call class->put_prev_task(), e.g., add task back to rq
+       |        +---------------+                                                       
+       |    +------------------+                                                        
+       |--> | pick_next_entity | pick next proper task for running                      
+       |    +------------------+                                                        
+       |    +-----------------+                                                         
+       |--> | set_next_entity | dequeue if it's on rq, cfs_rq->curr = entity            
+       |    +-----------------+                                                         
+       |    +-----------+                                                               
+       +--> | list_move | move task to mru (most) list of rq                            
+            +-----------+                                                               
+```
+  
+```
+ +----------------------+                                                       
+ | check_preempt_wakeup | : set current 'need_resched' if it should be preempted
+ +-----|----------------+                                                       
+       |                                                                        
+       |--> return if current need resched                                      
+       |                                                                        
+       |--> go to 'preempt' if current is idle task                             
+       |                                                                        
+       |    +-------------+                                                     
+       |--> | update_curr |                                                     
+       |    +-------------+                                                     
+       |    +-----------------------+                                           
+       |--> | wakeup_preempt_entity |                                           
+       |    +-----------------------+                                           
+       |                                                                        
+       |--> go to 'preempt' if curr vruntime > p vruntime                       
+ preempt                                                                        
+       |    +--------------+                                                    
+       +--> | resched_curr |                                                    
+            +--------------+                                                    
 ```
   
 </details>
