@@ -1496,6 +1496,57 @@ struct cfs_rq {
             +--------------+                                                    
 ```
   
+```
++----------------+                                                                                      
+| pick_next_task | ： enqueue prev, select next task for running and dequeue it                          
++---|------------+                                                                                      
+    |    +------------------+                                                                           
+    +--> | __pick_next_task | ： enqueue prev, select next task for running and dequeue it               
+         +----|-------------+                                                                           
+              |                                                                                         
+              |--> if prev sched class <= fair sched class                                              
+              |                                                                                         
+              |        +---------------------+                                                          
+              +------> | pick_next_task_fair | enqueue prev, select next task for running and dequeue it
+                       +---------------------+                                                          
+```
+  
+```
++----------------+                                                                 
+| task_fork_fair | : determine vruntime of new task, resched current task if needed
++---|------------+                                                                 
+    |                                                                              
+    |--> if curr task exists                                                       
+    |                                                                              
+    |------> new task vruntime = cur task vruntime                                 
+    |                                                                              
+    |    +--------------+                                                          
+    |--> | place_entity | adjust new task vruntime                                 
+    |    +--------------+                                                          
+    |                                                                              
+    |--> if child should run first                                                 
+    |                                                                              
+    |------> swap the runtime of cur and new tasks                                 
+    |                                                                              
+    |        +--------------+                                                      
+    |------> | resched_curr |                                                      
+    |        +--------------+                                                      
+    |                                                                              
+    +--> adjust new vruntime                                                       
+```
+  
+```
++-------------------+                                               
+| pick_next_task_rt | : select the next task in rt_rq               
++----|--------------+                                               
+     |    +--------------+                                          
+     |--> | pick_task_rt | select the next task in rt_rq            
+     |    +--------------+                                          
+     |    +------------------+                                      
+     +--> | set_next_task_rt | push some other rt tasks to other rqs
+          +------------------+                                      
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
