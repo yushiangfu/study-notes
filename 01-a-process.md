@@ -1381,7 +1381,7 @@ repeat
    |       |------> | deactivate_task | prev (prev->on_rq is set here, and later put_prev_task will add it to rq accordingly)
    |       |        +-----------------+
    |       |    +----------------+
-   |       |--> | pick_next_task | next
+   |       |--> | pick_next_task | pick next and enqueue prev
    |       |    +----------------+
    |       |    +------------------------+
    |       |--> | clear_tsk_need_resched | prev
@@ -1545,6 +1545,84 @@ struct cfs_rq {
      |    +------------------+                                      
      +--> | set_next_task_rt | push some other rt tasks to other rqs
           +------------------+                                      
+```
+  
+```
++-------------------+                                               
+| pick_next_task_rt | : select the next task in rt_rq               
++----|--------------+                                               
+     |    +--------------+                                          
+     |--> | pick_task_rt | select the next task in rt_rq            
+     |    +--------------+                                          
+     |    +------------------+                                      
+     +--> | set_next_task_rt | push some other rt tasks to other rqs
+          +------------------+                                      
+```
+  
+```
++--------------+                                                      
+| task_tick_rt | : resched if it's RR and runs out of time slice      
++---|----------+                                                      
+    |    +----------------+                                           
+    |--> | update_curr_rt | update execution time, resched if needed  
+    |    +----------------+                                           
+    |    +----------+                                                 
+    |--> | watchdog | ???                                             
+    |    +----------+                                                 
+    |                                                                 
+    |--> return if policy != SCHED_RR                                 
+    |                                                                 
+    |--> time slice --                                                
+    |                                                                 
+    |--> return if it's still positive                                
+    |                                                                 
+    |--> refill time slice to sched_rr_timeslice (100ms) if it expires
+    |                                                                 
+    |--> if there's other rt task of the same prio                    
+    |                                                                 
+    |        +-----------------+                                      
+    |------> | requeue_task_rt | add to the end of list               
+    |        +-----------------+                                      
+    |        +--------------+                                         
+    +------> | resched_curr |                                         
+             +--------------+                                         
+```
+  
+```
++----------------+                                             
+| update_curr_rt | : update execution time, resched if needed  
++---|------------+                                             
+    |                                                          
+    |--> return if current isn't an rt task                    
+    |                                                          
+    |--> update current's execution time                       
+    |                                                          
+    |    +---------------------------+                         
+    |--> | sched_rt_runtime_exceeded | check if runtime exceeds
+    |    +---------------------------+                         
+    |                                                          
+    |--> if it does                                            
+    |                                                          
+    |        +--------------+                                  
+    +------> | resched_curr |                                  
+             +--------------+                                  
+```
+  
+```
++-----------------+                                           
+| sys_sched_yield |                                           
++----|------------+                                           
+     |    +----------------+                                  
+     |--> | do_sched_yield |                                  
+     |    +----------------+                                  
+     |                                                        
+     |--> call ->yield_task(), e.g.,                          
+     |    +-----------------+                                 
+     |    | yield_task_fair | clear buddies and set skip buddy
+     |    +-----------------+                                 
+     |    +----------+                                        
+     +--> | schedule |                                        
+          +----------+                                        
 ```
   
 </details>
