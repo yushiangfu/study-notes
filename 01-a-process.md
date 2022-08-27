@@ -2011,7 +2011,7 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
   
 ```
 +-------------------+                                                                   
-| smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
+| smpboot_thread_fn | : endless loop, run the installed thread function whenever necessary
 +----|--------------+                                                                   
      |                                                                                  
      +--> endless loop                                                                  
@@ -2060,66 +2060,66 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
 ```
   
 ```
-+---------+                                                                                               
-| kthread | : run argument 'threadfn'                                                                       
-+--|------+                                                                                               
-   |                                                                                                      
-   |--> allocate struct 'kthread' and set up                                                              
-   |                                                                                                      
-   |--> complete 'done'                                                                                   
-   |                                                                                                      
-   |    +----------+                                                                                      
-   |--> | schedule |                                                                                      
-   |    +----------+                                                                                      
-   |                                                                                                      
-   |--> if struct 'kthread' isn't labeled SHOULD_STOP                                                              
-   |                                                                                                      
-   |        +------------------+                                                                          
-   |        | __kthread_parkme | wait till SHOULD_PARK is cleared                                         
-   |        +------------------+                                                                          
-   |                                                                                                      
-   |        call threadfn()                                                                               
-   |              +-------------------+                                                                   
++---------+
+| kthread | : run argument 'threadfn'
++--|------+
+   |
+   |--> allocate struct 'kthread' and set up
+   |
+   |--> complete 'done'
+   |
+   |    +----------+
+   |--> | schedule |
+   |    +----------+
+   |
+   |--> if struct 'kthread' isn't labeled SHOULD_STOP
+   |
+   |        +------------------+
+   |------> | __kthread_parkme | wait till SHOULD_PARK is cleared
+   |        +------------------+
+   |
+   |------> call threadfn()
+   |              +-------------------+
    |        e.g., | smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
-   |              +-------------------+                                                                   
-   |                                                                                                      
-   |    +---------+                                                                                       
-   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return                 
-        +---------+                                                                                       
+   |              +-------------------+
+   |
+   |    +---------+
+   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return
+        +---------+                                                                                  
 ```
      
 ```
-+----------+                                                                                    
-| kthreadd |                                                                                    
-+--|-------+                                                                                    
-   |                                                                                            
-   +--> endless loop                                                                            
-                                                                                                
-            if no request on list                                                               
-                                                                                                
-                +----------+                                                                    
-                | schedule |                                                                    
-                +----------+                                                                    
-                                                                                                
-            while request list isn't empty                                                      
-                                                                                                
-                remove request from list                                                        
-                                                                                                
-                +----------------+                                                              
-                | create_kthread | clone task, wake it up to run function 'kthread'             
-                +----------------+                                            |                 
-                                                                              v                 
-                                                                    run argument 'threadfn'     
-                                                                    e.g., smpboot_thread_fn     
-                                                                              |                 
-                                                                              v                 
-                                                              endless loop, run the installed   
++----------+
+| kthreadd |
++--|-------+
+   |
+   +--> endless loop
+   |
+   +------> if no request on list
+   |
+   |            +----------+
+   +----------> | schedule |
+   |            +----------+
+   |
+   +------> while request list isn't empty
+   |
+   +----------> remove request from list
+   |
+   |            +----------------+
+   +----------> | create_kthread | clone task, wake it up to run function 'kthread'
+                +----------------+                                            |
+                                                                              v
+                                                                    run argument 'threadfn'
+                                                                    e.g., smpboot_thread_fn
+                                                                              |
+                                                                              v
+                                                              endless loop, run the installed
                                                               thread function whenever necessary
 ```
                            
 ```
 +-------------------------+                                                                                         
-| __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()                 
+| __smpboot_create_thread | : fork a kthread running 'smpboot_thread_fn', park it and call ->create()                 
 +------|------------------+                                                                                         
        |    +-----------------------+                                                                               
        |--> | kthread_create_on_cpu | ask kthreadd to create a kthread running arg threadfn, e.g., smpboot_thread_fn
@@ -2132,18 +2132,18 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
 ```
   
 ```  
-+--------------------------------+                                                                                  
-| smpboot_register_percpu_thread | for each cpu, prepare a kthread running specified hotplug thread                 
-+-------|------------------------+                                                                                  
-        |                                                                                                           
-        +--> for each online cpu                                                                                    
-                                                                                                                    
-                 +-------------------------+                                                                        
-                 | __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()
-                 +-------------------------+                                                                        
-                 +-----------------------+                                                                          
-                 | smpboot_unpark_thread | clear SHOULD_PARK of that kthread and wake it up                         
-                 +-----------------------+                                                                          
++--------------------------------+
+| smpboot_register_percpu_thread | : for each cpu, prepare a kthread running specified hotplug thread
++-------|------------------------+
+        |
+        +--> for each online cpu
+        |
+        |        +-------------------------+
+        +------> | __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()
+        |        +-------------------------+
+        |        +-----------------------+
+        +------> | smpboot_unpark_thread | clear SHOULD_PARK of that kthread and wake it up
+                 +-----------------------+                     
 ```
   
 </details>
