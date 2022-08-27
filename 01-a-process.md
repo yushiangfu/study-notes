@@ -1625,6 +1625,25 @@ struct cfs_rq {
           +----------+                                        
 ```
   
+```
++--------------------+                                                                     
+| cpu_stopper_thread | : handler work on list, e.g., move task to new rq                   
++----|---------------+                                                                     
+     |                                                                                     
+     |--> remove the first work from list (might be empty)                                 
+     |                                                                                     
+     |--> if work                                                                          
+     |                                                                                     
+     |------> set up 'stoper' from work                                                    
+     |                                                                                     
+     |------> call work->fn(), e.g.,                                                       
+     |        +--------------------+                                                       
+     |        | migration_cpu_stop | deactivate task from old rq, and activate it on new rq
+     |        +--------------------+                                                       
+     |                                                                                     
+     +------> reset 'stoper'                                                               
+```
+  
 </details>
 
 ## <a name="task-creation"></a> Task Creation
