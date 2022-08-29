@@ -12,6 +12,18 @@
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
+- [Introduction](#introduction)
+- [Process and Thread](#process-and-thread)
+- [Life Cycle](#life-cycle)
+- [Scheduler and Run Queue](#scheduler-and-run-queue)
+- [Priority and Class](#priority-and-class)
+- [Boot Flow](#boot-flow)
+- [Others](#others)
+preemption
+load balance 
+low latency
+
+
 ## <a name="introduction"></a> Introduction
 
 The 'process' is a concept of running logic designed to fulfill the target purpose.
