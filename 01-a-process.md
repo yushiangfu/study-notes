@@ -2,7 +2,6 @@
 
 ## Index
 
-- [Introduction](#introduction)
 - [Boot Flow](#boot-flow)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
@@ -17,7 +16,7 @@
 - [Life Cycle](#life-cycle)
 - [Scheduler and Run Queue](#scheduler-and-run-queue)
 - [Priority and Class](#priority-and-class)
-- [Boot Flow](#boot-flow)
+- [Task Hierarchy](#task-hierarchy)
 - [Others](#others)
 preemption
 load balance 
@@ -26,11 +25,20 @@ low latency
 
 ## <a name="introduction"></a> Introduction
 
+(TBD)
+
+## <a name="process-and-thread"></a> Process and Thread
+
 The 'process' is a concept of running logic designed to fulfill the target purpose.
 It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string.
 The complicated process works as a group of multiple threads executing the assigned jobs to achieve its goal.
 Meanwhile, kernel threads are working in privilege space, managing system resources, and meeting requirements from userspace.
 I want to introduce the process from different perspectives in this document.
+
+<p align="center"><img src="images/process/process-and-thread.png" /></p>
+
+<details>
+  <summary> Hidden Notes </summary>
 
 ```                                                                 
                     process          process                        
@@ -48,6 +56,8 @@ I want to introduce the process from different perspectives in this document.
                |kthread|    |kthread|    |kthread|   - -- -  -      
                +-------+    +-------+    +-------+                  
 ```
+  
+</details>
 
 ## <a name="boot-flow"></a> Boot Flow
 
