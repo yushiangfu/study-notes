@@ -2,10 +2,7 @@
 
 ## Index
 
-- [Boot Flow](#boot-flow)
-- [Fair Class](#fair-class)
-- [To-Do List](#to-do-list)
-- [Reference](#reference)
+
 
 - [Introduction](#introduction)
 - [Process and Thread](#process-and-thread)
@@ -14,10 +11,7 @@
 - [Priority and Class](#priority-and-class)
 - [Task Hierarchy](#task-hierarchy)
 - [Others](#others)
-preemption
-load balance 
-low latency
-
+- [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
@@ -579,70 +573,7 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
   
 </details>
 
-## <a name="boot-flow"></a> Boot Flow
-
-When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
-The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
-Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
-Once the most fundamental infrastructures, such as memory and interrupt, are prepared, the running logic essentially becomes a kernel thread.
-To take advantage of multiple cores in the processor, the thread forks 'kernel_init' (PID = 1) and 'kthreadd' (PID = 2), and itself turns to an idle task.
-The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
-When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
-
-```                     
-                     PID=1                                       
-           fork  +-------------+  transform   +-----------------+
-            +--> | kernel_init |  ----------> | init or systemd |
-            |    +-------------+              +-----------------+
-  +-----+   |                                                    
-  | ??? |----                                                    
-  +-----+   |                                                    
-            |    +------------+     fork +-------------+         
-            +--> |  kthreadd  | ------>  |  kthread A  |         
-           fork  +------------+    |     +-------------+         
-                     PID=2         |                             
-                                   |fork +-------------+         
-                                   +-->  |  kthread B  |         
-                                   |     +-------------+         
-                                   |                             
-                                   |fork +-------------+         
-                                   +-->  |  kthread C  |         
-                                         +-------------+         
-```
-
-Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
-The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
-
-```
-$ ps xao pid,ppid,comm | head
-    PID    PPID COMMAND
-      1       0 systemd
-      2       0 kthreadd
-      3       2 rcu_gp
-      4       2 rcu_par_gp
-      6       2 kworker/0:0H-events_highpri
-      9       2 mm_percpu_wq
-     10       2 rcu_tasks_rude_
-     11       2 rcu_tasks_trace
-     12       2 ksoftirqd/0
-     
-Note: PPID is parent PID
-```
-
-- Code flow
-
-```
-+-----------+                                                    
-| rest_init |                                                    
-+-----------+                                                    
-       |                                                         
-       |--- create a kernel thread running function 'kernel_init'
-       |                                                         
-       |                                                         
-       +--- create a kernel thread running function 'kthreadd'   
-```
-
-## <a name="fair-class"></a> Fair Class
+### Fair Class
 
 We mainly introduce this class since it covers most utilities, applications, and kernel threads.
 Instead of a conventional queue, it's a tree sorted by each entity's 'virtual runtime.'
@@ -681,7 +612,8 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
                       <-------------------------------             
 ```
 
-- Code flow
+<details>
+  <summary> Hidden Notes </summary>
 
 ```
 +------------------+                                                                                          
@@ -695,6 +627,76 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
           +-- | rb_link_node | insert the task entity into the tree                                           
               +--------------+                                                                                
 ```
+  
+</details>
+
+## <a name="task-hierarchy"></a> Task Hierarchy
+
+When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
+The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
+Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
+Once the most fundamental infrastructures, such as memory and interrupt, are prepared, the running logic essentially becomes a kernel thread.
+To take advantage of multiple cores in the processor, the thread forks 'kernel_init' (PID = 1) and 'kthreadd' (PID = 2), and itself turns to an idle task.
+The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
+When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
+
+<p align="center"><img src="images/process/task-hierarchy.png" /></p>
+
+Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
+The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
+
+```
+$ ps xao pid,ppid,comm | head
+    PID    PPID COMMAND
+      1       0 systemd
+      2       0 kthreadd
+      3       2 rcu_gp
+      4       2 rcu_par_gp
+      6       2 kworker/0:0H-events_highpri
+      9       2 mm_percpu_wq
+     10       2 rcu_tasks_rude_
+     11       2 rcu_tasks_trace
+     12       2 ksoftirqd/0
+     
+Note: PPID is parent PID
+```
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```                     
+                     PID=1                                       
+           fork  +-------------+  transform   +-----------------+
+            +--> | kernel_init |  ----------> | init or systemd |
+            |    +-------------+              +-----------------+
+  +-----+   |                                                    
+  | ??? |----                                                    
+  +-----+   |                                                    
+            |    +------------+     fork +-------------+         
+            +--> |  kthreadd  | ------>  |  kthread A  |         
+           fork  +------------+    |     +-------------+         
+                     PID=2         |                             
+                                   |fork +-------------+         
+                                   +-->  |  kthread B  |         
+                                   |     +-------------+         
+                                   |                             
+                                   |fork +-------------+         
+                                   +-->  |  kthread C  |         
+                                         +-------------+         
+```
+
+```
++-----------+                                                    
+| rest_init |                                                    
++-----------+                                                    
+       |                                                         
+       |--- create a kernel thread running function 'kernel_init'
+       |                                                         
+       |                                                         
+       +--- create a kernel thread running function 'kthreadd'   
+```
+  
+</details>
 
 <details>
   <summary> Code trace </summary>
@@ -1976,23 +1978,13 @@ struct cfs_rq {
 ```
   
 </details>
-
-## <a name="to-do-list"></a> To-Do List
-
-- Introduce PID, TID, and PGID
-- Study namespace if OpenBMC kernel utilizes the feature.
-- Add more content to section 'boot up flow'
-- Introduct job control, session (process group)
-
-## <a name="reference"></a> Reference
-
-- [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
-- [G. Shaw, Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
-- [G. Maier, Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
-- [W. Shen, Understanding Linux Kernel Stack](https://wenboshen.org/posts/2015-12-18-kernel-stack.html)
-
+  
+## <a name="others"></a> Others
+  
+### Premption
+  
 <details>
-  <summary> Messy Notes </summary>
+  <summary> Hidden Notes </summary>
   
 ## <a name="preemption"></a> Preemption (optional)
 
@@ -2218,3 +2210,10 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
 ```
   
 </details>
+
+## <a name="reference"></a> Reference
+
+- [J. Corbet, TASK_KILLABLE](https://lwn.net/Articles/288056/)
+- [G. Shaw, Reap zombie processes using a SIGCHLD handler](http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html)
+- [G. Maier, Thread Scheduling with pthreads under Linux and FreeBSD](http://www.icir.org/gregor/tools/pthread-scheduling.html)
+- [W. Shen, Understanding Linux Kernel Stack](https://wenboshen.org/posts/2015-12-18-kernel-stack.html)
