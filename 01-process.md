@@ -131,6 +131,11 @@ The passed-in parameters determine whether the newly generated task shares the e
 Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
 The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
 
+<p align="center"><img src="images/process/fork-and-clone.png" /></p>
+
+<details>
+  <summary> Hidden Notes </summary>
+
 ```
            case 1                                 case 2                                   
      task clones a task         |           task forks a task                              
@@ -156,9 +161,6 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
    +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
       +--------------+                     +--------------+       +--------------+              
 ```
-
-<details>
-  <summary> Hidden Notes </summary>
 
 ```
 +----------+                                                                                                                      
@@ -507,6 +509,9 @@ But it's a bit different when it comes to thread group cases:
 That's why the leader thread terminates other threads when it exists first, but not vice versa. 
 Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
 
+<details>
+  <summary> Hidden Notes </summary>
+
 ```
               process                 
            +------------+             
@@ -522,9 +527,6 @@ Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit*
   sys_clone| +--------+ |             
            +------------+             
 ```
-
-<details>
-  <summary> Hidden Notes </summary>
 
 ```
 +----------+                                                                                                                         
@@ -725,6 +727,9 @@ Interrupts happen from time to time, and on its way back to executing the ordina
 The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
 Voila! Now the 'next task' becomes running and continues the logic previously stopped.
 
+<details>
+  <summary> Hidden Notes </summary>
+
 ```      
                                                memory      
                                           +---------------+
@@ -754,9 +759,6 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
                                           |               |
                                           +---------------+
 ```
-
-<details>
-  <summary> Hidden Notes </summary>
   
 ```
      low addr  +--+-----------+                
@@ -799,18 +801,6 @@ struct thread_info {
          |                                                                                
          |                                                                                
          +--- for each scheduling class, call its ->pick_next_task, return the first found
-```
-
-```
-+----------------+                                                                
-| context_switch |                                                                
-+--------|-------+                                                                
-         |  +-----------+                                                         
-         +--| switch_to |                                                         
-            +-----------+                                                         
-                  |  +-------------+                                              
-                  +--| __switch_to | save current registers and load the next ones
-                     +-------------+                                              
 ```
   
 ```
@@ -1268,6 +1258,11 @@ By inspecting such rule, we can infer that:
 
 The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
 
+<p align="center"><img src="images/process/fair-class.png" /></p>
+  
+<details>
+  <summary> Hidden Notes </summary>
+  
 ```
   +-------+                                                        
   |       |                      +------+                          
@@ -1292,9 +1287,6 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
          the task with a lower 'nice' value stays left side longer
                       <-------------------------------             
 ```
-
-<details>
-  <summary> Hidden Notes </summary>
 
 ```
 +------------------+                                                                                          
@@ -1739,6 +1731,143 @@ Note: PPID is parent PID
                                 +----------------------+                                                                        
 ```
   
+```
++-------------------+                                                                   
+| smpboot_thread_fn | : endless loop, run the installed thread function whenever necessary
++----|--------------+                                                                   
+     |                                                                                  
+     +--> endless loop                                                                  
+             +-------------------------------------------------------+                  
+             |if kthread should stop                                 |                  
+             |                                                       |                  
+             |    call ->cleanup() if it exists                      |                  
+             |                                                       |                  
+             |    return                                             |                  
+             +-------------------------------------------------------+                  
+             |if kthread should park                                 |                  
+             |                                                       |                  
+             |    call ->park() if it exists                         |                  
+             |                                                       |                  
+             |    change status to PARKED                            |                  
+             |                                                       |                  
+             |    +----------------+                                 |                  
+             |    | kthread_parkme | wait till SHOULD_PARK is cleared|                  
+             |    +----------------+                                 |                  
+             |                                                       |                  
+             |    continue                                           |                  
+             +-------------------------------------------------------+                  
+             |if status is NONE                                      |                  
+             |                                                       |                  
+             |    call ->setup() if it exists                        |                  
+             |                                                       |                  
+             |    change status to ACTIVE                            |                  
+             |                                                       |                  
+             |else if status is PARKED                               |                  
+             |                                                       |                  
+             |    call ->unpark() if it exists                       |                  
+             |                                                       |                  
+             |    change status to ACTIVE                            |                  
+             +-------------------------------------------------------+                  
+             |if kthread doesn't have to run                         |                  
+             |                                                       |                  
+             |    +----------+                                       |                  
+             |    | schedule |                                       |                  
+             |    +----------+                                       |                  
+             |                                                       |                  
+             |else                                                   |                  
+             |                              +---------------+        |                  
+             |    call ->thread_fn(), e.g., | run_ksoftirqd |        |                  
+             |                              +---------------+        |                  
+             +-------------------------------------------------------+                  
+```
+  
+```
++---------+
+| kthread | : run argument 'threadfn'
++--|------+
+   |
+   |--> allocate struct 'kthread' and set up
+   |
+   |--> complete 'done'
+   |
+   |    +----------+
+   |--> | schedule |
+   |    +----------+
+   |
+   |--> if struct 'kthread' isn't labeled SHOULD_STOP
+   |
+   |        +------------------+
+   |------> | __kthread_parkme | wait till SHOULD_PARK is cleared
+   |        +------------------+
+   |
+   |------> call threadfn()
+   |              +-------------------+
+   |        e.g., | smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
+   |              +-------------------+
+   |
+   |    +---------+
+   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return
+        +---------+                                                                                  
+```
+     
+```
++----------+
+| kthreadd |
++--|-------+
+   |
+   +--> endless loop
+   |
+   +------> if no request on list
+   |
+   |            +----------+
+   +----------> | schedule |
+   |            +----------+
+   |
+   +------> while request list isn't empty
+   |
+   +----------> remove request from list
+   |
+   |            +----------------+
+   +----------> | create_kthread | clone task, wake it up to run function 'kthread'
+                +----------------+                                            |
+                                                                              v
+                                                                    run argument 'threadfn'
+                                                                    e.g., smpboot_thread_fn
+                                                                              |
+                                                                              v
+                                                              endless loop, run the installed
+                                                              thread function whenever necessary
+```
+                           
+```
++-------------------------+                                                                                         
+| __smpboot_create_thread | : fork a kthread running 'smpboot_thread_fn', park it and call ->create()                 
++------|------------------+                                                                                         
+       |    +-----------------------+                                                                               
+       |--> | kthread_create_on_cpu | ask kthreadd to create a kthread running arg threadfn, e.g., smpboot_thread_fn
+       |    +-----------------------+                                                                               
+       |    +--------------+                                                                                        
+       |--> | kthread_park | label SHOULD_PARK on target kthread, which will become PARKED                          
+       |    +--------------+                                                                                        
+       |                                                                                                            
+       +--> call ->create() if it exists                                                                            
+```
+  
+```  
++--------------------------------+
+| smpboot_register_percpu_thread | : for each cpu, prepare a kthread running specified hotplug thread
++-------|------------------------+
+        |
+        +--> for each online cpu
+        |
+        |        +-------------------------+
+        +------> | __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()
+        |        +-------------------------+
+        |        +-----------------------+
+        +------> | smpboot_unpark_thread | clear SHOULD_PARK of that kthread and wake it up
+                 +-----------------------+                     
+```
+  
 </details>
   
 ## <a name="others"></a> Others
@@ -1853,59 +1982,6 @@ Max realtime timeout      unlimited            unlimited            us
   
 <details>
   <summary> Hidden Notes </summary>
-  
-</details>
-  
-### Premption
-  
-<details>
-  <summary> Hidden Notes </summary>
-  
-## <a name="preemption"></a> Preemption (optional)
-
-Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
-The thread itself might relinquish the execution right early.
-Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
-For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
-During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
-No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
-This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
-The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
-Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
-As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
-
-```
- +--------------+    +--------------+    +--------------+                                   
- |  user mode   |    | kernel mode  |    |interrupt mode|                                   
- +--------------+    +--------------+    +--------------+                                   
- my loop |                                                                                  
-         |                                                                                  
-         +-------------------> syscall                                                      
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         +--------------------------------------> timer interrupt                           
-                                                |                                           
-                                                |                                           
-           interrupt handler <------------------+                                           
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         |
-```
-
-The above diagram shows exceptions happen though we are just running a simple task.
-When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
-By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
-
-
-
-
-
   
 ```
                                                                                          
@@ -2099,142 +2175,53 @@ enum pid_type
 +-------------------+                                                                  
 ```
   
-```
-+-------------------+                                                                   
-| smpboot_thread_fn | : endless loop, run the installed thread function whenever necessary
-+----|--------------+                                                                   
-     |                                                                                  
-     +--> endless loop                                                                  
-             +-------------------------------------------------------+                  
-             |if kthread should stop                                 |                  
-             |                                                       |                  
-             |    call ->cleanup() if it exists                      |                  
-             |                                                       |                  
-             |    return                                             |                  
-             +-------------------------------------------------------+                  
-             |if kthread should park                                 |                  
-             |                                                       |                  
-             |    call ->park() if it exists                         |                  
-             |                                                       |                  
-             |    change status to PARKED                            |                  
-             |                                                       |                  
-             |    +----------------+                                 |                  
-             |    | kthread_parkme | wait till SHOULD_PARK is cleared|                  
-             |    +----------------+                                 |                  
-             |                                                       |                  
-             |    continue                                           |                  
-             +-------------------------------------------------------+                  
-             |if status is NONE                                      |                  
-             |                                                       |                  
-             |    call ->setup() if it exists                        |                  
-             |                                                       |                  
-             |    change status to ACTIVE                            |                  
-             |                                                       |                  
-             |else if status is PARKED                               |                  
-             |                                                       |                  
-             |    call ->unpark() if it exists                       |                  
-             |                                                       |                  
-             |    change status to ACTIVE                            |                  
-             +-------------------------------------------------------+                  
-             |if kthread doesn't have to run                         |                  
-             |                                                       |                  
-             |    +----------+                                       |                  
-             |    | schedule |                                       |                  
-             |    +----------+                                       |                  
-             |                                                       |                  
-             |else                                                   |                  
-             |                              +---------------+        |                  
-             |    call ->thread_fn(), e.g., | run_ksoftirqd |        |                  
-             |                              +---------------+        |                  
-             +-------------------------------------------------------+                  
-```
+</details>
   
-```
-+---------+
-| kthread | : run argument 'threadfn'
-+--|------+
-   |
-   |--> allocate struct 'kthread' and set up
-   |
-   |--> complete 'done'
-   |
-   |    +----------+
-   |--> | schedule |
-   |    +----------+
-   |
-   |--> if struct 'kthread' isn't labeled SHOULD_STOP
-   |
-   |        +------------------+
-   |------> | __kthread_parkme | wait till SHOULD_PARK is cleared
-   |        +------------------+
-   |
-   |------> call threadfn()
-   |              +-------------------+
-   |        e.g., | smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
-   |              +-------------------+
-   |
-   |    +---------+
-   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return
-        +---------+                                                                                  
-```
-     
-```
-+----------+
-| kthreadd |
-+--|-------+
-   |
-   +--> endless loop
-   |
-   +------> if no request on list
-   |
-   |            +----------+
-   +----------> | schedule |
-   |            +----------+
-   |
-   +------> while request list isn't empty
-   |
-   +----------> remove request from list
-   |
-   |            +----------------+
-   +----------> | create_kthread | clone task, wake it up to run function 'kthread'
-                +----------------+                                            |
-                                                                              v
-                                                                    run argument 'threadfn'
-                                                                    e.g., smpboot_thread_fn
-                                                                              |
-                                                                              v
-                                                              endless loop, run the installed
-                                                              thread function whenever necessary
-```
-                           
-```
-+-------------------------+                                                                                         
-| __smpboot_create_thread | : fork a kthread running 'smpboot_thread_fn', park it and call ->create()                 
-+------|------------------+                                                                                         
-       |    +-----------------------+                                                                               
-       |--> | kthread_create_on_cpu | ask kthreadd to create a kthread running arg threadfn, e.g., smpboot_thread_fn
-       |    +-----------------------+                                                                               
-       |    +--------------+                                                                                        
-       |--> | kthread_park | label SHOULD_PARK on target kthread, which will become PARKED                          
-       |    +--------------+                                                                                        
-       |                                                                                                            
-       +--> call ->create() if it exists                                                                            
-```
+### Premption
   
-```  
-+--------------------------------+
-| smpboot_register_percpu_thread | : for each cpu, prepare a kthread running specified hotplug thread
-+-------|------------------------+
-        |
-        +--> for each online cpu
-        |
-        |        +-------------------------+
-        +------> | __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()
-        |        +-------------------------+
-        |        +-----------------------+
-        +------> | smpboot_unpark_thread | clear SHOULD_PARK of that kthread and wake it up
-                 +-----------------------+                     
+<details>
+  <summary> Hidden Notes </summary>
+  
+## <a name="preemption"></a> Preemption (optional)
+
+Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
+The thread itself might relinquish the execution right early.
+Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
+For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
+During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
+No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
+This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
+The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
+Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
+As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
+
 ```
+ +--------------+    +--------------+    +--------------+                                   
+ |  user mode   |    | kernel mode  |    |interrupt mode|                                   
+ +--------------+    +--------------+    +--------------+                                   
+ my loop |                                                                                  
+         |                                                                                  
+         +-------------------> syscall                                                      
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         +--------------------------------------> timer interrupt                           
+                                                |                                           
+                                                |                                           
+           interrupt handler <------------------+                                           
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         |
+```
+
+The above diagram shows exceptions happen though we are just running a simple task.
+When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
+By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
   
 </details>
 
