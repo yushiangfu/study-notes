@@ -1,13 +1,10 @@
-> Linux version 5.15.0
+> Based on Linux version 5.15.0
 
 ## Index
 
 - [Boot Flow](#boot-flow)
 - [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
-- [Task States](#task-states)
-- [Task Creation](#task-creation)
-- [Task Termination](#task-termination)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
 
@@ -55,6 +52,344 @@ I want to introduce the process from different perspectives in this document.
                +-------+    +-------+    +-------+                  
                |kthread|    |kthread|    |kthread|   - -- -  -      
                +-------+    +-------+    +-------+                  
+```
+  
+</details>
+
+## <a name="life-cycle"></a> Life Cycle
+
+When a task is created but not yet added to any run queue, it is NEW. 
+Once positioned in a run queue or selected to be run on CPU, the state turns to the RUNNING.
+If operations involve a longer waiting time, the task will temporarily wait in a queue with the task state set INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
+
+- TASK_INTERRUPTIBLE: can receive signal
+- TASK_UNINTERRUPTIBLE: can't receive signal
+- TASK_KILLABLE: can receive 'kill' signal only
+
+<p align="center"><img src="images/process/life-cycle.png" /></p>
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
+                                             run queue                                
+              +-------+    |                                                          
+              |       |    |                  +------+                                
+              |  CPU  |    |                  | task | state: RUNNING                 
+              | +------+   |                  +------+                                
+              +-|-task+|   |                 /        \                               
+ state: RUNNING +------+   |                /          \                              
+                    |      |         +------+          +------+                       
+               fork |      |         | task |          | task | state: RUNNING        
+                    v      |         +------+          +------+                       
+                +------+   |          /\                    /\                        
+     state: NEW | task |   |         /  \                  /  \                       
+                +------+   |  +------+   +------+   +------+   +------+               
+                           |  | task |   | task |   | task |   | task | state: RUNNING
+                           |  +------+   +------+   +------+   +------+               
+                           |                                                          
+   --------------------------------------------------------------------------------
+                                                                                     
+                                             wait queue                              
+                                                                                     
+                                 +--------------------------------+                  
+                                 | +------+                       |                  
+                                 | | task | state: INTERRUPTIBLE  |                  
+                                 | +------+                       |                  
+                                 | +------+                       |                  
+                                 | | task | state: UNINTERRUPTIBLE|                  
+                                 | +------+                       |                  
+                                 | +------+                       |                  
+                                 | | task | state: KILLABLE       |                  
+                                 | +------+                       |                  
+                                 +--------------------------------+                                    
+```
+  
+</details>
+
+### Task Creation
+
+From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
+In contrast, tasks from the different groups have their resources exclusively. 
+Two syscalls, 'clone' and 'fork,' are provided to meet the individual requirement, and surprisingly they call to the same core function inside the kernel.
+The passed-in parameters determine whether the newly generated task shares the existing resource with its parent task or has its private copy.
+Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
+The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
+
+```
+           case 1                                 case 2                                   
+     task clones a task         |           task forks a task                              
+                                |                                                          
+                                |                                                          
++-------+  clone   +-------+    |    +-------+    fork      +-------+                      
+|thread |  ----->  |thread |    |    |thread |   ------>    |thread |                      
++-------+          +-------+    |    +-------+              +-------+                      
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--| memory space |--+       |       +--| memory space |    +--| memory space |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|  file table  |--+       |       +--|  file table  |    +--|  file table  |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   |                    |       |       |                      |                           
+   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
+   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
+      +--------------+                     +--------------+       +--------------+              
+```
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
++----------+                                                                                                                      
+| sys_fork |---+                                                                                                                  
++----------+   |                                                                                                                  
++-----------+  |                                                                                                                  
+| sys_clone |--+                                                                                                                  
++-----------+  |                                                                                                                  
+               |  +--------------+                                                                                                
+               +--| kernel_clone |                                                                                                
+                  +--------------+                                                                                                
+                          |  +--------------+                                                                                     
+                          |--- copy_process | generate task structure, and either duplicate or share the resources with the parent
+                          |  +--------------+                                                                                     
+                          |  +------------------+                                                                                 
+                          +--| wake_up_new_task | add the newly generated task into a run queue                                   
+                             +------------------+                                                                                 
+```
+
+```
++-----------------+                                                                         
+| dup_task_struct | : allocate task and thread stack, copy from parent and reset some fields
++----|------------+                                                                         
+     |    +------------------------+                                                        
+     |--> | alloc_task_struct_node | allocate 'task'                                        
+     |    +------------------------+                                                        
+     |    +-------------------------+                                                       
+     |--> | alloc_thread_stack_node | allocate two pages (4K * 2) as task stack             
+     |    +-------------------------+                                                       
+     |    +----------------------+                                                          
+     |--> | arch_dup_task_struct | copy content from parent task to child's                 
+     |    +----------------------+                                                          
+     |    +--------------------+                                                            
+     |--> | setup_thread_stack | copy 'thread info' from parent's                           
+     |    +--------------------+                                                            
+     |                                                                                      
+     +--> reset some task fields                                                            
+```
+
+```
++------------+                                                            
+| sched_fork | : state = NEW, set prio & sched class                      
++--|---------+                                                            
+   |    +--------------+                                                  
+   |--> | __sched_fork | init sched related fields                        
+   |    +--------------+                                                  
+   |                                                                      
+   |--> task state = NEW                                                  
+   |                                                                      
+   |--> child prio = parent normal prio (to avoid booted prio inheritance)
+   |                                                                      
+   |--> determine shed class based on prio                                
+   |                                                                      
+   +--> task preempt count = 0 in our config                              
+```
+
+```
++------------+                                                                                              
+| sys_execve |                                                                                              
++--|---------+                                                                                              
+   |    +-----------+                                                                                       
+   +--> | do_execve |                                                                                       
+        +--|--------+                                                                                       
+           |    +--------------------+                                                                      
+           +--> | do_execveat_common |                                                                      
+                +----|---------------+                                                                      
+                     |    +------------+                                                                    
+                     |--> | alloc_bprm |                                                                    
+                     |    +--|---------+                                                                    
+                     |       |                                                                              
+                     |       |--> allocate 'bprm'                                                           
+                     |       |                                                                              
+                     |       |--> set filename and interp of bprm                                           
+                     |       |                                                                              
+                     |       |    +--------------+                                                          
+                     |       +--> | bprm_mm_init |                                                          
+                     |            +---|----------+                                                          
+                     |                |    +----------+                                                     
+                     |                |--> | mm_alloc | prepare mm and page table                           
+                     |                |    +----------+                                                     
+                     |                |    +----------------+                                               
+                     |                +--> | __bprm_mm_init | prepare vma of stack, and link it to framework
+                     |                     +----------------+                                               
+                     |    +--------------+                                                                  
+                     |--> | copy_strings | copy env to somewhere                                            
+                     |    +--------------+                                                                  
+                     |    +--------------+                                                                  
+                     |--> | copy_strings | copy arg to somewhere                                            
+                     |    +--------------+                                                                  
+                     |    +-------------+                                                                   
+                     +--> | bprm_execve | move to a proper rq, clear old mapping, map exec and interp       
+                          +-------------+                                                                   
+```
+
+```
++-------------+                                                                                                                    
+| bprm_execve | move to a proper rq, clear old mapping, map exec and interp                                                        
++---|---------+                                                                                                                    
+    |    +----------------+                                                                                                        
+    |--> | do_open_execat |                                                                                                        
+    |    +---|------------+                                                                                                        
+    |        |                                                                                                                     
+    |        |--> determine flags                                                                                                  
+    |        |                                                                                                                     
+    |        |    +--------------+                                                                                                 
+    |        +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()                              
+    |             +--------------+                                                                                                 
+    |    +------------+                                                                                                            
+    |--> | sched_exec | select rq and migrate task onto it                                                                         
+    |    +------------+                                                                                                            
+    |    +-------------+                                                                                                           
+    +--> | exec_binprm |                                                                                                           
+         +---|---------+                                                                                                           
+             |                                                                                                                     
+             |--> for 1 exec and at most 5 interpreters                                                                            
+             |                                                                                                                     
+             |        +-----------------------+                                                                                    
+             |------> | search_binary_handler |                                                                                    
+             |        +-----|-----------------+                                                                                    
+             |              |    +----------------+                                                                                
+             |              |--> | prepare_binprm | read file into buffer                                                          
+             |              |    +----------------+                                                                                
+             |              |                                                                                                      
+             |              |--> for each registered format (e.g., script, elf)                                                    
+             |              |                                                                                                      
+             |              |------> call ->load_binary(), e.g.,                                                                   
+             |              |        +-----------------+                                                                           
+             |              |        | load_elf_binary | map segments of exec and interp, copy and env to stack, regs->pc to interp
+             |              |        +-----------------+                                                                           
+             |              |                                                                                                      
+             |              +------> return if ok                                                                                  
+             |                                                                                                                     
+             +------> break if brpm->interpreter isn't set (though elf has interpreter, it doesn't set this field)                 
+```
+
+```
+struct linux_binfmt {
+    struct list_head lh;                            // list node
+    struct module *module;
+    int (*load_binary)(struct linux_binprm *);      // to load the program into memory
+    int (*load_shlib)(struct file *);               // to load the shared library
+    int (*core_dump)(struct coredump_params *cprm); // to write out the core dump when process crashes
+    unsigned long min_coredump;                     // minimum size of a core dump file
+}
+```
+  
+</details>
+
+### Task Termination
+
+When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
+But it's a bit different when it comes to thread group cases:
+- Non-leader threads behave similarly as the case of the single-thread process. The flow goes to **sys_exit**, and it releases resources after notifying the tracer and parent.
+- Thread group leader starts from **sys_group_exit**, which sets the SIGKILL bit of other threads before unleashing resource.
+
+That's why the leader thread terminates other threads when it exists first, but not vice versa. 
+Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
+
+```
+              process                 
+           +------------+             
+           |   leader   |             
+           | +--------+ |             
++----------- | thread | sys_gorup_exit
+|  |       | +--------+ |             
+|  |       | +--------+ |             
+|  +-------> | thread | sys_exit      
+| sys_clone| +--------+ |             
+|          | +--------+ |             
++----------> | thread | sys_exit      
+  sys_clone| +--------+ |             
+           +------------+             
+```
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
++----------+                                                                                                                         
+| sys_exit |                                                                                                                         
++--|-------+                                                                                                                         
+   |    +---------+                                                                                                                  
+   +--> | do_exit |                                                                                                                  
+        +--|------+                                                                                                                  
+           |    +--------------+                                                                                                     
+           |--> | ptrace_event | notify tracer of the exit                                                                           
+           |    +--------------+                                                                                                     
+           |    +--------------+                                                                                                     
+           |--> | exit_signals |                                                                                                     
+           |    +---|----------+                                                                                                     
+           |        |                                                                                                                
+           |        |--> label EXITING on the task                                                                                   
+           |        |                                                                                                                
+           |        |    +--------------------------+                                                                                
+           |        +--> | retarget_shared_pending  | ask other threads in the group to take of pending signals of the current thread
+           |             +--------------------------+                                                                                
+           |                                                                                                                         
+           |--> set exit code of the task                                                                                            
+           |                                                                                                                         
+           |    +-------------+                                                                                                      
+           |--> | exit_notify |                                                                                                      
+           |    +---|---------+                                                                                                      
+           |        |    +------------------------+                                                                                  
+           |        +--> | forget_original_parent | ask reaper (init or systemd) to take care of the children                        
+           |        |    +------------------------+                                                                                  
+           |        |                                                                                                                
+           |        |--> set task exit state to ZOMBIE                                                                               
+           |        |                                                                                                                
+           |        |--> notify parent of the exist                                                                                  
+           |        |                                                                                                                
+           |        +--> if auto reap (either task isn't the group leader, or the parent doesn't care)                               
+           |                                                                                                                         
+           |                 change task exit state to DEAD                                                                          
+           |                                                                                                                         
+           |                 +--------------+                                                                                        
+           |                 | release_task |                                                                                        
+           |                 +--------------+                                                                                        
+           |                                                                                                                         
+           |    +--------------+                                                                                                     
+           +--> | do_task_dead | schedule to let other task run                                                                      
+                +--------------+                                                                                                     
+```
+
+```
++----------------+                                                                                                                         
+| sys_exit_group |                                                                                                                         
++---|------------+                                                                                                                         
+    |    +---------------+                                                                                                                 
+    +--> | do_group_exit |                                                                                                                 
+         +---|-----------+                                                                                                                 
+             |                                                                                                                             
+             |--> if thread group is exiting                                                                                               
+             |                                                                                                                             
+             |        get exit code from signal struct                                                                                     
+             |                                                                                                                             
+             |--> else                                                                                                                     
+             |                                                                                                                             
+             |        set exit code and GROPU_EXIT flag in signal struct                                                                   
+             |                                                                                                                             
+             |        +-------------------+                                                                                                
+             |        | zap_other_threads | for each other thread in the group, set SIGKILL bit and wake up the thread to face the bad news
+             |        +-------------------+                                                                                                
+             |                                                                                                                             
+             |    +---------+                                                                                                              
+             +--> | do_exit |                                                                                                              
+                  +---------+                                                                                                              
 ```
   
 </details>
@@ -341,50 +676,6 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
           |   +--------------+                                                                                
           +-- | rb_link_node | insert the task entity into the tree                                           
               +--------------+                                                                                
-```
-
-## <a name="task-states"></a> Task States
-
-When a task is created but not yet added to any run queue, it is NEW. 
-Once positioned in a run queue or selected to be run on CPU, the state turns to the RUNNING.
-If operations involve a longer waiting time, the task will temporarily wait in a queue with the task state set INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
-
-- TASK_INTERRUPTIBLE: can receive signal
-- TASK_UNINTERRUPTIBLE: can't receive signal
-- TASK_KILLABLE: can receive 'kill' signal only
-
-```
-                                             run queue                                
-              +-------+    |                                                          
-              |       |    |                  +------+                                
-              |  CPU  |    |                  | task | state: RUNNING                 
-              | +------+   |                  +------+                                
-              +-|-task+|   |                 /        \                               
- state: RUNNING +------+   |                /          \                              
-                    |      |         +------+          +------+                       
-               fork |      |         | task |          | task | state: RUNNING        
-                    v      |         +------+          +------+                       
-                +------+   |          /\                    /\                        
-     state: NEW | task |   |         /  \                  /  \                       
-                +------+   |  +------+   +------+   +------+   +------+               
-                           |  | task |   | task |   | task |   | task | state: RUNNING
-                           |  +------+   +------+   +------+   +------+               
-                           |                                                          
-   --------------------------------------------------------------------------------
-                                                                                     
-                                             wait queue                              
-                                                                                     
-                                 +--------------------------------+                  
-                                 | +------+                       |                  
-                                 | | task | state: INTERRUPTIBLE  |                  
-                                 | +------+                       |                  
-                                 | +------+                       |                  
-                                 | | task | state: UNINTERRUPTIBLE|                  
-                                 | +------+                       |                  
-                                 | +------+                       |                  
-                                 | | task | state: KILLABLE       |                  
-                                 | +------+                       |                  
-                                 +--------------------------------+                                    
 ```
 
 <details>
@@ -1667,285 +1958,6 @@ struct cfs_rq {
 ```
   
 </details>
-
-## <a name="task-creation"></a> Task Creation
-
-From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
-In contrast, tasks from the different groups have their resources exclusively. 
-Two syscalls, 'clone' and 'fork,' are provided to meet the individual requirement, and surprisingly they call to the same core function inside the kernel.
-The passed-in parameters determine whether the newly generated task shares the existing resource with its parent task or has its private copy.
-Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
-The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
-
-```
-           case 1                                 case 2                                   
-     task clones a task         |           task forks a task                              
-                                |                                                          
-                                |                                                          
-+-------+  clone   +-------+    |    +-------+    fork      +-------+                      
-|thread |  ----->  |thread |    |    |thread |   ------>    |thread |                      
-+-------+          +-------+    |    +-------+              +-------+                      
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--| memory space |--+       |       +--| memory space |    +--| memory space |         
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--|  file table  |--+       |       +--|  file table  |    +--|  file table  |         
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   |                    |       |       |                      |                           
-   |  +--------------+  |       |       |  +--------------+    |  +--------------+         
-   +--|    blabla    |--+       |       +--|    blabla    |    +--|    blabla    |         
-      +--------------+                     +--------------+       +--------------+              
-```
-
-- Code flow
-
-```
-+----------+                                                                                                                      
-| sys_fork |---+                                                                                                                  
-+----------+   |                                                                                                                  
-+-----------+  |                                                                                                                  
-| sys_clone |--+                                                                                                                  
-+-----------+  |                                                                                                                  
-               |  +--------------+                                                                                                
-               +--| kernel_clone |                                                                                                
-                  +--------------+                                                                                                
-                          |  +--------------+                                                                                     
-                          |--- copy_process | generate task structure, and either duplicate or share the resources with the parent
-                          |  +--------------+                                                                                     
-                          |  +------------------+                                                                                 
-                          +--| wake_up_new_task | add the newly generated task into a run queue                                   
-                             +------------------+                                                                                 
-```
-
-```
-+-----------------+                                                                         
-| dup_task_struct | : allocate task and thread stack, copy from parent and reset some fields
-+----|------------+                                                                         
-     |    +------------------------+                                                        
-     |--> | alloc_task_struct_node | allocate 'task'                                        
-     |    +------------------------+                                                        
-     |    +-------------------------+                                                       
-     |--> | alloc_thread_stack_node | allocate two pages (4K * 2) as task stack             
-     |    +-------------------------+                                                       
-     |    +----------------------+                                                          
-     |--> | arch_dup_task_struct | copy content from parent task to child's                 
-     |    +----------------------+                                                          
-     |    +--------------------+                                                            
-     |--> | setup_thread_stack | copy 'thread info' from parent's                           
-     |    +--------------------+                                                            
-     |                                                                                      
-     +--> reset some task fields                                                            
-```
-
-```
-+------------+                                                            
-| sched_fork | : state = NEW, set prio & sched class                      
-+--|---------+                                                            
-   |    +--------------+                                                  
-   |--> | __sched_fork | init sched related fields                        
-   |    +--------------+                                                  
-   |                                                                      
-   |--> task state = NEW                                                  
-   |                                                                      
-   |--> child prio = parent normal prio (to avoid booted prio inheritance)
-   |                                                                      
-   |--> determine shed class based on prio                                
-   |                                                                      
-   +--> task preempt count = 0 in our config                              
-```
-
-```
-+------------+                                                                                              
-| sys_execve |                                                                                              
-+--|---------+                                                                                              
-   |    +-----------+                                                                                       
-   +--> | do_execve |                                                                                       
-        +--|--------+                                                                                       
-           |    +--------------------+                                                                      
-           +--> | do_execveat_common |                                                                      
-                +----|---------------+                                                                      
-                     |    +------------+                                                                    
-                     |--> | alloc_bprm |                                                                    
-                     |    +--|---------+                                                                    
-                     |       |                                                                              
-                     |       |--> allocate 'bprm'                                                           
-                     |       |                                                                              
-                     |       |--> set filename and interp of bprm                                           
-                     |       |                                                                              
-                     |       |    +--------------+                                                          
-                     |       +--> | bprm_mm_init |                                                          
-                     |            +---|----------+                                                          
-                     |                |    +----------+                                                     
-                     |                |--> | mm_alloc | prepare mm and page table                           
-                     |                |    +----------+                                                     
-                     |                |    +----------------+                                               
-                     |                +--> | __bprm_mm_init | prepare vma of stack, and link it to framework
-                     |                     +----------------+                                               
-                     |    +--------------+                                                                  
-                     |--> | copy_strings | copy env to somewhere                                            
-                     |    +--------------+                                                                  
-                     |    +--------------+                                                                  
-                     |--> | copy_strings | copy arg to somewhere                                            
-                     |    +--------------+                                                                  
-                     |    +-------------+                                                                   
-                     +--> | bprm_execve | move to a proper rq, clear old mapping, map exec and interp       
-                          +-------------+                                                                   
-```
-
-```
-+-------------+                                                                                                                    
-| bprm_execve | move to a proper rq, clear old mapping, map exec and interp                                                        
-+---|---------+                                                                                                                    
-    |    +----------------+                                                                                                        
-    |--> | do_open_execat |                                                                                                        
-    |    +---|------------+                                                                                                        
-    |        |                                                                                                                     
-    |        |--> determine flags                                                                                                  
-    |        |                                                                                                                     
-    |        |    +--------------+                                                                                                 
-    |        +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()                              
-    |             +--------------+                                                                                                 
-    |    +------------+                                                                                                            
-    |--> | sched_exec | select rq and migrate task onto it                                                                         
-    |    +------------+                                                                                                            
-    |    +-------------+                                                                                                           
-    +--> | exec_binprm |                                                                                                           
-         +---|---------+                                                                                                           
-             |                                                                                                                     
-             |--> for 1 exec and at most 5 interpreters                                                                            
-             |                                                                                                                     
-             |        +-----------------------+                                                                                    
-             |------> | search_binary_handler |                                                                                    
-             |        +-----|-----------------+                                                                                    
-             |              |    +----------------+                                                                                
-             |              |--> | prepare_binprm | read file into buffer                                                          
-             |              |    +----------------+                                                                                
-             |              |                                                                                                      
-             |              |--> for each registered format (e.g., script, elf)                                                    
-             |              |                                                                                                      
-             |              |------> call ->load_binary(), e.g.,                                                                   
-             |              |        +-----------------+                                                                           
-             |              |        | load_elf_binary | map segments of exec and interp, copy and env to stack, regs->pc to interp
-             |              |        +-----------------+                                                                           
-             |              |                                                                                                      
-             |              +------> return if ok                                                                                  
-             |                                                                                                                     
-             +------> break if brpm->interpreter isn't set (though elf has interpreter, it doesn't set this field)                 
-```
-
-```
-struct linux_binfmt {
-    struct list_head lh;                            // list node
-    struct module *module;
-    int (*load_binary)(struct linux_binprm *);      // to load the program into memory
-    int (*load_shlib)(struct file *);               // to load the shared library
-    int (*core_dump)(struct coredump_params *cprm); // to write out the core dump when process crashes
-    unsigned long min_coredump;                     // minimum size of a core dump file
-}
-```
-
-## <a name="task-termination"></a> Task Termination
-
-When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
-But it's a bit different when it comes to thread group cases:
-- Non-leader threads behave similarly as the case of the single-thread process. The flow goes to **sys_exit**, and it releases resources after notifying the tracer and parent.
-- Thread group leader starts from **sys_group_exit**, which sets the SIGKILL bit of other threads before unleashing resource.
-
-That's why the leader thread terminates other threads when it exists first, but not vice versa. 
-Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
-
-```
-              process                 
-           +------------+             
-           |   leader   |             
-           | +--------+ |             
-+----------- | thread | sys_gorup_exit
-|  |       | +--------+ |             
-|  |       | +--------+ |             
-|  +-------> | thread | sys_exit      
-| sys_clone| +--------+ |             
-|          | +--------+ |             
-+----------> | thread | sys_exit      
-  sys_clone| +--------+ |             
-           +------------+             
-```
-
-```
-+----------+                                                                                                                         
-| sys_exit |                                                                                                                         
-+--|-------+                                                                                                                         
-   |    +---------+                                                                                                                  
-   +--> | do_exit |                                                                                                                  
-        +--|------+                                                                                                                  
-           |    +--------------+                                                                                                     
-           |--> | ptrace_event | notify tracer of the exit                                                                           
-           |    +--------------+                                                                                                     
-           |    +--------------+                                                                                                     
-           |--> | exit_signals |                                                                                                     
-           |    +---|----------+                                                                                                     
-           |        |                                                                                                                
-           |        |--> label EXITING on the task                                                                                   
-           |        |                                                                                                                
-           |        |    +--------------------------+                                                                                
-           |        +--> | retarget_shared_pending  | ask other threads in the group to take of pending signals of the current thread
-           |             +--------------------------+                                                                                
-           |                                                                                                                         
-           |--> set exit code of the task                                                                                            
-           |                                                                                                                         
-           |    +-------------+                                                                                                      
-           |--> | exit_notify |                                                                                                      
-           |    +---|---------+                                                                                                      
-           |        |    +------------------------+                                                                                  
-           |        +--> | forget_original_parent | ask reaper (init or systemd) to take care of the children                        
-           |        |    +------------------------+                                                                                  
-           |        |                                                                                                                
-           |        |--> set task exit state to ZOMBIE                                                                               
-           |        |                                                                                                                
-           |        |--> notify parent of the exist                                                                                  
-           |        |                                                                                                                
-           |        +--> if auto reap (either task isn't the group leader, or the parent doesn't care)                               
-           |                                                                                                                         
-           |                 change task exit state to DEAD                                                                          
-           |                                                                                                                         
-           |                 +--------------+                                                                                        
-           |                 | release_task |                                                                                        
-           |                 +--------------+                                                                                        
-           |                                                                                                                         
-           |    +--------------+                                                                                                     
-           +--> | do_task_dead | schedule to let other task run                                                                      
-                +--------------+                                                                                                     
-```
-
-```
-+----------------+                                                                                                                         
-| sys_exit_group |                                                                                                                         
-+---|------------+                                                                                                                         
-    |    +---------------+                                                                                                                 
-    +--> | do_group_exit |                                                                                                                 
-         +---|-----------+                                                                                                                 
-             |                                                                                                                             
-             |--> if thread group is exiting                                                                                               
-             |                                                                                                                             
-             |        get exit code from signal struct                                                                                     
-             |                                                                                                                             
-             |--> else                                                                                                                     
-             |                                                                                                                             
-             |        set exit code and GROPU_EXIT flag in signal struct                                                                   
-             |                                                                                                                             
-             |        +-------------------+                                                                                                
-             |        | zap_other_threads | for each other thread in the group, set SIGKILL bit and wake up the thread to face the bad news
-             |        +-------------------+                                                                                                
-             |                                                                                                                             
-             |    +---------+                                                                                                              
-             +--> | do_exit |                                                                                                              
-                  +---------+                                                                                                              
-```
 
 ## <a name="to-do-list"></a> To-Do List
 
