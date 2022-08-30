@@ -51,18 +51,14 @@ Either user thread or kernel thread is regarded as a **task** from the kernel's 
 
 ## <a name="life-cycle"></a> Life Cycle
 
-When a task is created but not yet added to any run queue, it is NEW. 
-Once positioned in a run queue or selected to be run on CPU, the state turns to the RUNNING.
-If operations involve a longer waiting time, the task will temporarily wait in a queue with the task state set INTERRUPTIBLE, UNINTERRUPTIBLE, or KILLABLE.
-
-- TASK_INTERRUPTIBLE: can receive signal
-- TASK_UNINTERRUPTIBLE: can't receive signal
-- TASK_KILLABLE: can receive 'kill' signal only
+A task is in **NEW** status when it's newly created but not yet added to any run queue. 
+It changes to **RUNNING** once queued, waiting to run, or running on a CPU. 
+If actions involve event waiting during runtime, the task becomes **SLEEPING** and temporarily standby somewhere until the condition is met. 
+The task can be a daemon working in the background continuously or a regular command exiting after performing its job.
 
 <p align="center"><img src="images/process/life-cycle.png" /></p>
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```
                                              run queue                                
@@ -120,7 +116,7 @@ struct task_struct {
   
 </details>
 
-### Task Creation
+### New
 
 From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
 In contrast, tasks from the different groups have their resources exclusively. 
@@ -131,8 +127,7 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
 
 <p align="center"><img src="images/process/fork-and-clone.png" /></p>
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```
            case 1                                 case 2                                   
@@ -497,7 +492,13 @@ struct linux_binfmt {
   
 </details>
 
-### Task Termination
+### Sleeping
+
+- TASK_INTERRUPTIBLE: can receive signal
+- TASK_UNINTERRUPTIBLE: can't receive signal
+- TASK_KILLABLE: can receive 'kill' signal only
+
+### Dead
 
 When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
 But it's a bit different when it comes to thread group cases:
@@ -507,8 +508,7 @@ But it's a bit different when it comes to thread group cases:
 That's why the leader thread terminates other threads when it exists first, but not vice versa. 
 Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```
               process                 
@@ -613,8 +613,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```
                                                               +-------------------------------------------+
@@ -716,8 +715,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
   
 (TBD)
   
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
   
 ```
 +-----------------------+                                                                                 
@@ -817,8 +815,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
 
 (TBD)
   
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
 The thread itself might relinquish the execution right early.
@@ -874,8 +871,7 @@ Interrupts happen from time to time, and on its way back to executing the ordina
 The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
 Voila! Now the 'next task' becomes running and continues the logic previously stopped.
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```      
                                                memory      
@@ -1033,8 +1029,7 @@ Of course, the currently running one will return to its sub-queue for the next c
 
 <p align="center"><img src="images/process/priority-and-class.png" /></p>
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```
     prio   kernel           user            nice                        
@@ -1312,8 +1307,7 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
 
 <p align="center"><img src="images/process/fair-class.png" /></p>
   
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
   
 ```
   +-------+                                                        
@@ -1590,8 +1584,7 @@ struct cfs_rq {
   
 ### Real-Time Class
   
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
   
 ```
 +-------------------+                                               
@@ -1716,8 +1709,7 @@ $ ps xao pid,ppid,comm | head
 Note: PPID is parent PID
 ```
 
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
 
 ```                     
                      PID=1                                       
@@ -1928,8 +1920,7 @@ Note: PPID is parent PID
   
 (TBD)
   
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
   
 ```
 struct signal_struct {
@@ -2036,8 +2027,7 @@ Max realtime timeout      unlimited            unlimited            us
   
 (TBD)
   
-<details>
-  <summary> Hidden Notes </summary>
+<details><summary> Hidden Notes </summary>
   
 ```
                                                                                          
