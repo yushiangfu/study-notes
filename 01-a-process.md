@@ -18,42 +18,6 @@
 
 (TBD)
 
-<details>
-  <summary> Hidden Notes </summary>
-
-```
-     low addr  +--+-----------+                
-               |  |thread_info|                
-               |  +-----------+                
-           ^   |  |0x57AC6E9D | stack end magic
-           |   |  +-----------+                
-           |   |           |                   
-           |   |           |                   
-           |   |           |                   
-           |   +-----------+                   
-           |   |           |                   
-           |   |           |                   
-           |   |           |                   
-           |   |  +-----------+                
-           |   |  |  pt_regs  |                
- stack  ---+   |  +-----------+                
-               |  |  reserved | 8 bytes        
-    high addr  +--+-----------+                    
-```
-  
-```
-struct thread_info {
-    unsigned long       flags;  // TIF_SIGPENDING: signal pending
-                                // TIF_NEED_RESCHED: rescheduling necessary
-    int         preempt_count;  // for preemption, which is disabled in our config
-    struct task_struct  *task;  // point to the task_struct
-    __u32           cpu;        // where the process is running on
-    struct cpu_context_save cpu_context;
-
-};
-```
-  
-</details>
 
 ## <a name="process-and-thread"></a> Process and Thread
 
@@ -694,6 +658,58 @@ Please note the scheduler itself is not a process or thread but a mechanism with
                                                               +-------------------------------------------+
 ```
   
+```
++--------------------------+                                                                                                        
+| fttmr010_timer_interrupt |                                                                                                        
++------|-------------------+                                                                                                        
+       |                                                                                                                            
+       +--> call ->event_handler(), e.g.,                                                                                           
+            +----------------------+                                                                                                
+            | tick_handle_periodic |                                                                                                
+            +-----|----------------+                                                                                                
+                  |    +---------------+                                                                                            
+                  +--> | tick_periodic |                                                                                            
+                       +---|-----------+                                                                                            
+                           |    +----------------------+                                                                            
+                           +--> | update_process_times |                                                                            
+                                +-----|----------------+                                                                            
+                                      |    +----------------+                                                                       
+                                      +--> | scheduler_tick | update rq clock, call ->task_tick(), balance runqueues if necessary   
+                                           +----------------+                                                                       
+```
+  
+```
++----------------+                                                                                           
+| scheduler_tick | : update rq clock, call ->task_tick(), balance runqueues if necessary                     
++---|------------+                                                                                           
+    |    +-----------------+                                                                                 
+    |--> | update_rq_clock |                                                                                 
+    |    +-----------------+                                                                                 
+    |                                                                                                        
+    |--> call ->task_tick(), e.g.,                                                                             
+    |    +----------------+                                                                                  
+    |    | task_tick_fair | update vruntime, resched current task if necessary                               
+    |    +----------------+                                                                                  
+    |    +----------------------+                                                                            
+    +--> | trigger_load_balance | : if it's about time, balance loading between the busiest rq and this one  
+         +-----|----------------+                                                                            
+               |                                                                                             
+               |--> if it's time to do balance again                                                         
+               |                                                                                             
+               |        +---------------+                                                                    
+               +------> | raise_softirq | label SCHED_SOFTIRQ and somewhere will call run_rebalance_domains()
+                        +---------------+                                                                    
+                                                                                                             
+                                                                                                             
+                                                                                                             
+                                                                                                             
+                                                                                                             
+                                                                                                             
+         +-----------------------+                                                                           
+         | run_rebalance_domains | if it's about time, balance loading between the busiest rq and this one   
+         +-----------------------+                                                                           
+```
+  
 </details>
 
 ### Context Switch
@@ -741,6 +757,38 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
 
 <details>
   <summary> Hidden Notes </summary>
+  
+```
+     low addr  +--+-----------+                
+               |  |thread_info|                
+               |  +-----------+                
+           ^   |  |0x57AC6E9D | stack end magic
+           |   |  +-----------+                
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   +-----------+                   
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   |  +-----------+                
+           |   |  |  pt_regs  |                
+ stack  ---+   |  +-----------+                
+               |  |  reserved | 8 bytes        
+    high addr  +--+-----------+                    
+```
+  
+```
+struct thread_info {
+    unsigned long       flags;  // TIF_SIGPENDING: signal pending
+                                // TIF_NEED_RESCHED: rescheduling necessary
+    int         preempt_count;  // for preemption, which is disabled in our config
+    struct task_struct  *task;  // point to the task_struct
+    __u32           cpu;        // where the process is running on
+    struct cpu_context_save cpu_context;
+
+};
+```
 
 ```
 +----------------+                                                                        
@@ -763,6 +811,164 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
                   |  +-------------+                                              
                   +--| __switch_to | save current registers and load the next ones
                      +-------------+                                              
+```
+  
+```
++----------+
+| schedule | : select next task and switch to it
++--|-------+
+   |    +-------------------+
+   |--> | sched_submit_work | if there's io requests, submit them before sleeping
+   |    +-------------------+
+repeat
+   |    +------------+
+   +--> | __schedule | : select next task and switch to it
+   |    +--|---------+
+   |       |
+   |       |--> if there's pending signal
+   |       |
+   |       |------> task->__state = 'RUNNING'
+   |       |
+   |       |--> else
+   |       |
+   |       |        +-----------------+
+   |       |------> | deactivate_task | prev (prev->on_rq is set here, and later put_prev_task will add it to rq accordingly)
+   |       |        +-----------------+
+   |       |    +----------------+
+   |       |--> | pick_next_task | pick next and enqueue prev
+   |       |    +----------------+
+   |       |    +------------------------+
+   |       |--> | clear_tsk_need_resched | prev
+   |       |    +------------------------+
+   |       |    +----------------+
+   |       +--> | context_switch | switch page table and cpu registers
+   |            +----------------+
+   |
+   +--> go to 'repeat' if need resched                                      
+```
+  
+```
++----------------+                                                                 
+| context_switch | : switch page table and cpu registers                           
++---|------------+                                                                 
+    |    +---------------------+                                                   
+    |--> | prepare_task_switch | next->on_cpu = 1                                  
+    |    +---------------------+                                                   
+    |                                                                              
+    |--> if next task has userspace maps                                           
+    |                                                                              
+    |        +--------------------+                                                
+    |------> | switch_mm_irqs_off | switch to next task's page table               
+    |        +--------------------+                                                
+    |    +-----------+                                                             
+    |--> | switch_to |                                                             
+    |    +--|--------+                                                             
+    |       |    +-------------+                                                   
+    |       +--> | __switch_to | : save prev's registers, and load next's registers
+    |            +---|---------+                                                   
+    |                |                                                             
+    |                |--> save registers of 'prev' to stack                        
+    |                |                                                             
+    |                +--> load registers of 'next' from stack                      
+    |                                                                              
+    |    +--------------------+                                                    
+    +--> | finish_task_switch | prev->on_cpu = 0                                   
+         +--------------------+                                                    
+```
+  
+</details>
+
+### Load Balance
+  
+<details>
+  <summary> Hidden Notes </summary>
+  
+```
++-----------------------+                                                                                 
+| run_rebalance_domains | : if it's about time, balance loading between the busiest rq and this one       
++-----|-----------------+                                                                                 
+      |    +-------------------+                                                                          
+      |--> | nohz_idle_balance | (idle balance related, skip for now)                                     
+      |    +-------------------+                                                                          
+      |    +-------------------+                                                                          
+      +--> | rebalance_domains | : if it's about time, balance loading between the busiest rq and this one
+           +----|--------------+                                                                          
+                |                                                                                         
+                |--> for each domain (probably only 1 to us)                                              
+                |                                                                                         
+                |        +-------------------------+                                                      
+                |------> | get_sd_balance_interval | determine balance 'interval'                         
+                |        +-------------------------+                                                      
+                |                                                                                         
+                |------> if it's time to do balance                                                       
+                |                                                                                         
+                |            +--------------+                                                             
+                +----------> | load_balance | move tasks from the busiest rq to this one                  
+                             +--------------+                                                             
+```
+  
+```
++--------------+                                                             
+| load_balance | : move tasks from the busiest rq to this one                
++---|----------+                                                             
+    |                                                                        
+    |--> set up parameters                                                   
+    |                                                                        
+    |    +--------------------+                                              
+    |--> | find_busiest_group |                                              
+    |    +--------------------+                                              
+    |    +--------------------+                                              
+    |--> | find_busiest_queue |                                              
+    |    +--------------------+                                              
+    |    +--------------+                                                    
+    |--> | detach_tasks | remove enough tasks from rq and add to another list
+    |    +--------------+                                                    
+    |                                                                        
+    |--> if we did detatch tasks                                             
+    |                                                                        
+    |        +--------------+                                                
+    +------> | attach_tasks | move tasks to dst rq, preemption might happen  
+             +--------------+                                                
+```
+  
+```
++--------------+                                                      
+| detach_tasks | : remove enough tasks from rq and add to another list
++---|----------+                                                      
+    |                                                                 
+    |--> while rq still has task                                      
+    |                                                                 
+    |        +-----------------+                                      
+    |------> | list_last_entry | get last task on the list            
+    |        +-----------------+                                      
+    |                                                                 
+    |------> break loop if condition is met                           
+    |                                                                 
+    |        +-------------+                                          
+    |------> | detach_task | remove task from rq                      
+    |        +-------------+                                          
+    |        +----------+                                             
+    +------> | list_add | move task to another list                   
+             +----------+                                             
+```
+  
+```
++--------------------+                                                                     
+| cpu_stopper_thread | : handler work on list, e.g., move task to new rq                   
++----|---------------+                                                                     
+     |                                                                                     
+     |--> remove the first work from list (might be empty)                                 
+     |                                                                                     
+     |--> if work                                                                          
+     |                                                                                     
+     |------> set up 'stoper' from work                                                    
+     |                                                                                     
+     |------> call work->fn(), e.g.,                                                       
+     |        +--------------------+                                                       
+     |        | migration_cpu_stop | deactivate task from old rq, and activate it on new rq
+     |        +--------------------+                                                       
+     |                                                                                     
+     +------> reset 'stoper'                                                               
 ```
   
 </details>
@@ -914,163 +1120,6 @@ Of course, the currently running one will return to its sub-queue for the next c
                  +-------------------+                                 
 ```
   
-</details>
-
-### Fair Class
-
-We mainly introduce this class since it covers most utilities, applications, and kernel threads.
-Instead of a conventional queue, it's a tree sorted by each entity's 'virtual runtime.'
-Because of much effort in maintaining this tree, selecting the next task equals finding the leftmost node.
-As its name 'virtual' hints, it relates to actual runtime but not the same. Priority matters when updating virtual ones.
-For example, assuming the given time slice is 10s by default, high-priority tasks might add only 5s to virtual runtime after using up all the 10s.
-In the meantime, low-priority tasks double the accounting after completely consuming 10s.
-By inspecting such rule, we can infer that:
-- Tasks with lower priority quickly move far from the leftmost node, making it hard to be the next running task.
-- Even though high-priority tasks increase virtual runtime slowly, it's still strictly growing and won't always be the candidate.
-
-The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
-
-```
-  +-------+                                                        
-  |       |                      +------+                          
-  |  CPU  |                      | task |                          
-  | +------+                     +------+                          
-  +-|-task+|                    /        \                         
-    +------+                   /          \                        
-  running task          +------+          +------+                 
-                        | task |          | task |                 
-                        +------+          +------+                 
-                         /\                    /\                  
-                        /  \                  /  \                 
-                 +------+   +------+   +------+   +------+         
- next candidate  | task |   | task |   | task |   | task |         
-                 +------+   +------+   +------+   +------+         
-                                                                   
-                                                                   
-         the task with a higher 'nice' value moves rightward easily 
-                      ------------------------------->             
-                                                                   
-                                                                   
-         the task with a lower 'nice' value stays left side longer
-                      <-------------------------------             
-```
-
-<details>
-  <summary> Hidden Notes </summary>
-
-```
-+------------------+                                                                                          
-| __enqueue_entity |                                                                                          
-+------------------+                                                                                          
-          |                                                                                                   
-          |                                                                                                   
-          |-- find the right place in the fair class queue (tree) by using 'vruntime' as key                  
-          |                                                                                                   
-          |   +--------------+                                                                                
-          +-- | rb_link_node | insert the task entity into the tree                                           
-              +--------------+                                                                                
-```
-  
-</details>
-
-## <a name="task-hierarchy"></a> Task Hierarchy
-
-When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
-The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
-Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
-Once the most fundamental infrastructures, such as memory and interrupt, are prepared, the running logic essentially becomes a kernel thread.
-To take advantage of multiple cores in the processor, the thread forks 'kernel_init' (PID = 1) and 'kthreadd' (PID = 2), and itself turns to an idle task.
-The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
-When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
-
-<p align="center"><img src="images/process/task-hierarchy.png" /></p>
-
-Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
-The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
-
-```
-$ ps xao pid,ppid,comm | head
-    PID    PPID COMMAND
-      1       0 systemd
-      2       0 kthreadd
-      3       2 rcu_gp
-      4       2 rcu_par_gp
-      6       2 kworker/0:0H-events_highpri
-      9       2 mm_percpu_wq
-     10       2 rcu_tasks_rude_
-     11       2 rcu_tasks_trace
-     12       2 ksoftirqd/0
-     
-Note: PPID is parent PID
-```
-
-<details>
-  <summary> Hidden Notes </summary>
-
-```                     
-                     PID=1                                       
-           fork  +-------------+  transform   +-----------------+
-            +--> | kernel_init |  ----------> | init or systemd |
-            |    +-------------+              +-----------------+
-  +-----+   |                                                    
-  | ??? |----                                                    
-  +-----+   |                                                    
-            |    +------------+     fork +-------------+         
-            +--> |  kthreadd  | ------>  |  kthread A  |         
-           fork  +------------+    |     +-------------+         
-                     PID=2         |                             
-                                   |fork +-------------+         
-                                   +-->  |  kthread B  |         
-                                   |     +-------------+         
-                                   |                             
-                                   |fork +-------------+         
-                                   +-->  |  kthread C  |         
-                                         +-------------+         
-```
-
-```
-+-----------+                                                    
-| rest_init |                                                    
-+-----------+                                                    
-       |                                                         
-       |--- create a kernel thread running function 'kernel_init'
-       |                                                         
-       |                                                         
-       +--- create a kernel thread running function 'kthreadd'   
-```
-  
-```
-+----------------+                                                                                                              
-| kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask                              
-+---|------------+                                                                                                              
-    |    +------------------------+                                                                                             
-    +--> | kthread_create_on_node |                                                                                             
-         +-----|------------------+                                                                                             
-               |    +--------------------------+                                                                                
-               +--> | __kthread_create_on_node | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
-                    +------|-------------------+                                                                                
-                           |                                                                                                    
-                           |--> allocate and setup 'create'                                                                     
-                           |                                                                                                    
-                           |--> add 'create' to the end of kthread_create_list                                                  
-                           |                                                                                                    
-                           |    +-----------------+                                                                             
-                           |--> | wake_up_process | wake up kthreadd_task                                                       
-                           |    +-----------------+                                                                             
-                           |    +------------------------------+                                                                
-                           |--> | wait_for_completion_killable | wait for completion                                            
-                           |    +------------------------------+                                                                
-                           |    +---------------+                                                                               
-                           |--> | set_task_comm | set task name                                                                 
-                           |    +---------------+                                                                               
-                           |    +----------------------------+                                                                  
-                           |--> | sched_setscheduler_nocheck | set schedule-related fields in task                              
-                           |    +----------------------------+                                                                  
-                           |    +----------------------+                                                                        
-                           +--> | set_cpus_allowed_ptr | set cpu mask                                                           
-                                +----------------------+                                                                        
-```
- 
 ```
 +-----------------------+                                                                            
 | sys_sched_setaffinity | : set cpu affinity of task                                                 
@@ -1203,6 +1252,63 @@ struct sched_entity {
      +------> set weight and inv_weight               
 ```
   
+</details>
+
+### Fair Class
+
+We mainly introduce this class since it covers most utilities, applications, and kernel threads.
+Instead of a conventional queue, it's a tree sorted by each entity's 'virtual runtime.'
+Because of much effort in maintaining this tree, selecting the next task equals finding the leftmost node.
+As its name 'virtual' hints, it relates to actual runtime but not the same. Priority matters when updating virtual ones.
+For example, assuming the given time slice is 10s by default, high-priority tasks might add only 5s to virtual runtime after using up all the 10s.
+In the meantime, low-priority tasks double the accounting after completely consuming 10s.
+By inspecting such rule, we can infer that:
+- Tasks with lower priority quickly move far from the leftmost node, making it hard to be the next running task.
+- Even though high-priority tasks increase virtual runtime slowly, it's still strictly growing and won't always be the candidate.
+
+The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
+
+```
+  +-------+                                                        
+  |       |                      +------+                          
+  |  CPU  |                      | task |                          
+  | +------+                     +------+                          
+  +-|-task+|                    /        \                         
+    +------+                   /          \                        
+  running task          +------+          +------+                 
+                        | task |          | task |                 
+                        +------+          +------+                 
+                         /\                    /\                  
+                        /  \                  /  \                 
+                 +------+   +------+   +------+   +------+         
+ next candidate  | task |   | task |   | task |   | task |         
+                 +------+   +------+   +------+   +------+         
+                                                                   
+                                                                   
+         the task with a higher 'nice' value moves rightward easily 
+                      ------------------------------->             
+                                                                   
+                                                                   
+         the task with a lower 'nice' value stays left side longer
+                      <-------------------------------             
+```
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
++------------------+                                                                                          
+| __enqueue_entity |                                                                                          
++------------------+                                                                                          
+          |                                                                                                   
+          |                                                                                                   
+          |-- find the right place in the fair class queue (tree) by using 'vruntime' as key                  
+          |                                                                                                   
+          |   +--------------+                                                                                
+          +-- | rb_link_node | insert the task entity into the tree                                           
+              +--------------+            
+```
+  
 ```
 +--------------------+                                                                            
 | check_preempt_tick | : check a few conditions, and set 'NEED_RESCHED' on rq current if necessary
@@ -1324,190 +1430,6 @@ struct sched_entity {
 ```
   
 ```
-+--------------------------+                                                                                                        
-| fttmr010_timer_interrupt |                                                                                                        
-+------|-------------------+                                                                                                        
-       |                                                                                                                            
-       +--> call ->event_handler(), e.g.,                                                                                           
-            +----------------------+                                                                                                
-            | tick_handle_periodic |                                                                                                
-            +-----|----------------+                                                                                                
-                  |    +---------------+                                                                                            
-                  +--> | tick_periodic |                                                                                            
-                       +---|-----------+                                                                                            
-                           |    +----------------------+                                                                            
-                           +--> | update_process_times |                                                                            
-                                +-----|----------------+                                                                            
-                                      |    +----------------+                                                                       
-                                      +--> | scheduler_tick | update rq clock, call ->task_tick(), balance runqueues if necessary   
-                                           +----------------+                                                                       
-```
-  
-```
-+----------------+                                                                                           
-| scheduler_tick | : update rq clock, call ->task_tick(), balance runqueues if necessary                     
-+---|------------+                                                                                           
-    |    +-----------------+                                                                                 
-    |--> | update_rq_clock |                                                                                 
-    |    +-----------------+                                                                                 
-    |                                                                                                        
-    |--> call ->task_tick(), e.g.,                                                                             
-    |    +----------------+                                                                                  
-    |    | task_tick_fair | update vruntime, resched current task if necessary                               
-    |    +----------------+                                                                                  
-    |    +----------------------+                                                                            
-    +--> | trigger_load_balance | : if it's about time, balance loading between the busiest rq and this one  
-         +-----|----------------+                                                                            
-               |                                                                                             
-               |--> if it's time to do balance again                                                         
-               |                                                                                             
-               |        +---------------+                                                                    
-               +------> | raise_softirq | label SCHED_SOFTIRQ and somewhere will call run_rebalance_domains()
-                        +---------------+                                                                    
-                                                                                                             
-                                                                                                             
-                                                                                                             
-                                                                                                             
-                                                                                                             
-                                                                                                             
-         +-----------------------+                                                                           
-         | run_rebalance_domains | if it's about time, balance loading between the busiest rq and this one   
-         +-----------------------+                                                                           
-```
-  
-```
-+-----------------------+                                                                                 
-| run_rebalance_domains | : if it's about time, balance loading between the busiest rq and this one       
-+-----|-----------------+                                                                                 
-      |    +-------------------+                                                                          
-      |--> | nohz_idle_balance | (idle balance related, skip for now)                                     
-      |    +-------------------+                                                                          
-      |    +-------------------+                                                                          
-      +--> | rebalance_domains | : if it's about time, balance loading between the busiest rq and this one
-           +----|--------------+                                                                          
-                |                                                                                         
-                |--> for each domain (probably only 1 to us)                                              
-                |                                                                                         
-                |        +-------------------------+                                                      
-                |------> | get_sd_balance_interval | determine balance 'interval'                         
-                |        +-------------------------+                                                      
-                |                                                                                         
-                |------> if it's time to do balance                                                       
-                |                                                                                         
-                |            +--------------+                                                             
-                +----------> | load_balance | move tasks from the busiest rq to this one                  
-                             +--------------+                                                             
-```
-  
-```
-+--------------+                                                             
-| load_balance | : move tasks from the busiest rq to this one                
-+---|----------+                                                             
-    |                                                                        
-    |--> set up parameters                                                   
-    |                                                                        
-    |    +--------------------+                                              
-    |--> | find_busiest_group |                                              
-    |    +--------------------+                                              
-    |    +--------------------+                                              
-    |--> | find_busiest_queue |                                              
-    |    +--------------------+                                              
-    |    +--------------+                                                    
-    |--> | detach_tasks | remove enough tasks from rq and add to another list
-    |    +--------------+                                                    
-    |                                                                        
-    |--> if we did detatch tasks                                             
-    |                                                                        
-    |        +--------------+                                                
-    +------> | attach_tasks | move tasks to dst rq, preemption might happen  
-             +--------------+                                                
-```
-  
-```
-+--------------+                                                      
-| detach_tasks | : remove enough tasks from rq and add to another list
-+---|----------+                                                      
-    |                                                                 
-    |--> while rq still has task                                      
-    |                                                                 
-    |        +-----------------+                                      
-    |------> | list_last_entry | get last task on the list            
-    |        +-----------------+                                      
-    |                                                                 
-    |------> break loop if condition is met                           
-    |                                                                 
-    |        +-------------+                                          
-    |------> | detach_task | remove task from rq                      
-    |        +-------------+                                          
-    |        +----------+                                             
-    +------> | list_add | move task to another list                   
-             +----------+                                             
-```
-  
-```
-+----------+
-| schedule | : select next task and switch to it
-+--|-------+
-   |    +-------------------+
-   |--> | sched_submit_work | if there's io requests, submit them before sleeping
-   |    +-------------------+
-repeat
-   |    +------------+
-   +--> | __schedule | : select next task and switch to it
-   |    +--|---------+
-   |       |
-   |       |--> if there's pending signal
-   |       |
-   |       |------> task->__state = 'RUNNING'
-   |       |
-   |       |--> else
-   |       |
-   |       |        +-----------------+
-   |       |------> | deactivate_task | prev (prev->on_rq is set here, and later put_prev_task will add it to rq accordingly)
-   |       |        +-----------------+
-   |       |    +----------------+
-   |       |--> | pick_next_task | pick next and enqueue prev
-   |       |    +----------------+
-   |       |    +------------------------+
-   |       |--> | clear_tsk_need_resched | prev
-   |       |    +------------------------+
-   |       |    +----------------+
-   |       +--> | context_switch | switch page table and cpu registers
-   |            +----------------+
-   |
-   +--> go to 'repeat' if need resched                                      
-```
-  
-```
-+----------------+                                                                 
-| context_switch | : switch page table and cpu registers                           
-+---|------------+                                                                 
-    |    +---------------------+                                                   
-    |--> | prepare_task_switch | next->on_cpu = 1                                  
-    |    +---------------------+                                                   
-    |                                                                              
-    |--> if next task has userspace maps                                           
-    |                                                                              
-    |        +--------------------+                                                
-    |------> | switch_mm_irqs_off | switch to next task's page table               
-    |        +--------------------+                                                
-    |    +-----------+                                                             
-    |--> | switch_to |                                                             
-    |    +--|--------+                                                             
-    |       |    +-------------+                                                   
-    |       +--> | __switch_to | : save prev's registers, and load next's registers
-    |            +---|---------+                                                   
-    |                |                                                             
-    |                |--> save registers of 'prev' to stack                        
-    |                |                                                             
-    |                +--> load registers of 'next' from stack                      
-    |                                                                              
-    |    +--------------------+                                                    
-    +--> | finish_task_switch | prev->on_cpu = 0                                   
-         +--------------------+                                                    
-```
-  
-```
 struct cfs_rq {
     struct load_weight  load;               // total load of the tasks
     unsigned int        nr_running;         // number of runnable tasks
@@ -1620,6 +1542,13 @@ struct cfs_rq {
     +--> adjust new vruntime                                                       
 ```
   
+</details>
+  
+### Real-Time Class
+  
+<details>
+  <summary> Hidden Notes </summary>
+  
 ```
 +-------------------+                                               
 | pick_next_task_rt | : select the next task in rt_rq               
@@ -1709,24 +1638,105 @@ struct cfs_rq {
      +--> | schedule |                                        
           +----------+                                        
 ```
+
+</details>
+  
+## <a name="task-hierarchy"></a> Task Hierarchy
+
+When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
+The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
+Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
+Once the most fundamental infrastructures, such as memory and interrupt, are prepared, the running logic essentially becomes a kernel thread.
+To take advantage of multiple cores in the processor, the thread forks 'kernel_init' (PID = 1) and 'kthreadd' (PID = 2), and itself turns to an idle task.
+The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
+When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
+
+<p align="center"><img src="images/process/task-hierarchy.png" /></p>
+
+Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
+The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
+
+```
+$ ps xao pid,ppid,comm | head
+    PID    PPID COMMAND
+      1       0 systemd
+      2       0 kthreadd
+      3       2 rcu_gp
+      4       2 rcu_par_gp
+      6       2 kworker/0:0H-events_highpri
+      9       2 mm_percpu_wq
+     10       2 rcu_tasks_rude_
+     11       2 rcu_tasks_trace
+     12       2 ksoftirqd/0
+     
+Note: PPID is parent PID
+```
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```                     
+                     PID=1                                       
+           fork  +-------------+  transform   +-----------------+
+            +--> | kernel_init |  ----------> | init or systemd |
+            |    +-------------+              +-----------------+
+  +-----+   |                                                    
+  | ??? |----                                                    
+  +-----+   |                                                    
+            |    +------------+     fork +-------------+         
+            +--> |  kthreadd  | ------>  |  kthread A  |         
+           fork  +------------+    |     +-------------+         
+                     PID=2         |                             
+                                   |fork +-------------+         
+                                   +-->  |  kthread B  |         
+                                   |     +-------------+         
+                                   |                             
+                                   |fork +-------------+         
+                                   +-->  |  kthread C  |         
+                                         +-------------+         
+```
+
+```
++-----------+                                                    
+| rest_init |                                                    
++-----------+                                                    
+       |                                                         
+       |--- create a kernel thread running function 'kernel_init'
+       |                                                         
+       |                                                         
+       +--- create a kernel thread running function 'kthreadd'   
+```
   
 ```
-+--------------------+                                                                     
-| cpu_stopper_thread | : handler work on list, e.g., move task to new rq                   
-+----|---------------+                                                                     
-     |                                                                                     
-     |--> remove the first work from list (might be empty)                                 
-     |                                                                                     
-     |--> if work                                                                          
-     |                                                                                     
-     |------> set up 'stoper' from work                                                    
-     |                                                                                     
-     |------> call work->fn(), e.g.,                                                       
-     |        +--------------------+                                                       
-     |        | migration_cpu_stop | deactivate task from old rq, and activate it on new rq
-     |        +--------------------+                                                       
-     |                                                                                     
-     +------> reset 'stoper'                                                               
++----------------+                                                                                                              
+| kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask                              
++---|------------+                                                                                                              
+    |    +------------------------+                                                                                             
+    +--> | kthread_create_on_node |                                                                                             
+         +-----|------------------+                                                                                             
+               |    +--------------------------+                                                                                
+               +--> | __kthread_create_on_node | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
+                    +------|-------------------+                                                                                
+                           |                                                                                                    
+                           |--> allocate and setup 'create'                                                                     
+                           |                                                                                                    
+                           |--> add 'create' to the end of kthread_create_list                                                  
+                           |                                                                                                    
+                           |    +-----------------+                                                                             
+                           |--> | wake_up_process | wake up kthreadd_task                                                       
+                           |    +-----------------+                                                                             
+                           |    +------------------------------+                                                                
+                           |--> | wait_for_completion_killable | wait for completion                                            
+                           |    +------------------------------+                                                                
+                           |    +---------------+                                                                               
+                           |--> | set_task_comm | set task name                                                                 
+                           |    +---------------+                                                                               
+                           |    +----------------------------+                                                                  
+                           |--> | sched_setscheduler_nocheck | set schedule-related fields in task                              
+                           |    +----------------------------+                                                                  
+                           |    +----------------------+                                                                        
+                           +--> | set_cpus_allowed_ptr | set cpu mask                                                           
+                                +----------------------+                                                                        
 ```
   
 </details>
