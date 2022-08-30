@@ -28,7 +28,7 @@ Either user thread or kernel thread is regarded as a **task** from the kernel's 
 
 <p align="center"><img src="images/process/process-and-thread.png" /></p>
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```                                                                 
                     process          process                        
@@ -58,7 +58,7 @@ The task can be a daemon working in the background continuously or a regular com
 
 <p align="center"><img src="images/process/life-cycle.png" /></p>
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```
                                              run queue                                
@@ -127,7 +127,7 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
 
 <p align="center"><img src="images/process/fork-and-clone.png" /></p>
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```
            case 1                                 case 2                                   
@@ -508,7 +508,7 @@ But it's a bit different when it comes to thread group cases:
 That's why the leader thread terminates other threads when it exists first, but not vice versa. 
 Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```
               process                 
@@ -613,7 +613,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```
                                                               +-------------------------------------------+
@@ -715,7 +715,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
   
 (TBD)
   
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
   
 ```
 +-----------------------+                                                                                 
@@ -815,7 +815,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
 
 (TBD)
   
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
 The thread itself might relinquish the execution right early.
@@ -871,7 +871,7 @@ Interrupts happen from time to time, and on its way back to executing the ordina
 The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
 Voila! Now the 'next task' becomes running and continues the logic previously stopped.
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details</summary>
 
 ```      
                                                memory      
@@ -1029,7 +1029,7 @@ Of course, the currently running one will return to its sub-queue for the next c
 
 <p align="center"><img src="images/process/priority-and-class.png" /></p>
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```
     prio   kernel           user            nice                        
@@ -1307,7 +1307,7 @@ The command 'nice' controls the priority of tasks in fair class as we've expecte
 
 <p align="center"><img src="images/process/fair-class.png" /></p>
   
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
   
 ```
   +-------+                                                        
@@ -1584,7 +1584,9 @@ struct cfs_rq {
   
 ### Real-Time Class
   
-<details><summary> Hidden Notes </summary>
+(TBD)
+                        
+<details><summary> More Details</summary>
   
 ```
 +-------------------+                                               
@@ -1709,7 +1711,7 @@ $ ps xao pid,ppid,comm | head
 Note: PPID is parent PID
 ```
 
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
 
 ```                     
                      PID=1                                       
@@ -1920,7 +1922,7 @@ Note: PPID is parent PID
   
 (TBD)
   
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
   
 ```
 struct signal_struct {
@@ -2027,7 +2029,7 @@ Max realtime timeout      unlimited            unlimited            us
   
 (TBD)
   
-<details><summary> Hidden Notes </summary>
+<details><summary> More Details </summary>
   
 ```
                                                                                          
