@@ -3,7 +3,6 @@
 ## Index
 
 - [Boot Flow](#boot-flow)
-- [Tasks & Scheduler](#scheduler)
 - [Fair Class](#fair-class)
 - [To-Do List](#to-do-list)
 - [Reference](#reference)
@@ -394,6 +393,192 @@ Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit*
   
 </details>
 
+## <a name="scheduler-and-run-queue"></a> Scheduler and Run Queue
+
+Before we start introducing the scheduler, let's clarify the below terms.
+- Process: refers to userspace utilities or applications, and it consists of at least one thread.
+- Thread: the fundamental execution unit within the process.
+- Kthread: kernel thread, and there's no process concept in kernel space.
+
+Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
+Multiple tasks can physically run simultaneously to boost performance and throughput with that many processor cores.
+The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
+Please note the scheduler itself is not a process or thread but a mechanism with its implementation spread across the kernel flow.
+
+<p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
+                                                              +-------------------------------------------+
+                                                              |  +----+                                   |
+                                                              |  |  0 |                                   |
+               +--------+               +--------+            |  +----+     +------+     +------+         |
+               | core 0 |               | core 1 |            |  |  1 |-----| task |-----| task |         |
+               +--------+               +--------+            |  +----+     +------+     +------+         |
+                                                              |     -                                     |
+                                                             -|     -                                     |
+                run queue                run queue          / |     -                                     |
+            +---------------+        +---------------+     /  |     -                                     |
++------+    |  +---------+  |        |  +---------+  |    /   |     -                                     |
+| task |-------|  stop   |  |        |  |  stop   |  |   /    |  +----+     +------+                      |
++------+    |  |  class  |  |        |  |  class  |  |  /     |  | 99 |-----| task |                      |
+            |  +---------+  |        |  +---------+  | /      |  +----+     +------+                      |
++------+    |  |deadline |  |        |  |deadline |  |/       +-------------------------------------------+
+| ???? |-------|  class  |  |        |  |  class  |  /                                                     
++------+    |  +---------+  |        |  +---------+ /|                                                     
+            |  |real time|  |        |  |real time|/ |                                                     
+            |  |  class  |  |        |  |  class  |  |                                                     
+            |  +---------+  |        |  +---------+  |                                                     
+            |  |  fair   |  |        |  |  fair   |  |                                                     
+            |  |  class  |  |        |  |  class  |\ |                                                     
++------+    |  +---------+  |        |  +---------+ \|                                                     
+| task |-------|  idle   |  |        |  |  idle   |  \                                                     
++------+    |  |  class  |  |        |  |  class  |  |\       +-------------------------------------------+
+            |  +---------+  |        |  +---------+  | \      |                 +------+                  |
+            +---------------+        +---------------+  \     |                 | task |                  |
+                                                         \    |                 +------+                  |
+                                                          \   |                /        \                 |
+                                                           \  |               /          \                |
+                                                            \ |        +------+          +------+         |
+                                                             -|        | task |          | task |         |
+                                                              |        +------+          +------+         |
+                                                              |-        /\                    /\          |
+                                                              |        /  \                  /  \         |
+                                                              | +------+   +------+   +------+   +------+ |
+                                                              | | task |   | task |   | task |   | task | |
+                                                              | +------+   +------+   +------+   +------+ |
+                                                              +-------------------------------------------+
+```
+  
+</details>
+
+## <a name="priority-and-class"></a> Priority and Class
+
+Individual core has its run queue, dividing into sub-queues of different scheduling classes.
+1. [Stop class] it has only one task, which helps task migration between run queues.
+2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
+3. [Real-time class] tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
+4. [Fair class] also known as Completely Fair Scheduler (CFS). Most system tasks belong to this class, and they will run sooner or later.
+5. [Idle class] like stop class, it has precisely one task which assists in power saving.
+
+In the regard of class priority, stop > deadline > real-time > fair > idle.
+The rule of selecting the next running task is:
+- Start from the high precedence class and check if it has at least one task to run.
+  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all.
+- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue.
+Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
+
+<p align="center"><img src="images/process/priority-and-class.png" /></p>
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
+    prio   kernel           user            nice                        
+            view            view            value                       
+                                                                        
+      ^      | |             | |                                        
+ high |      | | < 0         | | < 139?                  deadline class 
+      |   --------------------------------------------------------------
+      |      | | 0           | | 139                                    
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                         realtime class 
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | | 99          | | 40                                     
+      |   --------------------------------------------------------------
+      |      | | 100         | | 39          | | -20                    
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+      |      | |             | |             | |           fair class   
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+  low |      +-+ 139         +-+ 0           +-+ 19                     
+```
+  
+</details>
+
+A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
+- The given time slice for the running entity consumes entirely.
+- Wait for resources, such as data from drives or the internet.
+- Priority of a task in the run queue is boosted and becomes a better candidate than the current one.
+- After helping share loading, a higher priority task arrives from other run queues.
+
+Many flag checking points exist somewhere inside the kernel, and one of them is hardware interrupt.
+Interrupts happen from time to time, and on its way back to executing the ordinary task, it performs a task switch if that flag raises.
+The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
+Voila! Now the 'next task' becomes running and continues the logic previously stopped.
+
+```      
+                                               memory      
+                                          +---------------+
+                                          |               |
+                                          |               |
+            CPU                           |               |
++-------------------------+               |               |
+| +---+ +---+ +---+ +---+ |               |               |
+| |r0 | |r4 | |r8 | |r12| |     save      +---------------+
+| +---+ +---+ +---+ +---+ |  ---------->  |  task A regs  |
+| +---+ +---+ +---+ +---+ |               +---------------+
+| |r1 | |r5 | |r9 | |sp | |               |               |
+| +---+ +---+ +---+ +---+ |               |               |
+| +---+ +---+ +---+ +---+ |               |               |
+| |r2 | |r6 | |r10| |lr | |               |               |
+| +---+ +---+ +---+ +---+ |    restore    +---------------+
+| +---+ +---+ +---+ +---+ |  <----------  |  task B regs  |
+| |r3 | |r7 | |r11| |pc | |               +---------------+
+| +---+ +---+ +---+ +---+ |               |               |
++-------------------------+               |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |               |
+                                          +---------------+
+```
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
++----------------+                                                                        
+| pick_next_task |                                                                        
++----------------+                                                                        
+         |                                                                                
+         |--- // ignore the optimization part                                             
+         |                                                                                
+         |                                                                                
+         +--- for each scheduling class, call its ->pick_next_task, return the first found
+```
+
+```
++----------------+                                                                
+| context_switch |                                                                
++--------|-------+                                                                
+         |  +-----------+                                                         
+         +--| switch_to |                                                         
+            +-----------+                                                         
+                  |  +-------------+                                              
+                  +--| __switch_to | save current registers and load the next ones
+                     +-------------+                                              
+```
+  
+</details>
+
 ## <a name="boot-flow"></a> Boot Flow
 
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
@@ -455,173 +640,6 @@ Note: PPID is parent PID
        |                                                         
        |                                                         
        +--- create a kernel thread running function 'kthreadd'   
-```
-
-## <a name="scheduler"></a> Tasks & Scheduler
-
-Before we start introducing the scheduler, let's clarify the below terms.
-- Process: refers to userspace utilities or applications, and it consists of at least one thread.
-- Thread: the fundamental execution unit within the process.
-- Kthread: kernel thread, and there's no process concept in kernel space.
-
-Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
-Multiple tasks can physically run simultaneously to boost performance and throughput with that many processor cores.
-The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
-Please note the scheduler itself is not a process or thread but a mechanism with its implementation spread across the kernel flow.
-
-```
-                                                              +-------------------------------------------+
-                                                              |  +----+                                   |
-                                                              |  |  0 |                                   |
-               +--------+               +--------+            |  +----+     +------+     +------+         |
-               | core 0 |               | core 1 |            |  |  1 |-----| task |-----| task |         |
-               +--------+               +--------+            |  +----+     +------+     +------+         |
-                                                              |     -                                     |
-                                                             -|     -                                     |
-                run queue                run queue          / |     -                                     |
-            +---------------+        +---------------+     /  |     -                                     |
-+------+    |  +---------+  |        |  +---------+  |    /   |     -                                     |
-| task |-------|  stop   |  |        |  |  stop   |  |   /    |  +----+     +------+                      |
-+------+    |  |  class  |  |        |  |  class  |  |  /     |  | 99 |-----| task |                      |
-            |  +---------+  |        |  +---------+  | /      |  +----+     +------+                      |
-+------+    |  |deadline |  |        |  |deadline |  |/       +-------------------------------------------+
-| ???? |-------|  class  |  |        |  |  class  |  /                                                     
-+------+    |  +---------+  |        |  +---------+ /|                                                     
-            |  |real time|  |        |  |real time|/ |                                                     
-            |  |  class  |  |        |  |  class  |  |                                                     
-            |  +---------+  |        |  +---------+  |                                                     
-            |  |  fair   |  |        |  |  fair   |  |                                                     
-            |  |  class  |  |        |  |  class  |\ |                                                     
-+------+    |  +---------+  |        |  +---------+ \|                                                     
-| task |-------|  idle   |  |        |  |  idle   |  \                                                     
-+------+    |  |  class  |  |        |  |  class  |  |\       +-------------------------------------------+
-            |  +---------+  |        |  +---------+  | \      |                 +------+                  |
-            +---------------+        +---------------+  \     |                 | task |                  |
-                                                         \    |                 +------+                  |
-                                                          \   |                /        \                 |
-                                                           \  |               /          \                |
-                                                            \ |        +------+          +------+         |
-                                                             -|        | task |          | task |         |
-                                                              |        +------+          +------+         |
-                                                              |-        /\                    /\          |
-                                                              |        /  \                  /  \         |
-                                                              | +------+   +------+   +------+   +------+ |
-                                                              | | task |   | task |   | task |   | task | |
-                                                              | +------+   +------+   +------+   +------+ |
-                                                              +-------------------------------------------+
-```
-
-```
-    prio   kernel           user            nice                        
-            view            view            value                       
-                                                                        
-      ^      | |             | |                                        
- high |      | | < 0         | | < 139?                  deadline class 
-      |   --------------------------------------------------------------
-      |      | | 0           | | 139                                    
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                         realtime class 
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | | 99          | | 40                                     
-      |   --------------------------------------------------------------
-      |      | | 100         | | 39          | | -20                    
-      |      | |             | |             | |                        
-      |      | |             | |             | |                        
-      |      | |             | |             | |           fair class   
-      |      | |             | |             | |                        
-      |      | |             | |             | |                        
-      |      | |             | |             | |                        
-  low |      +-+ 139         +-+ 0           +-+ 19                     
-```
-
-Individual core has its run queue, dividing into sub-queues of different scheduling classes.
-1. [Stop class] it has only one task, which helps task migration between run queues.
-2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
-3. [Real-time class] tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
-4. [Fair class] also known as Completely Fair Scheduler (CFS). Most system tasks belong to this class, and they will run sooner or later.
-5. [Idle class] like stop class, it has precisely one task which assists in power saving.
-
-In the regard of class priority, stop > deadline > real-time > fair > idle.
-The rule of selecting the next running task is:
-- Start from the high precedence class and check if it has at least one task to run.
-  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all.
-- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue.
-Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
-
-A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
-- The given time slice for the running entity consumes entirely.
-- Wait for resources, such as data from drives or the internet.
-- Priority of a task in the run queue is boosted and becomes a better candidate than the current one.
-- After helping share loading, a higher priority task arrives from other run queues.
-
-Many flag checking points exist somewhere inside the kernel, and one of them is hardware interrupt.
-Interrupts happen from time to time, and on its way back to executing the ordinary task, it performs a task switch if that flag raises.
-The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
-Voila! Now the 'next task' becomes running and continues the logic previously stopped.
-
-```      
-                                               memory      
-                                          +---------------+
-                                          |               |
-                                          |               |
-            CPU                           |               |
-+-------------------------+               |               |
-| +---+ +---+ +---+ +---+ |               |               |
-| |r0 | |r4 | |r8 | |r12| |     save      +---------------+
-| +---+ +---+ +---+ +---+ |  ---------->  |  task A regs  |
-| +---+ +---+ +---+ +---+ |               +---------------+
-| |r1 | |r5 | |r9 | |sp | |               |               |
-| +---+ +---+ +---+ +---+ |               |               |
-| +---+ +---+ +---+ +---+ |               |               |
-| |r2 | |r6 | |r10| |lr | |               |               |
-| +---+ +---+ +---+ +---+ |    restore    +---------------+
-| +---+ +---+ +---+ +---+ |  <----------  |  task B regs  |
-| |r3 | |r7 | |r11| |pc | |               +---------------+
-| +---+ +---+ +---+ +---+ |               |               |
-+-------------------------+               |               |
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |               |
-                                          +---------------+
-```
-
-- Code flow
-
-```
-+----------------+                                                                        
-| pick_next_task |                                                                        
-+----------------+                                                                        
-         |                                                                                
-         |--- // ignore the optimization part                                             
-         |                                                                                
-         |                                                                                
-         +--- for each scheduling class, call its ->pick_next_task, return the first found
-```
-
-```
-+----------------+                                                                
-| context_switch |                                                                
-+--------|-------+                                                                
-         |  +-----------+                                                         
-         +--| switch_to |                                                         
-            +-----------+                                                         
-                  |  +-------------+                                              
-                  +--| __switch_to | save current registers and load the next ones
-                     +-------------+                                              
 ```
 
 ## <a name="fair-class"></a> Fair Class
