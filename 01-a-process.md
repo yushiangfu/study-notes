@@ -2,8 +2,6 @@
 
 ## Index
 
-
-
 - [Introduction](#introduction)
 - [Process and Thread](#process-and-thread)
 - [Life Cycle](#life-cycle)
@@ -11,11 +9,51 @@
 - [Priority and Class](#priority-and-class)
 - [Task Hierarchy](#task-hierarchy)
 - [Others](#others)
+  - Resource Limit
+  - PID Structure
+  - Preemption
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
 (TBD)
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
+     low addr  +--+-----------+                
+               |  |thread_info|                
+               |  +-----------+                
+           ^   |  |0x57AC6E9D | stack end magic
+           |   |  +-----------+                
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   +-----------+                   
+           |   |           |                   
+           |   |           |                   
+           |   |           |                   
+           |   |  +-----------+                
+           |   |  |  pt_regs  |                
+ stack  ---+   |  +-----------+                
+               |  |  reserved | 8 bytes        
+    high addr  +--+-----------+                    
+```
+  
+```
+struct thread_info {
+    unsigned long       flags;  // TIF_SIGPENDING: signal pending
+                                // TIF_NEED_RESCHED: rescheduling necessary
+    int         preempt_count;  // for preemption, which is disabled in our config
+    struct task_struct  *task;  // point to the task_struct
+    __u32           cpu;        // where the process is running on
+    struct cpu_context_save cpu_context;
+
+};
+```
+  
+</details>
 
 ## <a name="process-and-thread"></a> Process and Thread
 
@@ -98,6 +136,26 @@ If operations involve a longer waiting time, the task will temporarily wait in a
                                  +--------------------------------+                                    
 ```
   
+```
+struct task_struct {
+    unsigned int            __state;  // current running state
+    int             exit_state;       // state for exiting process
+}
+```
+  
+```
+/* Used in tsk->state: */
+#define TASK_RUNNING            0x0000      // the task is running or ready to run
+#define TASK_INTERRUPTIBLE      0x0001      // sleeping (accept signal)
+#define TASK_UNINTERRUPTIBLE        0x0002  // sleeping (ignore signal)
+#define __TASK_STOPPED          0x0004      // task is stopped by intention, e.g., debug
+#define __TASK_TRACED           0x0008      // task is ptraced
+  
+/* Used in tsk->exit_state: */
+#define EXIT_DEAD           0x0010          // after parent's ack, before it totally vanishes
+#define EXIT_ZOMBIE         0x0020          // after task termination, before parent's ack
+```
+  
 </details>
 
 ### Task Creation
@@ -154,6 +212,140 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
                           |  +------------------+                                                                                 
                           +--| wake_up_new_task | add the newly generated task into a run queue                                   
                              +------------------+                                                                                 
+```
+  
+```
++--------------+                                                                                                       
+| kernel_clone | : prepare new task and wake it up                                                                     
++---|----------+                                                                                                       
+    |    +--------------+                                                                                              
+    |--> | copy_process | allocate task, clone or share resource based on flags, set pid value and attach to struct pid
+    |    +--------------+                                                                                              
+    |                                                                                                                  
+    |--> if CLONE_PARENT_SETTID is specified                                                                           
+    |                                                                                                                  
+    +------> write the pid value to the given userspace address                                                        
+    |                                                                                                                  
+    |    +------------------+                                                                                          
+    |--> | wake_up_new_task |                                                                                          
+    |    +------------------+                                                                                          
+    |                                                                                                                  
+    +--> if child is traced                                                                                            
+    |                                                                                                                  
+    |        +------------------+                                                                                      
+    +------> | ptrace_event_pid | notify tracer of the event                                                           
+             +------------------+                                                                                      
+```
+  
+```
++--------------+                                                                                                
+| copy_process | : allocate task, clone or share resource based on flags, set pid value and attach to struct pid
++---|----------+                                                                                                
+    |    +-----------------+                                                                                    
+    |--> | dup_task_struct | allocate task and thread stack, copy from parent and reset some fields             
+    |    +-----------------+      
+    |   
+    |--> save child_tid to ->set_child_tid for later use if CLONE_CHILD_SETTID is speficied
+    |
+    |--> save child_tid to ->clear_child_tid for later use if CLONE_CHILD_CLEARTID is speficied
+    |                                                                            
+    |    +------------+                                                                                         
+    |--> | sched_fork | state = NEW, set prio & sched class                                                     
+    |    +------------+                                                                                         
+    |    +--------------+                                                                                       
+    |--> | copy_semundo | share sem undo list if CLONE_SYSVSEM is specified                                     
+    |    +--------------+                                                                                       
+    |    +------------+                                                                                         
+    |--> | copy_files | share files if CLONE_FILES is specfied                                                  
+    |    +------------+                                                                                         
+    |    +---------+                                                                                            
+    |--> | copy_fs | share fs if CLONE_FS is specified                                                          
+    |    +---------+                                                                                            
+    |    +--------------+                                                                                       
+    |--> | copy_sighand | share sighand if CLONE_SIGHAND is specified                                           
+    |    +--------------+                                                                                       
+    |    +-------------+                                                                                        
+    |--> | copy_signal | share signal is CLONE_THREAD is specified                                              
+    |    +-------------+                                                                                        
+    |    +---------+                                                                                            
+    |--> | copy_mm | share mm if CLONE_VM is specified                                                          
+    |    +---------+                                                                                            
+    |    +-----------------+                                                                                    
+    |--> | copy_namespaces | create new namespace if any related flag is specified                              
+    |    +-----------------+                                                                                    
+    |    +---------+                                                                                            
+    |--> | copy_io | share io contect if CLONE_IO is specified                                                  
+    |    +---------+                                                                                            
+    |    +-------------+                                                                                        
+    |--> | copy_thread | set tls if CLONE_SETTLS is specified                                                   
+    |    +-------------+                                                                                        
+    |    +-----------+                                                                                          
+    |--> | alloc_pid | allocate 'pid' and set up pid value for each level                                       
+    |    +-----------+                                                                                          
+    |                                                                                                           
+    |--> set task pid value                                                                                     
+    |                                                                                                           
+    |--> determine parent and exit signal                                                                       
+    |                                                                                                           
+    +--> attach task to all types of struct pid                                                                 
+```
+  
+```
++-----------+                                                     
+| alloc_pid | : allocate 'pid' and set up pid value for each level
++--|--------+                                                     
+   |                                                              
+   |--> allocate 'pid'                                            
+   |                                                              
+   |--> pid level = ns level                                      
+   |                                                              
+   |--> from child to root namespace                              
+   |                                                              
+   |------> prepare pid value                                     
+   |                                                              
+   |------> set up pid number of that level                       
+   |                                                              
+   +--> for each level, install pid to that ns                    
+```
+  
+```
++------------------+                                                                               
+| wake_up_new_task | : state = RUNNING, place task onto the suitable runqueue, resched if necessary
++----|-------------+                                                                               
+     |                                                                                             
+     |--> task state = RUNNING                                                                     
+     |                                                                                             
+     |--> determine runqueue to place into and set that cpu to task                                
+     |                                                                                             
+     |    +---------------+                                                                        
+     |--> | activate_task | e.g., place task into runqueue                                         
+     |    +---------------+                                                                        
+     |    +--------------------+                                                                   
+     |--> | check_preempt_curr | mark current running task 'resched' if appropriate                
+     |    +--------------------+                                                                   
+     |                                                                                             
+     |--> if ->task_woken() exists                                                                 
+     |                                                                                             
+     +------> call ->task_woken(), e.g.,                                                           
+              +---------------+                                                                    
+              | task_woken_rt |                                                                    
+              +---------------+                                                                    
+```
+  
+```
++---------------+                                                              
+| schedule_tail | : write pid value to the given userspace address if necessary
++---|-----------+                                                              
+    |    +--------------------+                                                
+    |--> | finish_task_switch |                                                
+    |    +--------------------+                                                
+    |    +----------------+                                                    
+    |--> | preempt_enable | (disabled config)                                  
+    |    +----------------+                                                    
+    |                                                                          
+    |--> if task set_child_tid is saved during copy_process()                  
+    |                                                                          
+    +------> write the pid value to the given userspace address                
 ```
 
 ```
@@ -281,6 +473,62 @@ struct linux_binfmt {
     int (*core_dump)(struct coredump_params *cprm); // to write out the core dump when process crashes
     unsigned long min_coredump;                     // minimum size of a core dump file
 }
+```
+ 
+```
++-------------+                                                                                              
+| sys_unshare | : based on flags, unshare specified resources and switch to the newly created ones           
++---|---------+                                                                                              
+    |    +--------------+                                                                                    
+    +--> | ksys_unshare |                                                                                    
+         +---|----------+                                                                                    
+             |    +------------+                                                                             
+             |--> | unshare_fs | uhsnare fs (root, pwd) if specified                                         
+             |    +------------+                                                                             
+             |    +------------+                                                                             
+             |--> | unshare_fd | unshare file descriptors if specified                                       
+             |    +------------+                                                                             
+             |    +----------------+                                                                         
+             |--> | unshare_userns | (disabled config)                                                       
+             |    +----------------+                                                                         
+             |    +----------------------------+                                                             
+             |--> | unshare_nsproxy_namespaces | allocate nsproxy, determine to share or clone each namespace
+             |    +----------------------------+                                                             
+             |                                                                                               
+             +--> switch to the newly created resource                                                       
+```
+  
+```
++----------------------------+                                                                      
+| unshare_nsproxy_namespaces | : allocate nsproxy, determine to share or clone each namespace       
++------|---------------------+                                                                      
+       |                                                                                            
+       |--> determine user namespace                                                                
+       |                                                                                            
+       |    +-----------------------+                                                               
+       +--> | create_new_namespaces | : allocate nsproxy, determine to share or clone each namespace
+            +-----|-----------------+                                                               
+                  |    +----------------+                                                           
+                  |--> | create_nsproxy | allocate nsproxy                                          
+                  |    +----------------+                                                           
+                  |    +-------------+                                                              
+                  |--> | copy_mnt_ns | share or clone mnt namespace based on flags                  
+                  |    +-------------+                                                              
+                  |    +--------------+                                                             
+                  |--> | copy_utsname | share or clone uts namespace based on flags                 
+                  |    +--------------+                                                             
+                  |    +-------------+                                                              
+                  |--> | copy_pid_ns | share or clone pid namespace based on flags                  
+                  |    +-------------+                                                              
+                  |    +----------------+                                                           
+                  |--> | copy_cgroup_ns | share or clone cgroup namespace based on flags            
+                  |    +----------------+                                                           
+                  |    +-------------+                                                              
+                  |--> | copy_net_ns | share or clone net namespace based on flags                  
+                  |    +-------------+                                                              
+                  |    +--------------+                                                             
+                  +--> | copy_time_ns | (disabled config)                                           
+                       +--------------+                                                             
 ```
   
 </details>
@@ -448,61 +696,7 @@ Please note the scheduler itself is not a process or thread but a mechanism with
   
 </details>
 
-## <a name="priority-and-class"></a> Priority and Class
-
-Individual core has its run queue, dividing into sub-queues of different scheduling classes.
-1. [Stop class] it has only one task, which helps task migration between run queues.
-2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
-3. [Real-time class] tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
-4. [Fair class] also known as Completely Fair Scheduler (CFS). Most system tasks belong to this class, and they will run sooner or later.
-5. [Idle class] like stop class, it has precisely one task which assists in power saving.
-
-In the regard of class priority, stop > deadline > real-time > fair > idle.
-The rule of selecting the next running task is:
-- Start from the high precedence class and check if it has at least one task to run.
-  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all.
-- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue.
-Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
-
-<p align="center"><img src="images/process/priority-and-class.png" /></p>
-
-<details>
-  <summary> Hidden Notes </summary>
-
-```
-    prio   kernel           user            nice                        
-            view            view            value                       
-                                                                        
-      ^      | |             | |                                        
- high |      | | < 0         | | < 139?                  deadline class 
-      |   --------------------------------------------------------------
-      |      | | 0           | | 139                                    
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                         realtime class 
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | |             | |                                        
-      |      | | 99          | | 40                                     
-      |   --------------------------------------------------------------
-      |      | | 100         | | 39          | | -20                    
-      |      | |             | |             | |                        
-      |      | |             | |             | |                        
-      |      | |             | |             | |           fair class   
-      |      | |             | |             | |                        
-      |      | |             | |             | |                        
-      |      | |             | |             | |                        
-  low |      +-+ 139         +-+ 0           +-+ 19                     
-```
-  
-</details>
+### Context Switch
 
 A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
 - The given time slice for the running entity consumes entirely.
@@ -569,6 +763,155 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
                   |  +-------------+                                              
                   +--| __switch_to | save current registers and load the next ones
                      +-------------+                                              
+```
+  
+</details>
+
+## <a name="priority-and-class"></a> Priority and Class
+
+Individual core has its run queue, dividing into sub-queues of different scheduling classes.
+1. [Stop class] it has only one task, which helps task migration between run queues.
+2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
+3. [Real-time class] tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
+4. [Fair class] also known as Completely Fair Scheduler (CFS). Most system tasks belong to this class, and they will run sooner or later.
+5. [Idle class] like stop class, it has precisely one task which assists in power saving.
+
+In the regard of class priority, stop > deadline > real-time > fair > idle.
+The rule of selecting the next running task is:
+- Start from the high precedence class and check if it has at least one task to run.
+  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all.
+- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue.
+Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
+
+<p align="center"><img src="images/process/priority-and-class.png" /></p>
+
+<details>
+  <summary> Hidden Notes </summary>
+
+```
+    prio   kernel           user            nice                        
+            view            view            value                       
+                                                                        
+      ^      | |             | |                                        
+ high |      | | < 0         | | < 139?                  deadline class 
+      |   --------------------------------------------------------------
+      |      | | 0           | | 139                                    
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                         realtime class 
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | |             | |                                        
+      |      | | 99          | | 40                                     
+      |   --------------------------------------------------------------
+      |      | | 100         | | 39          | | -20                    
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+      |      | |             | |             | |           fair class   
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+      |      | |             | |             | |                        
+  low |      +-+ 139         +-+ 0           +-+ 19                     
+```
+  
+```
++----------------------------+                                                                           
+| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
++------|---------------------+                                                                           
+       |    +---------------------+                                                                      
+       +--> | _sched_setscheduler | : set schedule-related fields in task
+            +-----|---------------+                                                                      
+                  |                                                                                      
+                  |--> set up 'sched attr'                                                               
+                  |                                                                                      
+                  |    +----------------------+                                                          
+                  +--> | __sched_setscheduler |                                                          
+                       +-----|----------------+                                                          
+                             |                                                                           
+                             |--> dequeue task if it's queued                                            
+                             |                                                                           
+                             +--> put task if it's running                                               
+                             |                                                                           
+                             |    +-----------------------+                                              
+                             |    | __setscheduler_params | set task policy, static prio, and normal prio
+                             |--> +-----------------------+                                              
+                             |    +---------------------+                                                
+                             |    | __setscheduler_prio | set task sched class and prio                  
+                             |--> +---------------------+                                                
+                             |                                                                           
+                             |--> queue it back if it was queued                                         
+                             |                                                                           
+                             +--> set task as next if it was running                                     
+```
+  
+```
++------------------------+                                                                 
+| sys_sched_setscheduler | : set schedule-related fields in task                           
++-----|------------------+                                                                 
+      |    +-----------------------+                                                       
+      +--> | do_sched_setscheduler |                                                       
+           +-----|-----------------+                                                       
+                 |    +----------------+                                                   
+                 |--> | copy_from_user | copy param from userspace                         
+                 |    +----------------+                                                   
+                 |    +---------------------+                                              
+                 |--> | find_process_by_pid | find task from pid value                     
+                 |    +---------------------+                                              
+                 |    +--------------------+                                               
+                 +--> | sched_setscheduler |                                               
+                      +----|---------------+                                               
+                           |    +---------------------+                                    
+                           +--> | _sched_setscheduler | set schedule-related fields in task
+                                +---------------------+                                    
+```
+  
+```
++----------+                                                           
+| sys_nice | : adjust task prio                                        
++--|-------+                                                           
+   |    +---------------+                                              
+   +--> | set_user_nice |                                              
+        +---|-----------+                                              
+            |                                                          
+            |--> if current task is queued                             
+            |                                                          
+            |        +--------------+                                  
+            |------> | dequeue_task |                                  
+            |        +--------------+                                  
+            |                                                          
+            +--> if current task is running                            
+            |                                                          
+            |        +---------------+                                 
+            |------> | put_prev_task |                                 
+            |        +---------------+                                 
+            |                                                          
+            |--> set ->static_prio based on nice value                 
+            |                                                          
+            |--> adjust ->normal_prio and ->prio based on ->static_prio
+            |                                                          
+            |--> if current task was queued                            
+            |                                                          
+            |        +--------------+                                  
+            |------> | enqueue_task |                                  
+            |        +--------------+                                  
+            |                                                          
+            |--> if current task was running                           
+            |                                                          
+            |        +---------------+                                 
+            |------> | set_next_task |                                 
+            |        +---------------+                                 
+            |                                                          
+            +--> call ->prio_changed(), e.g.,                          
+                 +-------------------+                                 
+                 | prio_changed_fair |                                 
+                 +-------------------+                                 
 ```
   
 </details>
@@ -696,504 +1039,6 @@ Note: PPID is parent PID
        +--- create a kernel thread running function 'kthreadd'   
 ```
   
-</details>
-
-<details>
-  <summary> Code trace </summary>
-  
-```
-struct task_struct {
-    unsigned int            __state;  // current running state
-    int             exit_state;       // state for exiting process
-}
-```
-  
-```
-/* Used in tsk->state: */
-#define TASK_RUNNING            0x0000      // the task is running or ready to run
-#define TASK_INTERRUPTIBLE      0x0001      // sleeping (accept signal)
-#define TASK_UNINTERRUPTIBLE        0x0002  // sleeping (ignore signal)
-#define __TASK_STOPPED          0x0004      // task is stopped by intention, e.g., debug
-#define __TASK_TRACED           0x0008      // task is ptraced
-  
-/* Used in tsk->exit_state: */
-#define EXIT_DEAD           0x0010          // after parent's ack, before it totally vanishes
-#define EXIT_ZOMBIE         0x0020          // after task termination, before parent's ack
-```
-  
-```
-struct signal_struct {
-    struct rlimit rlim[RLIM_NLIMITS];
-}
-
-struct rlimit {
-    __kernel_ulong_t    rlim_cur;   // soft limit
-    __kernel_ulong_t    rlim_max;   // hard limit
-};
-```
-
-```
-+---------------+                           
-| sys_setrlimit | : set rlimit              
-+---|-----------+                           
-    |    +----------------+                 
-    +--> | copy_from_user |                 
-    |    +----------------+                 
-    |    +------------+                     
-    +--> | do_prlimit |                     
-         +--|---------+                     
-            |                               
-            |--> get rlimit from task signal
-            |                               
-            |--> if old is provided         
-            |                               
-            |------> *old = *rlimit         
-            |                               
-            |--> if new is provided         
-            |                               
-            +------> *rlimit = *new         
-```
-
-```
-+---------------+                           
-| sys_getrlimit | : get rlimit              
-+---|-----------+                           
-    |    +------------+                     
-    +--> | do_prlimit |                     
-    |    +--|---------+                     
-    |       |                               
-    |       |--> get rlimit from task signal
-    |       |                               
-    |       |--> if old is provided         
-    |       |                               
-    |       |------> *old = *rlimit         
-    |       |                               
-    |       |--> if new is provided         
-    |       |                               
-    |       +------> *rlimit = *new         
-    |                                       
-    |    +----------------+                 
-    +--> | copy_from_user |                 
-         +----------------+                 
-```
-  
-| Name              | Value  | Note                               |
-| ---               | ---    | ---                                |
-| RLIMIT_CPU        | 0      | CPU time in sec                    |   
-| RLIMIT_FSIZE      | 1      | Maximum filesize                   |   
-| RLIMIT_DATA       | 2      | max data size                      |   
-| RLIMIT_STACK      | 3      | max stack size                     |   
-| RLIMIT_CORE       | 4      | max core file size                 |   
-| RLIMIT_RSS        | 5      | max resident set size              |   
-| RLIMIT_NPROC      | 6      | max number of processes            |   
-| RLIMIT_NOFILE     | 7      | max number of open files           |   
-| RLIMIT_MEMLOCK    | 8      | max locked-in-memory address space |
-| RLIMIT_AS         | 9      | address space limit                |   
-| RLIMIT_LOCKS      | 10     | maximum file locks held            |   
-| RLIMIT_SIGPENDING | 11     | max number of pending signals      |   
-| RLIMIT_MSGQUEUE   | 12     | maximum bytes in POSIX mqueues     |   
-| RLIMIT_NICE       | 13     | max nice prio allowed to raise to 0-39 for nice level 19 .. -20 |
-| RLIMIT_RTPRIO     | 14     | maximum realtime priority          |   
-| RLIMIT_RTTIME     | 15     | timeout for RT tasks in us         |   
-| RLIM_NLIMITS      | 16     |                                    |   
-| RLIM_INFINITY     | (~0UL) |                                    |
-  
-  
-```
-root@romulus:~# cat /proc/self/limits 
-Limit                     Soft Limit           Hard Limit           Units     
-Max cpu time              unlimited            unlimited            seconds   
-Max file size             unlimited            unlimited            bytes     
-Max data size             unlimited            unlimited            bytes     
-Max stack size            8388608              unlimited            bytes     
-Max core file size        unlimited            unlimited            bytes     
-Max resident set          unlimited            unlimited            bytes     
-Max processes             2770                 2770                 processes 
-Max open files            1024                 524288               files     
-Max locked memory         65536                65536                bytes     
-Max address space         unlimited            unlimited            bytes     
-Max file locks            unlimited            unlimited            locks     
-Max pending signals       2770                 2770                 signals   
-Max msgqueue size         819200               819200               bytes     
-Max nice priority         0                    0                    
-Max realtime priority     0                    0                    
-Max realtime timeout      unlimited            unlimited            us
-```
-  
-```
-+-------------+                                                                                              
-| sys_unshare | : based on flags, unshare specified resources and switch to the newly created ones           
-+---|---------+                                                                                              
-    |    +--------------+                                                                                    
-    +--> | ksys_unshare |                                                                                    
-         +---|----------+                                                                                    
-             |    +------------+                                                                             
-             |--> | unshare_fs | uhsnare fs (root, pwd) if specified                                         
-             |    +------------+                                                                             
-             |    +------------+                                                                             
-             |--> | unshare_fd | unshare file descriptors if specified                                       
-             |    +------------+                                                                             
-             |    +----------------+                                                                         
-             |--> | unshare_userns | (disabled config)                                                       
-             |    +----------------+                                                                         
-             |    +----------------------------+                                                             
-             |--> | unshare_nsproxy_namespaces | allocate nsproxy, determine to share or clone each namespace
-             |    +----------------------------+                                                             
-             |                                                                                               
-             +--> switch to the newly created resource                                                       
-```
-  
-```
-+----------------------------+                                                                      
-| unshare_nsproxy_namespaces | : allocate nsproxy, determine to share or clone each namespace       
-+------|---------------------+                                                                      
-       |                                                                                            
-       |--> determine user namespace                                                                
-       |                                                                                            
-       |    +-----------------------+                                                               
-       +--> | create_new_namespaces | : allocate nsproxy, determine to share or clone each namespace
-            +-----|-----------------+                                                               
-                  |    +----------------+                                                           
-                  |--> | create_nsproxy | allocate nsproxy                                          
-                  |    +----------------+                                                           
-                  |    +-------------+                                                              
-                  |--> | copy_mnt_ns | share or clone mnt namespace based on flags                  
-                  |    +-------------+                                                              
-                  |    +--------------+                                                             
-                  |--> | copy_utsname | share or clone uts namespace based on flags                 
-                  |    +--------------+                                                             
-                  |    +-------------+                                                              
-                  |--> | copy_pid_ns | share or clone pid namespace based on flags                  
-                  |    +-------------+                                                              
-                  |    +----------------+                                                           
-                  |--> | copy_cgroup_ns | share or clone cgroup namespace based on flags            
-                  |    +----------------+                                                           
-                  |    +-------------+                                                              
-                  |--> | copy_net_ns | share or clone net namespace based on flags                  
-                  |    +-------------+                                                              
-                  |    +--------------+                                                             
-                  +--> | copy_time_ns | (disabled config)                                           
-                       +--------------+                                                             
-```
-  
-```
-+------------+                                                      
-| sys_setsid | : set task special pid = group leader's pid          
-+--|---------+                                                      
-   |    +-------------+                                             
-   +--> | ksys_setsid |                                             
-        +---|---------+                                             
-            |                                                       
-            |--> get group leader                                   
-            |                                                       
-            |--> group_leader->signal->leader = 1                   
-            |                                                       
-            |    +------------------+                               
-            +--> | set_special_pids | set task special pid = arg pid
-                 +------------------+                               
-```
-  
-```
-+------------------+                                                
-| set_special_pids | : set task special pid = arg pid               
-+----|-------------+                                                
-     |                                                              
-     |--> get group leader                                          
-     |                                                              
-     |--> if leader's session != arg pid                            
-     |                                                              
-     |        +------------+                                        
-     |------> | change_pid | change task pid, and attach task to pid
-     |        +------------+                                        
-     |                                                              
-     |--> if leader's pgrp != arg pid                               
-     |                                                              
-     |        +------------+                                        
-     +------> | change_pid | change task pid, and attach task to pid
-              +------------+                                        
-```
-  
-```
-+------------+                                                 
-| change_pid | : change task pid, and attach task to pid       
-+--|---------+                                                 
-   |    +--------------+                                       
-   |--> | __change_pid | change pid, free the old one if unused
-   |    +--------------+                                       
-   |    +------------+                                         
-   +--> | attach_pid | attach task to pid                      
-        +------------+                                         
-```
-  
-```
-+--------------+                                         
-| __change_pid | : change pid, free the old one if unused
-+---|----------+                                         
-    |                                                    
-    |-> replace pid_links[type] = arg pid                
-    |                                                    
-    |--> return if the old one is in use                 
-    |                                                    
-    |    +----------+                                    
-    +--> | free_pid |                                    
-         +----------+                                    
-```
-  
-```
-struct pid_namespace {
-    struct task_struct *child_reaper; // the task to call wait4 when other tasks terminate
-    unsigned int level;               // the depth of namespace (0: root, 1: child, ...)
-    struct pid_namespace *parent;     // points to the parent namespace
-}
-  
-struct upid {
-    int nr;                   // pid value
-    struct pid_namespace *ns; // points to namespace that contains the pid value
-};
-
-struct pid
-{
-    refcount_t count;                     // ref counter
-    unsigned int level;                   // the number of namespaces that the struct pid is visible in
-    struct hlist_head tasks[PIDTYPE_MAX]; // array of hlist head
-    struct upid numbers[1];               // upid array for each level
-};
-  
-enum pid_type
-{
-    PIDTYPE_PID,
-    PIDTYPE_TGID,
-    PIDTYPE_PGID,
-    PIDTYPE_SID,
-    PIDTYPE_MAX,
-};
-```
-  
-```
-+----------+                                           
-| task_pid | return task->thread_pid                   
-+----------+                                           
-+-----------+                                          
-| task_tgid | return task->signal->pids[PIDTYPE_TGID]  
-+-----------+                                          
-+-----------+                                          
-| task_pgrp | return task->signal->pids[PIDTYPE_PGID]  
-+-----------+                                          
-+--------------+                                       
-| task_session | return task->signal->pids[PIDTYPE_SID]
-+--------------+                                       
-```
-  
-```
-+-----------+                                                               
-| pid_nr_ns | get pid value from struct pid based on level of arg namespace 
-+-----------+                                                               
-+---------+                                                                 
-| pid_vnr | get pid value from struct pid based on level of active namespace
-+---------+                                                                 
-+--------+                                                                  
-| pid_nr | get pid value from struct pid based on level of init namespace   
-+--------+                                                                  
-```
-  
-```
-+----------------+                                                 
-| task_pid_nr_ns | get pid value of task in given namespace        
-+----------------+                                                 
-+-----------------+                                                
-| task_tgid_nr_ns | get tgid value of task in given namespace      
-+-----------------+                                                
-+-----------------+                                                
-| task_pgrp_nr_ns | get pgrp value of task in given namespace      
-+-----------------+                                                
-+--------------------+                                             
-| task_session_nr_ns | get session value of task in given namespace
-+--------------------+                                             
-```
-  
-```
-+-------------+                                                                        
-| find_pid_ns | find struct pid by pid value from the given namespace                  
-+-------------+                                                                        
-+----------+                                                                           
-| pid_task | get the first task of the type from struct pid                            
-+----------+                                                                           
-                                                                                       
-                                                                                       
-+---------------------+                                                                
-| find_task_by_pid_ns | get the first task of type from the given pid value and ns     
-+---------------------+                                                                
-+-------------------+                                                                  
-| find_task_by_vpid | get the first task of type from the given pid value and active ns
-+-------------------+                                                                  
-```
-  
-```
-+--------------+                                                                                                       
-| kernel_clone | : prepare new task and wake it up                                                                     
-+---|----------+                                                                                                       
-    |    +--------------+                                                                                              
-    |--> | copy_process | allocate task, clone or share resource based on flags, set pid value and attach to struct pid
-    |    +--------------+                                                                                              
-    |                                                                                                                  
-    |--> if CLONE_PARENT_SETTID is specified                                                                           
-    |                                                                                                                  
-    +------> write the pid value to the given userspace address                                                        
-    |                                                                                                                  
-    |    +------------------+                                                                                          
-    |--> | wake_up_new_task |                                                                                          
-    |    +------------------+                                                                                          
-    |                                                                                                                  
-    +--> if child is traced                                                                                            
-    |                                                                                                                  
-    |        +------------------+                                                                                      
-    +------> | ptrace_event_pid | notify tracer of the event                                                           
-             +------------------+                                                                                      
-```
-  
-```
-+--------------+                                                                                                
-| copy_process | : allocate task, clone or share resource based on flags, set pid value and attach to struct pid
-+---|----------+                                                                                                
-    |    +-----------------+                                                                                    
-    |--> | dup_task_struct | allocate task and thread stack, copy from parent and reset some fields             
-    |    +-----------------+      
-    |   
-    |--> save child_tid to ->set_child_tid for later use if CLONE_CHILD_SETTID is speficied
-    |
-    |--> save child_tid to ->clear_child_tid for later use if CLONE_CHILD_CLEARTID is speficied
-    |                                                                            
-    |    +------------+                                                                                         
-    |--> | sched_fork | state = NEW, set prio & sched class                                                     
-    |    +------------+                                                                                         
-    |    +--------------+                                                                                       
-    |--> | copy_semundo | share sem undo list if CLONE_SYSVSEM is specified                                     
-    |    +--------------+                                                                                       
-    |    +------------+                                                                                         
-    |--> | copy_files | share files if CLONE_FILES is specfied                                                  
-    |    +------------+                                                                                         
-    |    +---------+                                                                                            
-    |--> | copy_fs | share fs if CLONE_FS is specified                                                          
-    |    +---------+                                                                                            
-    |    +--------------+                                                                                       
-    |--> | copy_sighand | share sighand if CLONE_SIGHAND is specified                                           
-    |    +--------------+                                                                                       
-    |    +-------------+                                                                                        
-    |--> | copy_signal | share signal is CLONE_THREAD is specified                                              
-    |    +-------------+                                                                                        
-    |    +---------+                                                                                            
-    |--> | copy_mm | share mm if CLONE_VM is specified                                                          
-    |    +---------+                                                                                            
-    |    +-----------------+                                                                                    
-    |--> | copy_namespaces | create new namespace if any related flag is specified                              
-    |    +-----------------+                                                                                    
-    |    +---------+                                                                                            
-    |--> | copy_io | share io contect if CLONE_IO is specified                                                  
-    |    +---------+                                                                                            
-    |    +-------------+                                                                                        
-    |--> | copy_thread | set tls if CLONE_SETTLS is specified                                                   
-    |    +-------------+                                                                                        
-    |    +-----------+                                                                                          
-    |--> | alloc_pid | allocate 'pid' and set up pid value for each level                                       
-    |    +-----------+                                                                                          
-    |                                                                                                           
-    |--> set task pid value                                                                                     
-    |                                                                                                           
-    |--> determine parent and exit signal                                                                       
-    |                                                                                                           
-    +--> attach task to all types of struct pid                                                                 
-```
-  
-```
-+-----------+                                                     
-| alloc_pid | : allocate 'pid' and set up pid value for each level
-+--|--------+                                                     
-   |                                                              
-   |--> allocate 'pid'                                            
-   |                                                              
-   |--> pid level = ns level                                      
-   |                                                              
-   |--> from child to root namespace                              
-   |                                                              
-   |------> prepare pid value                                     
-   |                                                              
-   |------> set up pid number of that level                       
-   |                                                              
-   +--> for each level, install pid to that ns                    
-```
-  
-```
-+------------------+                                                                               
-| wake_up_new_task | : state = RUNNING, place task onto the suitable runqueue, resched if necessary
-+----|-------------+                                                                               
-     |                                                                                             
-     |--> task state = RUNNING                                                                     
-     |                                                                                             
-     |--> determine runqueue to place into and set that cpu to task                                
-     |                                                                                             
-     |    +---------------+                                                                        
-     |--> | activate_task | e.g., place task into runqueue                                         
-     |    +---------------+                                                                        
-     |    +--------------------+                                                                   
-     |--> | check_preempt_curr | mark current running task 'resched' if appropriate                
-     |    +--------------------+                                                                   
-     |                                                                                             
-     |--> if ->task_woken() exists                                                                 
-     |                                                                                             
-     +------> call ->task_woken(), e.g.,                                                           
-              +---------------+                                                                    
-              | task_woken_rt |                                                                    
-              +---------------+                                                                    
-```
-  
-```
-+---------------+                                                              
-| schedule_tail | : write pid value to the given userspace address if necessary
-+---|-----------+                                                              
-    |    +--------------------+                                                
-    |--> | finish_task_switch |                                                
-    |    +--------------------+                                                
-    |    +----------------+                                                    
-    |--> | preempt_enable | (disabled config)                                  
-    |    +----------------+                                                    
-    |                                                                          
-    |--> if task set_child_tid is saved during copy_process()                  
-    |                                                                          
-    +------> write the pid value to the given userspace address                
-```
-  
-```
-     low addr  +--+-----------+                
-               |  |thread_info|                
-               |  +-----------+                
-           ^   |  |0x57AC6E9D | stack end magic
-           |   |  +-----------+                
-           |   |           |                   
-           |   |           |                   
-           |   |           |                   
-           |   +-----------+                   
-           |   |           |                   
-           |   |           |                   
-           |   |           |                   
-           |   |  +-----------+                
-           |   |  |  pt_regs  |                
- stack  ---+   |  +-----------+                
-               |  |  reserved | 8 bytes        
-    high addr  +--+-----------+                    
-```
-  
-```
-struct thread_info {
-    unsigned long       flags;  // TIF_SIGPENDING: signal pending
-                                // TIF_NEED_RESCHED: rescheduling necessary
-    int         preempt_count;  // for preemption, which is disabled in our config
-    struct task_struct  *task;  // point to the task_struct
-    __u32           cpu;        // where the process is running on
-    struct cpu_context_save cpu_context;
-
-};
-```
-  
 ```
 +----------------+                                                                                                              
 | kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask                              
@@ -1225,100 +1070,7 @@ struct thread_info {
                            +--> | set_cpus_allowed_ptr | set cpu mask                                                           
                                 +----------------------+                                                                        
 ```
-  
-```
-+----------------------------+                                                                           
-| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
-+------|---------------------+                                                                           
-       |    +---------------------+                                                                      
-       +--> | _sched_setscheduler | : set schedule-related fields in task
-            +-----|---------------+                                                                      
-                  |                                                                                      
-                  |--> set up 'sched attr'                                                               
-                  |                                                                                      
-                  |    +----------------------+                                                          
-                  +--> | __sched_setscheduler |                                                          
-                       +-----|----------------+                                                          
-                             |                                                                           
-                             |--> dequeue task if it's queued                                            
-                             |                                                                           
-                             +--> put task if it's running                                               
-                             |                                                                           
-                             |    +-----------------------+                                              
-                             |    | __setscheduler_params | set task policy, static prio, and normal prio
-                             |--> +-----------------------+                                              
-                             |    +---------------------+                                                
-                             |    | __setscheduler_prio | set task sched class and prio                  
-                             |--> +---------------------+                                                
-                             |                                                                           
-                             |--> queue it back if it was queued                                         
-                             |                                                                           
-                             +--> set task as next if it was running                                     
-```
-  
-```
-+------------------------+                                                                 
-| sys_sched_setscheduler | : set schedule-related fields in task                           
-+-----|------------------+                                                                 
-      |    +-----------------------+                                                       
-      +--> | do_sched_setscheduler |                                                       
-           +-----|-----------------+                                                       
-                 |    +----------------+                                                   
-                 |--> | copy_from_user | copy param from userspace                         
-                 |    +----------------+                                                   
-                 |    +---------------------+                                              
-                 |--> | find_process_by_pid | find task from pid value                     
-                 |    +---------------------+                                              
-                 |    +--------------------+                                               
-                 +--> | sched_setscheduler |                                               
-                      +----|---------------+                                               
-                           |    +---------------------+                                    
-                           +--> | _sched_setscheduler | set schedule-related fields in task
-                                +---------------------+                                    
-```
-  
-```
-+----------+                                                           
-| sys_nice | : adjust task prio                                        
-+--|-------+                                                           
-   |    +---------------+                                              
-   +--> | set_user_nice |                                              
-        +---|-----------+                                              
-            |                                                          
-            |--> if current task is queued                             
-            |                                                          
-            |        +--------------+                                  
-            |------> | dequeue_task |                                  
-            |        +--------------+                                  
-            |                                                          
-            +--> if current task is running                            
-            |                                                          
-            |        +---------------+                                 
-            |------> | put_prev_task |                                 
-            |        +---------------+                                 
-            |                                                          
-            |--> set ->static_prio based on nice value                 
-            |                                                          
-            |--> adjust ->normal_prio and ->prio based on ->static_prio
-            |                                                          
-            |--> if current task was queued                            
-            |                                                          
-            |        +--------------+                                  
-            |------> | enqueue_task |                                  
-            |        +--------------+                                  
-            |                                                          
-            |--> if current task was running                           
-            |                                                          
-            |        +---------------+                                 
-            |------> | set_next_task |                                 
-            |        +---------------+                                 
-            |                                                          
-            +--> call ->prio_changed(), e.g.,                          
-                 +-------------------+                                 
-                 | prio_changed_fair |                                 
-                 +-------------------+                                 
-```
-  
+ 
 ```
 +-----------------------+                                                                            
 | sys_sched_setaffinity | : set cpu affinity of task                                                 
@@ -1981,6 +1733,119 @@ struct cfs_rq {
   
 ## <a name="others"></a> Others
   
+### Resource Limit
+  
+<details>
+  <summary> Hidden Notes </summary>
+  
+```
+struct signal_struct {
+    struct rlimit rlim[RLIM_NLIMITS];
+}
+
+struct rlimit {
+    __kernel_ulong_t    rlim_cur;   // soft limit
+    __kernel_ulong_t    rlim_max;   // hard limit
+};
+```
+
+```
++---------------+                           
+| sys_setrlimit | : set rlimit              
++---|-----------+                           
+    |    +----------------+                 
+    +--> | copy_from_user |                 
+    |    +----------------+                 
+    |    +------------+                     
+    +--> | do_prlimit |                     
+         +--|---------+                     
+            |                               
+            |--> get rlimit from task signal
+            |                               
+            |--> if old is provided         
+            |                               
+            |------> *old = *rlimit         
+            |                               
+            |--> if new is provided         
+            |                               
+            +------> *rlimit = *new         
+```
+
+```
++---------------+                           
+| sys_getrlimit | : get rlimit              
++---|-----------+                           
+    |    +------------+                     
+    +--> | do_prlimit |                     
+    |    +--|---------+                     
+    |       |                               
+    |       |--> get rlimit from task signal
+    |       |                               
+    |       |--> if old is provided         
+    |       |                               
+    |       |------> *old = *rlimit         
+    |       |                               
+    |       |--> if new is provided         
+    |       |                               
+    |       +------> *rlimit = *new         
+    |                                       
+    |    +----------------+                 
+    +--> | copy_from_user |                 
+         +----------------+                 
+```
+  
+| Name              | Value  | Note                               |
+| ---               | ---    | ---                                |
+| RLIMIT_CPU        | 0      | CPU time in sec                    |   
+| RLIMIT_FSIZE      | 1      | Maximum filesize                   |   
+| RLIMIT_DATA       | 2      | max data size                      |   
+| RLIMIT_STACK      | 3      | max stack size                     |   
+| RLIMIT_CORE       | 4      | max core file size                 |   
+| RLIMIT_RSS        | 5      | max resident set size              |   
+| RLIMIT_NPROC      | 6      | max number of processes            |   
+| RLIMIT_NOFILE     | 7      | max number of open files           |   
+| RLIMIT_MEMLOCK    | 8      | max locked-in-memory address space |
+| RLIMIT_AS         | 9      | address space limit                |   
+| RLIMIT_LOCKS      | 10     | maximum file locks held            |   
+| RLIMIT_SIGPENDING | 11     | max number of pending signals      |   
+| RLIMIT_MSGQUEUE   | 12     | maximum bytes in POSIX mqueues     |   
+| RLIMIT_NICE       | 13     | max nice prio allowed to raise to 0-39 for nice level 19 .. -20 |
+| RLIMIT_RTPRIO     | 14     | maximum realtime priority          |   
+| RLIMIT_RTTIME     | 15     | timeout for RT tasks in us         |   
+| RLIM_NLIMITS      | 16     |                                    |   
+| RLIM_INFINITY     | (~0UL) |                                    |
+  
+  
+```
+root@romulus:~# cat /proc/self/limits 
+Limit                     Soft Limit           Hard Limit           Units     
+Max cpu time              unlimited            unlimited            seconds   
+Max file size             unlimited            unlimited            bytes     
+Max data size             unlimited            unlimited            bytes     
+Max stack size            8388608              unlimited            bytes     
+Max core file size        unlimited            unlimited            bytes     
+Max resident set          unlimited            unlimited            bytes     
+Max processes             2770                 2770                 processes 
+Max open files            1024                 524288               files     
+Max locked memory         65536                65536                bytes     
+Max address space         unlimited            unlimited            bytes     
+Max file locks            unlimited            unlimited            locks     
+Max pending signals       2770                 2770                 signals   
+Max msgqueue size         819200               819200               bytes     
+Max nice priority         0                    0                    
+Max realtime priority     0                    0                    
+Max realtime timeout      unlimited            unlimited            us
+```
+  
+</details>
+  
+### PID Structure
+  
+<details>
+  <summary> Hidden Notes </summary>
+  
+</details>
+  
 ### Premption
   
 <details>
@@ -2070,6 +1935,158 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
                    |   |             |                                                   
                    +-----tasks[SID]  | list head                                         
                        +-------------+                                                   
+```
+  
+```
++------------+                                                      
+| sys_setsid | : set task special pid = group leader's pid          
++--|---------+                                                      
+   |    +-------------+                                             
+   +--> | ksys_setsid |                                             
+        +---|---------+                                             
+            |                                                       
+            |--> get group leader                                   
+            |                                                       
+            |--> group_leader->signal->leader = 1                   
+            |                                                       
+            |    +------------------+                               
+            +--> | set_special_pids | set task special pid = arg pid
+                 +------------------+                               
+```
+  
+```
++------------------+                                                
+| set_special_pids | : set task special pid = arg pid               
++----|-------------+                                                
+     |                                                              
+     |--> get group leader                                          
+     |                                                              
+     |--> if leader's session != arg pid                            
+     |                                                              
+     |        +------------+                                        
+     |------> | change_pid | change task pid, and attach task to pid
+     |        +------------+                                        
+     |                                                              
+     |--> if leader's pgrp != arg pid                               
+     |                                                              
+     |        +------------+                                        
+     +------> | change_pid | change task pid, and attach task to pid
+              +------------+                                        
+```
+  
+```
++------------+                                                 
+| change_pid | : change task pid, and attach task to pid       
++--|---------+                                                 
+   |    +--------------+                                       
+   |--> | __change_pid | change pid, free the old one if unused
+   |    +--------------+                                       
+   |    +------------+                                         
+   +--> | attach_pid | attach task to pid                      
+        +------------+                                         
+```
+  
+```
++--------------+                                         
+| __change_pid | : change pid, free the old one if unused
++---|----------+                                         
+    |                                                    
+    |-> replace pid_links[type] = arg pid                
+    |                                                    
+    |--> return if the old one is in use                 
+    |                                                    
+    |    +----------+                                    
+    +--> | free_pid |                                    
+         +----------+                                    
+```
+  
+```
+struct pid_namespace {
+    struct task_struct *child_reaper; // the task to call wait4 when other tasks terminate
+    unsigned int level;               // the depth of namespace (0: root, 1: child, ...)
+    struct pid_namespace *parent;     // points to the parent namespace
+}
+  
+struct upid {
+    int nr;                   // pid value
+    struct pid_namespace *ns; // points to namespace that contains the pid value
+};
+
+struct pid
+{
+    refcount_t count;                     // ref counter
+    unsigned int level;                   // the number of namespaces that the struct pid is visible in
+    struct hlist_head tasks[PIDTYPE_MAX]; // array of hlist head
+    struct upid numbers[1];               // upid array for each level
+};
+  
+enum pid_type
+{
+    PIDTYPE_PID,
+    PIDTYPE_TGID,
+    PIDTYPE_PGID,
+    PIDTYPE_SID,
+    PIDTYPE_MAX,
+};
+```
+  
+```
++----------+                                           
+| task_pid | return task->thread_pid                   
++----------+                                           
++-----------+                                          
+| task_tgid | return task->signal->pids[PIDTYPE_TGID]  
++-----------+                                          
++-----------+                                          
+| task_pgrp | return task->signal->pids[PIDTYPE_PGID]  
++-----------+                                          
++--------------+                                       
+| task_session | return task->signal->pids[PIDTYPE_SID]
++--------------+                                       
+```
+  
+```
++-----------+                                                               
+| pid_nr_ns | get pid value from struct pid based on level of arg namespace 
++-----------+                                                               
++---------+                                                                 
+| pid_vnr | get pid value from struct pid based on level of active namespace
++---------+                                                                 
++--------+                                                                  
+| pid_nr | get pid value from struct pid based on level of init namespace   
++--------+                                                                  
+```
+  
+```
++----------------+                                                 
+| task_pid_nr_ns | get pid value of task in given namespace        
++----------------+                                                 
++-----------------+                                                
+| task_tgid_nr_ns | get tgid value of task in given namespace      
++-----------------+                                                
++-----------------+                                                
+| task_pgrp_nr_ns | get pgrp value of task in given namespace      
++-----------------+                                                
++--------------------+                                             
+| task_session_nr_ns | get session value of task in given namespace
++--------------------+                                             
+```
+  
+```
++-------------+                                                                        
+| find_pid_ns | find struct pid by pid value from the given namespace                  
++-------------+                                                                        
++----------+                                                                           
+| pid_task | get the first task of the type from struct pid                            
++----------+                                                                           
+                                                                                       
+                                                                                       
++---------------------+                                                                
+| find_task_by_pid_ns | get the first task of type from the given pid value and ns     
++---------------------+                                                                
++-------------------+                                                                  
+| find_task_by_vpid | get the first task of type from the given pid value and active ns
++-------------------+                                                                  
 ```
   
 ```
