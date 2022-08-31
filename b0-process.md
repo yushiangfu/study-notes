@@ -614,15 +614,25 @@ Indifferent parents might cause the children to remain in the ZOMBIE state.
 
 ## <a name="scheduler-and-run-queue"></a> Scheduler and Run Queue
 
-Before we start introducing the scheduler, let's clarify the below terms.
-- Process: refers to userspace utilities or applications, and it consists of at least one thread.
-- Thread: the fundamental execution unit within the process.
-- Kthread: kernel thread, and there's no process concept in kernel space.
+Each CPU has its own run queue that contains all the ready-to-run tasks and scheduler is responsible to picking up the next candidate for running.
+Please note the scheduler itself is not a process or thread but a mechanism composed by two main actions:
+
+- RESCHED flag labeling
+- context switch
+
+
+
+- if it uses up the assigned time slice
+- if another more important task pops up
+- if it's required to sleep for a while
+- if lock is aquire somewhere else
+- if data reading isn't complete yet
+- if its priority is lowered
 
 Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
 Multiple tasks can physically run simultaneously to boost performance and throughput with that many processor cores.
 The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
-Please note the scheduler itself is not a process or thread but a mechanism with its implementation spread across the kernel flow.
+
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
 
@@ -724,153 +734,6 @@ Please note the scheduler itself is not a process or thread but a mechanism with
   
 </details>
 
-### Load Balance
-  
-(TBD)
-  
-<details><summary> More Details </summary>
-  
-```
-+-----------------------+                                                                                 
-| run_rebalance_domains | : if it's about time, balance loading between the busiest rq and this one       
-+-----|-----------------+                                                                                 
-      |    +-------------------+                                                                          
-      |--> | nohz_idle_balance | (idle balance related, skip for now)                                     
-      |    +-------------------+                                                                          
-      |    +-------------------+                                                                          
-      +--> | rebalance_domains | : if it's about time, balance loading between the busiest rq and this one
-           +----|--------------+                                                                          
-                |                                                                                         
-                |--> for each domain (probably only 1 to us)                                              
-                |                                                                                         
-                |        +-------------------------+                                                      
-                |------> | get_sd_balance_interval | determine balance 'interval'                         
-                |        +-------------------------+                                                      
-                |                                                                                         
-                |------> if it's time to do balance                                                       
-                |                                                                                         
-                |            +--------------+                                                             
-                +----------> | load_balance | move tasks from the busiest rq to this one                  
-                             +--------------+                                                             
-```
-  
-```
-+--------------+                                                             
-| load_balance | : move tasks from the busiest rq to this one                
-+---|----------+                                                             
-    |                                                                        
-    |--> set up parameters                                                   
-    |                                                                        
-    |    +--------------------+                                              
-    |--> | find_busiest_group |                                              
-    |    +--------------------+                                              
-    |    +--------------------+                                              
-    |--> | find_busiest_queue |                                              
-    |    +--------------------+                                              
-    |    +--------------+                                                    
-    |--> | detach_tasks | remove enough tasks from rq and add to another list
-    |    +--------------+                                                    
-    |                                                                        
-    |--> if we did detatch tasks                                             
-    |                                                                        
-    |        +--------------+                                                
-    +------> | attach_tasks | move tasks to dst rq, preemption might happen  
-             +--------------+                                                
-```
-  
-```
-+--------------+                                                      
-| detach_tasks | : remove enough tasks from rq and add to another list
-+---|----------+                                                      
-    |                                                                 
-    |--> while rq still has task                                      
-    |                                                                 
-    |        +-----------------+                                      
-    |------> | list_last_entry | get last task on the list            
-    |        +-----------------+                                      
-    |                                                                 
-    |------> break loop if condition is met                           
-    |                                                                 
-    |        +-------------+                                          
-    |------> | detach_task | remove task from rq                      
-    |        +-------------+                                          
-    |        +----------+                                             
-    +------> | list_add | move task to another list                   
-             +----------+                                             
-```
-  
-```
-+--------------------+                                                                     
-| cpu_stopper_thread | : handler work on list, e.g., move task to new rq                   
-+----|---------------+                                                                     
-     |                                                                                     
-     |--> remove the first work from list (might be empty)                                 
-     |                                                                                     
-     |--> if work                                                                          
-     |                                                                                     
-     |------> set up 'stoper' from work                                                    
-     |                                                                                     
-     |------> call work->fn(), e.g.,                                                       
-     |        +--------------------+                                                       
-     |        | migration_cpu_stop | deactivate task from old rq, and activate it on new rq
-     |        +--------------------+                                                       
-     |                                                                                     
-     +------> reset 'stoper'                                                               
-```
-  
-</details>
-  
-### Low Latency
-  
-(TBD)
-  
-### Premption
-
-(TBD)
-  
-<details><summary> More Details </summary>
-
-Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
-The thread itself might relinquish the execution right early.
-Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
-For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
-During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
-No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
-This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
-The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
-Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
-As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
-
-```
- +--------------+    +--------------+    +--------------+                                   
- |  user mode   |    | kernel mode  |    |interrupt mode|                                   
- +--------------+    +--------------+    +--------------+                                   
- my loop |                                                                                  
-         |                                                                                  
-         +-------------------> syscall                                                      
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         +--------------------------------------> timer interrupt                           
-                                                |                                           
-                                                |                                           
-           interrupt handler <------------------+                                           
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         |
-```
-
-The above diagram shows exceptions happen though we are just running a simple task.
-When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
-By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
-  
-</details>
-  
 ### Context Switch
 
 A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
@@ -1021,6 +884,153 @@ repeat
     +--> | finish_task_switch | prev->on_cpu = 0                                   
          +--------------------+                                                    
 ```
+  
+</details>
+
+### Load Balance
+  
+(TBD)
+  
+<details><summary> More Details </summary>
+  
+```
++-----------------------+                                                                                 
+| run_rebalance_domains | : if it's about time, balance loading between the busiest rq and this one       
++-----|-----------------+                                                                                 
+      |    +-------------------+                                                                          
+      |--> | nohz_idle_balance | (idle balance related, skip for now)                                     
+      |    +-------------------+                                                                          
+      |    +-------------------+                                                                          
+      +--> | rebalance_domains | : if it's about time, balance loading between the busiest rq and this one
+           +----|--------------+                                                                          
+                |                                                                                         
+                |--> for each domain (probably only 1 to us)                                              
+                |                                                                                         
+                |        +-------------------------+                                                      
+                |------> | get_sd_balance_interval | determine balance 'interval'                         
+                |        +-------------------------+                                                      
+                |                                                                                         
+                |------> if it's time to do balance                                                       
+                |                                                                                         
+                |            +--------------+                                                             
+                +----------> | load_balance | move tasks from the busiest rq to this one                  
+                             +--------------+                                                             
+```
+  
+```
++--------------+                                                             
+| load_balance | : move tasks from the busiest rq to this one                
++---|----------+                                                             
+    |                                                                        
+    |--> set up parameters                                                   
+    |                                                                        
+    |    +--------------------+                                              
+    |--> | find_busiest_group |                                              
+    |    +--------------------+                                              
+    |    +--------------------+                                              
+    |--> | find_busiest_queue |                                              
+    |    +--------------------+                                              
+    |    +--------------+                                                    
+    |--> | detach_tasks | remove enough tasks from rq and add to another list
+    |    +--------------+                                                    
+    |                                                                        
+    |--> if we did detatch tasks                                             
+    |                                                                        
+    |        +--------------+                                                
+    +------> | attach_tasks | move tasks to dst rq, preemption might happen  
+             +--------------+                                                
+```
+  
+```
++--------------+                                                      
+| detach_tasks | : remove enough tasks from rq and add to another list
++---|----------+                                                      
+    |                                                                 
+    |--> while rq still has task                                      
+    |                                                                 
+    |        +-----------------+                                      
+    |------> | list_last_entry | get last task on the list            
+    |        +-----------------+                                      
+    |                                                                 
+    |------> break loop if condition is met                           
+    |                                                                 
+    |        +-------------+                                          
+    |------> | detach_task | remove task from rq                      
+    |        +-------------+                                          
+    |        +----------+                                             
+    +------> | list_add | move task to another list                   
+             +----------+                                             
+```
+  
+```
++--------------------+                                                                     
+| cpu_stopper_thread | : handler work on list, e.g., move task to new rq                   
++----|---------------+                                                                     
+     |                                                                                     
+     |--> remove the first work from list (might be empty)                                 
+     |                                                                                     
+     |--> if work                                                                          
+     |                                                                                     
+     |------> set up 'stoper' from work                                                    
+     |                                                                                     
+     |------> call work->fn(), e.g.,                                                       
+     |        +--------------------+                                                       
+     |        | migration_cpu_stop | deactivate task from old rq, and activate it on new rq
+     |        +--------------------+                                                       
+     |                                                                                     
+     +------> reset 'stoper'                                                               
+```
+  
+</details>
+  
+### Low Latency
+  
+(TBD)
+  
+### Premption
+
+(TBD)
+  
+<details><summary> More Details </summary>
+
+Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
+The thread itself might relinquish the execution right early.
+Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
+For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
+During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
+No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
+This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
+The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
+Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
+As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
+
+```
+ +--------------+    +--------------+    +--------------+                                   
+ |  user mode   |    | kernel mode  |    |interrupt mode|                                   
+ +--------------+    +--------------+    +--------------+                                   
+ my loop |                                                                                  
+         |                                                                                  
+         +-------------------> syscall                                                      
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         +--------------------------------------> timer interrupt                           
+                                                |                                           
+                                                |                                           
+           interrupt handler <------------------+                                           
+                             |                                                              
+                             |                                                              
+ my loop <-------------------+ check point                                                  
+         |                                                                                  
+         |                                                                                  
+         |
+```
+
+The above diagram shows exceptions happen though we are just running a simple task.
+When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
+By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
   
 </details>
   
