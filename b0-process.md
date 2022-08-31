@@ -499,9 +499,17 @@ struct linux_binfmt {
 
 ### State - Sleeping
 
-- TASK_INTERRUPTIBLE: can receive signal
-- TASK_UNINTERRUPTIBLE: can't receive signal
-- TASK_KILLABLE: can receive 'kill' signal only
+Sleeping is a conceptual state that indicates the task is removed from the run queue and waits somewhere for the specified event to happen, such as:
+
+- waiting for the data read from the disk
+- waiting for a few seconds
+- waiting till there's a coming request
+
+When the task sleeps, the practical state value can be any of the below ones.
+
+- TASK_KILLABLE: task wakes up when receiving a **kill** signal
+- TASK_INTERRUPTIBLE: task wakes up when receiving any signal
+- TASK_UNINTERRUPTIBLE: task wakes up only when the condition is met
 
 ### State - Dead
 
