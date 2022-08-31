@@ -116,14 +116,13 @@ struct task_struct {
   
 </details>
 
-### New
+### State - New
 
-From users' perspective, threads within the same process share the same virtual memory space, file table, files, etc. 
-In contrast, tasks from the different groups have their resources exclusively. 
-Two syscalls, 'clone' and 'fork,' are provided to meet the individual requirement, and surprisingly they call to the same core function inside the kernel.
-The passed-in parameters determine whether the newly generated task shares the existing resource with its parent task or has its private copy.
-Cloning a thread as a new helper sharing the same resource is understandable, but forking a thread to do the same job without helping each other?
-The syscall 'fork' itself rarely works alone. Instead, it combines with another syscall 'execve', which loads the target application into memory and overwrites the existing logic.
+Threads within the same process share the same virtual memory space, file table, etc., of which the collection is exclusive to each process. 
+Syscalls like **clone** and **fork** are used to create new tasks with different shared resources, and surprisingly they call to the same core function.
+For each resource, the routine determines whether to share it with the parent task or create a new copy of its own based on pass-in flags. 
+The syscall **fork** itself rarely works alone since two identical copies are pretty redundant. 
+Instead, another syscall **execve** follows to load the target application into memory, overwriting the existing logic.
 
 <p align="center"><img src="images/process/fork-and-clone.png" /></p>
 
@@ -156,21 +155,15 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
 ```
 
 ```
-+----------+                                                                                                                      
-| sys_fork |---+                                                                                                                  
-+----------+   |                                                                                                                  
-+-----------+  |                                                                                                                  
-| sys_clone |--+                                                                                                                  
-+-----------+  |                                                                                                                  
-               |  +--------------+                                                                                                
-               +--| kernel_clone |                                                                                                
-                  +--------------+                                                                                                
-                          |  +--------------+                                                                                     
-                          |--- copy_process | generate task structure, and either duplicate or share the resources with the parent
-                          |  +--------------+                                                                                     
-                          |  +------------------+                                                                                 
-                          +--| wake_up_new_task | add the newly generated task into a run queue                                   
-                             +------------------+                                                                                 
++----------+
+| sys_fork |---+
++----------+   |
++-----------+  |
+| sys_clone |--+
++-----------+  |
+               |  +--------------+
+               +--| kernel_clone |
+                  +--------------+
 ```
   
 ```
@@ -186,7 +179,7 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
     +------> write the pid value to the given userspace address                                                        
     |                                                                                                                  
     |    +------------------+                                                                                          
-    |--> | wake_up_new_task |                                                                                          
+    |--> | wake_up_new_task | add the newly generated task into a run queue
     |    +------------------+                                                                                          
     |                                                                                                                  
     +--> if child is traced                                                                                            
@@ -383,44 +376,44 @@ The syscall 'fork' itself rarely works alone. Instead, it combines with another 
 ```
 
 ```
-+-------------+                                                                                                                    
-| bprm_execve | move to a proper rq, clear old mapping, map exec and interp                                                        
-+---|---------+                                                                                                                    
-    |    +----------------+                                                                                                        
-    |--> | do_open_execat |                                                                                                        
-    |    +---|------------+                                                                                                        
-    |        |                                                                                                                     
-    |        |--> determine flags                                                                                                  
-    |        |                                                                                                                     
-    |        |    +--------------+                                                                                                 
-    |        +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()                              
-    |             +--------------+                                                                                                 
-    |    +------------+                                                                                                            
-    |--> | sched_exec | select rq and migrate task onto it                                                                         
-    |    +------------+                                                                                                            
-    |    +-------------+                                                                                                           
-    +--> | exec_binprm |                                                                                                           
-         +---|---------+                                                                                                           
-             |                                                                                                                     
-             |--> for 1 exec and at most 5 interpreters                                                                            
-             |                                                                                                                     
-             |        +-----------------------+                                                                                    
-             |------> | search_binary_handler |                                                                                    
-             |        +-----|-----------------+                                                                                    
-             |              |    +----------------+                                                                                
-             |              |--> | prepare_binprm | read file into buffer                                                          
-             |              |    +----------------+                                                                                
-             |              |                                                                                                      
-             |              |--> for each registered format (e.g., script, elf)                                                    
-             |              |                                                                                                      
-             |              |------> call ->load_binary(), e.g.,                                                                   
-             |              |        +-----------------+                                                                           
-             |              |        | load_elf_binary | map segments of exec and interp, copy and env to stack, regs->pc to interp
-             |              |        +-----------------+                                                                           
-             |              |                                                                                                      
-             |              +------> return if ok                                                                                  
-             |                                                                                                                     
-             +------> break if brpm->interpreter isn't set (though elf has interpreter, it doesn't set this field)                 
++-------------+
+| bprm_execve | move to a proper rq, clear old mapping, map exec and interp
++---|---------+
+    |    +----------------+
+    |--> | do_open_execat |
+    |    +---|------------+
+    |        |
+    |        |--> determine flags
+    |        |
+    |        |    +--------------+
+    |        +--> | do_filp_open | allocate 'file', find dentry/inode, install ops, and call ->open()
+    |             +--------------+
+    |    +------------+
+    |--> | sched_exec | select rq and migrate task onto it
+    |    +------------+
+    |    +-------------+
+    +--> | exec_binprm |
+         +---|---------+
+             |
+             |--> for 1 exec and at most 5 interpreters
+             |
+             |        +-----------------------+
+             |------> | search_binary_handler |
+             |        +-----|-----------------+
+             |              |    +----------------+
+             |              |--> | prepare_binprm | read file into buffer
+             |              |    +----------------+
+             |              |
+             |              |--> for each registered format (e.g., script, elf)
+             |              |
+             |              |------> call ->load_binary(), e.g.,
+             |              |        +-----------------+
+             |              |        | load_elf_binary | map segments of exec and interp
+             |              |        +-----------------+ copy and env to stack, regs->pc to interp
+             |              |
+             |              +------> return if ok
+             |
+             +------> break if brpm->interpreter isn't set (though elf has interpreter, it doesn't set this field)
 ```
 
 ```
@@ -492,13 +485,13 @@ struct linux_binfmt {
   
 </details>
 
-### Sleeping
+### State - Sleeping
 
 - TASK_INTERRUPTIBLE: can receive signal
 - TASK_UNINTERRUPTIBLE: can't receive signal
 - TASK_KILLABLE: can receive 'kill' signal only
 
-### Dead
+### State - Dead
 
 When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
 But it's a bit different when it comes to thread group cases:
