@@ -497,6 +497,10 @@ struct linux_binfmt {
   
 </details>
 
+### State - Running
+
+A task is in such state when it's running or ready to run.
+
 ### State - Sleeping
 
 Sleeping is a conceptual state that indicates the task is removed from the run queue and waits somewhere for the specified event to happen, such as:
@@ -513,13 +517,9 @@ When the task sleeps, the practical state value can be any of the below ones.
 
 ### State - Dead
 
-When a task exists, it does nothing more than release the resource it allocates during the process life cycle. 
-But it's a bit different when it comes to thread group cases:
-- Non-leader threads behave similarly as the case of the single-thread process. The flow goes to **sys_exit**, and it releases resources after notifying the tracer and parent.
-- Thread group leader starts from **sys_group_exit**, which sets the SIGKILL bit of other threads before unleashing resource.
-
-That's why the leader thread terminates other threads when it exists first, but not vice versa. 
-Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit**, and it seems the pthread library will make sure the last exiting thread calls sys_group_exit.
+When a task exits, it notifies its parent before releasing the resources allocated so far. 
+And the state goes from ZOMBIE, DEAD, till the task vanishes completely. 
+Indifferent parents might cause the children to remain in the ZOMBIE state.
 
 <details><summary> More Details </summary>
 
@@ -539,6 +539,31 @@ Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit*
            +------------+             
 ```
 
+```
++----------------+                                                                                                                         
+| sys_exit_group |                                                                                                                         
++---|------------+                                                                                                                         
+    |    +---------------+                                                                                                                 
+    +--> | do_group_exit |                                                                                                                 
+         +---|-----------+                                                                                                                 
+             |                                                                                                                             
+             |--> if thread group is exiting                                                                                               
+             |                                                                                                                             
+             |        get exit code from signal struct                                                                                     
+             |                                                                                                                             
+             |--> else                                                                                                                     
+             |                                                                                                                             
+             |        set exit code and GROPU_EXIT flag in signal struct                                                                   
+             |                                                                                                                             
+             |        +-------------------+                                                                                                
+             |        | zap_other_threads | for each other thread in the group, set SIGKILL bit and wake up the thread to face the bad news
+             |        +-------------------+                                                                                                
+             |                                                                                                                             
+             |    +---------+                                                                                                              
+             +--> | do_exit |                                                                                                              
+                  +---------+                                                                                                              
+```
+  
 ```
 +----------+                                                                                                                         
 | sys_exit |                                                                                                                         
@@ -583,31 +608,6 @@ Exiting by **pthread_exit** can avoid this since it's the wrapper of **sys_exit*
            |    +--------------+                                                                                                     
            +--> | do_task_dead | schedule to let other task run                                                                      
                 +--------------+                                                                                                     
-```
-
-```
-+----------------+                                                                                                                         
-| sys_exit_group |                                                                                                                         
-+---|------------+                                                                                                                         
-    |    +---------------+                                                                                                                 
-    +--> | do_group_exit |                                                                                                                 
-         +---|-----------+                                                                                                                 
-             |                                                                                                                             
-             |--> if thread group is exiting                                                                                               
-             |                                                                                                                             
-             |        get exit code from signal struct                                                                                     
-             |                                                                                                                             
-             |--> else                                                                                                                     
-             |                                                                                                                             
-             |        set exit code and GROPU_EXIT flag in signal struct                                                                   
-             |                                                                                                                             
-             |        +-------------------+                                                                                                
-             |        | zap_other_threads | for each other thread in the group, set SIGKILL bit and wake up the thread to face the bad news
-             |        +-------------------+                                                                                                
-             |                                                                                                                             
-             |    +---------+                                                                                                              
-             +--> | do_exit |                                                                                                              
-                  +---------+                                                                                                              
 ```
   
 </details>
