@@ -229,7 +229,7 @@ Instead, another syscall **execve** follows to load the target application into 
     |--> | copy_io | share io contect if CLONE_IO is specified                                                  
     |    +---------+                                                                                            
     |    +-------------+                                                                                        
-    |--> | copy_thread | set tls if CLONE_SETTLS is specified                                                   
+    |--> | copy_thread | set tls if CLONE_SETTLS is specified, set ret pc = ret_from_fork                                                
     |    +-------------+                                                                                        
     |    +-----------+                                                                                          
     |--> | alloc_pid | allocate 'pid' and set up pid value for each level                                       
@@ -240,6 +240,71 @@ Instead, another syscall **execve** follows to load the target application into 
     |--> determine parent and exit signal                                                                       
     |                                                                                                           
     +--> attach task to all types of struct pid                                                                 
+```
+
+```
++-----------------+                                                                         
+| dup_task_struct | : allocate task and thread stack, copy from parent and reset some fields
++----|------------+                                                                         
+     |    +------------------------+                                                        
+     |--> | alloc_task_struct_node | allocate 'task'                                        
+     |    +------------------------+                                                        
+     |    +-------------------------+                                                       
+     |--> | alloc_thread_stack_node | allocate two pages (4K * 2) as task stack             
+     |    +-------------------------+                                                       
+     |    +----------------------+                                                          
+     |--> | arch_dup_task_struct | copy content from parent task to child's                 
+     |    +----------------------+                                                          
+     |    +--------------------+                                                            
+     |--> | setup_thread_stack | copy 'thread info' from parent's                           
+     |    +--------------------+                                                            
+     |                                                                                      
+     +--> reset some task fields                                                            
+```
+
+```
++------------+                                                            
+| sched_fork | : state = NEW, set prio & sched class                      
++--|---------+                                                            
+   |    +--------------+                                                  
+   |--> | __sched_fork | init sched related fields                        
+   |    +--------------+                                                  
+   |                                                                      
+   |--> task state = NEW                                                  
+   |                                                                      
+   |--> child prio = parent normal prio (to avoid booted prio inheritance)
+   |                                                                      
+   |--> determine shed class based on prio                                
+   |                                                                      
+   +--> task preempt count = 0 in our config                              
+```
+  
+```
++---------------+                                                                     
+| ret_from_fork |                                                                     
++---|-----------+                                                                     
+    |    +---------------+                                                            
+    |--> | schedule_tail | write pid value to the given userspace address if necessary
+    |    +---------------+                                                            
+    |    +------------------+                                                         
+    +--> | ret_slow_syscall |                                                         
+         +------------------+                                                         
+```
+  
+```
++---------------+                                                              
+| schedule_tail | : write pid value to the given userspace address if necessary
++---|-----------+                                                              
+    |    +--------------------+                                                
+    |--> | finish_task_switch |                                                
+    |    +--------------------+                                                
+    |    +----------------+                                                    
+    |--> | preempt_enable | (disabled config)                                  
+    |    +----------------+                                                    
+    |                                                                          
+    |--> if task set_child_tid is saved during copy_process()                  
+    |                                                                          
+    +------> write the pid value to the given userspace address                
 ```
   
 ```
@@ -285,56 +350,14 @@ Instead, another syscall **execve** follows to load the target application into 
 ```
   
 ```
-+---------------+                                                              
-| schedule_tail | : write pid value to the given userspace address if necessary
-+---|-----------+                                                              
-    |    +--------------------+                                                
-    |--> | finish_task_switch |                                                
-    |    +--------------------+                                                
-    |    +----------------+                                                    
-    |--> | preempt_enable | (disabled config)                                  
-    |    +----------------+                                                    
-    |                                                                          
-    |--> if task set_child_tid is saved during copy_process()                  
-    |                                                                          
-    +------> write the pid value to the given userspace address                
-```
-
-```
-+-----------------+                                                                         
-| dup_task_struct | : allocate task and thread stack, copy from parent and reset some fields
-+----|------------+                                                                         
-     |    +------------------------+                                                        
-     |--> | alloc_task_struct_node | allocate 'task'                                        
-     |    +------------------------+                                                        
-     |    +-------------------------+                                                       
-     |--> | alloc_thread_stack_node | allocate two pages (4K * 2) as task stack             
-     |    +-------------------------+                                                       
-     |    +----------------------+                                                          
-     |--> | arch_dup_task_struct | copy content from parent task to child's                 
-     |    +----------------------+                                                          
-     |    +--------------------+                                                            
-     |--> | setup_thread_stack | copy 'thread info' from parent's                           
-     |    +--------------------+                                                            
-     |                                                                                      
-     +--> reset some task fields                                                            
-```
-
-```
-+------------+                                                            
-| sched_fork | : state = NEW, set prio & sched class                      
-+--|---------+                                                            
-   |    +--------------+                                                  
-   |--> | __sched_fork | init sched related fields                        
-   |    +--------------+                                                  
-   |                                                                      
-   |--> task state = NEW                                                  
-   |                                                                      
-   |--> child prio = parent normal prio (to avoid booted prio inheritance)
-   |                                                                      
-   |--> determine shed class based on prio                                
-   |                                                                      
-   +--> task preempt count = 0 in our config                              
+struct linux_binfmt {
+    struct list_head lh;                            // list node
+    struct module *module;
+    int (*load_binary)(struct linux_binprm *);      // to load the program into memory
+    int (*load_shlib)(struct file *);               // to load the shared library
+    int (*core_dump)(struct coredump_params *cprm); // to write out the core dump when process crashes
+    unsigned long min_coredump;                     // minimum size of a core dump file
+}
 ```
 
 ```
@@ -414,17 +437,6 @@ Instead, another syscall **execve** follows to load the target application into 
              |              +------> return if ok
              |
              +------> break if brpm->interpreter isn't set (though elf has interpreter, it doesn't set this field)
-```
-
-```
-struct linux_binfmt {
-    struct list_head lh;                            // list node
-    struct module *module;
-    int (*load_binary)(struct linux_binprm *);      // to load the program into memory
-    int (*load_shlib)(struct file *);               // to load the shared library
-    int (*core_dump)(struct coredump_params *cprm); // to write out the core dump when process crashes
-    unsigned long min_coredump;                     // minimum size of a core dump file
-}
 ```
  
 ```
