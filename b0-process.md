@@ -229,7 +229,7 @@ Instead, another syscall **execve** follows to load the target application into 
     |--> | copy_io | share io contect if CLONE_IO is specified                                                  
     |    +---------+                                                                                            
     |    +-------------+                                                                                        
-    |--> | copy_thread | set tls if CLONE_SETTLS is specified, set ret pc = ret_from_fork                                                
+    |--> | copy_thread | set tls if CLONE_SETTLS is specified, set ret pc = ret_from_fork
     |    +-------------+                                                                                        
     |    +-----------+                                                                                          
     |--> | alloc_pid | allocate 'pid' and set up pid value for each level                                       
@@ -540,98 +540,100 @@ Indifferent parents might cause the children to remain in the ZOMBIE state.
 ```
 
 ```
-+----------------+                                                                                                                         
-| sys_exit_group |                                                                                                                         
-+---|------------+                                                                                                                         
-    |    +---------------+                                                                                                                 
-    +--> | do_group_exit |                                                                                                                 
-         +---|-----------+                                                                                                                 
-             |                                                                                                                             
-             |--> if thread group is exiting                                                                                               
-             |                                                                                                                             
-             |        get exit code from signal struct                                                                                     
-             |                                                                                                                             
-             |--> else                                                                                                                     
-             |                                                                                                                             
-             |        set exit code and GROPU_EXIT flag in signal struct                                                                   
-             |                                                                                                                             
-             |        +-------------------+                                                                                                
-             |        | zap_other_threads | for each other thread in the group, set SIGKILL bit and wake up the thread to face the bad news
-             |        +-------------------+                                                                                                
-             |                                                                                                                             
-             |    +---------+                                                                                                              
-             +--> | do_exit |                                                                                                              
-                  +---------+                                                                                                              
++----------------+
+| sys_exit_group |
++---|------------+
+    |    +---------------+
+    +--> | do_group_exit |
+         +---|-----------+
+             |
+             |--> if thread group is exiting
+             |
+             |        get exit code from signal struct
+             |
+             |--> else
+             |
+             |        set exit code and GROPU_EXIT flag in signal struct
+             |
+             |        +-------------------+
+             |        | zap_other_threads | for each other thread in the group
+             |        +-------------------+ set SIGKILL bit and wake up the thread to face the bad news
+             |
+             |    +---------+
+             +--> | do_exit |
+                  +---------+                                                                         
 ```
   
 ```
-+----------+                                                                                                                         
-| sys_exit |                                                                                                                         
-+--|-------+                                                                                                                         
-   |    +---------+                                                                                                                  
-   +--> | do_exit |                                                                                                                  
-        +--|------+                                                                                                                  
-           |    +--------------+                                                                                                     
-           |--> | ptrace_event | notify tracer of the exit                                                                           
-           |    +--------------+                                                                                                     
-           |    +--------------+                                                                                                     
-           |--> | exit_signals |                                                                                                     
-           |    +---|----------+                                                                                                     
-           |        |                                                                                                                
-           |        |--> label EXITING on the task                                                                                   
-           |        |                                                                                                                
-           |        |    +--------------------------+                                                                                
-           |        +--> | retarget_shared_pending  | ask other threads in the group to take of pending signals of the current thread
-           |             +--------------------------+                                                                                
-           |                                                                                                                         
-           |--> set exit code of the task                                                                                            
-           |                                                                                                                         
-           |    +-------------+                                                                                                      
-           |--> | exit_notify |                                                                                                      
-           |    +---|---------+                                                                                                      
-           |        |    +------------------------+                                                                                  
-           |        +--> | forget_original_parent | ask reaper (init or systemd) to take care of the children                        
-           |        |    +------------------------+                                                                                  
-           |        |                                                                                                                
-           |        |--> set task exit state to ZOMBIE                                                                               
-           |        |                                                                                                                
-           |        |--> notify parent of the exist                                                                                  
-           |        |                                                                                                                
-           |        +--> if auto reap (either task isn't the group leader, or the parent doesn't care)                               
-           |                                                                                                                         
-           |                 change task exit state to DEAD                                                                          
-           |                                                                                                                         
-           |                 +--------------+                                                                                        
-           |                 | release_task |                                                                                        
-           |                 +--------------+                                                                                        
-           |                                                                                                                         
-           |    +--------------+                                                                                                     
-           +--> | do_task_dead | schedule to let other task run                                                                      
-                +--------------+                                                                                                     
++----------+
+| sys_exit |
++--|-------+
+   |    +---------+
+   +--> | do_exit |
+        +--|------+
+           |    +--------------+
+           |--> | ptrace_event | notify tracer of the exit
+           |    +--------------+
+           |    +--------------+
+           |--> | exit_signals |
+           |    +---|----------+
+           |        |
+           |        |--> label EXITING on the task
+           |        |
+           |        |    +--------------------------+
+           |        +--> | retarget_shared_pending  | ask other threads in the group
+           |             +--------------------------+ to take of pending signals of the current thread
+           |
+           |--> set exit code of the task
+           |
+           |    +-------------+
+           |--> | exit_notify |
+           |    +---|---------+
+           |        |    +------------------------+
+           |        +--> | forget_original_parent | ask reaper (init or systemd) to take care of the children
+           |        |    +------------------------+
+           |        |
+           |        |--> set task exit state to ZOMBIE
+           |        |
+           |        |--> notify parent of the exist
+           |        |
+           |        +--> if auto reap (either task isn't the group leader, or the parent doesn't care)
+           |
+           |                 change task exit state to DEAD
+           |
+           |                 +--------------+
+           |                 | release_task |
+           |                 +--------------+
+           |
+           |    +--------------+
+           +--> | do_task_dead | schedule to let other task run
+                +--------------+
 ```
   
 </details>
 
 ## <a name="scheduler-and-run-queue"></a> Scheduler and Run Queue
 
-Each CPU has its own run queue that contains all the ready-to-run tasks and scheduler is responsible to picking up the next candidate for running.
-Please note the scheduler itself is not a process or thread but a mechanism composed by two main actions:
+Each CPU has its own run queue that holds all the ready-to-run tasks, and the scheduler is responsible for picking up the next candidate for running. 
+Please note that the scheduler is not a task but a mechanism taking effect in frequented code paths. 
+We can roughly break down the design into two parts:
 
-- RESCHED flag labeling
+- RESCHED flag
 - context switch
 
+The flag is raised to indicate that the current task should stop the execution if, for example:
+
+- it uses up the assigned time slice
+- another more critical task pops up
+- it's required to sleep for a while
+- target lock is acquired somewhere else
+- waiting for data operation to complete
+- its priority is lowered
+
+Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the **context switch**.
 
 
-- if it uses up the assigned time slice
-- if another more important task pops up
-- if it's required to sleep for a while
-- if lock is aquire somewhere else
-- if data reading isn't complete yet
-- if its priority is lowered
 
-Kernel refers to each thread or kthread as a task, and the process is just a collection of them or formally called 'thread group.'
-Multiple tasks can physically run simultaneously to boost performance and throughput with that many processor cores.
-The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
 
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
@@ -681,23 +683,23 @@ The scheduler has a few scheduling classes to satisfy all kinds of task entities
 ```
   
 ```
-+--------------------------+                                                                                                        
-| fttmr010_timer_interrupt |                                                                                                        
-+------|-------------------+                                                                                                        
-       |                                                                                                                            
-       +--> call ->event_handler(), e.g.,                                                                                           
-            +----------------------+                                                                                                
-            | tick_handle_periodic |                                                                                                
-            +-----|----------------+                                                                                                
-                  |    +---------------+                                                                                            
-                  +--> | tick_periodic |                                                                                            
-                       +---|-----------+                                                                                            
-                           |    +----------------------+                                                                            
-                           +--> | update_process_times |                                                                            
-                                +-----|----------------+                                                                            
-                                      |    +----------------+                                                                       
-                                      +--> | scheduler_tick | update rq clock, call ->task_tick(), balance runqueues if necessary   
-                                           +----------------+                                                                       
++--------------------------+
+| fttmr010_timer_interrupt |
++------|-------------------+
+       |
+       +--> call ->event_handler(), e.g.,
+            +----------------------+
+            | tick_handle_periodic |
+            +-----|----------------+
+                  |    +---------------+
+                  +--> | tick_periodic |
+                       +---|-----------+
+                           |    +----------------------+
+                           +--> | update_process_times |
+                                +-----|----------------+
+                                      |    +----------------+
+                                      +--> | scheduler_tick | update rq clock, call ->task_tick()
+                                           +----------------+ balance runqueues if necessary
 ```
   
 ```
@@ -721,15 +723,6 @@ The scheduler has a few scheduling classes to satisfy all kinds of task entities
                |        +---------------+                                                                    
                +------> | raise_softirq | label SCHED_SOFTIRQ and somewhere will call run_rebalance_domains()
                         +---------------+                                                                    
-                                                                                                             
-                                                                                                             
-                                                                                                             
-                                                                                                             
-                                                                                                             
-                                                                                                             
-         +-----------------------+                                                                           
-         | run_rebalance_domains | if it's about time, balance loading between the busiest rq and this one   
-         +-----------------------+                                                                           
 ```
   
 </details>
@@ -1036,6 +1029,7 @@ By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
   
 ## <a name="priority-and-class"></a> Priority and Class
 
+The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
 Individual core has its run queue, dividing into sub-queues of different scheduling classes.
 1. [Stop class] it has only one task, which helps task migration between run queues.
 2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
