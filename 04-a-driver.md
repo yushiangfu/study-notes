@@ -339,5 +339,10 @@ Code flow:
             prepare chip
         
 ```
+                                                   
+```
+ls -l /sys/dev/char
+ls -l /sys/dev/block                                                   
+```
     
 </details>
