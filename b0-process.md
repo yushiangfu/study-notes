@@ -621,20 +621,18 @@ We can roughly break down the design into two parts:
 - RESCHED flag
 - context switch
 
-The flag is raised to indicate that the current task should stop the execution if, for example:
+The flag is raised to indicate that it's time to service the next task in line if, for example:
 
-- it uses up the assigned time slice
-- another more critical task pops up
+- it uses up the given time slice
 - it's required to sleep for a while
 - target lock is acquired somewhere else
-- waiting for data operation to complete
+- waiting for data to be read or written
 - its priority is lowered
+- another more critical task pops up
 
-Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the **context switch**.
-
-
-
-
+Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the **context switch**. 
+A typical scenario is that the timer interrupt handler routinely checks the remaining time slice, which eventually runs out and has the flag set. 
+On its way back to the userspace, the encountered checkpoint proceeds the context switch, and the chosen task resumes and continues.
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
 
@@ -729,14 +727,6 @@ Accompanied by checkpoints spread across the kernel, they examine the flag and p
 
 ### Context Switch
 
-A few places in the kernel raise the flag of 'it is time to schedule again' when any below conditions become true.
-- The given time slice for the running entity consumes entirely.
-- Wait for resources, such as data from drives or the internet.
-- Priority of a task in the run queue is boosted and becomes a better candidate than the current one.
-- After helping share loading, a higher priority task arrives from other run queues.
-
-Many flag checking points exist somewhere inside the kernel, and one of them is hardware interrupt.
-Interrupts happen from time to time, and on its way back to executing the ordinary task, it performs a task switch if that flag raises.
 The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
 Voila! Now the 'next task' becomes running and continues the logic previously stopped.
 
