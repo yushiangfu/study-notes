@@ -727,8 +727,16 @@ On its way back to the userspace, the encountered checkpoint proceeds the contex
 
 ### Context Switch
 
-The formal name is  'context switch,' which saves CPU registers of running entity to memory and loads the register set of next candidate into CPU.
-Voila! Now the 'next task' becomes running and continues the logic previously stopped.
+Take the ARM processor as an example; the CPU has a few general purpose registers and specific coprocessors. 
+Every coprocessor has particular functionality, but we now only care about the table translation base register (TTBR). 
+It always points to the page table of the currently running task, so the CPU knows how to access the mapped page frame in memory. 
+The thread info structure is designed to keep some architecture-specific fields of a task, such as CPU context, to accommodate the regular registers. 
+Whenever a context switch happens, the scheduler logic does:
+
+- Have TTBR point to the new page table.
+- Back up the CUP standard registers to thread info and resume the ones from the next task.
+
+<p align="center"><img src="images/process/context-switch.png" /></p>
 
 <details><summary> More Details</summary>
 
@@ -763,6 +771,18 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
 ```
   
 ```
+struct thread_info {
+    unsigned long       flags;  // TIF_SIGPENDING: signal pending
+                                // TIF_NEED_RESCHED: rescheduling necessary
+    int         preempt_count;  // for preemption, which is disabled in our config
+    struct task_struct  *task;  // point to the task_struct
+    __u32           cpu;        // where the process is running on
+    struct cpu_context_save cpu_context;
+
+};
+```
+                                         
+```
      low addr  +--+-----------+                
                |  |thread_info|                
                |  +-----------+                
@@ -780,29 +800,6 @@ Voila! Now the 'next task' becomes running and continues the logic previously st
  stack  ---+   |  +-----------+                
                |  |  reserved | 8 bytes        
     high addr  +--+-----------+                    
-```
-  
-```
-struct thread_info {
-    unsigned long       flags;  // TIF_SIGPENDING: signal pending
-                                // TIF_NEED_RESCHED: rescheduling necessary
-    int         preempt_count;  // for preemption, which is disabled in our config
-    struct task_struct  *task;  // point to the task_struct
-    __u32           cpu;        // where the process is running on
-    struct cpu_context_save cpu_context;
-
-};
-```
-
-```
-+----------------+                                                                        
-| pick_next_task |                                                                        
-+----------------+                                                                        
-         |                                                                                
-         |--- // ignore the optimization part                                             
-         |                                                                                
-         |                                                                                
-         +--- for each scheduling class, call its ->pick_next_task, return the first found
 ```
   
 ```
@@ -1069,6 +1066,17 @@ Of course, the currently running one will return to its sub-queue for the next c
       |      | |             | |             | |                        
       |      | |             | |             | |                        
   low |      +-+ 139         +-+ 0           +-+ 19                     
+```
+  
+```
++----------------+                                                                        
+| pick_next_task |                                                                        
++----------------+                                                                        
+         |                                                                                
+         |--- // ignore the optimization part                                             
+         |                                                                                
+         |                                                                                
+         +--- for each scheduling class, call its ->pick_next_task, return the first found
 ```
   
 ```
