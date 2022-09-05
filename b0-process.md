@@ -869,7 +869,11 @@ repeat
 
 ### Load Balance
   
-(TBD)
+At any time, one task can only run on a CPU or wait in a run queue to be selected. 
+A few implementations have tried to balance the loading among run queues. 
+When a task is newly generated or just awakened, the scheduler mechanism will try hard to choose a relatively chilled queue to add in. 
+Also, active balancing is triggered from the routine timer interrupt handler that eventually makes a request fulfilled by the soft IRQ framework. 
+It's worth noting that migration of queued tasks comes with a cost, considering the potentially remaining data in the local CPU cache.
   
 <details><summary> More Details </summary>
   
@@ -899,7 +903,7 @@ repeat
   
 ```
 +--------------+                                                             
-| load_balance | : move tasks from the busiest rq to this one                
+| load_balance | : move tasks from the busiest rq to this one, or ask 'cpu_stopper_thread' to help                
 +---|----------+                                                             
     |                                                                        
     |--> set up parameters                                                   
