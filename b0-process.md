@@ -7,7 +7,7 @@
 - [Life Cycle](#life-cycle)
 - [Scheduler and Run Queue](#scheduler-and-run-queue)
 - [Priority and Class](#priority-and-class)
-- [Task Hierarchy](#task-hierarchy)
+- [System Startup](#system-startup)
 - [Others](#others)
   - Resource Limit
   - PID Structure
@@ -996,50 +996,9 @@ That said, breaking down those potential hogger functions into finer-grained exe
   
 </details>
   
-### Premption
+### Preemption
 
-(TBD)
-  
-<details><summary> More Details </summary>
-
-Whenever the logic flow reaches the flag checking point, it selects and schedules to next task if necessary.
-The thread itself might relinquish the execution right early.
-Or the kernel mechanism applies context switch because of running out of time slice, and the passive schedule is named 'preemption.'
-For example, if we attempt to cause a system busy by running a process that loops infinitely, it's doubtful that the system is affected by our trying.
-During the execution of the infinite loop, the timer interrupt triggers as usual, and its interrupt handler checks the remaining time slice of the running task.
-No matter how busy our infinite loop shows, it's forced to context switch when time's up, and OS isn't even aware of our intention to drag system performance down.
-This kind of preemption belongs to the user space category, and it's always working, or there will be a mess everywhere,
-The situation becomes complicated in kernel space since it's not always safe to switch, and the interrupt mechanism is disabled temporarily to avoid preempting.
-Commonly speaking, when we talk about the feature 'preemption', it means the behavior in kernel space.
-As we can imagine, the feature improves the responsiveness of the OS, but it is better to disable it on systems without much interaction between users.
-
-```
- +--------------+    +--------------+    +--------------+                                   
- |  user mode   |    | kernel mode  |    |interrupt mode|                                   
- +--------------+    +--------------+    +--------------+                                   
- my loop |                                                                                  
-         |                                                                                  
-         +-------------------> syscall                                                      
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         +--------------------------------------> timer interrupt                           
-                                                |                                           
-                                                |                                           
-           interrupt handler <------------------+                                           
-                             |                                                              
-                             |                                                              
- my loop <-------------------+ check point                                                  
-         |                                                                                  
-         |                                                                                  
-         |
-```
-
-The above diagram shows exceptions happen though we are just running a simple task.
-When the CPU mode switches from 'kernel' to 'user,' there is a point checking if it's suitable to preempt the currently running task.
-By the way, the OpenBMC kernel disables CONFIG_PREEMPT.
+Let's skip this topic since it's disabled in the OpenBMC kernel.
   
 </details>
   
@@ -1724,7 +1683,7 @@ struct cfs_rq {
 
 </details>
   
-## <a name="task-hierarchy"></a> Task Hierarchy
+## <a name="system-startup"></a> System Startup
 
 When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
 The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
