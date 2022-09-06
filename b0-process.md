@@ -969,7 +969,32 @@ It's worth noting that migration of queued tasks comes with a cost, considering 
   
 ### Low Latency
   
-(TBD)
+When somewhere raises the RESCHED flag, it's not guaranteed that the running task can step down immediately; therefore, latency grows till it schedules. 
+Unlike resource waiting, sometimes it simply takes a longer time to finish the function. 
+The enhancement is that the task yields actively before the time-consuming main body or within the loop. 
+That said, breaking down those potential hogger functions into finer-grained execution pieces is a way of improving the latency.
+  
+<details><summary> More Details </summary>
+  
+```
++--------------+                                                   
+| cond_resched | : perform context switch if RESCHEd flag is set   
++---|----------+                                                   
+    |    +---------------+                                         
+    +--> | _cond_resched |                                         
+         +---|-----------+                                         
+             |    +----------------+                               
+             +--> | __cond_resched |                               
+                  +---|------------+                               
+                      |                                            
+                      |--> if it should resched                    
+                      |                                            
+                      |        +-------------------------+         
+                      +------> | preempt_schedule_common | schedule
+                               +-------------------------+         
+```
+  
+</details>
   
 ### Premption
 
