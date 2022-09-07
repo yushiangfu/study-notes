@@ -1004,20 +1004,32 @@ Let's skip this topic since it's disabled in the OpenBMC kernel.
   
 ## <a name="priority-and-class"></a> Priority and Class
 
-The scheduler has a few scheduling classes to satisfy all kinds of task entities, and each entity runs with a priority.
-Individual core has its run queue, dividing into sub-queues of different scheduling classes.
-1. [Stop class] it has only one task, which helps task migration between run queues.
-2. [Deadline class] relatively newly implemented class compared to others. I only know that tasks within this class are guaranteed to run within a certain period.
-3. [Real-time class] tasks of this class have a strict policy that lower priority tasks have to wait until higher ones relinquish the execution right.
-4. [Fair class] also known as Completely Fair Scheduler (CFS). Most system tasks belong to this class, and they will run sooner or later.
-5. [Idle class] like stop class, it has precisely one task which assists in power saving.
+More or less, we have the experience of boosting a task's priority and hope it's especially taken care of by the system. 
+Aside from priority, tasks are also governed by a scheduling class that determines how they interact with the run queue. 
+The classes are sorted by priority and listed below in descending order:
 
-In the regard of class priority, stop > deadline > real-time > fair > idle.
-The rule of selecting the next running task is:
-- Start from the high precedence class and check if it has at least one task to run.
-  - Yes, if an entity of the real-time class keeps running with no mercy, tasks in fair scheduling class have no chance to shine at all.
-- Call scheduling class methods to select the best candidate within that class and remove it from sub run queue.
-Of course, the currently running one will return to its sub-queue for the next chance or somewhere else waiting for the resource.
+- Stop class
+  - It's for the kernel. Only one kthread exists, is part of the load balance function, and helps with task migration.
+- Deadline class
+  - It's for the user. Either we can't promote tasks to this class, or they are guaranteed to be run by the specified deadline.
+- Real-time class
+  - It's for the user. Not as timely as the deadline class is, but every task still runs before other regular tasks.
+- Fair class
+  - It's for the user. Most tasks fall into this category and are promised to shine sooner or later if no other active task in the higher classes.
+- Idle class
+  - It's for the kernel. Only one kthread exists and makes full use of power saving mechanism, given there's nothing else worth doing.
+
+So far we've talked about how the current task switches out, but where to get the next task?
+The thumb rule is that, starting from the high precedence class and check if it can pick one task for running.
+- If yes, we have the task in readiness for running.
+- Else, advance to the next class and check again.
+
+Though we have the resident stop-class kthread, it's in inactive state if no migration request received and therefore won't be selected.
+So most of the time they all about fair class, and sometimes real-time class.
+It's notable that even it's an extremely chilled system, we always have the idle-class kthread as our last candidate.
+Right before the next context switch, the procedure starts over again rather than resuming from the last visited scheduling class.
+Since the goal of each class differs a lot, many of the operation is triggered by main scheduler and handled by each class.
+To this end, the classes implement their own functions such as task selection, enqueue, and dequeue.
 
 <p align="center"><img src="images/process/priority-and-class.png" /></p>
 
