@@ -1019,19 +1019,20 @@ The classes are sorted by priority and listed below in descending order:
 - Idle class
   - It's for the kernel. Only one kthread exists and makes full use of power saving mechanism, given there's nothing else worth doing.
 
-So far we've talked about how the current task switches out, but where to get the next task?
-The thumb rule is that, starting from the high precedence class and check if it can pick one task for running.
-- If yes, we have the task in readiness for running.
-- Else, advance to the next class and check again.
-
-Though we have the resident stop-class kthread, it's in inactive state if no migration request received and therefore won't be selected.
-So most of the time they all about fair class, and sometimes real-time class.
-It's notable that even it's an extremely chilled system, we always have the idle-class kthread as our last candidate.
-Right before the next context switch, the procedure starts over again rather than resuming from the last visited scheduling class.
-Since the goal of each class differs a lot, many of the operation is triggered by main scheduler and handled by each class.
-To this end, the classes implement their own functions such as task selection, enqueue, and dequeue.
-
 <p align="center"><img src="images/process/priority-and-class.png" /></p>
+
+So far, we've talked about how the current task switches out, but how to get the next candidate? 
+It starts from the high precedence class and checks if that class has at least one active task in hand.
+
+- If yes, we have the task in readiness for running.
+- Else, advance to the next class and do it again.
+
+Though we have the resident stop-class kthread, it's inactive if no migration request is received and thus won't be selected. 
+Most of the time, they are about fair and sometimes real-time classes. 
+It's notable that even though it's a highly chilled system, we still have the idle-class kthread as our last choice. 
+Rather than continuing from the previously visited scheduling class, the procedure starts from the stop class again before the next context switch. 
+Because classes' designs differ, many operations are triggered by the central scheduler and handled by classes. 
+To this end, the classes implement quite a few functions, such as task selection, enqueue, and dequeue.
 
 <details><summary> More Details </summary>
 
@@ -1067,7 +1068,30 @@ To this end, the classes implement their own functions such as task selection, e
       |      | |             | |             | |                        
   low |      +-+ 139         +-+ 0           +-+ 19                     
 ```
+
+```
+struct rq {
+    unsigned int        nr_running;     // number of tasks on the run queue
+    struct cfs_rq       cfs;            // sub runqueue
+    struct rt_rq        rt;             // sub runqueue
+    struct dl_rq        dl;             // sub runqueue
+    struct task_struct __rcu    *curr;  // point to the current running task
+    struct task_struct  *idle;          // point to the idle task of the runqueue
+    u64         clock;                  // per runqueue clock
+```
   
+```
+struct sched_class {
+    void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);       // add the task into the rq, e.g., wake up
+    void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);       // remove the task from the rq, e.g., change prio
+    void (*yield_task)   (struct rq *rq);                                         // yield the cpu to other tasks
+    void (*check_preempt_curr)(struct rq *rq, struct task_struct *p, int flags);  // check if current task should be preempted
+    struct task_struct *(*pick_next_task)(struct rq *rq);                         // select the next task to run on the cpu
+    void (*put_prev_task)(struct rq *rq, struct task_struct *p);                  // prepare to withdraw cpu control from current task
+    void (*set_next_task)(struct rq *rq, struct task_struct *p, bool first);     
+    void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);          // called when timer interrupt happens
+```
+
 ```
 +----------------+                                                                        
 | pick_next_task |                                                                        
@@ -1078,56 +1102,27 @@ To this end, the classes implement their own functions such as task selection, e
          |                                                                                
          +--- for each scheduling class, call its ->pick_next_task, return the first found
 ```
-  
+ 
 ```
-+----------------------------+                                                                           
-| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
-+------|---------------------+                                                                           
-       |    +---------------------+                                                                      
-       +--> | _sched_setscheduler | : set schedule-related fields in task
-            +-----|---------------+                                                                      
-                  |                                                                                      
-                  |--> set up 'sched attr'                                                               
-                  |                                                                                      
-                  |    +----------------------+                                                          
-                  +--> | __sched_setscheduler |                                                          
-                       +-----|----------------+                                                          
-                             |                                                                           
-                             |--> dequeue task if it's queued                                            
-                             |                                                                           
-                             +--> put task if it's running                                               
-                             |                                                                           
-                             |    +-----------------------+                                              
-                             |    | __setscheduler_params | set task policy, static prio, and normal prio
-                             |--> +-----------------------+                                              
-                             |    +---------------------+                                                
-                             |    | __setscheduler_prio | set task sched class and prio                  
-                             |--> +---------------------+                                                
-                             |                                                                           
-                             |--> queue it back if it was queued                                         
-                             |                                                                           
-                             +--> set task as next if it was running                                     
+struct task_struct {
+    int             prio;                     // it might boost temporarily
+    int             static_prio;              // the initial prio and can be changed by 'nice'
+    int             normal_prio;              // calculated from static prio, and inherited by children
+    unsigned int            rt_priority;      // real-time priority: 0 to 99
+
+    const struct sched_class    *sched_class; // scheduler class of the task
+    struct sched_entity     se;               // schedulable entity
+    struct sched_rt_entity      rt;
+    struct sched_dl_entity      dl;
+    unsigned int            policy;           // NORMAL, BATCH, IDLE, RR, FIFO, DEADLINE
+    cpumask_t           cpus_mask;            // specify which cpu the task can run
 ```
   
 ```
-+------------------------+                                                                 
-| sys_sched_setscheduler | : set schedule-related fields in task                           
-+-----|------------------+                                                                 
-      |    +-----------------------+                                                       
-      +--> | do_sched_setscheduler |                                                       
-           +-----|-----------------+                                                       
-                 |    +----------------+                                                   
-                 |--> | copy_from_user | copy param from userspace                         
-                 |    +----------------+                                                   
-                 |    +---------------------+                                              
-                 |--> | find_process_by_pid | find task from pid value                     
-                 |    +---------------------+                                              
-                 |    +--------------------+                                               
-                 +--> | sched_setscheduler |                                               
-                      +----|---------------+                                               
-                           |    +---------------------+                                    
-                           +--> | _sched_setscheduler | set schedule-related fields in task
-                                +---------------------+                                    
+struct sched_rt_entity {
+    struct list_head        run_list;   // list node
+    unsigned int            time_slice; // remaining time for execution
+}
 ```
   
 ```
@@ -1173,6 +1168,49 @@ To this end, the classes implement their own functions such as task selection, e
 ```
   
 ```
++----------------+                                                         
+| effective_prio | : get effective prio                                    
++---|------------+                                                         
+    |    +-------------+                                                   
+    |--> | normal_prio |                                                   
+    |    +---|---------+                                                   
+    |        |    +---------------+                                        
+    |        +--> | __normal_prio | determine prio based on policy and nice
+    |             +---------------+                                        
+    |                                                                      
+    |--> ->normal_prio = return value                                      
+    |                                                                      
+    |--> if it's a regular task                                            
+    |                                                                      
+    |------> return ->normal_prio                                          
+    |                                                                      
+    |--> else                                                              
+    |                                                                      
+    +------> return ->prio (might get boosted temporarily)                 
+```
+  
+```
++------------------------+                                                                 
+| sys_sched_setscheduler | : set schedule-related fields in task                           
++-----|------------------+                                                                 
+      |    +-----------------------+                                                       
+      +--> | do_sched_setscheduler |                                                       
+           +-----|-----------------+                                                       
+                 |    +----------------+                                                   
+                 |--> | copy_from_user | copy param from userspace                         
+                 |    +----------------+                                                   
+                 |    +---------------------+                                              
+                 |--> | find_process_by_pid | find task from pid value                     
+                 |    +---------------------+                                              
+                 |    +--------------------+                                               
+                 +--> | sched_setscheduler |                                               
+                      +----|---------------+                                               
+                           |    +---------------------+                                    
+                           +--> | _sched_setscheduler | set schedule-related fields in task
+                                +---------------------+                                    
+```
+  
+```
 +-----------------------+                                                                            
 | sys_sched_setaffinity | : set cpu affinity of task                                                 
 +-----|-----------------+                                                                            
@@ -1206,51 +1244,6 @@ To this end, the classes implement their own functions such as task selection, e
 ```
   
 ```
-struct task_struct {
-    int             prio;                     // it might boost temporarily
-    int             static_prio;              // the initial prio and can be changed by 'nice'
-    int             normal_prio;              // calculated from static prio, and inherited by children
-    unsigned int            rt_priority;      // real-time priority: 0 to 99
-
-    const struct sched_class    *sched_class; // scheduler class of the task
-    struct sched_entity     se;               // schedulable entity
-    struct sched_rt_entity      rt;
-    struct sched_dl_entity      dl;
-    unsigned int            policy;           // NORMAL, BATCH, IDLE, RR, FIFO, DEADLINE
-    cpumask_t           cpus_mask;            // specify which cpu the task can run
-```
-  
-```
-struct sched_rt_entity {
-    struct list_head        run_list;   // list node
-    unsigned int            time_slice; // remaining time for execution
-}
-```
- 
-```
-struct sched_class {
-    void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);       // add the task into the rq, e.g., wake up
-    void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);       // remove the task from the rq, e.g., change prio
-    void (*yield_task)   (struct rq *rq);                                         // yield the cpu to other tasks
-    void (*check_preempt_curr)(struct rq *rq, struct task_struct *p, int flags);  // check if current task should be preempted
-    struct task_struct *(*pick_next_task)(struct rq *rq);                         // select the next task to run on the cpu
-    void (*put_prev_task)(struct rq *rq, struct task_struct *p);                  // prepare to withdraw cpu control from current task
-    void (*set_next_task)(struct rq *rq, struct task_struct *p, bool first);     
-    void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);          // called when timer interrupt happens
-```
-  
-```
-struct rq {
-    unsigned int        nr_running;     // number of tasks on the run queue
-    struct cfs_rq       cfs;            // sub runqueue
-    struct rt_rq        rt;             // sub runqueue
-    struct dl_rq        dl;             // sub runqueue
-    struct task_struct __rcu    *curr;  // point to the current running task
-    struct task_struct  *idle;          // point to the idle task of the runqueue
-    u64         clock;                  // per runqueue clock
-```
-  
-```
 struct sched_entity {
     struct load_weight      load;           // weight of the task
     struct rb_node          run_node;       // tree node
@@ -1260,28 +1253,6 @@ struct sched_entity {
     u64             vruntime;               // sum of curr running time
     u64             prev_sum_exec_runtime;  // copy of sum_exec_runtime, for preemption handling
 }
-```
-  
-```
-+----------------+                                                         
-| effective_prio | : get effective prio                                    
-+---|------------+                                                         
-    |    +-------------+                                                   
-    |--> | normal_prio |                                                   
-    |    +---|---------+                                                   
-    |        |    +---------------+                                        
-    |        +--> | __normal_prio | determine prio based on policy and nice
-    |             +---------------+                                        
-    |                                                                      
-    |--> ->normal_prio = return value                                      
-    |                                                                      
-    |--> if it's a regular task                                            
-    |                                                                      
-    |------> return ->normal_prio                                          
-    |                                                                      
-    |--> else                                                              
-    |                                                                      
-    +------> return ->prio (might get boosted temporarily)                 
 ```
   
 ```
@@ -1790,6 +1761,36 @@ Note: PPID is parent PID
                            |    +----------------------+                                                                        
                            +--> | set_cpus_allowed_ptr | set cpu mask                                                           
                                 +----------------------+                                                                        
+```
+  
+```
++----------------------------+                                                                           
+| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
++------|---------------------+                                                                           
+       |    +---------------------+                                                                      
+       +--> | _sched_setscheduler | : set schedule-related fields in task
+            +-----|---------------+                                                                      
+                  |                                                                                      
+                  |--> set up 'sched attr'                                                               
+                  |                                                                                      
+                  |    +----------------------+                                                          
+                  +--> | __sched_setscheduler |                                                          
+                       +-----|----------------+                                                          
+                             |                                                                           
+                             |--> dequeue task if it's queued                                            
+                             |                                                                           
+                             +--> put task if it's running                                               
+                             |                                                                           
+                             |    +-----------------------+                                              
+                             |    | __setscheduler_params | set task policy, static prio, and normal prio
+                             |--> +-----------------------+                                              
+                             |    +---------------------+                                                
+                             |    | __setscheduler_prio | set task sched class and prio                  
+                             |--> +---------------------+                                                
+                             |                                                                           
+                             |--> queue it back if it was queued                                         
+                             |                                                                           
+                             +--> set task as next if it was running                                     
 ```
   
 ```
