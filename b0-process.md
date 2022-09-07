@@ -869,13 +869,45 @@ repeat
 
 ### Load Balance
   
-At any time, one task can only run on a CPU or wait in a run queue to be selected. 
-A few implementations have tried to balance the loading among run queues. 
-When a task is newly generated or just awakened, the scheduler mechanism will try hard to choose a relatively chilled queue to add in. 
+A task has the **load** attribute to reflect its importance, and a run queue sums up the values of in-queue tasks to indicate how busy it is. 
+With such busyness measurement, a few methods introduce to help balance the load among queues. 
+When a task is newly generated or just awakened, the scheduler mechanism will try hard to choose a relatively leisurely queue to add in. 
 Also, active balancing is triggered from the routine timer interrupt handler that eventually makes a request fulfilled by the soft IRQ framework. 
 It's worth noting that migration of queued tasks comes with a cost, considering the potentially remaining data in the local CPU cache.
   
 <details><summary> More Details </summary>
+  
+```
+struct sched_entity {
+    struct load_weight      load;           // weight of the task
+    struct rb_node          run_node;       // tree node
+    unsigned int            on_rq;          // indicate whether the task is on rq or not
+    u64             exec_start;             // indicate when the task starts running
+    u64             sum_exec_runtime;       // sum of past running time
+    u64             vruntime;               // sum of curr running time
+    u64             prev_sum_exec_runtime;  // copy of sum_exec_runtime, for preemption handling
+}
+```
+  
+```
++-----------------+                                   
+| set_load_weight | : set task's weight and inv_weight
++----|------------+                                   
+     |                                                
+     |--> if policy is idle                           
+     |                                                
+     |------> specially set weight and return         
+     |                                                
+     |--> if it's in cfs sched class                  
+     |                                                
+     |        +---------------+                       
+     |------> | reweight_task |                       
+     |        +---------------+                       
+     |                                                
+     |--> else                                        
+     |                                                
+     +------> set weight and inv_weight               
+```
   
 ```
 +-----------------------+                                                                                 
@@ -1005,7 +1037,7 @@ Let's skip this topic since it's disabled in the OpenBMC kernel.
 ## <a name="priority-and-class"></a> Priority and Class
 
 More or less, we have the experience of boosting a task's priority and hope it's especially taken care of by the system. 
-Aside from priority, tasks are also governed by a scheduling class that determines how they interact with the run queue. 
+Aside from priority, tasks are also governed by a scheduling class that determines how they interact with sub-queues within the run queue.
 The classes are sorted by priority and listed below in descending order:
 
 - Stop class
@@ -1243,43 +1275,15 @@ struct sched_rt_entity {
                                                         +------------------+                         
 ```
   
-```
-struct sched_entity {
-    struct load_weight      load;           // weight of the task
-    struct rb_node          run_node;       // tree node
-    unsigned int            on_rq;          // indicate whether the task is on rq or not
-    u64             exec_start;             // indicate when the task starts running
-    u64             sum_exec_runtime;       // sum of past running time
-    u64             vruntime;               // sum of curr running time
-    u64             prev_sum_exec_runtime;  // copy of sum_exec_runtime, for preemption handling
-}
-```
-  
-```
-+-----------------+                                   
-| set_load_weight | : set task's weight and inv_weight
-+----|------------+                                   
-     |                                                
-     |--> if policy is idle                           
-     |                                                
-     |------> specially set weight and return         
-     |                                                
-     |--> if it's in cfs sched class                  
-     |                                                
-     |        +---------------+                       
-     |------> | reweight_task |                       
-     |        +---------------+                       
-     |                                                
-     |--> else                                        
-     |                                                
-     +------> set weight and inv_weight               
-```
-  
 </details>
 
 ### Fair Class
 
-We mainly introduce this class since it covers most utilities, applications, and kernel threads.
+This class is quite suitable for generic-purpose tasks which covers most utilities, applications, and kernel threads.
+The sub-queue of the class is actually an red-black tree sorted by the virtual runtime of each task, and the smaller ones are on the left side.
+
+
+This class dominates most utilities, applications, and kernel threads.
 Instead of a conventional queue, it's a tree sorted by each entity's 'virtual runtime.'
 Because of much effort in maintaining this tree, selecting the next task equals finding the leftmost node.
 As its name 'virtual' hints, it relates to actual runtime but not the same. Priority matters when updating virtual ones.
