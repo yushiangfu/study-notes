@@ -1279,21 +1279,17 @@ struct sched_rt_entity {
 
 ### Fair Class
 
-This class is quite suitable for generic-purpose tasks which covers most utilities, applications, and kernel threads.
-The sub-queue of the class is actually an red-black tree sorted by the virtual runtime of each task, and the smaller ones are on the left side.
+Its full name is the complete fair scheduler (CFS), and it covers most utilities, applications, and kernel threads. 
+The sub-queue of the class is a red-black tree sorted by the accumulated virtual runtime of each task, while the smaller ones are on the left side. 
+To be fair, the leftmost task possesses the least (virtual) runtime and deserves more, so it's always the candidate for task selection. 
+As for the virtual runtime, it's calculated from the execution time and the task load. 
+When we modify the priority of a task, both the **priority** and **load** fields are changed accordingly.
 
+- Higher priority/load --> smaller vruntime --> slower vruntime accumulation --> prone to move leftward in tree
+- Lower priority/load --> larger vruntime --> faster vruntime accumulation --> prone to move rightward in tree
 
-This class dominates most utilities, applications, and kernel threads.
-Instead of a conventional queue, it's a tree sorted by each entity's 'virtual runtime.'
-Because of much effort in maintaining this tree, selecting the next task equals finding the leftmost node.
-As its name 'virtual' hints, it relates to actual runtime but not the same. Priority matters when updating virtual ones.
-For example, assuming the given time slice is 10s by default, high-priority tasks might add only 5s to virtual runtime after using up all the 10s.
-In the meantime, low-priority tasks double the accounting after completely consuming 10s.
-By inspecting such rule, we can infer that:
-- Tasks with lower priority quickly move far from the leftmost node, making it hard to be the next running task.
-- Even though high-priority tasks increase virtual runtime slowly, it's still strictly growing and won't always be the candidate.
-
-The command 'nice' controls the priority of tasks in fair class as we've expected, except the 'nice' value is opposite to precedence.
+In other words, when we 'nice' down a task, it receives more chances instead of longer timeslice. 
+Nonetheless, the vruntime accumulation still strictly increases, and other typical or low-priority tasks are guaranteed to run sooner or later.
 
 <p align="center"><img src="images/process/fair-class.png" /></p>
   
