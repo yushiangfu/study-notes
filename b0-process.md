@@ -1733,7 +1733,7 @@ After passing a certain point, that running logic wraps itself as the init task 
 Meanwhile, that init task, a.k.a. swapper, becomes the idle thread of the stop class on CPU 0. 
 When the kernel_init reaches the end of kernel initialization, it transforms to systemd, the first user space process. 
 Unlike the kthread creation, the transform only involves the internal context replacement rather than starting a new task. 
-The systemd then spawns many other applications, including the shell we are familiar with, and the system is pretty much fully functional.
+The systemd then spawns many other applications, including the login prompt, and now the system becomes fully functional from the users' perspective.
                         
 <p align="center"><img src="images/process/task-hierarchy.png" /></p>
 
