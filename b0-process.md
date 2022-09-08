@@ -735,7 +735,7 @@ The thread info structure is designed to keep some architecture-specific fields 
 Whenever a context switch happens, the scheduler logic does:
 
 - Have TTBR point to the new page table.
-- Back up the CUP standard registers to thread info and resume the ones from the next task.
+- Back up the CPU standard registers to thread info and resume the ones from the next task.
 
 <p align="center"><img src="images/process/context-switch.png" /></p>
 
