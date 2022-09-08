@@ -1125,14 +1125,22 @@ struct sched_class {
 ```
 
 ```
-+----------------+                                                                        
-| pick_next_task |                                                                        
-+----------------+                                                                        
-         |                                                                                
-         |--- // ignore the optimization part                                             
-         |                                                                                
-         |                                                                                
-         +--- for each scheduling class, call its ->pick_next_task, return the first found
++----------------+
+| pick_next_task | ： enqueue prev, select next task for running and dequeue it
++---|------------+
+    |    +------------------+
+    +--> | __pick_next_task | ： enqueue prev, select next task for running and dequeue it
+         +----|-------------+
+              |
+              +--> if prev sched class <= fair sched class (optimal case)
+              |
+              |        +---------------------+
+              +------> | pick_next_task_fair | enqueue prev, select next task for running and dequeue it
+              |        +---------------------+
+              |
+              +--> else
+              |
+              +------> for each scheduling class, call its ->pick_next_task, return the first found                                                      
 ```
  
 ```
@@ -1321,6 +1329,62 @@ Nonetheless, the vruntime accumulation still strictly increases, and other typic
 ```
 
 ```
+struct cfs_rq {
+    struct load_weight  load;               // total load of the tasks
+    unsigned int        nr_running;         // number of runnable tasks
+    u64         min_vruntime;               // minimum vruntime of all tasks
+    struct rb_root_cached   tasks_timeline; // rb tree
+    struct sched_entity *curr;              // point to currently running task
+}
+```
+                                                       
+```
+DEFINE_SCHED_CLASS(fair) = {
+    .enqueue_task       = enqueue_task_fair,
+    .dequeue_task       = dequeue_task_fair,
+    .yield_task     = yield_task_fair,
+    .yield_to_task      = yield_to_task_fair,
+    .check_preempt_curr = check_preempt_wakeup,
+    .pick_next_task     = __pick_next_task_fair,
+    .put_prev_task      = put_prev_task_fair,
+    .set_next_task          = set_next_task_fair,
+    .balance        = balance_fair,
+    .pick_task      = pick_task_fair,
+    .select_task_rq     = select_task_rq_fair,
+    .migrate_task_rq    = migrate_task_rq_fair,
+    .rq_online      = rq_online_fair,
+    .rq_offline     = rq_offline_fair,
+    .task_dead      = task_dead_fair,
+    .set_cpus_allowed   = set_cpus_allowed_common,
+    .task_tick      = task_tick_fair,
+    .task_fork      = task_fork_fair,
+    .prio_changed       = prio_changed_fair,
+    .switched_from      = switched_from_fair,
+    .switched_to        = switched_to_fair,
+    .get_rr_interval    = get_rr_interval_fair,
+    .update_curr        = update_curr_fair,
+}
+```
+                                                       
+```
++-------------------+                                 
+| enqueue_task_fair | : add task to rb tree           
++----|--------------+                                 
+     |                                                
+     |--> if flag specifies 'wakeup'                  
+     |                                                
+     |        +--------------+                        
+     |------> | place_entity | update se's vruntime   
+     |        +--------------+                        
+     |                                                
+     |--> if it's not the curr                        
+     |                                                
+     |        +----------------+                      
+     +------> | enqueue_entity | add entity to rb tree
+              +----------------+                      
+```
+                                                       
+```
 +------------------+                                                                                          
 | __enqueue_entity |                                                                                          
 +------------------+                                                                                          
@@ -1332,40 +1396,53 @@ Nonetheless, the vruntime accumulation still strictly increases, and other typic
           +-- | rb_link_node | insert the task entity into the tree                                           
               +--------------+            
 ```
+                        
+```
+ +----------------------+                                                       
+ | check_preempt_wakeup | : set current 'need_resched' if it should be preempted
+ +-----|----------------+                                                       
+       |                                                                        
+       |--> return if current need resched                                      
+       |                                                                        
+       |--> go to 'preempt' if current is idle task                             
+       |                                                                        
+       |    +-------------+                                                     
+       |--> | update_curr |                                                     
+       |    +-------------+                                                     
+       |    +-----------------------+                                           
+       |--> | wakeup_preempt_entity |                                           
+       |    +-----------------------+                                           
+       |                                                                        
+       |--> go to 'preempt' if curr vruntime > p vruntime                       
+ preempt                                                                        
+       |    +--------------+                                                    
+       +--> | resched_curr |                                                    
+            +--------------+                                                    
+```
   
 ```
-+--------------------+                                                                            
-| check_preempt_tick | : check a few conditions, and set 'NEED_RESCHED' on rq current if necessary
-+----|---------------+                                                                            
-     |    +-------------+                                                                         
-     |--> | sched_slice | calc how much time I can run                                            
-     |    +-------------+                                                                         
-     |                                                                                            
-     |--> calc how much time I've run                                                             
-     |                                                                                            
-     |--> if it's already exceeded                                                                
-     |                                                                                            
-     |        +--------------+                                                                    
-     |------> | resched_curr | set 'NEED_RESCHED' on task                                         
-     |        +--------------+                                                                    
-     |                                                                                            
-     |------> return                                                                              
-     |                                                                                            
-     |    +---------------------+                                                                 
-     |--> | __pick_first_entity | select the leftmost task                                        
-     |    +---------------------+                                                                 
-     |                                                                                            
-     |--> if curr vruntime < next vruntime                                                        
-     |                                                                                            
-     |------> return                                                                              
-     |                                                                                            
-     |--> if curr vruntime >> next vruntime                                                       
-     |                                                                                            
-     |        +--------------+                                                                    
-     +------> | resched_curr | set 'NEED_RESCHED' on task                                         
-              +--------------+                                                                    
+ +---------------------+                                                                
+ | pick_next_task_fair | : enqueue prev, select next task for running and dequeue it
+ +-----|---------------+                                                                
+       |                                                                                
+       |--> return if no runnable task                                                  
+       |                                                                                
+       +--> if prev exists                                                              
+       |                                                                                
+       |        +---------------+                                                       
+       |------> | put_prev_task | call class->put_prev_task(), e.g., add task back to rq
+       |        +---------------+                                                       
+       |    +------------------+                                                        
+       |--> | pick_next_entity | pick next proper task for running                      
+       |    +------------------+                                                        
+       |    +-----------------+                                                         
+       |--> | set_next_entity | dequeue if it's on rq, cfs_rq->curr = entity            
+       |    +-----------------+                                                         
+       |    +-----------+                                                               
+       +--> | list_move | move task to mru (most) list of rq                            
+            +-----------+                                                               
 ```
-
+                        
 ```
 +----------------+                                                         
 | task_tick_fair | : update vruntime, resched current task if necessary    
@@ -1417,7 +1494,7 @@ Nonetheless, the vruntime accumulation still strictly increases, and other typic
         |                                                                                                 
         +-- accumulate the vruntime into the task entity
 ```
-  
+
 ```
 +--------------+                                                
 | resched_curr | : set 'NEED_RESCHED' on task                   
@@ -1440,7 +1517,40 @@ Nonetheless, the vruntime accumulation still strictly increases, and other typic
     +--> | smp_send_reschedule | (probably do nothing)          
          +---------------------+                                
 ```
-  
+                        
+```
++--------------------+                                                                            
+| check_preempt_tick | : check a few conditions, and set 'NEED_RESCHED' on rq current if necessary
++----|---------------+                                                                            
+     |    +-------------+                                                                         
+     |--> | sched_slice | calc how much time I can run                                            
+     |    +-------------+                                                                         
+     |                                                                                            
+     |--> calc how much time I've run                                                             
+     |                                                                                            
+     |--> if it's already exceeded                                                                
+     |                                                                                            
+     |        +--------------+                                                                    
+     |------> | resched_curr | set 'NEED_RESCHED' on task                                         
+     |        +--------------+                                                                    
+     |                                                                                            
+     |------> return                                                                              
+     |                                                                                            
+     |    +---------------------+                                                                 
+     |--> | __pick_first_entity | select the leftmost task                                        
+     |    +---------------------+                                                                 
+     |                                                                                            
+     |--> if curr vruntime < next vruntime                                                        
+     |                                                                                            
+     |------> return                                                                              
+     |                                                                                            
+     |--> if curr vruntime >> next vruntime                                                       
+     |                                                                                            
+     |        +--------------+                                                                    
+     +------> | resched_curr | set 'NEED_RESCHED' on task                                         
+              +--------------+                                                                    
+```
+                        
 ```
 +-------------+                                                     
 | sched_slice | : calc time slice for the given sched entity        
@@ -1452,96 +1562,7 @@ Nonetheless, the vruntime accumulation still strictly increases, and other typic
     +--> | __calc_delta | calc time slice for the given sched entity
          +--------------+                                           
 ```
-  
-```
-struct cfs_rq {
-    struct load_weight  load;               // total load of the tasks
-    unsigned int        nr_running;         // number of runnable tasks
-    u64         min_vruntime;               // minimum vruntime of all tasks
-    struct rb_root_cached   tasks_timeline; // rb tree
-    struct sched_entity *curr;              // point to currently running task
-}
-```
-  
-```
-+-------------------+                                 
-| enqueue_task_fair | : add task to rb tree           
-+----|--------------+                                 
-     |                                                
-     |--> if flag specifies 'wakeup'                  
-     |                                                
-     |        +--------------+                        
-     |------> | place_entity | update se's vruntime   
-     |        +--------------+                        
-     |                                                
-     |--> if it's not the curr                        
-     |                                                
-     |        +----------------+                      
-     +------> | enqueue_entity | add entity to rb tree
-              +----------------+                      
-```
-  
-```
- +---------------------+                                                                
- | pick_next_task_fair | : enqueue prev, select next task for running and dequeue it
- +-----|---------------+                                                                
-       |                                                                                
-       |--> return if no runnable task                                                  
-       |                                                                                
-       +--> if prev exists                                                              
-       |                                                                                
-       |        +---------------+                                                       
-       |------> | put_prev_task | call class->put_prev_task(), e.g., add task back to rq
-       |        +---------------+                                                       
-       |    +------------------+                                                        
-       |--> | pick_next_entity | pick next proper task for running                      
-       |    +------------------+                                                        
-       |    +-----------------+                                                         
-       |--> | set_next_entity | dequeue if it's on rq, cfs_rq->curr = entity            
-       |    +-----------------+                                                         
-       |    +-----------+                                                               
-       +--> | list_move | move task to mru (most) list of rq                            
-            +-----------+                                                               
-```
-  
-```
- +----------------------+                                                       
- | check_preempt_wakeup | : set current 'need_resched' if it should be preempted
- +-----|----------------+                                                       
-       |                                                                        
-       |--> return if current need resched                                      
-       |                                                                        
-       |--> go to 'preempt' if current is idle task                             
-       |                                                                        
-       |    +-------------+                                                     
-       |--> | update_curr |                                                     
-       |    +-------------+                                                     
-       |    +-----------------------+                                           
-       |--> | wakeup_preempt_entity |                                           
-       |    +-----------------------+                                           
-       |                                                                        
-       |--> go to 'preempt' if curr vruntime > p vruntime                       
- preempt                                                                        
-       |    +--------------+                                                    
-       +--> | resched_curr |                                                    
-            +--------------+                                                    
-```
-  
-```
-+----------------+                                                                                      
-| pick_next_task | ： enqueue prev, select next task for running and dequeue it                          
-+---|------------+                                                                                      
-    |    +------------------+                                                                           
-    +--> | __pick_next_task | ： enqueue prev, select next task for running and dequeue it               
-         +----|-------------+                                                                           
-              |                                                                                         
-              |--> if prev sched class <= fair sched class                                              
-              |                                                                                         
-              |        +---------------------+                                                          
-              +------> | pick_next_task_fair | enqueue prev, select next task for running and dequeue it
-                       +---------------------+                                                          
-```
-  
+ 
 ```
 +----------------+                                                                 
 | task_fork_fair | : determine vruntime of new task, resched current task if needed
