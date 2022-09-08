@@ -1597,15 +1597,29 @@ DEFINE_SCHED_CLASS(fair) = {
 <details><summary> More Details</summary>
   
 ```
-+-------------------+                                               
-| pick_next_task_rt | : select the next task in rt_rq               
-+----|--------------+                                               
-     |    +--------------+                                          
-     |--> | pick_task_rt | select the next task in rt_rq            
-     |    +--------------+                                          
-     |    +------------------+                                      
-     +--> | set_next_task_rt | push some other rt tasks to other rqs
-          +------------------+                                      
+DEFINE_SCHED_CLASS(rt) = {
+    .enqueue_task       = enqueue_task_rt,
+    .dequeue_task       = dequeue_task_rt,
+    .yield_task     = yield_task_rt,
+    .check_preempt_curr = check_preempt_curr_rt,
+    .pick_next_task     = pick_next_task_rt,
+    .put_prev_task      = put_prev_task_rt,
+    .set_next_task          = set_next_task_rt,
+    .balance        = balance_rt,
+    .pick_task      = pick_task_rt,
+    .select_task_rq     = select_task_rq_rt,
+    .set_cpus_allowed       = set_cpus_allowed_common,
+    .rq_online              = rq_online_rt,
+    .rq_offline             = rq_offline_rt,
+    .task_woken     = task_woken_rt,
+    .switched_from      = switched_from_rt,
+    .find_lock_rq       = find_lock_lowest_rq,
+    .task_tick      = task_tick_rt,
+    .get_rr_interval    = get_rr_interval_rt,
+    .prio_changed       = prio_changed_rt,
+    .switched_to        = switched_to_rt,
+    .update_curr        = update_curr_rt,
+}
 ```
   
 ```
