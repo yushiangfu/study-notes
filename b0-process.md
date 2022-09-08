@@ -822,8 +822,8 @@ repeat
    |       |--> else
    |       |
    |       |        +-----------------+
-   |       |------> | deactivate_task | prev (prev->on_rq is set here, and later put_prev_task will add it to rq accordingly)
-   |       |        +-----------------+
+   |       |------> | deactivate_task | (prev->on_rq is set here,
+   |       |        +-----------------+ and later put_prev_task will add it to rq accordingly)
    |       |    +----------------+
    |       |--> | pick_next_task | pick next and enqueue prev
    |       |    +----------------+
@@ -1116,14 +1116,28 @@ struct rq {
   
 ```
 struct sched_class {
-    void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);       // add the task into the rq, e.g., wake up
-    void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);       // remove the task from the rq, e.g., change prio
-    void (*yield_task)   (struct rq *rq);                                         // yield the cpu to other tasks
-    void (*check_preempt_curr)(struct rq *rq, struct task_struct *p, int flags);  // check if current task should be preempted
-    struct task_struct *(*pick_next_task)(struct rq *rq);                         // select the next task to run on the cpu
-    void (*put_prev_task)(struct rq *rq, struct task_struct *p);                  // prepare to withdraw cpu control from current task
+    void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags); 
+    // add the task into the rq, e.g., wake up
+  
+    void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);
+    // remove the task from the rq, e.g., change prio
+  
+    void (*yield_task)   (struct rq *rq);                                   
+    // yield the cpu to other tasks
+  
+    void (*check_preempt_curr)(struct rq *rq, struct task_struct *p, int flags);  
+    // check if current task should be preempted
+  
+    struct task_struct *(*pick_next_task)(struct rq *rq);                   
+    // select the next task to run on the cpu
+  
+    void (*put_prev_task)(struct rq *rq, struct task_struct *p);            
+    // prepare to withdraw cpu control from current task
+  
     void (*set_next_task)(struct rq *rq, struct task_struct *p, bool first);     
-    void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);          // called when timer interrupt happens
+  
+    void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);    
+    // called when timer interrupt happens
 ```
 
 ```
@@ -1142,7 +1156,7 @@ struct sched_class {
               |
               +--> else
               |
-              +------> for each scheduling class, call its ->pick_next_task, return the first found                                                      
+              +------> for each scheduling class, call its ->pick_next_task, return the first found
 ```
  
 ```
@@ -1759,67 +1773,63 @@ The systemd then spawns many other applications, including the shell we are fami
 ```
   
 ```
-+----------------+                                                                                                              
-| kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask                              
-+---|------------+                                                                                                              
-    |    +------------------------+                                                                                             
-    +--> | kthread_create_on_node |                                                                                             
-         +-----|------------------+                                                                                             
-               |    +--------------------------+                                                                                
-               +--> | __kthread_create_on_node | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
-                    +------|-------------------+                                                                                
-                           |                                                                                                    
-                           |--> allocate and setup 'create'                                                                     
-                           |                                                                                                    
-                           |--> add 'create' to the end of kthread_create_list                                                  
-                           |                                                                                                    
-                           |    +-----------------+                                                                             
-                           |--> | wake_up_process | wake up kthreadd_task                                                       
-                           |    +-----------------+                                                                             
-                           |    +------------------------------+                                                                
-                           |--> | wait_for_completion_killable | wait for completion                                            
-                           |    +------------------------------+                                                                
-                           |    +---------------+                                                                               
-                           |--> | set_task_comm | set task name                                                                 
-                           |    +---------------+                                                                               
-                           |    +----------------------------+                                                                  
-                           |--> | sched_setscheduler_nocheck | set schedule-related fields in task                              
-                           |    +----------------------------+                                                                  
-                           |    +----------------------+                                                                        
-                           +--> | set_cpus_allowed_ptr | set cpu mask                                                           
-                                +----------------------+                                                                        
++----------+
+| kthreadd |
++--|-------+
+   |
+   +--> endless loop
+   |
+   +------> if no request on list
+   |
+   |            +----------+
+   +----------> | schedule |
+   |            +----------+
+   |
+   +------> while request list isn't empty
+   |
+   +----------> remove request from list
+   |
+   |            +----------------+
+   +----------> | create_kthread | clone task, wake it up to run function 'kthread'
+                +----------------+                                            |
+                                                                              v
+                                                                    run argument 'threadfn'
+                                                                    e.g., smpboot_thread_fn
+                                                                              |
+                                                                              v
+                                                              endless loop, run the installed
+                                                              thread function whenever necessary
 ```
   
 ```
-+----------------------------+                                                                           
-| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
-+------|---------------------+                                                                           
-       |    +---------------------+                                                                      
-       +--> | _sched_setscheduler | : set schedule-related fields in task
-            +-----|---------------+                                                                      
-                  |                                                                                      
-                  |--> set up 'sched attr'                                                               
-                  |                                                                                      
-                  |    +----------------------+                                                          
-                  +--> | __sched_setscheduler |                                                          
-                       +-----|----------------+                                                          
-                             |                                                                           
-                             |--> dequeue task if it's queued                                            
-                             |                                                                           
-                             +--> put task if it's running                                               
-                             |                                                                           
-                             |    +-----------------------+                                              
-                             |    | __setscheduler_params | set task policy, static prio, and normal prio
-                             |--> +-----------------------+                                              
-                             |    +---------------------+                                                
-                             |    | __setscheduler_prio | set task sched class and prio                  
-                             |--> +---------------------+                                                
-                             |                                                                           
-                             |--> queue it back if it was queued                                         
-                             |                                                                           
-                             +--> set task as next if it was running                                     
++---------+
+| kthread | : run argument 'threadfn'
++--|------+
+   |
+   |--> allocate struct 'kthread' and set up
+   |
+   |--> complete 'done'
+   |
+   |    +----------+
+   |--> | schedule |
+   |    +----------+
+   |
+   |--> if struct 'kthread' isn't labeled SHOULD_STOP
+   |
+   |        +------------------+
+   |------> | __kthread_parkme | wait till SHOULD_PARK is cleared
+   |        +------------------+
+   |
+   |------> call threadfn()
+   |              +-------------------+
+   |        e.g., | smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
+   |              +-------------------+
+   |
+   |    +---------+
+   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return
+        +---------+                                                                                  
 ```
-  
+     
 ```
 +-------------------+                                                                   
 | smpboot_thread_fn | : endless loop, run the installed thread function whenever necessary
@@ -1871,61 +1881,80 @@ The systemd then spawns many other applications, including the shell we are fami
 ```
   
 ```
-+---------+
-| kthread | : run argument 'threadfn'
-+--|------+
-   |
-   |--> allocate struct 'kthread' and set up
-   |
-   |--> complete 'done'
-   |
-   |    +----------+
-   |--> | schedule |
-   |    +----------+
-   |
-   |--> if struct 'kthread' isn't labeled SHOULD_STOP
-   |
-   |        +------------------+
-   |------> | __kthread_parkme | wait till SHOULD_PARK is cleared
-   |        +------------------+
-   |
-   |------> call threadfn()
-   |              +-------------------+
-   |        e.g., | smpboot_thread_fn | endless loop, run the installed thread function whenever necessary
-   |              +-------------------+
-   |
-   |    +---------+
-   +--> | do_exit | <========== might not reach here if the above threadfn doesn't return
-        +---------+                                                                                  
++----------------+
+| kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
++---|------------+
+    |    +------------------------+
+    +--> | kthread_create_on_node |
+         +-----|------------------+
+               |    +--------------------------+
+               +--> | __kthread_create_on_node | : ask kthreadd help creating kthread,
+                    +------|-------------------+   set its name, sched-related, and cpu mask
+                           |
+                           |--> allocate and setup 'create'
+                           |
+                           |--> add 'create' to the end of kthread_create_list
+                           |
+                           |    +-----------------+
+                           |--> | wake_up_process | wake up kthreadd_task
+                           |    +-----------------+
+                           |    +------------------------------+
+                           |--> | wait_for_completion_killable | wait for completion
+                           |    +------------------------------+
+                           |    +---------------+
+                           |--> | set_task_comm | set task name
+                           |    +---------------+
+                           |    +----------------------------+
+                           |--> | sched_setscheduler_nocheck | set schedule-related fields in task
+                           |    +----------------------------+
+                           |    +----------------------+
+                           +--> | set_cpus_allowed_ptr | set cpu mask
+                                +----------------------+                                                              
 ```
-     
+  
 ```
-+----------+
-| kthreadd |
-+--|-------+
-   |
-   +--> endless loop
-   |
-   +------> if no request on list
-   |
-   |            +----------+
-   +----------> | schedule |
-   |            +----------+
-   |
-   +------> while request list isn't empty
-   |
-   +----------> remove request from list
-   |
-   |            +----------------+
-   +----------> | create_kthread | clone task, wake it up to run function 'kthread'
-                +----------------+                                            |
-                                                                              v
-                                                                    run argument 'threadfn'
-                                                                    e.g., smpboot_thread_fn
-                                                                              |
-                                                                              v
-                                                              endless loop, run the installed
-                                                              thread function whenever necessary
++----------------------------+                                                                           
+| sched_setscheduler_nocheck | : set schedule-related fields in task                                     
++------|---------------------+                                                                           
+       |    +---------------------+                                                                      
+       +--> | _sched_setscheduler | : set schedule-related fields in task
+            +-----|---------------+                                                                      
+                  |                                                                                      
+                  |--> set up 'sched attr'                                                               
+                  |                                                                                      
+                  |    +----------------------+                                                          
+                  +--> | __sched_setscheduler |                                                          
+                       +-----|----------------+                                                          
+                             |                                                                           
+                             |--> dequeue task if it's queued                                            
+                             |                                                                           
+                             +--> put task if it's running                                               
+                             |                                                                           
+                             |    +-----------------------+                                              
+                             |    | __setscheduler_params | set task policy, static prio, and normal prio
+                             |--> +-----------------------+                                              
+                             |    +---------------------+                                                
+                             |    | __setscheduler_prio | set task sched class and prio                  
+                             |--> +---------------------+                                                
+                             |                                                                           
+                             |--> queue it back if it was queued                                         
+                             |                                                                           
+                             +--> set task as next if it was running                                     
+```
+
+```  
++--------------------------------+
+| smpboot_register_percpu_thread | : for each cpu, prepare a kthread running specified hotplug thread
++-------|------------------------+
+        |
+        +--> for each online cpu
+        |
+        |        +-------------------------+
+        +------> | __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()
+        |        +-------------------------+
+        |        +-----------------------+
+        +------> | smpboot_unpark_thread | clear SHOULD_PARK of that kthread and wake it up
+                 +-----------------------+                     
 ```
                            
 ```
@@ -1941,22 +1970,7 @@ The systemd then spawns many other applications, including the shell we are fami
        |                                                                                                            
        +--> call ->create() if it exists                                                                            
 ```
-  
-```  
-+--------------------------------+
-| smpboot_register_percpu_thread | : for each cpu, prepare a kthread running specified hotplug thread
-+-------|------------------------+
-        |
-        +--> for each online cpu
-        |
-        |        +-------------------------+
-        +------> | __smpboot_create_thread | fork a kthread running 'smpboot_thread_fn', park it and call ->create()
-        |        +-------------------------+
-        |        +-----------------------+
-        +------> | smpboot_unpark_thread | clear SHOULD_PARK of that kthread and wake it up
-                 +-----------------------+                     
-```
-  
+ 
 </details>
   
 ## <a name="others"></a> Others
@@ -1967,6 +1981,48 @@ The systemd then spawns many other applications, including the shell we are fami
   
 <details><summary> More Details </summary>
   
+| Name              | Value  | Note                               |
+| ---               | ---    | ---                                |
+| RLIMIT_CPU        | 0      | CPU time in sec                    |   
+| RLIMIT_FSIZE      | 1      | Maximum filesize                   |   
+| RLIMIT_DATA       | 2      | max data size                      |   
+| RLIMIT_STACK      | 3      | max stack size                     |   
+| RLIMIT_CORE       | 4      | max core file size                 |   
+| RLIMIT_RSS        | 5      | max resident set size              |   
+| RLIMIT_NPROC      | 6      | max number of processes            |   
+| RLIMIT_NOFILE     | 7      | max number of open files           |   
+| RLIMIT_MEMLOCK    | 8      | max locked-in-memory address space |
+| RLIMIT_AS         | 9      | address space limit                |   
+| RLIMIT_LOCKS      | 10     | maximum file locks held            |   
+| RLIMIT_SIGPENDING | 11     | max number of pending signals      |   
+| RLIMIT_MSGQUEUE   | 12     | maximum bytes in POSIX mqueues     |   
+| RLIMIT_NICE       | 13     | max nice prio allowed to raise to 0-39 for nice level 19 .. -20 |
+| RLIMIT_RTPRIO     | 14     | maximum realtime priority          |   
+| RLIMIT_RTTIME     | 15     | timeout for RT tasks in us         |   
+| RLIM_NLIMITS      | 16     |                                    |   
+| RLIM_INFINITY     | (~0UL) |                                    |
+  
+```
+root@romulus:~# cat /proc/self/limits 
+Limit                     Soft Limit           Hard Limit           Units     
+Max cpu time              unlimited            unlimited            seconds   
+Max file size             unlimited            unlimited            bytes     
+Max data size             unlimited            unlimited            bytes     
+Max stack size            8388608              unlimited            bytes     
+Max core file size        unlimited            unlimited            bytes     
+Max resident set          unlimited            unlimited            bytes     
+Max processes             2770                 2770                 processes 
+Max open files            1024                 524288               files     
+Max locked memory         65536                65536                bytes     
+Max address space         unlimited            unlimited            bytes     
+Max file locks            unlimited            unlimited            locks     
+Max pending signals       2770                 2770                 signals   
+Max msgqueue size         819200               819200               bytes     
+Max nice priority         0                    0                    
+Max realtime priority     0                    0                    
+Max realtime timeout      unlimited            unlimited            us
+```
+  
 ```
 struct signal_struct {
     struct rlimit rlim[RLIM_NLIMITS];
@@ -1976,28 +2032,6 @@ struct rlimit {
     __kernel_ulong_t    rlim_cur;   // soft limit
     __kernel_ulong_t    rlim_max;   // hard limit
 };
-```
-
-```
-+---------------+                           
-| sys_setrlimit | : set rlimit              
-+---|-----------+                           
-    |    +----------------+                 
-    +--> | copy_from_user |                 
-    |    +----------------+                 
-    |    +------------+                     
-    +--> | do_prlimit |                     
-         +--|---------+                     
-            |                               
-            |--> get rlimit from task signal
-            |                               
-            |--> if old is provided         
-            |                               
-            |------> *old = *rlimit         
-            |                               
-            |--> if new is provided         
-            |                               
-            +------> *rlimit = *new         
 ```
 
 ```
@@ -2023,47 +2057,26 @@ struct rlimit {
          +----------------+                 
 ```
   
-| Name              | Value  | Note                               |
-| ---               | ---    | ---                                |
-| RLIMIT_CPU        | 0      | CPU time in sec                    |   
-| RLIMIT_FSIZE      | 1      | Maximum filesize                   |   
-| RLIMIT_DATA       | 2      | max data size                      |   
-| RLIMIT_STACK      | 3      | max stack size                     |   
-| RLIMIT_CORE       | 4      | max core file size                 |   
-| RLIMIT_RSS        | 5      | max resident set size              |   
-| RLIMIT_NPROC      | 6      | max number of processes            |   
-| RLIMIT_NOFILE     | 7      | max number of open files           |   
-| RLIMIT_MEMLOCK    | 8      | max locked-in-memory address space |
-| RLIMIT_AS         | 9      | address space limit                |   
-| RLIMIT_LOCKS      | 10     | maximum file locks held            |   
-| RLIMIT_SIGPENDING | 11     | max number of pending signals      |   
-| RLIMIT_MSGQUEUE   | 12     | maximum bytes in POSIX mqueues     |   
-| RLIMIT_NICE       | 13     | max nice prio allowed to raise to 0-39 for nice level 19 .. -20 |
-| RLIMIT_RTPRIO     | 14     | maximum realtime priority          |   
-| RLIMIT_RTTIME     | 15     | timeout for RT tasks in us         |   
-| RLIM_NLIMITS      | 16     |                                    |   
-| RLIM_INFINITY     | (~0UL) |                                    |
-  
-  
 ```
-root@romulus:~# cat /proc/self/limits 
-Limit                     Soft Limit           Hard Limit           Units     
-Max cpu time              unlimited            unlimited            seconds   
-Max file size             unlimited            unlimited            bytes     
-Max data size             unlimited            unlimited            bytes     
-Max stack size            8388608              unlimited            bytes     
-Max core file size        unlimited            unlimited            bytes     
-Max resident set          unlimited            unlimited            bytes     
-Max processes             2770                 2770                 processes 
-Max open files            1024                 524288               files     
-Max locked memory         65536                65536                bytes     
-Max address space         unlimited            unlimited            bytes     
-Max file locks            unlimited            unlimited            locks     
-Max pending signals       2770                 2770                 signals   
-Max msgqueue size         819200               819200               bytes     
-Max nice priority         0                    0                    
-Max realtime priority     0                    0                    
-Max realtime timeout      unlimited            unlimited            us
++---------------+                           
+| sys_setrlimit | : set rlimit              
++---|-----------+                           
+    |    +----------------+                 
+    +--> | copy_from_user |                 
+    |    +----------------+                 
+    |    +------------+                     
+    +--> | do_prlimit |                     
+         +--|---------+                     
+            |                               
+            |--> get rlimit from task signal
+            |                               
+            |--> if old is provided         
+            |                               
+            |------> *old = *rlimit         
+            |                               
+            |--> if new is provided         
+            |                               
+            +------> *rlimit = *new         
 ```
   
 </details>
@@ -2075,7 +2088,6 @@ Max realtime timeout      unlimited            unlimited            us
 <details><summary> More Details </summary>
   
 ```
-                                                                                         
                          task_struct                                                     
                      +-----------------+                                                 
                      |       pid       | task id, a.k.a. thread id in user space         
@@ -2112,6 +2124,96 @@ Max realtime timeout      unlimited            unlimited            us
                    |   |             |                                                   
                    +-----tasks[SID]  | list head                                         
                        +-------------+                                                   
+```
+  
+```
+struct pid
+{
+    refcount_t count;                     // ref counter
+    unsigned int level;                   // the number of namespaces that the struct pid is visible in
+    struct hlist_head tasks[PIDTYPE_MAX]; // array of hlist head
+    struct upid numbers[1];               // upid array for each level
+};
+  
+struct upid {
+    int nr;                   // pid value
+    struct pid_namespace *ns; // points to namespace that contains the pid value
+};
+  
+struct pid_namespace {
+    struct task_struct *child_reaper; // the task to call wait4 when other tasks terminate
+    unsigned int level;               // the depth of namespace (0: root, 1: child, ...)
+    struct pid_namespace *parent;     // points to the parent namespace
+}
+  
+enum pid_type
+{
+    PIDTYPE_PID,
+    PIDTYPE_TGID,
+    PIDTYPE_PGID,
+    PIDTYPE_SID,
+    PIDTYPE_MAX,
+};
+```
+  
+```
++----------+                                           
+| task_pid | return task->thread_pid                   
++----------+                                           
++-----------+                                          
+| task_tgid | return task->signal->pids[PIDTYPE_TGID]  
++-----------+                                          
++-----------+                                          
+| task_pgrp | return task->signal->pids[PIDTYPE_PGID]  
++-----------+                                          
++--------------+                                       
+| task_session | return task->signal->pids[PIDTYPE_SID]
++--------------+                                       
+```
+  
+```
++-----------+                                                               
+| pid_nr_ns | get pid value from struct pid based on level of arg namespace 
++-----------+                                                               
++---------+                                                                 
+| pid_vnr | get pid value from struct pid based on level of active namespace
++---------+                                                                 
++--------+                                                                  
+| pid_nr | get pid value from struct pid based on level of init namespace   
++--------+                                                                  
+```
+  
+```
++----------------+                                                 
+| task_pid_nr_ns | get pid value of task in given namespace        
++----------------+                                                 
++-----------------+                                                
+| task_tgid_nr_ns | get tgid value of task in given namespace      
++-----------------+                                                
++-----------------+                                                
+| task_pgrp_nr_ns | get pgrp value of task in given namespace      
++-----------------+                                                
++--------------------+                                             
+| task_session_nr_ns | get session value of task in given namespace
++--------------------+                                             
+```
+  
+```
++-------------+                                                                        
+| find_pid_ns | find struct pid by pid value from the given namespace                  
++-------------+                                                                        
++----------+                                                                           
+| pid_task | get the first task of the type from struct pid                            
++----------+                                                                           
+```
+  
+```
++---------------------+                                                                
+| find_task_by_pid_ns | get the first task of type from the given pid value and ns     
++---------------------+                                                                
++-------------------+                                                                  
+| find_task_by_vpid | get the first task of type from the given pid value and active ns
++-------------------+                                                                  
 ```
   
 ```
@@ -2176,96 +2278,7 @@ Max realtime timeout      unlimited            unlimited            us
     +--> | free_pid |                                    
          +----------+                                    
 ```
-  
-```
-struct pid_namespace {
-    struct task_struct *child_reaper; // the task to call wait4 when other tasks terminate
-    unsigned int level;               // the depth of namespace (0: root, 1: child, ...)
-    struct pid_namespace *parent;     // points to the parent namespace
-}
-  
-struct upid {
-    int nr;                   // pid value
-    struct pid_namespace *ns; // points to namespace that contains the pid value
-};
-
-struct pid
-{
-    refcount_t count;                     // ref counter
-    unsigned int level;                   // the number of namespaces that the struct pid is visible in
-    struct hlist_head tasks[PIDTYPE_MAX]; // array of hlist head
-    struct upid numbers[1];               // upid array for each level
-};
-  
-enum pid_type
-{
-    PIDTYPE_PID,
-    PIDTYPE_TGID,
-    PIDTYPE_PGID,
-    PIDTYPE_SID,
-    PIDTYPE_MAX,
-};
-```
-  
-```
-+----------+                                           
-| task_pid | return task->thread_pid                   
-+----------+                                           
-+-----------+                                          
-| task_tgid | return task->signal->pids[PIDTYPE_TGID]  
-+-----------+                                          
-+-----------+                                          
-| task_pgrp | return task->signal->pids[PIDTYPE_PGID]  
-+-----------+                                          
-+--------------+                                       
-| task_session | return task->signal->pids[PIDTYPE_SID]
-+--------------+                                       
-```
-  
-```
-+-----------+                                                               
-| pid_nr_ns | get pid value from struct pid based on level of arg namespace 
-+-----------+                                                               
-+---------+                                                                 
-| pid_vnr | get pid value from struct pid based on level of active namespace
-+---------+                                                                 
-+--------+                                                                  
-| pid_nr | get pid value from struct pid based on level of init namespace   
-+--------+                                                                  
-```
-  
-```
-+----------------+                                                 
-| task_pid_nr_ns | get pid value of task in given namespace        
-+----------------+                                                 
-+-----------------+                                                
-| task_tgid_nr_ns | get tgid value of task in given namespace      
-+-----------------+                                                
-+-----------------+                                                
-| task_pgrp_nr_ns | get pgrp value of task in given namespace      
-+-----------------+                                                
-+--------------------+                                             
-| task_session_nr_ns | get session value of task in given namespace
-+--------------------+                                             
-```
-  
-```
-+-------------+                                                                        
-| find_pid_ns | find struct pid by pid value from the given namespace                  
-+-------------+                                                                        
-+----------+                                                                           
-| pid_task | get the first task of the type from struct pid                            
-+----------+                                                                           
-                                                                                       
-                                                                                       
-+---------------------+                                                                
-| find_task_by_pid_ns | get the first task of type from the given pid value and ns     
-+---------------------+                                                                
-+-------------------+                                                                  
-| find_task_by_vpid | get the first task of type from the given pid value and active ns
-+-------------------+                                                                  
-```
-  
+ 
 </details>
   
 ## <a name="reference"></a> Reference
