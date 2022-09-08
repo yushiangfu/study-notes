@@ -1063,8 +1063,9 @@ Though we have the resident stop-class kthread, it's inactive if no migration re
 Most of the time, they are about fair and sometimes real-time classes. 
 It's notable that even though it's a highly chilled system, we still have the idle-class kthread as our last choice. 
 Rather than continuing from the previously visited scheduling class, the procedure starts from the stop class again before the next context switch. 
-Because classes' designs differ, many operations are triggered by the central scheduler and handled by classes. 
-To this end, the classes implement quite a few functions, such as task selection, enqueue, and dequeue.
+Besides task selection, each class implements quite a few functions, such as enqueue and dequeue, due to their essential design differences.
+
+<p align="center"><img src="images/process/sub-queue.png" /></p>
 
 <details><summary> More Details </summary>
 
