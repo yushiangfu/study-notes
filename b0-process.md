@@ -633,6 +633,7 @@ The flag is raised to indicate that it's time to service the next task in line i
 Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the **context switch**. 
 A typical scenario is that the timer interrupt handler routinely checks the remaining time slice, which eventually runs out and has the flag set. 
 On its way back to the userspace, the encountered checkpoint proceeds the context switch, and the chosen task resumes and continues.
+The below image is just for example since there's no second CPU in our QEMU configuration.
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
 
@@ -1704,34 +1705,24 @@ DEFINE_SCHED_CLASS(rt) = {
   
 ## <a name="system-startup"></a> System Startup
 
-When the register pc points to kernel entry, it sets some low-level stuff in assembly language, and I don't bother looking into it.
-The first c function is named 'start_kernel,' and every module will sequentially kick off starting from there.
-Before the 'process' mechanism gets ready, we can conceptually regard the running logic as a thread.
-Once the most fundamental infrastructures, such as memory and interrupt, are prepared, the running logic essentially becomes a kernel thread.
-To take advantage of multiple cores in the processor, the thread forks 'kernel_init' (PID = 1) and 'kthreadd' (PID = 2), and itself turns to an idle task.
-The task 'kernel_init' then walks through all kinds of initialization and delivers the kernel thread creation request to 'khtreadd' whenever there is one.
-When boot flow reaches the end, 'kernel_init' tries a bunch of possible userspace 'init' utilities and transforms to whichever works first.
+Take the OpenBMC as an example; U-Boot runs first after the power is on, then it delegates the control to the assembly code of the kernel. 
+The first C function is start_kernel; from there, the most fundamental subsystems, such as memory, interrupt, and process, are initialized. 
+Before these frameworks are ready, there's no scheduler concept, not to mention tasks, the run queues, and scheduling classes. 
+After passing a certain point, that running logic wraps itself as the init task (pid = 0) and forks the other two kernel threads:
 
+- kernel_init (pid = 1)
+  - It takes over the duty to initialize the remaining subsystems, like file systems, network stacks, IPC frameworks, and all sorts of drivers, ...
+- kthreadd (pid = 2)
+  - The ending 'd' means daemon. It helps fulfill the kthread generation request delivered from kernel_init or other kthread.
+  - Thus it's the parent of all other kthreads except kerenl_init.
+
+Meanwhile, that init task, a.k.a. swapper, becomes the idle thread of the stop class on CPU 0. 
+When the kernel_init reaches the end of kernel initialization, it transforms to systemd, the first user space process. 
+Unlike the kthread creation, the transform only involves the internal context replacement rather than starting a new task. 
+The systemd then spawns many other applications, including the shell we are familiar with, and the system is pretty much fully functional.
+                        
 <p align="center"><img src="images/process/task-hierarchy.png" /></p>
 
-Although 'init' or 'systemd' possesses PID 1, it's not the first thread during boot up.
-The task 'kthreadd' is responsible for kernel thread creation, and therefore it's the parent of most kernel threads.
-
-```
-$ ps xao pid,ppid,comm | head
-    PID    PPID COMMAND
-      1       0 systemd
-      2       0 kthreadd
-      3       2 rcu_gp
-      4       2 rcu_par_gp
-      6       2 kworker/0:0H-events_highpri
-      9       2 mm_percpu_wq
-     10       2 rcu_tasks_rude_
-     11       2 rcu_tasks_trace
-     12       2 ksoftirqd/0
-     
-Note: PPID is parent PID
-```
 
 <details><summary> More Details </summary>
 
