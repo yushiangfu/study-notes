@@ -88,6 +88,73 @@ struct mm_struct {
 }
 ```
 
+```
++-----------------------+                                                       
+| arch_pick_mmap_layout | : decide mmap_base & ->get_unmapped_area() of given mm
++-----|-----------------+                                                       
+      |                                                                         
+      |--> if flag has specified RANDOMIZE                                      
+      |                                                                         
+      |------> get a random factor                                              
+      |                                                                         
+      |--> if it's legacy mmap (not our case)                                   
+      |                                                                         
+      |        +-----------+                                                    
+      |------> | mmap_base | determine mmap base                                
+      |        +-----------+                                                    
+      |                                                                         
+      +------> set ->get_unmapped_area = arch_get_unmapped_area_topdown         
+```
+  
+```
++--------------------------------+
+| arch_get_unmapped_area_topdown | : lookup a region that satisfies the range ('addr' isn't guaranteed)
++-------|------------------------+
+        |
+        |--> if user has specified the 'addr'
+        |
+        |        +----------+
+        |------> | find_vma | return  the first vma that meets 'addr < vm_end'
+        |        +----------+
+        |
+        |------> if no such vma, or it doesn't intersect our target range
+        |
+        |----------> return
+        |
+        |--> set up info (flag = top_down)
+        |
+        |    +------------------+
+        |--> | vm_unmapped_area | find a suitable region and return start addr
+        |    +----|-------------+
+        |         |
+        |         |--> if flag is top_down
+        |         |
+        |         |        +-----------------------+
+        |         |------> | unmapped_area_topdown | starting from high address, find a suitable region and return start addr
+        |         |        +-----------------------+
+        |         |
+        |         |--> else
+        |         |
+        |         |        +---------------+
+        |         +------> | unmapped_area | starting from low address, find a suitable region and return start addr
+        |                  +---------------+
+        |
+        +--> if it fails, try bottom-up lookup
+```
+  
+```
++-------------------+
+| get_unmapped_area | : lookup a region that satisfies the range ('addr' isn't guaranteed)
++----|--------------+
+     |
+     |--> determine get_area(): 1. from mm, 2. from file, 3. from shm
+     |
+     +--> call ->get_area(), e.g.,
+          +--------------------------------+
+          | arch_get_unmapped_area_topdown | lookup a region that satisfies the range ('addr' isn't guaranteed)
+          +--------------------------------+
+```
+  
 </details>
 
 ## <a name="page-table"></a> Page Table
