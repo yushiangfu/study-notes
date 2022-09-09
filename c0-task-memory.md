@@ -4,16 +4,82 @@
 
 - [Introduction](#introduction)
 - [Memory Layout](#memory-layout)
-- [Mapping Type](#mapping-type)
 - [Page Table](#page-table)
+- [Page Fault](#page-fault)
+- [Reverse Mapping](#reverse-mapping)
 - [Task Startup](#task-startup)
 - [Others](#others)
-  - [Kmap](#kmap)
+  - Kmap
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
 (TBD)
+
+## <a name="memory-layout"></a> Memory Layout
+
+For mapping of kernel space, not much management is involved since it's not necessary. 
+But a few points need to be considered for userspace mapping.
+
+- lookup of the available virtual region for mapping
+- region attributes, e.g., read, write, execute
+- region extension, e.g., heap, stack
+
+And the kernel utilizes **struct vma** (virtual memory area) to represent each region in user space for VM management. 
+The common areas are:
+
+- stack
+  - for function call
+  - where local variables exist
+  - extend toward low address
+- heap
+  - for malloc()
+  - ext end toward high address
+- read & execute region of executable, linker, or library
+  - e.g., compiled code
+- read & write region of executable, linker, or library
+  - e.g., global data
+- read-only region of executable, linker, or library
+  - e.g., constant?
+
+  
+
+```
+                                                     virtual address                                
+                                  +---------    +-----------------------+                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |||||||||||||||||||||||||  vma
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+            page table            |             |||||||||||||||||||||||||  vma                      
+                                  |             |                       |                           
+  low addr +---------+    --------+             |                       |                           
+           |         |                          |                       |                           
+           |   user  |                          |||||||||||||||||||||||||  vma                      
+           |  space  |                          |                       |                           
+           |         |                          |                       |                           
+         ---------------  -----------------   -----------------------------                         
+           |         |                          |                       |                           
+           |  kernel |                          |                       |                           
+           |  space  |                          |                       |                           
+           |         |                          |                       |                           
+ high addr +---------+    --------+             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  |             |                       |                           
+                                  +---------    +-----------------------+                           
+```
+
+When a user executes the a.out, the shell first fork into two identical tasks and the following logic differs for parent and child tasks. 
+The child task triggers execve() to load the target executable into memory without much surprise.
+
+## <a name="page-table"></a> Page Table
 
 Virtual mapping relies on page table, MMU, and TLB:
 
@@ -123,66 +189,11 @@ And that instructs MMU on where to lookup from.
           +--------+                      +--------+                      +--------+
 ```
 
-For mapping of kernel space, not much management is involved since it's not necessary. 
-But a few points need to be considered for userspace mapping.
+## <a name="page-fault"></a> Page Fault
 
-- lookup of the available virtual region for mapping
-- region attributes, e.g., read, write, execute
-- region extension, e.g., heap, stack
+## <a name="reverse-mapping"></a> Reverse Mapping
 
-And the kernel utilizes **struct vma** (virtual memory area) to represent each region in user space for VM management. 
-The common areas are:
-
-- stack
-  - for function call
-  - where local variables exist
-  - extend toward low address
-- heap
-  - for malloc()
-  - ext end toward high address
-- read & execute region of executable, linker, or library
-  - e.g., compiled code
-- read & write region of executable, linker, or library
-  - e.g., global data
-- read-only region of executable, linker, or library
-  - e.g., constant?
-
-  
-
-```
-                                                     virtual address                                
-                                  +---------    +-----------------------+                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |||||||||||||||||||||||||  vma
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-            page table            |             |||||||||||||||||||||||||  vma                      
-                                  |             |                       |                           
-  low addr +---------+    --------+             |                       |                           
-           |         |                          |                       |                           
-           |   user  |                          |||||||||||||||||||||||||  vma                      
-           |  space  |                          |                       |                           
-           |         |                          |                       |                           
-         ---------------  -----------------   -----------------------------                         
-           |         |                          |                       |                           
-           |  kernel |                          |                       |                           
-           |  space  |                          |                       |                           
-           |         |                          |                       |                           
- high addr +---------+    --------+             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  |             |                       |                           
-                                  +---------    +-----------------------+                           
-```
-
-When a user executes the a.out, the shell first fork into two identical tasks and the following logic differs for parent and child tasks. 
-The child task triggers execve() to load the target executable into memory without much surprise.
+## <a name="task-startup"></a> Task Startup
 
 ```
           parent task                       child task    
@@ -554,7 +565,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
    
 </details>
 
-## <a name="kmap"></a> Kmap
+Kmap
 
 <details>
   <summary> Code trace </summary>
@@ -653,6 +664,3 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 ## <a name="reference"></a> Reference
 
 - W. Mauerer, Professional Linux Kernel Architecture
-
-
-
