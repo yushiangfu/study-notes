@@ -42,7 +42,7 @@ The common areas are:
 - read-only region of executable, linker, or library
   - e.g., constant?
 
-  
+<details><summary> More Details </summary>
 
 ```
                                                      virtual address                                
@@ -75,9 +75,20 @@ The common areas are:
                                   |             |                       |                           
                                   +---------    +-----------------------+                           
 ```
+ 
+```
+struct mm_struct {
+    struct {
+        unsigned long start_code, end_code, start_data, end_data;
+        unsigned long start_brk,    // the start addr of heap
+                      brk,          // current end addr of heap, but it's changeable
+                      start_stack;
+        unsigned long arg_start, arg_end, env_start, env_end;
+    }
+}
+```
 
-When a user executes the a.out, the shell first fork into two identical tasks and the following logic differs for parent and child tasks. 
-The child task triggers execve() to load the target executable into memory without much surprise.
+</details>
 
 ## <a name="page-table"></a> Page Table
 
@@ -212,6 +223,8 @@ And that instructs MMU on where to lookup from.
       +----------------+                +----------------+
 ```
 
+The child task triggers execve() to load the target executable into memory without much surprise.
+When a user executes the a.out, the shell first fork into two identical tasks and the following logic differs for parent and child tasks. 
 Once the kernel receives the execve() request, the child task switches to the newly generated mm structure and starts to install various mappings.
 
 1. [kernel] prepare the stack
