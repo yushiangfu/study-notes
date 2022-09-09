@@ -130,8 +130,8 @@ struct mm_struct {
         |         |--> if flag is top_down
         |         |
         |         |        +-----------------------+
-        |         |------> | unmapped_area_topdown | starting from high address, find a suitable region and return start addr
-        |         |        +-----------------------+
+        |         |------> | unmapped_area_topdown | starting from high address,
+        |         |        +-----------------------+ find a suitable region and return start addr
         |         |
         |         |--> else
         |         |
@@ -467,7 +467,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +-----------------+                                                                                      
-| load_elf_binary | map segments of exec and interp, copy and env to stack, regs->pc to interp           
+| load_elf_binary | : map segments of exec and interp, copy and env to stack, regs->pc to interp           
 +----|------------+                                                                                      
      |                                                                                                   
      |--> check if magic "\177ELF" matches                                                               
