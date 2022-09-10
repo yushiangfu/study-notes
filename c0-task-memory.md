@@ -178,6 +178,25 @@ struct vm_area_struct {
 }
 ```
   
+```
+struct address_space {
+    struct inode        *host; // can be file or block dev
+    struct rb_root_cached   i_mmap;
+}
+```
+  
+```
+struct file {
+    struct address_space    *f_mapping;
+} 
+```
+  
+```  
+struct inode {
+    struct address_space    *i_mapping;
+}
+```
+  
 </details>
 
 ## <a name="page-table"></a> Page Table
