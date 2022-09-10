@@ -76,7 +76,7 @@ The common areas are:
                                   +---------    +-----------------------+                           
 ```
  
-```
+```c
 struct mm_struct {
     struct {
         unsigned long start_code, end_code, start_data, end_data;
@@ -155,7 +155,7 @@ struct mm_struct {
           +--------------------------------+
 ```
   
-```
+```c
 struct vm_area_struct {
     unsigned long vm_start;           // vaddr start
     unsigned long vm_end;             // vaddr end
@@ -178,20 +178,20 @@ struct vm_area_struct {
 }
 ```
   
-```
+```c
 struct address_space {
     struct inode        *host;      // can be file or block dev
     struct rb_root_cached   i_mmap; // tree of private and shared mappings
 }
 ```
   
-```
+```c
 struct file {
     struct address_space    *f_mapping;
 } 
 ```
   
-```  
+```c
 struct inode {
     struct address_space    *i_mapping;
 }
