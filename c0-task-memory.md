@@ -197,6 +197,34 @@ struct inode {
 }
 ```
   
+```
++----------+                                                
+| find_vma | : lookup the first vma that meets addr < vm_end
++--|-------+                                                
+   |    +---------------+                                   
+   |--> | vmacache_find | check if target is in the cache   
+   |    +---------------+                                   
+   |                                                        
+   |--> return if found                                     
+   |                                                        
+   |--> search in tree                                      
+   |                                                        
+   +--> if found, update cache                              
+```
+  
+```
++-----------------------+                                                    
+| find_vma_intersection | : given the range, return the first intersected vma
++-----|-----------------+                                                    
+      |    +----------+                                                      
+      |--> | find_vma | lookup the first vma that meets addr < vm_end        
+      |    +----------+                                                      
+      |                                                                      
+      |--> return null if they don't intersect                               
+      |                                                                      
+      +--> return the found vma                                              
+```
+  
 </details>
 
 ## <a name="page-table"></a> Page Table
