@@ -180,8 +180,8 @@ struct vm_area_struct {
   
 ```
 struct address_space {
-    struct inode        *host; // can be file or block dev
-    struct rb_root_cached   i_mmap;
+    struct inode        *host;      // can be file or block dev
+    struct rb_root_cached   i_mmap; // tree of private and shared mappings
 }
 ```
   
@@ -223,6 +223,41 @@ struct inode {
       |--> return null if they don't intersect                               
       |                                                                      
       +--> return the found vma                                              
+```
+  
+```
++------------------+                                                              
+| insert_vm_struct | : insert vma into process's mm and inode's i_mmap tree       
++----|-------------+                                                              
+     |    +----------------+                                                      
+     |--> | find_vma_links | given range, return its list prev, tree parent & link
+     |    +----------------+                                                      
+     |                                                                            
+     |--> if it's an anonymous vma                                                
+     |                                                                            
+     |------> set ->vm_pgoff to be consistent with /proc/pid/maps?                
+     |                                                                            
+     |    +----------+                                                            
+     +--> | vma_link | link vma into mm and address_space                         
+          +----------+                                                            
+```
+  
+```
++----------+                                                                                   
+| vma_link | : link vma into mm and address_space                                              
++--|-------+                                                                                   
+   |    +------------+                                                                         
+   |--> | __vma_link |                                                                         
+   |    +--|---------+                                                                         
+   |       |    +-----------------+                                                            
+   |       |--> | __vma_link_list | link vma into list in mm                                   
+   |       |    +-----------------+                                                            
+   |       |    +---------------+                                                              
+   |       +--> | __vma_link_rb | link vma into tree in mm                                     
+   |            +---------------+                                                              
+   |    +-----------------+                                                                    
+   +--> | __vma_link_file | link vma into tree of address space, for private or shared mappings
+        +-----------------+                                                                    
 ```
   
 </details>
