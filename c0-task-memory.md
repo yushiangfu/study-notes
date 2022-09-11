@@ -124,7 +124,7 @@ struct mm_struct {
         |--> set up info (flag = top_down)
         |
         |    +------------------+
-        |--> | vm_unmapped_area | find a suitable region and return start addr
+        |--> | vm_unmapped_area | : find a suitable region and return start addr
         |    +----|-------------+
         |         |
         |         |--> if flag is top_down
@@ -247,7 +247,7 @@ struct inode {
 | vma_link | : link vma into mm and address_space                                              
 +--|-------+                                                                                   
    |    +------------+                                                                         
-   |--> | __vma_link |                                                                         
+   |--> | __vma_link | :
    |    +--|---------+                                                                         
    |       |    +-----------------+                                                            
    |       |--> | __vma_link_list | link vma into list in mm                                   
@@ -261,49 +261,92 @@ struct inode {
 ```
                     
 ```
-+-----------+                                                                                                                       
++-----------+
 | sys_mmap2 | :
-+--|--------+                                                                                                                       
-   |    +----------------+                                                                                                          
-   +--> | sys_mmap_pgoff |                                                                                                          
-        +---|------------+                                                                                                          
-            |    +-----------------+                                                                                                
-            +--> | ksys_mmap_pgoff |                                                                                                
-                 +----|------------+                                                                                                
-                      |    +---------------+                                                                                        
-                      +--> | vm_mmap_pgoff |                                                                                        
-                           +---|-----------+                                                                                        
-                               |    +---------+                                                                                     
-                               |--> | do_mmap |                                                                                     
-                               |    +--|------+                                                                                     
-                               |       |    +-------------------+                                                                   
-                               |       |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
-                               |       |    +-------------------+                                                                   
-                               |       |                                                                                            
-                               |       |--> determine vm flags                                                                      
-                               |       |                                                                                            
-                               |       |    +-------------+                                                                         
-                               |       |--> | mmap_region | ensure there's a vma covering this region, link that vma with framework 
-                               |       |    +-------------+                                                                         
-                               |       |                                                                                            
-                               |       +--> determine populate len if the flags ask so                                              
-                               |                                                                                                    
-                               |--> if populate len is determined                                                                   
-                               |                                                                                                    
-                               |        +-------------+                                                                             
-                               +------> | mm_populate | fault in the pages                                                          
-                                        +-------------+                                                                             
++--|--------+
+   |    +----------------+
+   +--> | sys_mmap_pgoff | :
+        +---|------------+
+            |    +-----------------+
+            +--> | ksys_mmap_pgoff | :
+                 +----|------------+
+                      |    +---------------+
+                      +--> | vm_mmap_pgoff | :
+                           +---|-----------+
+                               |    +---------+
+                               |--> | do_mmap | :
+                               |    +--|------+
+                               |       |    +-------------------+
+                               |       |--> | get_unmapped_area | lookup a region that satisfies the range,
+                               |       |    +-------------------+ but it's not guaranteed
+                               |       |
+                               |       |--> determine vm flags
+                               |       |
+                               |       |    +-------------+
+                               |       |--> | mmap_region | ensure there's a vma covering this region,
+                               |       |    +-------------+ link that vma with framework
+                               |       |
+                               |       +--> determine populate len if the flags ask so
+                               |
+                               |--> if populate len is determined
+                               |
+                               |        +-------------+
+                               +------> | mm_populate | fault in the pages
+                                        +-------------+
 ```
 
+```
++-------------+                                                                               
+| mmap_region | : ensure there's a vma covering this region, link that vma with framework       
++---|---------+                                                                               
+    |    +------------------+                                                                 
+    |--> | munmap_vma_range | unmap overlapped region                                         
+    |    +------------------+                                                                 
+    |    +-----------+                                                                        
+    |--> | vma_merge | try to expand from existing vma                                        
+    |    +-----------+                                                                        
+    |                                                                                         
+    |--> return if it's successful                                                            
+    |                                                                                         
+    |    +---------------+                                                                    
+    |--> | vm_area_alloc | allocate 'vma'                                                     
+    |    +---------------+                                                                    
+    |                                                                                         
+    |--> set up 'vma' with region info                                                        
+    |                                                                                         
+    |--> if it's a file mapping                                                               
+    |                                                                                         
+    |------> call ->mmap(), e.g.,                                                             
+    |        +----------+                                                                     
+    |        | ovl_mmap |                                                                     
+    |        +----------+                                                                     
+    |                                                                                         
+    |--> else if it's a 'shared' mapping                                                      
+    |                                                                                         
+    |        +------------------+                                                             
+    |------> | shmem_zero_setup |                                                             
+    |        +------------------+                                                             
+    |                                                                                         
+    |--> else                                                                                 
+    |                                                                                         
+    |        +-------------------+                                                            
+    |------> | vma_set_anonymous | set vma ops = NULL                                         
+    |        +-------------------+                                                            
+    |    +----------+                                                                         
+    +--> | vma_link | link vma into mm and address_space                                              
+         +----------+
+                                                       
+```
+  
 ```
 +------------+
 | sys_munmap | :
 +--|---------+
    |    +-------------+
-   +--> | __vm_munmap |
+   +--> | __vm_munmap | :
         +---|---------+
             |    +-------------+
-            +--> | __do_munmap | clear pte, free page table, and release vma
+            +--> | __do_munmap | : clear pte, free page table, and release vma
                  +---|---------+
                      |    +-----------------------+
                      |--> | find_vma_intersection | find the vma that intersects with arg range
@@ -318,7 +361,7 @@ struct inode {
                      |--> | detach_vmas_to_be_unmapped | detatch from rb tree
                      |    +----------------------------+
                      |    +--------------+
-                     |--> | unmap_region |
+                     |--> | unmap_region | :
                      |    +---|----------+
                      |        |    +---------------+
                      |        |--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
@@ -534,7 +577,7 @@ static struct fsr_info ifsr_info[] = {
 
 ```
  +-------------+                                                                       
- | vector_pabt |                                                                       
+ | vector_pabt | :
  +--|----------+                                                                       
     |                                                                                  
     +---> save r0, lr_pabt, spsr_pabt to abt stack (size: 4 bytes * 3)                 
@@ -560,13 +603,13 @@ static struct fsr_info ifsr_info[] = {
 
 ```
 +------------+                                                                             
-| __pabt_usr | get ifsr and handle fault accordingly, return to user mode                  
+| __pabt_usr | : get ifsr and handle fault accordingly, return to user mode                  
 +--|---------+                                                                             
    |    +-----------+                                                                      
    |--> | usr_entry | store r0 ~ r12, sp_usr, lr_usr, old pc to sp_svc                     
    |    +-----------+                                                                      
    |    +-------------+                                                                    
-   |--> | pabt_helper |                                                                    
+   |--> | pabt_helper | :                                                                    
    |    +---|---------+                                                                    
    |        |                                                                              
    |        +--> call v6_processor_functions->_prefetch_abort(), e.g.,                     
@@ -580,13 +623,13 @@ static struct fsr_info ifsr_info[] = {
 
 ```
 +-----------+                                                
-| v6_pabort | get ifsr and handle the fault accordingly      
+| v6_pabort | : get ifsr and handle the fault accordingly      
 +--|--------+                                                
    |                                                         
    |--> get ifsr from coprocessor                            
    |                                                         
    |    +------------------+                                 
-   +--> | do_PrefetchAbort |                                 
+   +--> | do_PrefetchAbort | :
         +----|-------------+                                 
              |                                               
              |--> get target ifsr_info using ifsr as index   
@@ -605,7 +648,7 @@ static struct fsr_info ifsr_info[] = {
 
 ```
 +------------+                                                                            
-| __pabt_svc | get ifsr and handle fault accordingly                                      
+| __pabt_svc | : get ifsr and handle fault accordingly                                      
 +--|---------+                                                                            
    |    +-----------+                                                                     
    |--> | svc_entry | save registers to stack for later restore                           
@@ -620,7 +663,7 @@ static struct fsr_info ifsr_info[] = {
 
 ```
  +-------------+                                                                      
- | vector_dabt |                                                                      
+ | vector_dabt | :
  +--|----------+                                                                      
     |                                                                                 
     +---> save r0, lr_dabt, spsr_dabt to abt stack (size: 4 bytes * 3)                
@@ -646,13 +689,13 @@ static struct fsr_info ifsr_info[] = {
 
 ```
 +------------+                                                                             
-| __dabt_usr | get fsr and handle fault accordingly, return to user mode                   
+| __dabt_usr | : get fsr and handle fault accordingly, return to user mode                   
 +--|---------+                                                                             
    |    +-----------+                                                                      
    |--> | usr_entry | store r0 ~ r12, sp_usr, lr_usr, old pc to sp_svc                     
    |    +-----------+                                                                      
    |    +-------------+                                                                    
-   |--> | dabt_helper |                                                                    
+   |--> | dabt_helper | :
    |    +---|---------+                                                                    
    |        |                                                                              
    |        +--> call v6_processor_functions->_data_abort(), e.g.,                         
@@ -666,13 +709,13 @@ static struct fsr_info ifsr_info[] = {
 
 ```
 +----------------+                                         
-| v6_early_abort | get fsr and handle the fault accordingly
+| v6_early_abort | : get fsr and handle the fault accordingly
 +---|------------+                                         
     |                                                      
     |--> get 'fsr' and 'far' from coprocessor              
     |                                                      
     |    +--------------+                                  
-    +--> | do_DataAbort |                                  
+    +--> | do_DataAbort | :
          +---|----------+                                  
              |                                             
              |--> get target fsr_info using fsr as index   
@@ -691,7 +734,7 @@ static struct fsr_info ifsr_info[] = {
 
 ```
 +------------+                                                                     
-| __dabt_svc | get fsr and handle fault accordingly                                
+| __dabt_svc | : get fsr and handle fault accordingly                                
 +--|---------+                                                                     
    |    +-----------+                                                              
    |--> | svc_entry | save registers to stack for later restore                    
@@ -824,63 +867,63 @@ const struct vm_operations_struct generic_file_vm_ops = {
 ```   
                      
 ```
-+---------------+                                                                                                                              
-| do_page_fault |                                                                                                                              
-+---|-----------+                                                                                                                              
-    |    +-----------------+                                                                                                                   
-    |--> | __do_page_fault |                                                                                                                   
-    |    +----|------------+                                                                                                                   
-    |         |    +----------+                                                                                                                
-    |         |--> | find_vma | try to find target vma based on faulted addr                                                                   
-    |         |    +----------+                                                                                                                
-    |         |                                                                                                                                
-    |         |--> check if it's a valid fault (covered by vma, or lies in stack)                                                              
-    |         |                                                                                                                                
-    |         |--> return error if not                                                                                                         
-    |         |                                                                                                                                
-    |         |    +-----------------+                                                                                                         
-    |         +--> | handle_mm_fault |                                                                                                         
-    |              +----|------------+                                                                                                         
-    |                   |    +---------------------+                                                                                           
-    |                   |--> | __set_current_state | set state = running                                                                       
-    |                   |    +---------------------+                                                                                           
-    |                   |    +-------------------+                                                                                             
-    |                   +--> | __handle_mm_fault |                                                                                             
-    |                        +----|--------------+                                                                                             
-    |                             |    +------------+                                                                                          
-    |                             |--> | pgd_offset | get target pgd based on addr                                                             
-    |                             |    +------------+                                                                                          
-    |                             |    +-----------+                                                                                           
-    |                             |--> | p4d_alloc | return arg pgd                                                                            
-    |                             |    +-----------+                                                                                           
-    |                             |    +-----------+                                                                                           
-    |                             |--> | pud_alloc | return arg p4d                                                                            
-    |                             |    +-----------+                                                                                           
-    |                             |    +-----------+                                                                                           
-    |                             |--> | pmd_alloc |  return arg pud                                                                           
-    |                             |    +-----------+                                                                                           
-    |                             |    +------------------+                                                                                    
-    |                             +--> | handle_pte_fault | ensure 2nd-level table exists, and either call ->fault() or simply update pte entry
-    |                                  +------------------+                                                                                    
-    |                                                                                                                                          
-    |--> return 0 for valid case                                                                                                               
-    |                                                                                                                                          
-    |--> if it's a real fault from user context                                                                                                
-    |                                                                                                                                          
-    |        +-----------------+                                                                                                               
-    |------> | __do_user_fault | raise signal SIGSEGV                                                                                          
-    |        +-----------------+                                                                                                               
-    |                                                                                                                                          
-    |--> else if it's a real fault from kernel context                                                                                         
-    |                                                                                                                                          
-    |        +-------------------+                                                                                                             
-    +------> | __do_kernel_fault | die                                                                                                         
-             +-------------------+                                                                                                             
++---------------+
+| do_page_fault | :
++---|-----------+
+    |    +-----------------+
+    |--> | __do_page_fault | :
+    |    +----|------------+
+    |         |    +----------+
+    |         |--> | find_vma | try to find target vma based on faulted addr
+    |         |    +----------+
+    |         |
+    |         |--> check if it's a valid fault (covered by vma, or lies in stack)
+    |         |
+    |         |--> return error if not
+    |         |
+    |         |    +-----------------+
+    |         +--> | handle_mm_fault | :
+    |              +----|------------+
+    |                   |    +---------------------+
+    |                   |--> | __set_current_state | set state = running
+    |                   |    +---------------------+
+    |                   |    +-------------------+
+    |                   +--> | __handle_mm_fault | :
+    |                        +----|--------------+
+    |                             |    +------------+
+    |                             |--> | pgd_offset | get target pgd based on addr
+    |                             |    +------------+
+    |                             |    +-----------+
+    |                             |--> | p4d_alloc | return arg pgd
+    |                             |    +-----------+
+    |                             |    +-----------+
+    |                             |--> | pud_alloc | return arg p4d
+    |                             |    +-----------+
+    |                             |    +-----------+
+    |                             |--> | pmd_alloc |  return arg pud
+    |                             |    +-----------+
+    |                             |    +------------------+
+    |                             +--> | handle_pte_fault | ensure 2nd-level table exists,
+    |                                  +------------------+ and either call ->fault() or simply update pte entry
+    |
+    |--> return 0 for valid case
+    |
+    |--> if it's a real fault from user context
+    |
+    |        +-----------------+
+    |------> | __do_user_fault | raise signal SIGSEGV
+    |        +-----------------+
+    |
+    |--> else if it's a real fault from kernel context
+    |
+    |        +-------------------+
+    +------> | __do_kernel_fault | die
+             +-------------------+
 ```
 
 ```
  +------------------+                                                                                     
- | handle_pte_fault | ensure 2nd-level table exists, and either call ->fault() or simply update pte entry 
+ | handle_pte_fault | : ensure 2nd-level table exists, and either call ->fault() or simply update pte entry 
  +----|-------------+                                                                                     
       |                                                                                                   
       |--> if no pet yet                                                                                  
@@ -906,7 +949,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 ```
 +-------------------+                                                                  
-| do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
+| do_anonymous_page | : ensure 2nd-level table exists, prepare pte value and update entry
 +----|--------------+                                                                  
      |    +-----------+                                                                
      |--> | pte_alloc | ensure the pte table exists                                    
@@ -930,7 +973,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 ```
 +----------+                                                                                   
-| do_fault | ensure 2nd-level table exists, call ->fault()                                     
+| do_fault | : ensure 2nd-level table exists, call ->fault()                                     
 +--|-------+                                                                                   
    |                                                                                           
    |--> if vm ops doesn't have ->fault(), return error                                         
@@ -956,13 +999,13 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 ```
 +---------------+                                              
-| do_read_fault | ensure 2nd-level table exists, call ->fault()
+| do_read_fault | : ensure 2nd-level table exists, call ->fault()
 +---|-----------+                                              
     |                                                          
     |--> if vm ops has ->map_pages()                           
     |                                                          
     |        +-----------------+                               
-    |------> | do_fault_around |                               
+    |------> | do_fault_around | :                              
     |        +----|------------+                               
     |             |                                            
     |             |--> determine start and end page offset     
@@ -972,7 +1015,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
     |                  | filemap_map_pages |                   
     |                  +-------------------+                   
     |    +------------+                                        
-    +--> | __do_fault |                                        
+    +--> | __do_fault | :
          +--|---------+                                        
             |                                                  
             |--> ensure 2nd-level table exists                 
@@ -985,7 +1028,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 ```
 +-----------------+                                                              
-| do_shared_fault | ensure 2nd-level table exists, call ->fault(), dirty the page
+| do_shared_fault | : ensure 2nd-level table exists, call ->fault(), dirty the page
 +----|------------+                                                              
      |    +------------+                                                         
      |--> | __do_fault | ensure 2nd-level table exists, call ->fault()           
@@ -1002,13 +1045,13 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 ```
 +------------+                                                      
-| do_wp_page | handle the fault of copy-on-write                    
+| do_wp_page | : handle the fault of copy-on-write                    
 +--|---------+                                                      
    |    +----------------+                                          
    |--> | vm_normal_page | get struct page of give pte              
    |    +----------------+                                          
    |    +--------------+                                            
-   +--> | wp_page_copy |                                            
+   +--> | wp_page_copy | :
         +---|----------+                                            
             |                                                       
             |--> allocate a page                                    
@@ -1278,7 +1321,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +-----------------------------+                                                     
-| arch_setup_additional_pages | install three vmas for 'sigpage', 'vvar', and 'vdso'
+| arch_setup_additional_pages | : install three vmas for 'sigpage', 'vvar', and 'vdso'
 +-------|---------------------+                                                     
         |                                                                           
         |--> ensure 'signal_page' is allocated                                      
@@ -1292,7 +1335,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
         |--> | _install_special_mapping | install vma for that vaddr                
         |    +--------------------------+                                           
         |    +------------------+                                                   
-        +--> | arm_install_vdso |                                                   
+        +--> | arm_install_vdso | :                                                   
              +----|-------------+                                                   
                   |    +--------------+                                             
                   |--> | install_vvar | install vma for 'vvar'                      
@@ -1304,7 +1347,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +-----------+                                                                               
-| de_thread | ensure no other threads in group, and arg task assumes the leader             
+| de_thread | : ensure no other threads in group, and arg task assumes the leader             
 +--|--------+                                                                               
    |                                                                                        
    |--> return if no other thread in group                                                  
@@ -1330,13 +1373,13 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +------------+                                                                                 
-| unshare_fd | clone fdtable from current task, and assign to current task?                    
+| unshare_fd | : clone fdtable from current task, and assign to current task?                    
 +--|---------+                                                                                 
    |                                                                                           
    |--> if flash has specified 'clone'                                                         
    |                                                                                           
    |        +--------+                                                                         
-   +------> | dup_fd | clone fdtable from current task (both fd arrays point to the same files)
+   +------> | dup_fd | : clone fdtable from current task (both fd arrays point to the same files)
             +-|------+                                                                         
               |    +------------------+                                                        
               |--> | kmem_cache_alloc | allocate 'files_struct' which includes fdtable         
@@ -1349,7 +1392,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +----------------+                                                                             
-| begin_new_exec | ensure no other threads, clone structures, set task name, reset sig handlers
+| begin_new_exec | : ensure no other threads, clone structures, set task name, reset sig handlers
 +---|------------+                                                                             
     |    +-----------+                                                                         
     +--> | de_thread | ensure no other threads in group, and arg task assumes the leader       
@@ -1379,7 +1422,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +-----------------+                                                            
-| load_elf_interp | map interpreter segments                                   
+| load_elf_interp | : map interpreter segments                                   
 +----|------------+                                                            
      |    +--------------------+                                               
      |--> | total_mapping_size | sum up the size of segments with 'load' type  
@@ -1407,7 +1450,7 @@ Kmap
 
 ```
 +------+                                                             
-| kmap | ensure the page has a mapped virtual address                
+| kmap | : ensure the page has a mapped virtual address                
 +-|----+                                                             
   |                                                                  
   |--> if arg page isn't from highmem                                
@@ -1425,7 +1468,7 @@ Kmap
 
 ```
 +-----------+                                                            
-| kmap_high | map a highmem page                                         
+| kmap_high | : map a highmem page                                         
 +--|--------+                                                            
    |    +--------------+                                                 
    |--> | page_address | return mapped virtual address of arg page       
@@ -1470,13 +1513,13 @@ Kmap
 
 ```
 +--------+                                                               
-| kunmap |                                                               
+| kunmap | :
 +-|------+                                                               
   |                                                                      
   |--> if arg page isn't from high mem, return                           
   |                                                                      
   |    +-------------+                                                   
-  +--> | kunmap_high |                                                   
+  +--> | kunmap_high | :
        +---|---------+                                                   
            |    +--------------+                                         
            |--> | page_address | get virtual addr that the page maps from
