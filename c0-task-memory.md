@@ -259,6 +259,80 @@ struct inode {
    +--> | __vma_link_file | link vma into tree of address space, for private or shared mappings
         +-----------------+                                                                    
 ```
+                    
+```
++-----------+                                                                                                                       
+| sys_mmap2 | :
++--|--------+                                                                                                                       
+   |    +----------------+                                                                                                          
+   +--> | sys_mmap_pgoff |                                                                                                          
+        +---|------------+                                                                                                          
+            |    +-----------------+                                                                                                
+            +--> | ksys_mmap_pgoff |                                                                                                
+                 +----|------------+                                                                                                
+                      |    +---------------+                                                                                        
+                      +--> | vm_mmap_pgoff |                                                                                        
+                           +---|-----------+                                                                                        
+                               |    +---------+                                                                                     
+                               |--> | do_mmap |                                                                                     
+                               |    +--|------+                                                                                     
+                               |       |    +-------------------+                                                                   
+                               |       |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
+                               |       |    +-------------------+                                                                   
+                               |       |                                                                                            
+                               |       |--> determine vm flags                                                                      
+                               |       |                                                                                            
+                               |       |    +-------------+                                                                         
+                               |       |--> | mmap_region | ensure there's a vma covering this region, link that vma with framework 
+                               |       |    +-------------+                                                                         
+                               |       |                                                                                            
+                               |       +--> determine populate len if the flags ask so                                              
+                               |                                                                                                    
+                               |--> if populate len is determined                                                                   
+                               |                                                                                                    
+                               |        +-------------+                                                                             
+                               +------> | mm_populate | fault in the pages                                                          
+                                        +-------------+                                                                             
+```
+
+```
++------------+
+| sys_munmap | :
++--|---------+
+   |    +-------------+
+   +--> | __vm_munmap |
+        +---|---------+
+            |    +-------------+
+            +--> | __do_munmap | clear pte, free page table, and release vma
+                 +---|---------+
+                     |    +-----------------------+
+                     |--> | find_vma_intersection | find the vma that intersects with arg range
+                     |    +-----------------------+
+                     |
+                     |--> if the arg range doens't match the found vma
+                     |
+                     |        +-------------+
+                     |------> | __split_vma |
+                     |        +-------------+
+                     |    +----------------------------+
+                     |--> | detach_vmas_to_be_unmapped | detatch from rb tree
+                     |    +----------------------------+
+                     |    +--------------+
+                     |--> | unmap_region |
+                     |    +---|----------+
+                     |        |    +---------------+
+                     |        |--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
+                     |        |    +---------------+
+                     |        |    +------------+
+                     |        +--> | unmap_vmas | clear pte within range
+                     |        |    +------------+
+                     |        |    +---------------+
+                     |        +--> | free_pgtables | free 2nd-level page table?
+                     |             +---------------+
+                     |    +-----------------+
+                     +--> | remove_vma_list | free vma
+                          +-----------------+                                                                     
+```
   
 </details>
 
@@ -729,78 +803,25 @@ const struct vm_operations_struct generic_file_vm_ops = {
 ```
                      
 ```
-+-----------+                                                                                                                       
-| sys_mmap2 |                                                                                                                       
-+--|--------+                                                                                                                       
-   |    +----------------+                                                                                                          
-   +--> | sys_mmap_pgoff |                                                                                                          
-        +---|------------+                                                                                                          
-            |    +-----------------+                                                                                                
-            +--> | ksys_mmap_pgoff |                                                                                                
-                 +----|------------+                                                                                                
-                      |    +---------------+                                                                                        
-                      +--> | vm_mmap_pgoff |                                                                                        
-                           +---|-----------+                                                                                        
-                               |    +---------+                                                                                     
-                               |--> | do_mmap |                                                                                     
-                               |    +--|------+                                                                                     
-                               |       |    +-------------------+                                                                   
-                               |       |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
-                               |       |    +-------------------+                                                                   
-                               |       |                                                                                            
-                               |       |--> determine vm flags                                                                      
-                               |       |                                                                                            
-                               |       |    +-------------+                                                                         
-                               |       |--> | mmap_region | ensure there's a vma covering this region, link that vma with framework 
-                               |       |    +-------------+                                                                         
-                               |       |                                                                                            
-                               |       +--> determine populate len if the flags ask so                                              
-                               |                                                                                                    
-                               |--> if populate len is determined                                                                   
-                               |                                                                                                    
-                               |        +-------------+                                                                             
-                               +------> | mm_populate | fault in the pages                                                          
-                                        +-------------+                                                                             
-```
-
-```
-+------------+
-| sys_munmap |
-+--|---------+
-   |    +-------------+
-   +--> | __vm_munmap |
-        +---|---------+
-            |    +-------------+
-            +--> | __do_munmap | clear pte, free page table, and release vma
-                 +---|---------+
-                     |    +-----------------------+
-                     |--> | find_vma_intersection | find the vma that intersects with arg range
-                     |    +-----------------------+
-                     |
-                     |--> if the arg range doens't match the found vma
-                     |
-                     |        +-------------+
-                     |------> | __split_vma |
-                     |        +-------------+
-                     |    +----------------------------+
-                     |--> | detach_vmas_to_be_unmapped | detatch from rb tree
-                     |    +----------------------------+
-                     |    +--------------+
-                     |--> | unmap_region |
-                     |    +---|----------+
-                     |        |    +---------------+
-                     |        |--> | lru_add_drain | collect pages from other lru lists to memory node, and release them
-                     |        |    +---------------+
-                     |        |    +------------+
-                     |        +--> | unmap_vmas | clear pte within range
-                     |        |    +------------+
-                     |        |    +---------------+
-                     |        +--> | free_pgtables | free 2nd-level page table?
-                     |             +---------------+
-                     |    +-----------------+
-                     +--> | remove_vma_list | free vma
-                          +-----------------+                                                                     
-```
++---------------+                                                                            
+| filemap_fault | :
++---|-----------+                                                                            
+    |    +---------------+                                                                   
+    |--> | find_get_page | find page in mapping                                              
+    |    +---------------+                                                                   
+    |                                                                                        
+    |--> if found                                                                            
+    |                                                                                        
+    |        +-------------------------+                                                     
+    |------> | do_async_mmap_readahead | asynchronously read ahead if the page has such label
+    |        +-------------------------+                                                     
+    |                                                                                        
+    |--> else                                                                                
+    |                                                                                        
+    |        +------------------------+                                                      
+    +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
+             +------------------------+                                                      
+```   
                      
 ```
 +---------------+                                                                                                                              
