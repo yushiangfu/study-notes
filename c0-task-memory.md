@@ -377,6 +377,18 @@ struct inode {
                           +-----------------+                                                                     
 ```
   
+```
++--------------+                                                                   
+| sys_mlockall | : apply flags to mm and all vma of the current task               
++---|----------+                                                                   
+    |                                                                              
+    |--> check if the request is allowed                                           
+    |                                                                              
+    |    +----------------------+                                                  
+    +--> | apply_mlockall_flags | apply flags to mm and all vma of the current task
+         +----------------------+                                                  
+```
+  
 </details>
 
 ## <a name="page-table"></a> Page Table
