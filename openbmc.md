@@ -588,7 +588,7 @@ setup
 ```
 +------+                                        
 | main |                                        
-+-|----+ image_manager_main.cpp
++-|----+ (image_manager_main.cpp)
   |    +------------------+                     
   |--> | sd_event_default | alloc sd_event      
   |    +------------------+                     
@@ -642,4 +642,94 @@ setup
       |--> if not                                                                                
       |                                                                                          
       +------> create 'version' object and insert to 'versions'                                  
+```
+
+```
++------+                          
+| main |                          
++-|----+ (item_updater_main.cpp)  
+  |                               
+  |--> get the shared io context  
+  |                               
+  |--> prepare manager and updater
+  |                               
+  |    +------------------+       
+  +--> | bus.request_name | ???   
+       +------------------+       
+```
+
+```
++-------------------------+                                                       
+| ItemUpdater constructor |                                                       
++------|------------------+                                                       
+       |    +----------------+                                                    
+       |--> | getRunningSlot | get slot number                                    
+       |    +----------------+                                                    
+       |    +---------------------+                                               
+       |--> | setBMCInventoryPath | get inventory path from dbus and set to member
+       |    +---------------------+                                               
+       |    +-----------------+                                                   
+       |--> | processBMCImage | update bmc? mirror uboot                          
+       |    +-----------------+                                                   
+       |    +------------------------+                                            
+       |--> | restoreFieldModeStatus | enable field mode if specified             
+       |    +------------------------+                                            
+       |    +-------------------+                                                 
+       +--> | emit_object_added | ???                                             
+            +-------------------+                                                 
+```
+
+```
++------------------------------+                                                                 
+| ItemUpdater::processBMCImage | : update bmc? mirror uboot                                      
++-------|----------------------+                                                                 
+        |                                                                                        
+        |--> ensure media folder exists                                                          
+        |                                                                                        
+        |--> for each file in /media/                                                            
+        |                                                                                        
+        |------> if file has the expected prefix                                                 
+        |                                                                                        
+        |            +-----------------------------+                                             
+        |----------> | VersionClass::getBMCVersion | get bmc version from file                   
+        |            +-----------------------------+                                             
+        |            +---------------------+                                                     
+        |----------> | VersionClass::getId | get id                                              
+        |            +---------------------+                                                     
+        |                                                                                        
+        |----------> continue if id exists already (the bmc fw is manually flashed)              
+        |                                                                                        
+        |----------> determine 'functional'                                                      
+        |                                                                                        
+        |            +----------------+                                                          
+        |----------> | restorePurpose | ？？？                                                      
+        |            +----------------+                                                          
+        |            +-------------------------------------+                                     
+        |----------> | VersionClass::getBMCExtendedVersion | get extended version from os release
+        |            +-------------------------------------+                                     
+        |                                                                                        
+        |----------> handle associations???                                                      
+        |                                                                                        
+        |            +-----------------+                                                         
+        |----------> | versions.insert |                                                         
+        |            +-----------------+                                                         
+        |            +--------------------+                                                      
+        |----------> | activations.insert | create activation instance for this version          
+        |            +--------------------+                                                      
+        |                                                                                        
+        |            if active                                                                   
+        |                                                                                        
+        |                create RedundancyPriority for version                                   
+        |                                                                                        
+        |--> if no functional found                                                              
+        |                                                                                        
+        |        +------------------------------+                                                
+        |------> | fs::create_directory_symlink |                                                
+        |        +------------------------------+                                                
+        |        +------------------------------+                                                
+        |------> | ItemUpdater::processBMCImage | call self again                                
+        |        +------------------------------+                                                
+        |    +------------------+                                                                
+        +--> | mirrorUbootToAlt | mirror uboot to the other flash                                
+             +------------------+                                                                
 ```
