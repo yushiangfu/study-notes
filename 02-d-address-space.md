@@ -776,54 +776,6 @@ address              +-------------+             +-------------+
 ```
 
 ```
-+-------------+                                                                               
-| mmap_region | ensure there's a vma covering this region, link that vma with framework       
-+---|---------+                                                                               
-    |    +------------------+                                                                 
-    |--> | munmap_vma_range | unmap overlapped region                                         
-    |    +------------------+                                                                 
-    |    +-----------+                                                                        
-    |--> | vma_merge | try to expand from existing vma                                        
-    |    +-----------+                                                                        
-    |                                                                                         
-    |--> return if it's successful                                                            
-    |                                                                                         
-    |    +---------------+                                                                    
-    |--> | vm_area_alloc | allocate 'vma'                                                     
-    |    +---------------+                                                                    
-    |                                                                                         
-    |--> set up 'vma' with region info                                                        
-    |                                                                                         
-    |--> if it's a file mapping                                                               
-    |                                                                                         
-    |------> call ->mmap(), e.g.,                                                             
-    |        +----------+                                                                     
-    |        | ovl_mmap |                                                                     
-    |        +----------+                                                                     
-    |                                                                                         
-    |--> else if it's a 'shared' mapping                                                      
-    |                                                                                         
-    |        +------------------+                                                             
-    |------> | shmem_zero_setup |                                                             
-    |        +------------------+                                                             
-    |                                                                                         
-    |--> else                                                                                 
-    |                                                                                         
-    |        +-------------------+                                                            
-    |------> | vma_set_anonymous | set vma ops = NULL                                         
-    |        +-------------------+                                                            
-    |    +----------+                                                                         
-    +--> | vma_link |                                                                         
-         +--|-------+                                                                         
-            |    +------------+                                                               
-            |--> | __vma_link | insert vma into vma list and tree                             
-            |    +------------+                                                               
-            |    +-----------------+                                                          
-            +--> | __vma_link_file | if it's a file mapping, insert vma into file mapping tree
-                 +-----------------+                                                          
-```
-
-```
 +--------------+                                                                                          
 | sys_mprotect |                                                                                          
 +---|----------+                                                                                          
