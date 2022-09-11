@@ -1,4 +1,4 @@
-> Based on Linux version 5.15.0
+> The note is based on Linux version 5.15.0 in OpenBMC.
 
 ## Index
 
@@ -20,11 +20,11 @@
 
 ## <a name="process-and-thread"></a> Process and Thread
 
-The **process** is a concept of running logic designed to fulfill the target purpose. 
+The `process` is a concept of running logic designed to fulfill the target purpose. 
 It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string. 
 Or quite complicated, working as a collection of threads executing the specified functions to solve complex jobs. 
 There are also kernel threads that operate in privileged mode and manage system resources. 
-Either user thread or kernel thread is regarded as a **task** from the kernel's perspective.
+Either user thread or kernel thread is regarded as a `task` from the kernel's perspective.
 
 <p align="center"><img src="images/process/process-and-thread.png" /></p>
 
@@ -51,9 +51,9 @@ Either user thread or kernel thread is regarded as a **task** from the kernel's 
 
 ## <a name="life-cycle"></a> Life Cycle
 
-A task is in **NEW** status when it's newly created but not yet added to any run queue. 
-It changes to **RUNNING** once queued, waiting to run, or running on a CPU. 
-If actions involve event waiting during runtime, the task becomes **SLEEPING** and temporarily standby somewhere until the condition is met. 
+A task is in `NEW` status when it's newly created but not yet added to any run queue. 
+It changes to `RUNNING` once queued, waiting to run, or running on a CPU. 
+If actions involve event waiting during runtime, the task becomes `SLEEPING` and temporarily standby somewhere until the condition is met. 
 The task can be a daemon working in the background continuously or a regular command exiting after performing its job.
 
 <p align="center"><img src="images/process/life-cycle.png" /></p>
@@ -119,10 +119,10 @@ struct task_struct {
 ### State - New
 
 Threads within the same process share the same virtual memory space, file table, etc., of which the collection is exclusive to each process. 
-Syscalls like **clone** and **fork** are used to create new tasks with different shared resources, and surprisingly they call to the same core function.
+Syscalls like `clone` and `fork` are used to create new tasks with different shared resources, and surprisingly they call to the same core function.
 For each resource, the routine determines whether to share it with the parent task or create a new copy of its own based on pass-in flags. 
-The syscall **fork** itself rarely works alone since two identical copies are pretty redundant. 
-Instead, another syscall **execve** follows to load the target application into memory, overwriting the existing logic.
+The syscall `fork` itself rarely works alone since two identical copies are pretty redundant. 
+Instead, another syscall `execve` follows to load the target application into memory, overwriting the existing logic.
 
 <p align="center"><img src="images/process/fork-and-clone.png" /></p>
 
@@ -281,7 +281,7 @@ Instead, another syscall **execve** follows to load the target application into 
   
 ```
 +---------------+                                                                     
-| ret_from_fork |                                                                     
+| ret_from_fork | :
 +---|-----------+                                                                     
     |    +---------------+                                                            
     |--> | schedule_tail | write pid value to the given userspace address if necessary
@@ -362,16 +362,16 @@ struct linux_binfmt {
 
 ```
 +------------+                                                                                              
-| sys_execve |                                                                                              
+| sys_execve | :                                                                                              
 +--|---------+                                                                                              
    |    +-----------+                                                                                       
-   +--> | do_execve |                                                                                       
+   +--> | do_execve | :                                                                                       
         +--|--------+                                                                                       
            |    +--------------------+                                                                      
-           +--> | do_execveat_common |                                                                      
+           +--> | do_execveat_common | :
                 +----|---------------+                                                                      
                      |    +------------+                                                                    
-                     |--> | alloc_bprm |                                                                    
+                     |--> | alloc_bprm | :
                      |    +--|---------+                                                                    
                      |       |                                                                              
                      |       |--> allocate 'bprm'                                                           
@@ -379,7 +379,7 @@ struct linux_binfmt {
                      |       |--> set filename and interp of bprm                                           
                      |       |                                                                              
                      |       |    +--------------+                                                          
-                     |       +--> | bprm_mm_init |                                                          
+                     |       +--> | bprm_mm_init | :
                      |            +---|----------+                                                          
                      |                |    +----------+                                                     
                      |                |--> | mm_alloc | prepare mm and page table                           
@@ -400,10 +400,10 @@ struct linux_binfmt {
 
 ```
 +-------------+
-| bprm_execve | move to a proper rq, clear old mapping, map exec and interp
+| bprm_execve | : move to a proper rq, clear old mapping, map exec and interp
 +---|---------+
     |    +----------------+
-    |--> | do_open_execat |
+    |--> | do_open_execat | :
     |    +---|------------+
     |        |
     |        |--> determine flags
@@ -415,13 +415,13 @@ struct linux_binfmt {
     |--> | sched_exec | select rq and migrate task onto it
     |    +------------+
     |    +-------------+
-    +--> | exec_binprm |
+    +--> | exec_binprm | :
          +---|---------+
              |
              |--> for 1 exec and at most 5 interpreters
              |
              |        +-----------------------+
-             |------> | search_binary_handler |
+             |------> | search_binary_handler | :
              |        +-----|-----------------+
              |              |    +----------------+
              |              |--> | prepare_binprm | read file into buffer
@@ -444,7 +444,7 @@ struct linux_binfmt {
 | sys_unshare | : based on flags, unshare specified resources and switch to the newly created ones           
 +---|---------+                                                                                              
     |    +--------------+                                                                                    
-    +--> | ksys_unshare |                                                                                    
+    +--> | ksys_unshare | :                                                                                   
          +---|----------+                                                                                    
              |    +------------+                                                                             
              |--> | unshare_fs | uhsnare fs (root, pwd) if specified                                         
@@ -511,7 +511,7 @@ Sleeping is a conceptual state that indicates the task is removed from the run q
 
 When the task sleeps, the practical state value can be any of the below ones.
 
-- TASK_KILLABLE: task wakes up when receiving a **kill** signal
+- TASK_KILLABLE: task wakes up when receiving a `kill` signal
 - TASK_INTERRUPTIBLE: task wakes up when receiving any signal
 - TASK_UNINTERRUPTIBLE: task wakes up only when the condition is met
 
@@ -541,10 +541,10 @@ Indifferent parents might cause the children to remain in the ZOMBIE state.
 
 ```
 +----------------+
-| sys_exit_group |
+| sys_exit_group | :
 +---|------------+
     |    +---------------+
-    +--> | do_group_exit |
+    +--> | do_group_exit | :
          +---|-----------+
              |
              |--> if thread group is exiting
@@ -566,10 +566,10 @@ Indifferent parents might cause the children to remain in the ZOMBIE state.
   
 ```
 +----------+
-| sys_exit |
+| sys_exit | :
 +--|-------+
    |    +---------+
-   +--> | do_exit |
+   +--> | do_exit | :
         +--|------+
            |    +--------------+
            |--> | ptrace_event | notify tracer of the exit
@@ -587,7 +587,7 @@ Indifferent parents might cause the children to remain in the ZOMBIE state.
            |--> set exit code of the task
            |
            |    +-------------+
-           |--> | exit_notify |
+           |--> | exit_notify | :
            |    +---|---------+
            |        |    +------------------------+
            |        +--> | forget_original_parent | ask reaper (init or systemd) to take care of the children
@@ -630,7 +630,7 @@ The flag is raised to indicate that it's time to service the next task in line i
 - its priority is lowered
 - another more critical task pops up
 
-Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the **context switch**. 
+Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the `context switch`. 
 A typical scenario is that the timer interrupt handler routinely checks the remaining time slice, which eventually runs out and has the flag set. 
 On its way back to the userspace, the encountered checkpoint proceeds the context switch, and the chosen task resumes and continues.
 The below image is just for example since there's no second CPU in our QEMU configuration.
@@ -870,7 +870,7 @@ repeat
 
 ### Load Balance
   
-A task has the **load** attribute to reflect its importance, and a run queue sums up the values of in-queue tasks to indicate how busy it is. 
+A task has the `load` attribute to reflect its importance, and a run queue sums up the values of in-queue tasks to indicate how busy it is. 
 With such busyness measurement, a few methods introduce to help balance the load among queues. 
 When a task is newly generated or just awakened, the scheduler mechanism will try hard to choose a relatively leisurely queue to add in. 
 Also, active balancing is triggered from the routine timer interrupt handler that eventually makes a request fulfilled by the soft IRQ framework. 
@@ -1186,7 +1186,7 @@ struct sched_rt_entity {
 | sys_nice | : adjust task prio                                        
 +--|-------+                                                           
    |    +---------------+                                              
-   +--> | set_user_nice |                                              
+   +--> | set_user_nice | :
         +---|-----------+                                              
             |                                                          
             |--> if current task is queued                             
@@ -1250,7 +1250,7 @@ struct sched_rt_entity {
 | sys_sched_setscheduler | : set schedule-related fields in task                           
 +-----|------------------+                                                                 
       |    +-----------------------+                                                       
-      +--> | do_sched_setscheduler |                                                       
+      +--> | do_sched_setscheduler | :
            +-----|-----------------+                                                       
                  |    +----------------+                                                   
                  |--> | copy_from_user | copy param from userspace                         
@@ -1274,22 +1274,22 @@ struct sched_rt_entity {
       |--> | get_user_cpu_mask | copy cpumask from userspace to the newly generated one              
       |    +-------------------+                                                                     
       |    +-------------------+                                                                     
-      +--> | sched_setaffinity |                                                                     
+      +--> | sched_setaffinity | :
            +----|--------------+                                                                     
                 |    +---------------------+                                                         
                 |--> | find_process_by_pid | find task from pid value                                
                 |    +---------------------+                                                         
                 |    +---------------------+                                                         
-                +--> | __sched_setaffinity |                                                         
+                +--> | __sched_setaffinity | :
                      +-----|---------------+                                                         
                            |                                                                         
                            |--> new mask = arg mask & current mask                                   
                            |                                                                         
                            |    +------------------------+                                           
-                           +--> | __set_cpus_allowed_ptr |                                           
+                           +--> | __set_cpus_allowed_ptr | :
                                 +-----|------------------+                                           
                                       |    +-------------------------------+                         
-                                      +--> | __set_cpus_allowed_ptr_locked |                         
+                                      +--> | __set_cpus_allowed_ptr_locked | :
                                            +-------|-----------------------+                         
                                                    |    +-----------------------+                    
                                                    |--> | __do_set_cpus_allowed | set tasl->cpus_mask
@@ -1307,7 +1307,7 @@ Its full name is the complete fair scheduler (CFS), and it covers most utilities
 The sub-queue of the class is a red-black tree sorted by the accumulated virtual runtime of each task, while the smaller ones are on the left side. 
 To be fair, the leftmost task possesses the least (virtual) runtime and deserves more, so it's always the candidate for task selection. 
 As for the virtual runtime, it's calculated from the execution time and the task load. 
-When we modify the priority of a task, both the **priority** and **load** fields are changed accordingly.
+When we modify the priority of a task, both the `priority` and `load` fields are changed accordingly.
 
 - Higher priority/load --> smaller vruntime --> slower vruntime accumulation --> prone to move leftward in tree
 - Lower priority/load --> larger vruntime --> faster vruntime accumulation --> prone to move rightward in tree
@@ -1402,7 +1402,7 @@ DEFINE_SCHED_CLASS(fair) = {
                                                        
 ```
 +------------------+                                                                                          
-| __enqueue_entity |                                                                                          
+| __enqueue_entity | :
 +------------------+                                                                                          
           |                                                                                                   
           |                                                                                                   
@@ -1700,7 +1700,7 @@ DEFINE_SCHED_CLASS(rt) = {
   
 ```
 +-----------------+                                           
-| sys_sched_yield |                                           
+| sys_sched_yield | :
 +----|------------+                                           
      |    +----------------+                                  
      |--> | do_sched_yield |                                  
@@ -1763,7 +1763,7 @@ The systemd then spawns many other applications, including the login prompt, and
 
 ```
 +-----------+                                                    
-| rest_init |                                                    
+| rest_init | :                                                    
 +-----------+                                                    
        |                                                         
        |--- create a kernel thread running function 'kernel_init'
@@ -1774,7 +1774,7 @@ The systemd then spawns many other applications, including the login prompt, and
   
 ```
 +----------+
-| kthreadd |
+| kthreadd | :
 +--|-------+
    |
    +--> endless loop
@@ -1885,7 +1885,7 @@ The systemd then spawns many other applications, including the login prompt, and
 | kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
 +---|------------+
     |    +------------------------+
-    +--> | kthread_create_on_node |
+    +--> | kthread_create_on_node | :
          +-----|------------------+
                |    +--------------------------+
                +--> | __kthread_create_on_node | : ask kthreadd help creating kthread,
@@ -1923,7 +1923,7 @@ The systemd then spawns many other applications, including the login prompt, and
                   |--> set up 'sched attr'                                                               
                   |                                                                                      
                   |    +----------------------+                                                          
-                  +--> | __sched_setscheduler |                                                          
+                  +--> | __sched_setscheduler | :
                        +-----|----------------+                                                          
                              |                                                                           
                              |--> dequeue task if it's queued                                            
@@ -2039,7 +2039,7 @@ struct rlimit {
 | sys_getrlimit | : get rlimit              
 +---|-----------+                           
     |    +------------+                     
-    +--> | do_prlimit |                     
+    +--> | do_prlimit | :
     |    +--|---------+                     
     |       |                               
     |       |--> get rlimit from task signal
@@ -2065,7 +2065,7 @@ struct rlimit {
     +--> | copy_from_user |                 
     |    +----------------+                 
     |    +------------+                     
-    +--> | do_prlimit |                     
+    +--> | do_prlimit | :
          +--|---------+                     
             |                               
             |--> get rlimit from task signal
@@ -2221,7 +2221,7 @@ enum pid_type
 | sys_setsid | : set task special pid = group leader's pid          
 +--|---------+                                                      
    |    +-------------+                                             
-   +--> | ksys_setsid |                                             
+   +--> | ksys_setsid | :                                             
         +---|---------+                                             
             |                                                       
             |--> get group leader                                   
