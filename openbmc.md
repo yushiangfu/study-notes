@@ -584,3 +584,62 @@ setup
 [xmlcatalog.bbclass]
      (none)
 ```
+
+```
++------+                                        
+| main |                                        
++-|----+ image_manager_main.cpp
+  |    +------------------+                     
+  |--> | sd_event_default | alloc sd_event      
+  |    +------------------+                     
+  |                                             
+  |--> prepare manager                          
+  |                                             
+  |--> prepare watch, bind Manager::processImage
+  |                                             
+  +--> loop                                     
+```
+
+```
++-----------------------+                                                                        
+| Manager::processImage | : untar and check manifest, prepare 'version' obj and add to 'versions'
++-----|-----------------+                                                                        
+      |                                                                                          
+      |--> return error if arg path isn't a file                                                 
+      |                                                                                          
+      |    +---------+                                                                           
+      |--> | mkdtemp | create folder, for tarball extraction                                     
+      |    +---------+                                                                           
+      |                                                                                          
+      |    +----------------+                                                                    
+      |--> | Manager::unTar | fork a child and execve 'tar' to untar the uploaded file           
+      |    +----------------+                                                                    
+      |                                                                                          
+      |--> return error if no manifest file                                                      
+      |                                                                                          
+      |    +-------------------+                                                                 
+      |--> | Version::getValue | get 'version' from manifest file                                
+      |    +-------------------+                                                                 
+      |    +------------------------+                                                            
+      |--> | Version::getBMCMachine | get running machine name from system                       
+      |    +------------------------+                                                            
+      |    +-------------------+                                                                 
+      |--> | Version::getValue | get 'MachineName' from manifest file                            
+      |    +-------------------+                                                                 
+      |    +-------------------+                                                                 
+      |--> | Version::getValue | get 'purpose' from manifest file                                
+      |    +-------------------+                                                                 
+      |    +-------------------+                                                                 
+      |--> | Version::getValue | get 'ExtendedVersion' from manifest file                        
+      |    +-------------------+                                                                 
+      |    +----------------------------+                                                        
+      |--> | Version::getRepeatedValues | get 'CompatibleName' from manifest file                
+      |    +----------------------------+                                                        
+      |    +-----------+                                                                         
+      |--> | std::find | check if the specified version has been uploaded already                
+      |    +-----------+                                                                         
+      |                                                                                          
+      |--> if not                                                                                
+      |                                                                                          
+      +------> create 'version' object and insert to 'versions'                                  
+```
