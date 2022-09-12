@@ -9,6 +9,7 @@
 - [Reverse Mapping](#reverse-mapping)
 - [Task Startup](#task-startup)
 - [Others](#others)
+  - Reverse Mapping
   - Kmap
 - [Reference](#reference)
 
@@ -286,7 +287,7 @@ struct inode {
                                |       |--> | mmap_region | ensure there's a vma covering this region,
                                |       |    +-------------+ link that vma with framework
                                |       |
-                               |       +--> determine populate len if the flags ask so
+                               |       +--> determine populate len if the flags (e.g., VM_LOCKED) ask so
                                |
                                |--> if populate len is determined
                                |
@@ -317,9 +318,9 @@ struct inode {
     |--> if it's a file mapping                                                               
     |                                                                                         
     |------> call ->mmap(), e.g.,                                                             
-    |        +----------+                                                                     
-    |        | ovl_mmap |                                                                     
-    |        +----------+                                                                     
+    |        +----------+    +-------------------+
+    |        | ovl_mmap | or | generic_file_mmap |
+    |        +----------+    +-------------------+
     |                                                                                         
     |--> else if it's a 'shared' mapping                                                      
     |                                                                                         
@@ -335,7 +336,6 @@ struct inode {
     |    +----------+                                                                         
     +--> | vma_link | link vma into mm and address_space                                              
          +----------+
-                                                       
 ```
   
 ```
@@ -1454,11 +1454,30 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 ```
    
 </details>
+  
+## <a name="others"></a> Others
 
-Kmap
+### Reverse Mapping
 
-<details>
-  <summary> Code trace </summary>
+<details><summary> More Details </summary>
+  
+```c
+struct page {
+    union {
+        atomic_t _mapcount;     // indicates how many page tables reference to this page
+                                // -1: unused, 0: one owner, n: additional users
+        unsigned int page_type;
+        unsigned int active;
+        int units;
+    };
+}
+```
+  
+</details>
+  
+### Kmap
+
+<details><summary> More Details </summary>
 
 ```
 +------+                                                             
