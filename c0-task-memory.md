@@ -1525,10 +1525,20 @@ struct page {
 +--------------------+                  
 ```
   
++-----------------+                                                 
+| page_referenced | : determine how actively the page is used
++----|------------+                                                 
+     |                                                              
+     |--> set up rmap_walk_control                                  
+     |                                                              
+     |    +-----------+                                             
+     +--> | rmap_walk | determine how actively the page is used
+          +-----------+                                             
+  
 ```
 +-----------+                                                                               
-| rmap_walk | : for each vma related to the give page, clear pte in each mapping            
-+--|--------+                                                                               
+| rmap_walk | : for each vma related to the give page, apply the specified action
++--|--------+   e.g., clear pte in each mapping
    |                                                                                        
    |--> if page is anonymous mapping                                                        
    |                                                                                        
