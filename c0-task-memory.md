@@ -1525,6 +1525,65 @@ struct page {
 +--------------------+                  
 ```
   
+```
++-----------+                                                                               
+| rmap_walk | : for each vma related to the give page, clear pte in each mapping            
++--|--------+                                                                               
+   |                                                                                        
+   |--> if page is anonymous mapping                                                        
+   |                                                                                        
+   |        +----------------+                                                              
+   |------> | rmap_walk_anon | for each avc of the given page, clear the pte in each mapping
+   |        +----------------+                                                              
+   |                                                                                        
+   |--> else (file mapping)                                                                 
+   |                                                                                        
+   |        +----------------+                                                              
+   +------> | rmap_walk_file | for each vma refer to this mapping, walk vma and clear pte   
+            +----------------+                                                              
+```
+
+```
++----------------+                                                                
+| rmap_walk_anon | ： for each avc of the given page, clear the pte in each mapping
++---|------------+                                                                
+    |    +---------------+                                                        
+    |--> | page_anon_vma | get anon_vma of the given page                         
+    |    +---------------+                                                        
+    |                                                                             
+    |--> for each avc within the range                                            
+    |                                                                             
+    |------> call ->rmap_one(), e.g.,                                             
+    |        +------------------+                                                 
+    |        | try_to_unmap_one | walk vma and clear pte                          
+    |        +------------------+                                                 
+    |                                                                             
+    +------> if ->done() exists, call it, e.g.,                                   
+             +-----------------+                                                  
+             | page_not_mapped | check if page isn't mapped anymore               
+             +-----------------+                                                  
+```
+
+```
++----------------+                                                             
+| rmap_walk_file | ： for each vma refer to this mapping, walk vma and clear pte
++---|------------+                                                             
+    |                                                                          
+    |--> get mapping from the given page                                       
+    |                                                                          
+    |--> for each vma refer to this mapping                                    
+    |                                                                          
+    |------> call ->rmap_one(), e.g.,                                          
+    |        +------------------+                                              
+    |------> | try_to_unmap_one | walk vma and clear pte                       
+    |        +------------------+                                              
+    |                                                                          
+    |------> if ->done() exists, call it, e.g.,                                
+    |        +-----------------+                                               
+    +------> | page_not_mapped | check if page isn't mapped anymore            
+             +-----------------+                                               
+```
+  
 </details>
   
 ### Kmap
