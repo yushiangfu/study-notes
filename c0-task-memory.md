@@ -6,7 +6,6 @@
 - [Memory Layout](#memory-layout)
 - [Page Table](#page-table)
 - [Page Fault](#page-fault)
-- [Reverse Mapping](#reverse-mapping)
 - [Task Startup](#task-startup)
 - [Others](#others)
   - Reverse Mapping
@@ -1079,8 +1078,6 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 </details>
   
-## <a name="reverse-mapping"></a> Reverse Mapping
-
 ## <a name="task-startup"></a> Task Startup
 
 ```
@@ -1471,6 +1468,32 @@ struct page {
         int units;
     };
 }
+```
+  
+```
++------------------------+                                                        
+| page_add_new_anon_rmap | : label 'swap backed' on page, and save rmap info to it
++-----|------------------+                                                        
+      |                                                                           
+      |--> label 'swap backed' on page                                            
+      |                                                                           
+      |    +----------------------+                                               
+      +--> | __page_set_anon_rmap | save rmap info in page                        
+           +----------------------+                                               
+```
+  
+```
++----------------------+                         
+| __page_set_anon_rmap | : save rmap info in page
++-----|----------------+                         
+      |                                          
+      |--> if page isn't exclusive to this vma   
+      |                                          
+      |------> choose the oldest anon_vma instead
+      |                                          
+      |--> page->mapping = anon_vma              
+      |                                          
+      +--> page->index = offset (unit: page)     
 ```
   
 </details>
