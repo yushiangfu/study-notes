@@ -1496,6 +1496,35 @@ struct page {
       +--> page->index = offset (unit: page)     
 ```
   
+```
++--------------------+                                                  
+| page_add_anon_rmap | : page->_mapcount++                              
++----|---------------+                                                  
+     |    +-----------------------+                                     
+     +--> | do_page_add_anon_rmap | : page->_mapcount++                 
+          +-----|-----------------+                                     
+                |                                                       
+                |--> page->_mapcount++                                  
+                |                                                       
+                |--> if it's the first owner                            
+                |                                                       
+                |        +----------------------+                       
+                |------> | __page_set_anon_rmap | save rmap info in page
+                |        +----------------------+                       
+                |                                                       
+                |--> else                                               
+                |                                                       
+                |        +------------------------+                     
+                +------> | __page_check_anon_rmap | only sanity checks  
+                         +------------------------+                     
+```
+  
+```
++--------------------+                  
+| page_add_file_rmap | page->_mapcount++
++--------------------+                  
+```
+  
 </details>
   
 ### Kmap
