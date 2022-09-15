@@ -388,6 +388,51 @@ struct inode {
          +----------------------+                                                  
 ```
   
+```
++---------+                                                                                              
+| sys_brk |                                                                                              
++--|------+                                                                                              
+   |                                                                                                     
+   |--> if it's a shrinking request                                                                      
+   |                                                                                                     
+   |        +-------------+                                                                              
+   |------> | __do_munmap | clear pte, free page table, and release vma                                  
+   |        +-------------+                                                                              
+   |                                                                                                     
+   |        go to 'success'                                                                              
+   |                                                                                                     
+   |    +--------------+                                                                                 
+   |--> | do_brk_flags |                                                                                 
+   |    +---|----------+                                                                                 
+   |        |    +-------------------+                                                                   
+   |        |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
+   |        |    +-------------------+                                                                   
+   |        |    +------------------+                                                                    
+   |        |--> | munmap_vma_range | clear old record                                                   
+   |        |    +------------------+                                                                    
+   |        |    +-----------+                                                                           
+   |        |--> | vma_merge | try to expand existing vma to cover our region                            
+   |        |    +-----------+                                                                           
+   |        |                                                                                            
+   |        |--> return if it's successful                                                               
+   |        |                                                                                            
+   |        |    +---------------+                                                                       
+   |        |--> | vm_area_alloc |                                                                       
+   |        |    +---------------+                                                                       
+   |        |                                                                                            
+   |        |--> set up vma based on region info                                                         
+   |        |                                                                                            
+   |        |    +----------+                                                                            
+   |        +--> | vma_link | link vma into framework                                                    
+   |             +----------+                                                                            
+   |                                                                                                     
+   |--> if need to populate                                                                              
+   |                                                                                                     
+   |        +-------------+                                                                              
+   +------> | mm_populate |                                                                              
+            +-------------+                                                                              
+```
+  
 </details>
 
 ## <a name="page-table"></a> Page Table
@@ -1574,8 +1619,8 @@ struct page {
 
 ```
 +----------------+                                                                
-| rmap_walk_anon | ： for each avc of the given page, clear the pte in each mapping
-+---|------------+                                                                
+| rmap_walk_anon | ： for each avc of the given page, apply the callback,
++---|------------+   e.g., clear the pte in each mapping         
     |    +---------------+                                                        
     |--> | page_anon_vma | get anon_vma of the given page                         
     |    +---------------+                                                        
@@ -1595,8 +1640,8 @@ struct page {
 
 ```
 +----------------+                                                             
-| rmap_walk_file | ： for each vma refer to this mapping, walk vma and clear pte
-+---|------------+                                                             
+| rmap_walk_file | ： for each vma refer to this mapping, walk vma and apply the callback,
++---|------------+   e.g., clear pte
     |                                                                          
     |--> get mapping from the given page                                       
     |                                                                          
