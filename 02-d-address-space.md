@@ -813,51 +813,6 @@ address              +-------------+             +-------------+
 ```
 
 ```
-+---------+                                                                                              
-| sys_brk |                                                                                              
-+--|------+                                                                                              
-   |                                                                                                     
-   |--> if it's a shrinking request                                                                      
-   |                                                                                                     
-   |        +-------------+                                                                              
-   |------> | __do_munmap | clear pte, free page table, and release vma                                  
-   |        +-------------+                                                                              
-   |                                                                                                     
-   |        go to 'success'                                                                              
-   |                                                                                                     
-   |    +--------------+                                                                                 
-   |--> | do_brk_flags |                                                                                 
-   |    +---|----------+                                                                                 
-   |        |    +-------------------+                                                                   
-   |        |--> | get_unmapped_area | lookup a region that satisfies the range ('addr' isn't guaranteed)
-   |        |    +-------------------+                                                                   
-   |        |    +------------------+                                                                    
-   |        |--> | munmap_vma_range | clear old record                                                   
-   |        |    +------------------+                                                                    
-   |        |    +-----------+                                                                           
-   |        |--> | vma_merge | try to expand existing vma to cover our region                            
-   |        |    +-----------+                                                                           
-   |        |                                                                                            
-   |        |--> return if it's successful                                                               
-   |        |                                                                                            
-   |        |    +---------------+                                                                       
-   |        |--> | vm_area_alloc |                                                                       
-   |        |    +---------------+                                                                       
-   |        |                                                                                            
-   |        |--> set up vma based on region info                                                         
-   |        |                                                                                            
-   |        |    +----------+                                                                            
-   |        +--> | vma_link | link vma into framework                                                    
-   |             +----------+                                                                            
-   |                                                                                                     
-   |--> if need to populate                                                                              
-   |                                                                                                     
-   |        +-------------+                                                                              
-   +------> | mm_populate |                                                                              
-            +-------------+                                                                              
-```
-
-```
 +-----------------------+                                                    
 | flush_all_zero_pkmaps | release unused pages from pkmap                    
 +-----|-----------------+                                                    
