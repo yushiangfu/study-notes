@@ -1525,6 +1525,7 @@ struct page {
 +--------------------+                  
 ```
   
+```
 +-----------------+                                                 
 | page_referenced | : determine how actively the page is used
 +----|------------+                                                 
@@ -1534,6 +1535,24 @@ struct page {
      |    +-----------+                                             
      +--> | rmap_walk | determine how actively the page is used
           +-----------+                                             
+```
+  
+```
++---------------------+                                                           
+| page_referenced_one | : check if the page is actively referenced in the vma     
++-----|---------------+                                                           
+      |    +----------------------+                                               
+      +--> | page_vma_mapped_walk | : return true if the page is mapped to the vma
+           +-----|----------------+                                               
+                 |                                                                
+                 |--> get mm, addr, and page from arg                             
+                 |                                                                
+                 |--> look up target pte by mm and addr                           
+                 |                                                                
+                 |    +-----------+                                               
+                 +--> | check_pte | check if pfn of pte == pfn of page            
+                      +-----------+                                               
+```
   
 ```
 +-----------+                                                                               
