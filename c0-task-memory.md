@@ -547,7 +547,7 @@ And that instructs MMU on where to lookup from.
 
 ## <a name="page-fault"></a> Page Fault
 
-ereferencing the NULL pointer or accessing other invalid addresses are the most common reason causing the tasks to crash. 
+Dereferencing the NULL pointer or accessing other invalid addresses are the most common reason causing the tasks to crash. 
 The path to crash is as below steps:
 
 1. Accessing an invalid address
@@ -628,8 +628,7 @@ static struct fsr_info ifsr_info[] = {
 }
 ```
 
-<details>
-  <summary> Code trace </summary>
+<details><summary> More Details </summary>
 
 ```
  +-------------+                                                                       
@@ -890,37 +889,8 @@ The fault on the file-backed area is quite similar to the anonymous one, except 
 And therefore, it involves address space and even a block layer if the data comes from persistent storage. 
 Not gonna dive into that since I know nothing about them right now.
 
-<details>
-  <summary> Code trace </summary>
+<details><summary> More Details </summary>
 
-```c
-const struct vm_operations_struct generic_file_vm_ops = {
-    .fault      = filemap_fault,
-    .map_pages  = filemap_map_pages,
-    .page_mkwrite   = filemap_page_mkwrite,
-};
-```
-                     
-```
-+---------------+                                                                            
-| filemap_fault | :
-+---|-----------+                                                                            
-    |    +---------------+                                                                   
-    |--> | find_get_page | find page in mapping                                              
-    |    +---------------+                                                                   
-    |                                                                                        
-    |--> if found                                                                            
-    |                                                                                        
-    |        +-------------------------+                                                     
-    |------> | do_async_mmap_readahead | asynchronously read ahead if the page has such label
-    |        +-------------------------+                                                     
-    |                                                                                        
-    |--> else                                                                                
-    |                                                                                        
-    |        +------------------------+                                                      
-    +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
-             +------------------------+                                                      
-```   
                      
 ```
 +---------------+
@@ -1120,6 +1090,35 @@ const struct vm_operations_struct generic_file_vm_ops = {
             +--> | page_add_new_anon_rmap | set up anon rmap of page
                  +------------------------+                         
 ```
+  
+```c
+const struct vm_operations_struct generic_file_vm_ops = {
+    .fault      = filemap_fault,
+    .map_pages  = filemap_map_pages,
+    .page_mkwrite   = filemap_page_mkwrite,
+};
+```
+                     
+```
++---------------+                                                                            
+| filemap_fault | :
++---|-----------+                                                                            
+    |    +---------------+                                                                   
+    |--> | find_get_page | find page in mapping                                              
+    |    +---------------+                                                                   
+    |                                                                                        
+    |--> if found                                                                            
+    |                                                                                        
+    |        +-------------------------+                                                     
+    |------> | do_async_mmap_readahead | asynchronously read ahead if the page has such label
+    |        +-------------------------+                                                     
+    |                                                                                        
+    |--> else                                                                                
+    |                                                                                        
+    |        +------------------------+                                                      
+    +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
+             +------------------------+                                                      
+```   
 
 </details>
   
@@ -1311,11 +1310,6 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 ```
-
-</details>
-    
-<details>
-  <summary> Code trace </summary>
 
 ```
 +-----------------+                                                                                      
