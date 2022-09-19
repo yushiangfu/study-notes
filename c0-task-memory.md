@@ -587,6 +587,7 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
 Based on the index fetched from FSR or IFSR, the corresponding function, mainly **do_page_fault**, will be called to handle the fault correctly.
 
 ```
+arch/arm/mm/fsr-2level.c
 static struct fsr_info fsr_info[] = { 
     { do_bad,               SIGSEGV, 0,             "vector exception"         },  
     { do_bad,               SIGBUS,  BUS_ADRALN,    "alignment exception"          },  
@@ -914,23 +915,8 @@ Not gonna dive into that since I know nothing about them right now.
     |                   |--> | __set_current_state | set state = running
     |                   |    +---------------------+
     |                   |    +-------------------+
-    |                   +--> | __handle_mm_fault | :
-    |                        +----|--------------+
-    |                             |    +------------+
-    |                             |--> | pgd_offset | get target pgd based on addr
-    |                             |    +------------+
-    |                             |    +-----------+
-    |                             |--> | p4d_alloc | return arg pgd
-    |                             |    +-----------+
-    |                             |    +-----------+
-    |                             |--> | pud_alloc | return arg p4d
-    |                             |    +-----------+
-    |                             |    +-----------+
-    |                             |--> | pmd_alloc |  return arg pud
-    |                             |    +-----------+
-    |                             |    +------------------+
-    |                             +--> | handle_pte_fault | ensure 2nd-level table exists,
-    |                                  +------------------+ and either call ->fault() or simply update pte entry
+    |                   +--> | __handle_mm_fault | 
+    |                        +-------------------+
     |
     |--> return 0 for valid case
     |
@@ -945,6 +931,33 @@ Not gonna dive into that since I know nothing about them right now.
     |        +-------------------+
     +------> | __do_kernel_fault | die
              +-------------------+
+```
+  
+```
++-----------------+
+| handle_mm_fault | :
++----|------------+
+     |    +---------------------+
+     |--> | __set_current_state | set state = running
+     |    +---------------------+
+     |    +-------------------+
+     +--> | __handle_mm_fault | :
+          +----|--------------+
+               |    +------------+
+               |--> | pgd_offset | get target pgd based on addr
+               |    +------------+
+               |    +-----------+
+               |--> | p4d_alloc | return arg pgd
+               |    +-----------+
+               |    +-----------+
+               |--> | pud_alloc | return arg p4d
+               |    +-----------+
+               |    +-----------+
+               |--> | pmd_alloc |  return arg pud
+               |    +-----------+
+               |    +------------------+
+               +--> | handle_pte_fault | ensure 2nd-level table exists,
+                    +------------------+ and either call ->fault() or simply update pte entry
 ```
 
 ```
