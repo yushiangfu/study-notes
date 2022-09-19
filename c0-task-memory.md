@@ -1119,6 +1119,83 @@ const struct vm_operations_struct generic_file_vm_ops = {
     +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
              +------------------------+                                                      
 ```   
+  
+```
++-----------------+                                                                                                     
+| fixup_exception | : if there's a fixup, let the faulted task continue from there                                      
++----|------------+                                                                                                     
+     |    +-------------------------+                                                                                   
+     |--> | search_exception_tables | :                                                                                 
+     |    +------|------------------+                                                                                   
+     |           |    +-------------------------------+                                                                 
+     |           |--> | search_kernel_exception_table | search in exception table, but nothing is compiled in this range
+     |           |    +-------------------------------+                                                                 
+     |           |                                                                                                      
+     |           |--> if not found                                                                                      
+     |           |                                                                                                      
+     |           |        +-------------------------------+                                                             
+     |           |------> | search_kernel_exception_table | search in exception table (probably nothing as well)        
+     |           |        +-------------------------------+                                                             
+     |           |                                                                                                      
+     |           |--> if not found                                                                                      
+     |           |                                                                                                      
+     |           |        +---------------------+                                                                       
+     |           +------> | search_bpf_extables | do nothing bc of disabled config                                      
+     |                    +---------------------+                                                                       
+     |                                                                                                                  
+     |--> if found                                                                                                      
+     |                                                                                                                  
+     +------> regs->pc = found addr (so it starts from there after returning to svc or usr mode)                        
+```
+  
+```
++--------------+                                                                   
+| expand_stack | : expand stack                                                    
++---|----------+                                                                   
+    |    +------------------+                                                      
+    +--> | expand_downwards | : expand stack (downward version)                    
+         +----|-------------+                                                      
+              |                                                                    
+              |--> ensure the stack guard gap is still valid                       
+              |                                                                    
+              |    +------------------+                                            
+              |--> | anon_vma_prepare | ensure vma has an anon_vma                 
+              |    +------------------+                                            
+              |                                                                    
+              |--> if it's not yet expanded (in case somewhere else did it already)
+              |                                                                    
+              +------> update vma 'start' and 'pgoff'                              
+```
+  
+```
++------------------+                                                                                     
+| anon_vma_prepare | : ensure vma has an anon_vma                                                        
++----|-------------+                                                                                     
+     |                                                                                                   
+     |--> return if vma has anon_vma                                                                     
+     |                                                                                                   
+     |    +--------------------+                                                                         
+     +--> | __anon_vma_prepare | : prepare avc, link to vma list and anon_vma tree                       
+          +----|---------------+                                                                         
+               |    +----------------------+                                                             
+               |--> | anon_vma_chain_alloc | alloc an avc                                                
+               |    +----------------------+                                                             
+               |    +-------------------------+                                                          
+               |--> | find_mergeable_anon_vma | check if vma can share anon_vma with its prev or next vma
+               |    +-------------------------+                                                          
+               |                                                                                         
+               |--> if not found                                                                         
+               |                                                                                         
+               |        +----------------+                                                               
+               |------> | anon_vma_alloc |                                                               
+               |        +----------------+                                                               
+               |                                                                                         
+               |--> if vma doesn't have an anon_vma yet                                                  
+               |                                                                                         
+               |        +---------------------+                                                          
+               +------> | anon_vma_chain_link | add avc to vma list and anon_vma tree                    
+                        +---------------------+                                                          
+```
 
 </details>
   
