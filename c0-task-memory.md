@@ -805,8 +805,6 @@ static struct fsr_info ifsr_info[] = {
 
 </details>
 
-## <a name="fault"></a> Fault
-
 ### Copy on Write
 
 When a task forks a child, the kernel duplicates **mm**-related structures, including page tables, so the child task has its own. 
@@ -909,7 +907,7 @@ Not gonna dive into that since I know nothing about them right now.
     |         |--> return error if not
     |         |
     |         |    +-----------------+
-    |         +--> | handle_mm_fault | :
+    |         +--> | handle_mm_fault |
     |              +----|------------+
     |                   |    +---------------------+
     |                   |--> | __set_current_state | set state = running
@@ -965,19 +963,19 @@ Not gonna dive into that since I know nothing about them right now.
  | handle_pte_fault | : ensure 2nd-level table exists, and either call ->fault() or simply update pte entry 
  +----|-------------+                                                                                     
       |                                                                                                   
-      |--> if no pet yet                                                                                  
+      |--> if no pte yet                                                                                  
       |                                                                                                   
       |------> if vma is anon type                                                                        
       |                                                                                                   
       |            +-------------------+                                                                  
       |----------> | do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
-      |            +-------------------+                                                                  
+      |            +-------------------+ (aka demand allocation)                                                                 
       |                                                                                                   
       |------> else                                                                                       
       |                                                                                                   
       |            +----------+                                                                           
       +----------> | do_fault | ensure 2nd-level table exists, call ->fault()                             
-      |            +----------+                                                                           
+      |            +----------+ (aka demand paging)
       |                                                                                                   
       |--> if flag has specified 'write'                                                                  
       |                                                                                                   
