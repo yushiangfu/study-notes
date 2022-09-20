@@ -1052,15 +1052,43 @@ Not gonna dive into that since I know nothing about them right now.
     |                  | filemap_map_pages |                   
     |                  +-------------------+                   
     |    +------------+                                        
-    +--> | __do_fault | :
-         +--|---------+                                        
-            |                                                  
-            |--> ensure 2nd-level table exists                 
-            |                                                  
-            +--> call ->fault(), e.g.,                         
-                 +---------------+                             
-                 | filemap_fault |                             
-                 +---------------+                             
+    +--> | __do_fault | ensure 2nd-level table exists, call ->fault()
+         +------------+                                        
+                         
+```
+  
+```
++------------+
+| __do_fault | : ensure 2nd-level table exists, call ->fault()
++--|---------+
+   |
+   |--> ensure 2nd-level table exists
+   |
+   +--> call ->fault(), e.g.,
+        +---------------+
+        | filemap_fault | read ahead (async or sync)
+        +---------------+
+```
+  
+```
++--------------+                                                     
+| do_cow_fault | : alloc a page, set up page table, copy data        
++---|----------+                                                     
+    |    +------------------+                                        
+    |--> | anon_vma_prepare | ensure vma has an anon_vma             
+    |    +------------------+                                        
+    |    +----------------+                                          
+    |--> | alloc_page_vma | alloc a page                             
+    |    +----------------+                                          
+    |    +------------+                                              
+    |--> | __do_fault | ensure 2nd-level table exists, call ->fault()
+    |    +------------+                                              
+    |    +--------------------+                                      
+    |--> | copy_user_highpage | copy page data                       
+    |    +--------------------+                                      
+    |    +--------------+                                            
+    +--> | finish_fault | set up page table                          
+         +--------------+                                            
 ```
 
 ```
@@ -1112,7 +1140,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
                      
 ```
 +---------------+                                                                            
-| filemap_fault | :
+| filemap_fault | : read ahead (async or sync)
 +---|-----------+                                                                            
     |    +---------------+                                                                   
     |--> | find_get_page | find page in mapping                                              
