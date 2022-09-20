@@ -998,7 +998,7 @@ Not gonna dive into that since I know nothing about them right now.
      |--> | mk_pte | prepare pte value                                                 
      |    +--------+                                                                   
      |    +------------------------+                                                   
-     |--> | page_add_new_anon_rmap | (skip for now)                                    
+     |--> | page_add_new_anon_rmap | label 'swap backed' on page, and save rmap info to it
      |    +------------------------+                                                   
      |    +---------------------------------------+                                    
      |--> | lru_cache_add_inactive_or_unevictable | (skip for now)                     
@@ -1126,7 +1126,7 @@ Not gonna dive into that since I know nothing about them right now.
             |    +---------------+                                  
             |                                                       
             |    +------------------------+                         
-            +--> | page_add_new_anon_rmap | set up anon rmap of page
+            +--> | page_add_new_anon_rmap | label 'swap backed' on page, and save rmap info to it
                  +------------------------+                         
 ```
   
