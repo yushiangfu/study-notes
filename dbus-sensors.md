@@ -1,21 +1,21 @@
 ## Thresholds
 
 ```
-+---------------------------+                                                                                                        
-| parseThresholdsFromConfig | : given sensor data, find pairs of (hysteresis, direction, severity, value) and push bask to arg vector
-+------|--------------------+                                                                                                        
-       |                                                                                                                             
-       |--> for (intf, cfg) in sensor data                                                                                           
-       |                                                                                                                             
-       |------> continue if can't find "Thresholds"                                                                                  
-       |                                                                                                                             
-       |------> ignore arg 'match label'                                                                                             
-       |                                                                                                                             
-       |------> ignore arg 'sensorr index'                                                                                           
-       |                                                                                                                             
-       |------> find "Hysteresis", "Direction", "Severity", "Value" and parse                                                        
-       |                                                                                                                             
-       +------> append to arg 'thresholdVector'                                                                                      
++---------------------------+
+| parseThresholdsFromConfig | : given sensor data, find pairs of (hysteresis, direction, severity, value),
++------|--------------------+   and push bask to arg vector
+       |
+       |--> for (intf, cfg) in sensor data
+       |
+       |------> continue if can't find "Thresholds"
+       |
+       |------> ignore arg 'match label'
+       |
+       |------> ignore arg 'sensorr index'
+       |
+       |------> find "Hysteresis", "Direction", "Severity", "Value" and parse
+       |
+       +------> append to arg 'thresholdVector'                                                                                    
 ```
 
 ## Utils
@@ -54,6 +54,62 @@
                 |         | self->getPath |           |                                                       
                 |         +---------------+           |                                                       
                 +-------------------------------------+                                                       
+```
+
+```
++-----------------------------+                                                          
+| setupManufacturingModeMatch | : prepare handlers for manufacturing mode match          
++-------|---------------------+                                                          
+        |                                                                                
+        |--> special mode intf = "xyz.openbmc_project.Security.SpecialMode"              
+        |                                                                                
+        |--> prepare handler for special mode intf add                                   
+        |    +------------------------------------------------------------------------+  
+        |    | +--------+                                                             |  
+        |    | | m.read | read msg into path and interfaces                           |  
+        |    | +--------+                                                             |  
+        |    | +---------------------+                                                |  
+        |    | | interfaceAdded.find | find special mode intf from interfaces         |  
+        |    | +---------------------+                                                |  
+        |    | +-------------------+                                                  |  
+        |    | | propertyList.find | find "SpecialMode" from property of interface    |  
+        |    | +-------------------+                                                  |  
+        |    | +-------------------------+                                            |  
+        |    | | handleSpecialModeChange | determine 'manufacturingMode' (global var) |  
+        |    | +-------------------------+                                            |  
+        |    +------------------------------------------------------------------------+  
+        |                                                                                
+        |-->  prepare handler for mode change                                            
+        |     +-------------------------------------------------------------------------+
+        |     |+--------+                                                               |
+        |     || m.read | read msg into interface and property                          |
+        |     |+--------+                                                               |
+        |     |+------------------------+                                               |
+        |     || propertiesChanged.find | find "SpecialMode" from property of interface |
+        |     |+------------------------+                                               |
+        |     |+-------------------------+                                              |
+        |     || handleSpecialModeChange | determine 'manufacturingMode' (global var)   |
+        |     |+-------------------------+                                              |
+        |     +-------------------------------------------------------------------------+
+        |                                                                                
+        +--> prepare handler for manufacturing mode                                      
+             +-----------------------------------------------------------------------+   
+             |+-------------------------+                                            |   
+             || handleSpecialModeChange | determine 'manufacturingMode' (global var) |   
+             |+-------------------------+                                            |   
+             +-----------------------------------------------------------------------+   
+```
+
+```
++-------------------------------+                                                   
+| setupPropertiesChangedMatches | : for each types: prepare match and add to matches
++-------|-----------------------+                                                   
+        |                                                                           
+        |--> for each type in arg 'types'                                           
+        |                                                                           
+        |------> prepare match = (bus, string, handler)                             
+        |                                                                           
+        +------> add to the end of arg 'matches'                                    
 ```
 
 ## NVMe
@@ -103,6 +159,39 @@
 |  sensors                    |                      +----------------------------+
 |  pollCursor                 |                                                    
 +-----------------------------+                                                    
+```
+
+```
++------+                                                                                            
+| main | : create sensors from configuration, prepare handlers for ???, intf removal, and mode match
++-|----+ NVMeSensorMain.cpp                                                                         
+  |                                                                                                 
+  |--> systemBus->request_name("xyz.openbmc_project.NVMeSensor")   <= to specify service?           
+  |                                                                                                 
+  |    +---------+                                                                                  
+  |--> | io.post | send handler to io context for execution                                         
+  |    +---------------+                                                                            
+  |    | createSensors | get configuration, add sensors for each conf, read value and update sensors
+  |    +---------------+                                                                            
+  |                                                                                                 
+  |--> set up event handler                                                                         
+  |    +---------------+                                                                            
+  |    | createSensors | get configuration, add sensors for each conf, read value and update sensors
+  |    +---------------+                                                                            
+  |    +-------------------------------+                                                            
+  |--> | setupPropertiesChangedMatches | for each types: prepare match and add to matches           
+  |    +-------------------------------+                                                            
+  |                                                                                                 
+  |--> register handler for interface removal                                                       
+  |    +------------------+                                                                         
+  |    | interfaceRemoved | for each context, remove interface-matched sensor value                 
+  |    +------------------+                                                                         
+  |    +-----------------------------+                                                              
+  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match                
+  |    +-----------------------------+                                                              
+  |    +--------+                                                                                   
+  +--> | io.run |                                                                                   
+       +--------+                                                                                   
 ```
 
 ```
@@ -209,4 +298,25 @@
          |    +-----------------------+                                                   
          |                                                                                
          +--> sensor->updateValue(value)                                                  
+```
+
+```
++------------------+                                                            
+| interfaceRemoved | : for each context, remove interface-matched sensor value  
++----|-------------+                                                            
+     |    +--------------+                                                      
+     |--> | message.read | read path and interfaces from msg                    
+     |    +--------------+                                                      
+     |                                                                          
+     |--> for each context in arg 'contexts'                                    
+     |                                                                          
+     |        +--------------------------+                                      
+     |------> | context->getSensorAtPath | get sensor from context based on path
+     |        +--------------------------+                                      
+     |                                                                          
+     |------> find sensor obj type from interfaces                              
+     |                                                                          
+     |        +-----------------------+                                         
+     +------> | context->removeSensor | remove sensor value                     
+              +-----------------------+                                         
 ```
