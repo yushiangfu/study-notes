@@ -927,7 +927,7 @@ Not gonna dive into that since I know nothing about them right now.
     |--> else if it's a real fault from kernel context
     |
     |        +-------------------+
-    +------> | __do_kernel_fault | die
+    +------> | __do_kernel_fault | dump info and send KILL to current task
              +-------------------+
 ```
   
