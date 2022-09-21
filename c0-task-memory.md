@@ -1113,21 +1113,44 @@ Not gonna dive into that since I know nothing about them right now.
 | do_wp_page | : handle the fault of copy-on-write                    
 +--|---------+                                                      
    |    +----------------+                                          
-   |--> | vm_normal_page | get struct page of give pte              
+   |--> | vm_normal_page | get struct page of given pte              
    |    +----------------+                                          
    |    +--------------+                                            
-   +--> | wp_page_copy | :
-        +---|----------+                                            
-            |                                                       
-            |--> allocate a page                                    
-            |                                                       
-            |    +---------------+                                  
-            |--> | cow_user_page | copy data from src to dst page   
-            |    +---------------+                                  
-            |                                                       
-            |    +------------------------+                         
-            +--> | page_add_new_anon_rmap | label 'swap backed' on page, and save rmap info to it
-                 +------------------------+                         
+   +--> | wp_page_copy | : alloc a page, copy data, add to lru, set pte                          
+        +--------------+                                            
+```
+  
+```
++--------------+                                                                         
+| wp_page_copy | : alloc a page, copy data, add to lru, set pte                          
++---|----------+                                                                         
+    |    +----------------+                                                              
+    |--> | alloc_page_vma | alloc a page                                                 
+    |    +----------------+                                                              
+    |    +---------------+                                                               
+    |--> | cow_user_page | copy data from old page                                       
+    |    +---------------+                                                               
+    |    +---------------------+                                                         
+    |--> | pte_offset_map_lock | kmap                                                    
+    |    +---------------------+                                                         
+    |    +--------+                                                                      
+    |--> | mk_pte | prepare pte entry                                                    
+    |    +--------+                                                                      
+    |    +------------------------+                                                      
+    |--> | page_add_new_anon_rmap | label 'swap backed' on page, and save rmap info to it
+    |    +------------------------+                                                      
+    |    +---------------------------------------+                                       
+    |--> | lru_cache_add_inactive_or_unevictable | add to lru cache                      
+    |    +---------------------------------------+                                       
+    |    +-------------------+                                                           
+    |--> | set_pte_at_notify | set pte                                                   
+    |    +-------------------+                                                           
+    |    +------------------+                                                            
+    |--> | page_remove_rmap | page->_mapcount--                                          
+    |    +------------------+                                                            
+    |    +------------------+                                                            
+    +--> | pte_unmap_unlock | kunmap                                                     
+         +------------------+                                                            
 ```
   
 ```c
@@ -1766,6 +1789,22 @@ struct page {
     |        +-----------------+                                               
     +------> | page_not_mapped | check if page isn't mapped anymore            
              +-----------------+                                               
+```
+  
+```
++------------------+                                     
+| page_remove_rmap | : page->_mapcount--                 
++----|-------------+                                     
+     |                                                   
+     |--> if it's not a anonymous age                    
+     |                                                   
+     |        +-----------------------+                  
+     |------> | page_remove_file_rmap | page->_mapcount--
+     |        +-----------------------+                  
+     |                                                   
+     |        return                                     
+     |                                                   
+     +--> page->_mapcount--                              
 ```
   
 </details>
