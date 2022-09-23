@@ -1807,6 +1807,41 @@ struct page {
      +--> page->_mapcount--                              
 ```
   
+```
++---------------+                                                               
+| anon_vma_fork | : ensure new vma has anon_vma and avc (either old or new)     
++---|-----------+                                                               
+    |                                                                           
+    |--> return if parent vma has no anon_vma                                   
+    |                                                                           
+    |    +----------------+                                                     
+    |--> | anon_vma_clone | for each avc in src vma: prepare new avc for dst vma
+    |    +----------------+                                                     
+    |                                                                           
+    |--> return if existing anon_vma is reused                                  
+    |                                                                           
+    |--> alloc anon_vma nad avc                                                 
+    |                                                                           
+    +--> relate them and dst vma                                                
+```
+  
+```
++----------------+                                                            
+| anon_vma_clone | : for each avc in src vma: prepare new avc for dst vma     
++---|------------+                                                            
+    |                                                                         
+    |--> for each avc in src vma (in reverse direction)                       
+    |                                                                         
+    |        +----------------------+                                         
+    |------> | anon_vma_chain_alloc | alloc avc                               
+    |        +----------------------+                                         
+    |        +---------------------+                                          
+    |------> | anon_vma_chain_link | add avc to dst vma list and anon_vma tree
+    |        +---------------------+                                          
+    |                                                                         
+    +------> try to have dst vma reuse anon_vma                               
+```
+  
 </details>
   
 ### Kmap
