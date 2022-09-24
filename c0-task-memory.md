@@ -1,4 +1,4 @@
-> Based on Linux version 5.15.0
+> The note is based on Linux version 5.15.0 in OpenBMC.
 
 ## Index
 
@@ -18,29 +18,33 @@
 
 ## <a name="memory-layout"></a> Memory Layout
 
-For mapping of kernel space, not much management is involved since it's not necessary. 
-But a few points need to be considered for userspace mapping.
+The executable mainly consists of code, data, and other segments. 
+Additional mappings are requisite before running when the program's primary parts are loaded into memory.
 
-- lookup of the available virtual region for mapping
-- region attributes, e.g., read, write, execute
-- region extension, e.g., heap, stack
+- Main program
+  - There are three mappings: `text`, `data`, and `bss`.
+  - Other segments, such as debug information, are unnecessary and won't be loaded into a mapping.
+- Stack
+  - for function call mechanism
+  - downward expandable (mapping size changes)
+  - Each thread within a process has its own stack.
+- Heap
+  - The `malloc()` and alike make use of this region.
+  - upward expandable (mapping size changes)
+- Libraries
+  - Such as standard C and/or thread library
+  - Each one also occupies three mappings, as the main program does.
+- Linker
+  - It helps load a series of built-time-specified libraries into memory.
+  - yes, three mappings
+  - Although common names are `ld.so` or `ld-linux.so`, it's expected to be an executable instead of a shared library.
+- Others
+  - They are `sigpage`, `vvar`, and `vdso`, and I have no idea what they are doing yet.
 
-And the kernel utilizes **struct vma** (virtual memory area) to represent each region in user space for VM management. 
-The common areas are:
+Each region has its own permission and flags; in practice, the kernel uses the virtual memory area (vma) structure to describe it. 
+From the content source's point of view, it's either a file mapping if a backed file exists or an anonymous mapping such as stack and heap.
 
-- stack
-  - for function call
-  - where local variables exist
-  - extend toward low address
-- heap
-  - for malloc()
-  - ext end toward high address
-- read & execute region of executable, linker, or library
-  - e.g., compiled code
-- read & write region of executable, linker, or library
-  - e.g., global data
-- read-only region of executable, linker, or library
-  - e.g., constant?
+<p align="center"><img src="images/task-memory/memory-layout.png" /></p>
 
 <details><summary> More Details </summary>
 
