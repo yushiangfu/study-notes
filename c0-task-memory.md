@@ -440,21 +440,41 @@ struct inode {
 </details>
 
 ## <a name="page-table"></a> Page Table
+  
+Please note that memory management is highly related to platforms, and our example is based on the kernel for AST2500. 
+The page table saves the mapping information, so the hardware (MMU) understands how to translate the virtual address into a physical one. 
+It's designed as a multi-level structure, and our studying case adopts two levels. 
+The first-level table is an array of 4098 entries: dividing the 4G virtual space by 1M, and exactly each region corresponds to one entry in the table. 
+The possible entry values are:
+  
+- Unmapped
+  - Accessing this area triggers a page fault (hardware behavior).
+- Section mapping
+  - The value stored is the destination physical address already.
+  - The mapping size is 1M, and it's only used in kernel space
+- Pointer to a 2nd-level table
+  - The 2nd-level table is created when necessary and thus saves memory usage.
 
-Virtual mapping relies on page table, MMU, and TLB:
+The second-level table is an array of 256 entries: each 4K area within a section has a corresponding entry in the table. 
+Possible values are:
 
-- Page table: It's a collection of entries that specify the virtual-to-physical mapping.
-- MMU: the hardware component that does the lookup behavior.
-- TLB: cache for lookup
-- 
-Page table, a.k.a. PGD table, is a 16Ks-size area including 4096 PMD entries. Each PMD can represent one of the below meanings.
+- Unmapped
+  - Accessing this kind of area triggers a page fault (hardware behavior).
+- Page mapping
+  - The value stored is the destination physical address.
+  - The mapping size is 4K, and both kernel and user spaces use it.
 
-- Not mapped
-- Section (1M) mapping
-- A pointer to the 2nd level page table
+<p align="center"><img src="images/task-memory/page-table.png" /></p>
 
-If the mapped region is more significant than 1M, then the kernel adopts the section mapping or further allocates a PTE table for page mapping.
+Both the vma and page table is managed by the memory management (mm) structure, which is either shared or cloned on creating a task. 
+The thread within a process, whether single-threaded or multi-threaded, shares this mm structure and therefore sees the identical virtual space. 
+Similarly, all kernel threads share the initial mm, except there's no vma since they don't have any user space mapping. 
+When a context switch happens, the hardware component (TTBR) points to the next task's page table so that MMU knows where to start the address lookup.
+  
+<p align="center"><img src="images/task-memory/page-table-and-task.png" /></p>
 
+<details><summary> More Details </summary>
+  
 ```
         1st level                                  2nd level
         PGD table                                  PTE table
@@ -518,11 +538,6 @@ bobfu@bobfu-Vostro-5402:~/workspace/oblinux$ head System.map
 80008080 t __create_page_tables
 ```
 
-For the regular userspace process, it has its own page table. 
-For a multi-threaded process, all the threads share the same page table, and therefore they see the same virtual space. 
-The kernel simply has the co-processor (TTBR0 or TTBR1?) point to the corresponding page table when a context switch happens. 
-And that instructs MMU on where to lookup from.
-
 ```
                                   process                         process           
 +---------+                     +---------+                     +---------+         
@@ -549,6 +564,8 @@ And that instructs MMU on where to lookup from.
           +--------+                      +--------+                      +--------+
 ```
 
+</details>
+                                                    
 ## <a name="page-fault"></a> Page Fault
 
 Dereferencing the NULL pointer or accessing other invalid addresses are the most common reason causing the tasks to crash. 
