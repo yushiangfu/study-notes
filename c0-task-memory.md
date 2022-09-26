@@ -841,16 +841,17 @@ static struct fsr_info ifsr_info[] = {
   
 The below cases are genuine errors, and I hope you know how to debug them:
 
-- Dereferencing a pointer that points to somewhere unmapped.
-  - Null pointers can be regarded as pointing to address 0, but the bottom part of the address space is purposely reserved for catching them.
 - Accessing the kernel space from a user space task.
+- Dereferencing a pointer that points to somewhere unmapped.
+  - Null pointers equate to pointers pointing to address 0, but the bottom part of virtual space is purposely reserved for catching them.
 
-1. The kernel takes the below steps in response to a page fault:
-2. Checks whether the faulted address is governed by any vma.
-3. If yes, allocate an available page from the buddy system.
-4. Handle the page content properly according to the fault type.
-5. Fill the 1st- and 2nd-level page table entries to relate virtual and physical addresses.
-6. Resume to where it stopped and continue the data operation.
+The kernel takes the below steps in response to a page fault:
+
+1. Checks whether the faulted address is governed by any vma.
+2. If yes, allocate an available page from the buddy system.
+3. Handle the page content properly according to the fault type.
+4. Fill the 1st- and 2nd-level page table entries to relate virtual and physical addresses.
+5. Resume to where it stopped and continue the data operation.
  
 The involved task will never notice the procedure and continues to fault other regions unknowingly. 
 As for step 3, common fault types and data handling are:
