@@ -567,13 +567,26 @@ bobfu@bobfu-Vostro-5402:~/workspace/oblinux$ head System.map
 </details>
                                                     
 ## <a name="page-fault"></a> Page Fault
+  
+Whenever a processor attempts to access an area and fails, it emits a data abort exception and is trapped by the kernel as a page fault. 
+A well-known example is a segmentation fault, usually caused by dereferencing a null or incorrect pointer, and it's a genuine issue. 
+However, a page fault doesn't necessarily equate to an error; sometimes, the virtual space mechanism needs it to finish the mapping procedure.
+Taking a 4K mapping as an example, we need the below three components to make a virtual address lookup works:
 
-Dereferencing the NULL pointer or accessing other invalid addresses are the most common reason causing the tasks to crash. 
-The path to crash is as below steps:
+- Virtual address
+  - The user specifies the address through the mmap argument, or the kernel helps find a region satisfying the size requirement.
+- Physical page frame
+  - Requesting a new page frame from buddy memory allocation as the mapping destination.
+- Page table
+  - With the virtual and physical address, the kernel understands which entries of both tables to fill what value accordingly.
+  - The involved 2nd-level page table is created if it doesn't exist yet.
 
-1. Accessing an invalid address
-2. CPU exception (abort) happens
-3. Kernel finds out it's a genuine fault and sends a signal to the task for termination.
+In practice, when a user calls `mmap()` to generate an anonymous or file mapping, only vma is set up at the moment. 
+Not until that region is visited the page table entry and physical page are prepared in time for the following read or write action.
+  
+<p align="center"><img src="images/task-memory/page-fault.png" /></p>
+  
+<details><summary> More Details </summary>
 
 As the CPU exception, there are two types of abort on ARM architecture.
 
@@ -593,15 +606,15 @@ A fault isn't strictly equivalent to invalid memory access. Instead, a few cases
 
 ```
               +-  from user    --+                                                      
- Prefetch     |                  | (refer to FSR)
+ Prefetch     |                  | (refer to IFSR)
   Abort  -----+                  |                                                      
               +-  from kernel  --|                             1. copy on write         
                                  |                             2. valid fault: anonymous
                                  +-------- handle page fault   3. valid fault: file     
-                                 |                             4. write protect?        
-              +-  from user    --|                             5. genuine fault            
+                                 |                             4. genuine fault            
+              +-  from user    --|                             
   Data        |                  |                                                      
-  Abort  -----+                  | (refer to IFSR)                                                    
+  Abort  -----+                  | (refer to FSR)                                                    
               +-  from kernel  --+                                                      
 ```
 
@@ -649,8 +662,6 @@ static struct fsr_info ifsr_info[] = {
 ...
 }
 ```
-
-<details><summary> More Details </summary>
 
 ```
  +-------------+                                                                       
