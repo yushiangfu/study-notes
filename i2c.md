@@ -1,4 +1,40 @@
 ```
++----------+                                      
+| i2c_init | : register i2c bus and dummy driver  
++--|-------+                                      
+   |    +--------------+                          
+   |--> | bus_register | register 'i2c_bus_type'  
+   |    +--------------+                          
+   |    +----------------+                        
+   +--> | i2c_add_driver | register a dummy driver
+        +----------------+                        
+```
+
+```
++--------------+                                                                                 
+| i2c_dev_init | : create i2c class and track addition/removal of adapters                       
++---|----------+                                                                                 
+    |                                                                                            
+    +--> print "i2c /dev entries driver"                                                         
+    |                                                                                            
+    |    +------------------------+                                                              
+    |--> | register_chrdev_region | reserve the specified dev# range                             
+    |    +------------------------+                                                              
+    |    +--------------+                                                                        
+    |--> | class_create | "i2c-dev"                                                              
+    |    +--------------+                                                                        
+    |    +-----------------------+                                                               
+    |--> | bus_register_notifier | track the addition and removal of adapters                    
+    |    +-----------------------+                                                               
+    |                                                                                            
+    |--> for each i2c dev                                                                        
+    |                                                                                            
+    |        +-----------------------+                                                           
+    +------> | i2cdev_attach_adapter | bind to existing adapters, but there's none at the momemnt
+             +-----------------------+                                                           
+```
+
+```
 +---------------------+                                                    
 | i2c_mux_add_adapter | : alloc priv, set up priv->adap and register it    
 +-----|---------------+                                                    
