@@ -836,12 +836,44 @@ static struct fsr_info ifsr_info[] = {
 ```
 
 </details>
+  
+### Page Fault Handling
+  
+The below cases are genuine errors, and I hope you know how to debug them:
 
+- Dereferencing a pointer that points to somewhere unmapped.
+  - Null pointers can be regarded as pointing to address 0, but the bottom part of the address space is purposely reserved for catching them.
+- Accessing the kernel space from a user space task.
+
+1. The kernel takes the below steps in response to a page fault:
+2. Checks whether the faulted address is governed by any vma.
+3. If yes, allocate an available page from the buddy system.
+4. Handle the page content properly according to the fault type.
+5. Fill the 1st- and 2nd-level page table entries to relate virtual and physical addresses.
+6. Resume to where it stopped and continue the data operation.
+ 
+The involved task will never notice the procedure and continues to fault other regions unknowingly. 
+As for step 3, common fault types and data handling are:
+  
+- Anonymous mapping
+  -Simply zero the allocated page.
+- File mapping
+  - Read data from the backed file into the page.
+- Copy on write
+  - Explained in the below paragraph.
+    
+This happens when a parent task forks a child that belongs to a new process. 
+While the page table and vma list are duplicated as memory resources for the new task, the page frames remain untouched. 
+This trick saves tremendous efforts on copying data, considering the child typically calls `execve()` immediately.
+That said, both tasks share the same physical pages since their page table entries are precisely identical. 
+If either parent or child intends to write data into a shared and writable mapping, the kernel traps the particular kind of page fault. 
+Data is then duplicated from the old page to the newly allocated one, and that task resumes to live its life.
+   
+<p align="center"><img src="images/task-memory/copy-on-write.png" /></p>
+  
+<details><summary> More Details </summary>
+  
 ### Copy on Write
-
-When a task forks a child, the kernel duplicates **mm**-related structures, including page tables, so the child task has its own. 
-However, the family still shares the page frames mostly since **fork** is usually followed by **execve**, making the page copy seem redundant. 
-If either parent or child tries to write data into any of these pages, the action will be trapped, and a duplicated page will be prepared accordingly.
 
 ```
    parent                                                                       child                  
@@ -919,9 +951,6 @@ Everything is ready, and the flow goes back to the logic following the initial a
 The fault on the file-backed area is quite similar to the anonymous one, except it further reads in part of the data from the specified file. 
 And therefore, it involves address space and even a block layer if the data comes from persistent storage. 
 Not gonna dive into that since I know nothing about them right now.
-
-<details><summary> More Details </summary>
-
                      
 ```
 +---------------+
