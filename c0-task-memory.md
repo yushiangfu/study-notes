@@ -1,4 +1,4 @@
-> The note is based on Linux version 5.15.0 in OpenBMC.
+> The note is based on Linux version 5.15.43 in OpenBMC.
 
 ## Index
 
@@ -839,7 +839,7 @@ static struct fsr_info ifsr_info[] = {
   
 ### Page Fault Handling
   
-The below cases are genuine errors, and I hope you know how to debug them:
+The below cases are genuine errors, and the task will probably receive the `SIGSEGV` signal and terminate:
 
 - Accessing the kernel space from a user space task.
 - Dereferencing a pointer that points to somewhere unmapped.
@@ -857,7 +857,7 @@ The involved task will never notice the procedure and continues to fault other r
 As for step 3, common fault types and data handling are:
   
 - Anonymous mapping
-  -Simply zero the allocated page.
+  - Simply zero the allocated page.
 - File mapping
   - Read data from the backed file into the page.
 - Copy on write
@@ -865,15 +865,46 @@ As for step 3, common fault types and data handling are:
     
 This happens when a parent task forks a child that belongs to a new process. 
 While the page table and vma list are duplicated as memory resources for the new task, the page frames remain untouched. 
-This trick saves tremendous efforts on copying data, considering the child typically calls `execve()` immediately.
 That said, both tasks share the same physical pages since their page table entries are precisely identical. 
+This trick saves tremendous efforts on copying data, considering the child typically calls `execve()` immediately.
 If either parent or child intends to write data into a shared and writable mapping, the kernel traps the particular kind of page fault. 
 Data is then duplicated from the old page to the newly allocated one, and that task resumes to live its life.
    
 <p align="center"><img src="images/task-memory/copy-on-write.png" /></p>
   
 <details><summary> More Details </summary>
-  
+
+### Fault on Anonymous Area
+
+```
+                                  accessing any of                                      
+                                  these areas triggers                                  
+                                  a valid fault                                         
+ physical address                              |           virtual address              
+                                               |                                        
+ |              |                              |           |              |low          
+ |              |                              |           |              |             
+ |%%%%%%%%%%%%%%| ------------+                |-------->  |##############| <---- vma   
+ |%%%%%%%%%%%%%%|             |                |           |              |             
+ |%%%%%%%%%%%%%%|             |                |           |              |             
+ |%%%%%%%%%%%%%%|             |                |-------->  |##############| <---- vma   
+ |              |             |                |           |              |             
+ |              |             |                +-------->  |##############| <---- vma   
+ |              |             |   +------+                 |              |             
+ |              |             |   |      |                 |              | user space  
+ |              |             |   |      |            -------------------------         
+ |              |             |   |      |                 |              | kernel space
+ |              |             |   |      |         |-----  |##############|             
+ |              |             +-- |------|  -------+       |              |             
+ |              |                 +------+                 |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              |             
+ |              |                                          |              | high        
+```
+        
 ### Copy on Write
 
 ```
@@ -910,49 +941,7 @@ Data is then duplicated from the old page to the newly allocated one, and that t
                                                      2. fault happens and a duplicated page is prepared
                                                      3. update page table entry to point to it         
 ```
-
-### Fault on Anonymous Area
-
-When an anonymous area is accessed while its page entry isn't ready yet, the fault happens and is trapped by the processor. 
-The kernel first attempts to look up if that address is a 'valid' fault or not by checking whether it lies in any existent VMA. 
-If that VMA is of an anonymous type, such as heap memory, then the kernel allocates a page frame and fills the corresponding page table entry. 
-Everything is ready, and the flow goes back to the logic following the initial access.
-
-```
-                                  accessing any of                                      
-                                  these areas triggers                                  
-                                  a valid fault                                         
- physical address                              |           virtual address              
-                                               |                                        
- |              |                              |           |              |low          
- |              |                              |           |              |             
- |%%%%%%%%%%%%%%| ------------+                |-------->  |##############| <---- vma   
- |%%%%%%%%%%%%%%|             |                |           |              |             
- |%%%%%%%%%%%%%%|             |                |           |              |             
- |%%%%%%%%%%%%%%|             |                |-------->  |##############| <---- vma   
- |              |             |                |           |              |             
- |              |             |                +-------->  |##############| <---- vma   
- |              |             |   +------+                 |              |             
- |              |             |   |      |                 |              | user space  
- |              |             |   |      |            -------------------------         
- |              |             |   |      |                 |              | kernel space
- |              |             |   |      |         |-----  |##############|             
- |              |             +-- |------|  -------+       |              |             
- |              |                 +------+                 |              |             
- |              |                                          |              |             
- |              |                                          |              |             
- |              |                                          |              |             
- |              |                                          |              |             
- |              |                                          |              |             
- |              |                                          |              | high        
-```
-
-### Fault on File-Backed Area
-
-The fault on the file-backed area is quite similar to the anonymous one, except it further reads in part of the data from the specified file. 
-And therefore, it involves address space and even a block layer if the data comes from persistent storage. 
-Not gonna dive into that since I know nothing about them right now.
-                     
+                                                                                  
 ```
 +---------------+
 | do_page_fault | :
