@@ -1345,14 +1345,36 @@ const struct vm_operations_struct generic_file_vm_ops = {
   
 ## <a name="task-startup"></a> Task Startup
 
-When we execute a command from the shell, it first duplicates itself as a new task, and then follows the pre-designed flow to transform into target.
-From the memory's perspective, the `fork()` and `execve()` working steps are:
-  
+We've already seen the complete memory layout of a task, and now we will introduce what has been done before the main function runs. 
+For example, when we execute a 'Hello World' program from a shell, the shell first clones itself as a new one. 
+That shell replaces itself with the target binary and prints the greeting message. 
+There are other essential steps, and I list them all together here in chronological order:
+
 - fork()
-  - Duplicate mm.
-  - Duplicate page tables and vma list.
+  1. Duplicate mm.
+  2. Duplicate page tables and vma list.
 - execve()
-  - 
+  1. Prepare new mm and page table; replace the old ones.
+  2. Prepare stack.
+  3. Load the main program into memory.
+  4. Prepare heap.
+  5. Load linker into memory.
+  6. Prepare special mappings: sigpage, vvar, vdso.
+  7. Copy arguments and environment variables to stack.
+  8. Pass control to the linker.
+ 
+Now the linker (e.g., ld.so) takes control and it helps load the libraries specified in the main program and pass control to it afterwards.
+So the memory of a task actually includes two executables: a fixed-path linker and our main program.
+If we copy a binary from elsewhere and run, it might fail to look up the linker locally and show some error message.  
+  
+- linker
+  1. Load libraries.
+  2. Extend heap.
+  3. Pass control to main program.
+- main
+  1. Hello, World! 
+  
+<details><summary> More Details </summary>
   
 ```
           parent task                       child task    
@@ -1371,15 +1393,6 @@ From the memory's perspective, the `fork()` and `execve()` working steps are:
       +----------------+                +----------------+
 ```
 
-The child task triggers execve() to load the target executable into memory without much surprise.
-When a user executes the a.out, the shell first fork into two identical tasks and the following logic differs for parent and child tasks. 
-Once the kernel receives the execve() request, the child task switches to the newly generated mm structure and starts to install various mappings.
-
-1. [kernel] prepare the stack
-2. [kernel] map segments from a.out
-3. [kernel] map segments from the specified interpreter
-4. [kernel] install unique mappings (sigpage, vvar, and vdso)
-
 And deliver the control to the interpreter instead of our target executable. 
 The linker is actually also an executable rather than a regular shared library. 
 Linker helps to load other shared libraries specified by the a.out during compilation.
@@ -1388,7 +1401,7 @@ Linker helps to load other shared libraries specified by the a.out during compil
 7. [linker] extend heap size
 
 Finally, the flow goes to the **main** function and prints out the famous 'Hello, World!' string.
-
+ 
 ```
                              +--- vma                    
                              |                           
@@ -1453,9 +1466,6 @@ Finally, the flow goes to the **main** function and prints out the famous 'Hello
   7eb94000-7eb95000 r-xp 00000000 00:00 0          [vdso]              
   ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]           
 ```
-
-<details>
-  <summary> Mapping and strace log </summary>
 
 ```
  00010000-00011000 r-xp 00000000 1f:05 915        /home/root/a.out    | 2. [kernel] map 1st segment of a.out
