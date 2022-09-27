@@ -941,31 +941,44 @@ Data is then duplicated from the old page to the newly allocated one, and that t
                                                      2. fault happens and a duplicated page is prepared
                                                      3. update page table entry to point to it         
 ```
-                                                                                  
+          
+```
+                                                        +-------------------+         +---------------+  
+                                                   +--- | do_anonymous_page |    +--- | do_read_fault |  
+                                                   |    +-------------------+    |    +---------------+  
+                                                   |    +----------+             |    +--------------+   
+                                                   |--- | do_fault | ------------|--- | do_cow_fault |   
+                                                   |    +----------+             |    +--------------+   
+                                                   |    +------------+           |    +-----------------+
+                                                   |--- | do_wp_page |           +--- | do_shared_fault |
+                                                   |    +------------+                +-----------------+
+                                              +------------------+                                       
+                                         +--- | handle_pte_fault |                                       
+                                         |    +------------------+                                       
+                                    +-----------------+                                                  
+                               +--- | handle_mm_fault |                                                  
+                               |    +-----------------+                                                  
+                               |    +--------------+                                                     
+                               |--- | expand_stack |                                                     
+                               |    +--------------+                                                     
+                          +-----------------+                                                            
+                     +--- | __do_page_fault |                                                            
+                     |    +-----------------+                                                            
++---------------+    |    +-----------------+                                                            
+| do_page_fault | ---|--- | __do_user_fault |                                                            
++---------------+    |    +-----------------+                                                            
+                     |    +-------------------+     +-----------------+                                  
+                     +--- | __do_kernel_fault | --- | fixup_exception |                                  
+                          +-------------------+     +-----------------+                                  
+```
+                                                        
 ```
 +---------------+
 | do_page_fault | :
 +---|-----------+
     |    +-----------------+
-    |--> | __do_page_fault | :
-    |    +----|------------+
-    |         |    +----------+
-    |         |--> | find_vma | try to find target vma based on faulted addr
-    |         |    +----------+
-    |         |
-    |         |--> check if it's a valid fault (covered by vma, or lies in stack)
-    |         |
-    |         |--> return error if not
-    |         |
-    |         |    +-----------------+
-    |         +--> | handle_mm_fault |
-    |              +----|------------+
-    |                   |    +---------------------+
-    |                   |--> | __set_current_state | set state = running
-    |                   |    +---------------------+
-    |                   |    +-------------------+
-    |                   +--> | __handle_mm_fault | 
-    |                        +-------------------+
+    |--> | __do_page_fault | handle mm fault, or simply expand downward if it's stack
+    |    +-----------------+
     |
     |--> return 0 for valid case
     |
@@ -980,6 +993,33 @@ Data is then duplicated from the old page to the newly allocated one, and that t
     |        +-------------------+
     +------> | __do_kernel_fault | dump info and send KILL to current task
              +-------------------+
+```
+  
+```
+       +-----------------+
+       | __do_page_fault | : handle mm fault, or simply expand downward if it's stack
+       +----|------------+
+            |    +----------+
+            |--> | find_vma | try to find target vma based on faulted addr
+            |    +----------+
+            |
+            |--> if faulted addr < vma start
+            |
+            |------> go to 'check_stack'
+            |
+            |--> return error if not
+            |
+            |    +-----------------+
+            +--> | handle_mm_fault |
+            |    +-----------------+
+            |
+            +--> return
+            |
+            +--> if the vma is stack
+check_stack |
+            |        +--------------+
+            +------> | expand_stack |
+                     +--------------+
 ```
   
 ```
@@ -1234,6 +1274,25 @@ const struct vm_operations_struct generic_file_vm_ops = {
 ```
   
 ```
++--------------+                                                                   
+| expand_stack | : expand stack                                                    
++---|----------+                                                                   
+    |    +------------------+                                                      
+    +--> | expand_downwards | : expand stack (downward version)                    
+         +----|-------------+                                                      
+              |                                                                    
+              |--> ensure the stack guard gap is still valid                       
+              |                                                                    
+              |    +------------------+                                            
+              |--> | anon_vma_prepare | ensure vma has an anon_vma                 
+              |    +------------------+                                            
+              |                                                                    
+              |--> if it's not yet expanded (in case somewhere else did it already)
+              |                                                                    
+              +------> update vma 'start' and 'pgoff'                              
+```
+  
+```
 +-------------------+                                                                        
 | __do_kernel_fault | : try to fix exception, if fail, dump info and exit task               
 +----|--------------+                                                                        
@@ -1282,27 +1341,6 @@ const struct vm_operations_struct generic_file_vm_ops = {
      +------> regs->pc = found addr (so it starts from there after returning to svc or usr mode)                        
 ```
   
-```
-+--------------+                                                                   
-| expand_stack | : expand stack                                                    
-+---|----------+                                                                   
-    |    +------------------+                                                      
-    +--> | expand_downwards | : expand stack (downward version)                    
-         +----|-------------+                                                      
-              |                                                                    
-              |--> ensure the stack guard gap is still valid                       
-              |                                                                    
-              |    +------------------+                                            
-              |--> | anon_vma_prepare | ensure vma has an anon_vma                 
-              |    +------------------+                                            
-              |                                                                    
-              |--> if it's not yet expanded (in case somewhere else did it already)
-              |                                                                    
-              +------> update vma 'start' and 'pgoff'                              
-```
-  
-
-
 </details>
   
 ## <a name="task-startup"></a> Task Startup
