@@ -35,6 +35,22 @@
 ```
 
 ```
++-----------------+                           
+| aspeed_i2c_init | : init i2c controller (hw)
++----|------------+                           
+     |                                        
+     |--> disable everything (hw)             
+     |                                        
+     |    +---------------------+             
+     |--> | aspeed_i2c_init_clk |             
+     |    +---------------------+             
+     |                                        
+     |--> enable master mode (hw)             
+     |                                        
+     +--> enable interrupt (hw)               
+```
+
+```
 +---------------------+                                                    
 | i2c_mux_add_adapter | : alloc priv, set up priv->adap and register it    
 +-----|---------------+                                                    
