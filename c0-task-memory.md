@@ -1345,6 +1345,15 @@ const struct vm_operations_struct generic_file_vm_ops = {
   
 ## <a name="task-startup"></a> Task Startup
 
+When we execute a command from the shell, it first duplicates itself as a new task, and then follows the pre-designed flow to transform into target.
+From the memory's perspective, the `fork()` and `execve()` working steps are:
+  
+- fork()
+  - Duplicate mm.
+  - Duplicate page tables and vma list.
+- execve()
+  - 
+  
 ```
           parent task                       child task    
                                                           
@@ -1534,7 +1543,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +-----------------+                                                                                      
-| load_elf_binary | : map segments of exec and interp, copy and env to stack, regs->pc to interp           
+| load_elf_binary | : replace mm, map exec and interp, copy ang/env to stack, set regs->pc to interp           
 +----|------------+                                                                                      
      |                                                                                                   
      |--> check if magic "\177ELF" matches                                                               
@@ -1551,7 +1560,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
      |------> | load_elf_phdrs | load program headers of linker                                          
      |        +----------------+                                                                         
      |    +----------------+                                                                             
-     |--> | begin_new_exec | ensure no other threads, clone structures, set task name, reset sig handlers
+     |--> | begin_new_exec | ensure no other threads, replace mm, clone structures, set task name, reset sig handlers
      |    +----------------+                                                                             
      |    +----------------+                                                                             
      |--> | setup_new_exec |                                                                             
@@ -1661,7 +1670,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ```
 +----------------+                                                                             
-| begin_new_exec | : ensure no other threads, clone structures, set task name, reset sig handlers
+| begin_new_exec | : ensure no other threads, replace mm, clone structures, set task name, reset sig handlers
 +---|------------+                                                                             
     |    +-----------+                                                                         
     +--> | de_thread | ensure no other threads in group, and arg task assumes the leader       
