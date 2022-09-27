@@ -569,7 +569,7 @@ Indifferent parents might cause the children to remain in the ZOMBIE state.
 | sys_exit | :
 +--|-------+
    |    +---------+
-   +--> | do_exit | :
+   +--> | do_exit | : transfer child tasks to reaper, release resources, and yield scheduling
         +--|------+
            |    +--------------+
            |--> | ptrace_event | notify tracer of the exit
