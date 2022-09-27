@@ -1587,8 +1587,11 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
      |------> | load_elf_interp | map interpreter segments                                               
      |        +-----------------+                                                                        
      |    +-----------------------------+                                                                          
-     |--> | ARCH_SETUP_ADDITIONAL_PAGES | install three vmas for 'sigpage', 'vvar', and 'vdso'
-     |    +-----------------------------+  
+     |--> | ARCH_SETUP_ADDITIONAL_PAGES | 
+     |    +-------+---------------------+  
+     |            |    +-----------------------------+
+     |            +--> | arch_setup_additional_pages | install three vmas for 'sigpage', 'vvar', and 'vdso'
+     |                 +-----------------------------+
      |    +-------------------+                                                                          
      |--> | create_elf_tables | copy elf info, arg, env to user space stack                              
      |    +-------------------+                                                                          
@@ -1598,31 +1601,38 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 ```
 
 ```
-+-----------------------------+                                                     
-| arch_setup_additional_pages | : install three vmas for 'sigpage', 'vvar', and 'vdso'
-+-------|---------------------+                                                     
-        |                                                                           
-        |--> ensure 'signal_page' is allocated                                      
-        |                                                                           
-        |--> count needed page size for vaddr (1 for sigpage, 2 for vdso)           
-        |                                                                           
-        |    +-------------------+                                                  
-        |--> | get_unmapped_area | find an used vaddr                               
-        |    +-------------------+                                                  
-        |    +--------------------------+                                           
-        |--> | _install_special_mapping | install vma for that vaddr                
-        |    +--------------------------+                                           
-        |    +------------------+                                                   
-        +--> | arm_install_vdso | :                                                   
-             +----|-------------+                                                   
-                  |    +--------------+                                             
-                  |--> | install_vvar | install vma for 'vvar'                      
-                  |    +--------------+                                             
-                  |    +--------------------------+                                 
-                  +--> | _install_special_mapping | install vma for 'vdso'          
-                       +--------------------------+                                 
++----------------+
+| begin_new_exec | : ensure no other threads, replace mm, clone structures, set task name, reset sig handlers
++---|------------+
+    |    +-----------+
+    +--> | de_thread | ensure no other threads in group, and arg task assumes the leader
+    |    +-----------+
+    |    +---------------+
+    |--> | unshare_files | ensure the fdtable isn't shared
+    |    +---------------+
+    |        |    +------------+
+    |        +--> | unshare_fd | clone fdtable from current task, and assign to current task?
+    |             +------------+
+    |    +-----------------+
+    |--> | set_mm_exe_file | update mm->exe_file to the new one (not interpreter)
+    |    +-----------------+
+    |    +-----------+
+    |--> | exec_mmap | replace current task's mm with bprm's (only one vma: stack)
+    |    +-----------+
+    |    +-----------------+
+    |--> | unshare_sighand | clone sighand for arg task
+    |    +-----------------+
+    |    +------------------+
+    |--> | do_close_on_exec | close files
+    |    +------------------+
+    |    +-----------------+
+    |--> | __set_task_comm | set task name
+    |    +-----------------+
+    |    +-----------------------+
+    +--> | flush_signal_handlers | clear signal handlers
+         +-----------------------+
 ```
-
+  
 ```
 +-----------+                                                                               
 | de_thread | : ensure no other threads in group, and arg task assumes the leader             
@@ -1667,37 +1677,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
               |                                                                                
               +--> copy fds from old to new                                                    
 ```
-
-```
-+----------------+                                                                             
-| begin_new_exec | : ensure no other threads, replace mm, clone structures, set task name, reset sig handlers
-+---|------------+                                                                             
-    |    +-----------+                                                                         
-    +--> | de_thread | ensure no other threads in group, and arg task assumes the leader       
-    |    +-----------+                                                                         
-    |    +---------------+                                                                     
-    |--> | unshare_files | ensure the fdtable isn't shared                                     
-    |    +---------------+                                                                     
-    |    +-----------------+                                                                   
-    |--> | set_mm_exe_file | update mm->exe_file to the new one (not interpreter)              
-    |    +-----------------+                                                                   
-    |    +-----------+                                                                         
-    |--> | exec_mmap | replace current task's mm with bprm's (only one vma: stack)             
-    |    +-----------+                                                                         
-    |    +-----------------+                                                                   
-    |--> | unshare_sighand | clone sighand for arg task                                        
-    |    +-----------------+                                                                   
-    |    +------------------+                                                                  
-    |--> | do_close_on_exec | close files                                                      
-    |    +------------------+                                                                  
-    |    +-----------------+                                                                   
-    |--> | __set_task_comm | set task name                                                     
-    |    +-----------------+                                                                   
-    |    +-----------------------+                                                             
-    +--> | flush_signal_handlers | clear signal handlers                                       
-         +-----------------------+                                                             
-```
-
+ 
 ```
 +-----------------+                                                            
 | load_elf_interp | : map interpreter segments                                   
@@ -1717,6 +1697,32 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
      |    +--------------+                                                     
      +--> | vm_brk_flags | change vm flags of bss (this might create a new vma)
           +--------------+                                                     
+```
+  
+```
++-----------------------------+                                                     
+| arch_setup_additional_pages | : install three vmas for 'sigpage', 'vvar', and 'vdso'
++-------|---------------------+                                                     
+        |                                                                           
+        |--> ensure 'signal_page' is allocated                                      
+        |                                                                           
+        |--> count needed page size for vaddr (1 for sigpage, 2 for vdso)           
+        |                                                                           
+        |    +-------------------+                                                  
+        |--> | get_unmapped_area | find an used vaddr                               
+        |    +-------------------+                                                  
+        |    +--------------------------+                                           
+        |--> | _install_special_mapping | install vma for that vaddr                
+        |    +--------------------------+                                           
+        |    +------------------+                                                   
+        +--> | arm_install_vdso | :                                                   
+             +----|-------------+                                                   
+                  |    +--------------+                                             
+                  |--> | install_vvar | install vma for 'vvar'                      
+                  |    +--------------+                                             
+                  |    +--------------------------+                                 
+                  +--> | _install_special_mapping | install vma for 'vdso'          
+                       +--------------------------+                                 
 ```
    
 </details>
