@@ -1121,10 +1121,39 @@ Data is then duplicated from the old page to the newly allocated one, and that t
         +---------------+
 ```
   
+```c
+const struct vm_operations_struct generic_file_vm_ops = {
+    .fault      = filemap_fault,
+    .map_pages  = filemap_map_pages,
+    .page_mkwrite   = filemap_page_mkwrite,
+};
+```
+                     
+```
++---------------+                                                                            
+| filemap_fault | : read ahead (async or sync)
++---|-----------+                                                                            
+    |    +---------------+                                                                   
+    |--> | find_get_page | find page in mapping                                              
+    |    +---------------+                                                                   
+    |                                                                                        
+    |--> if found                                                                            
+    |                                                                                        
+    |        +-------------------------+                                                     
+    |------> | do_async_mmap_readahead | asynchronously read ahead if the page has such label
+    |        +-------------------------+                                                     
+    |                                                                                        
+    |--> else                                                                                
+    |                                                                                        
+    |        +------------------------+                                                      
+    +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
+             +------------------------+                                                      
+```   
+  
 ```
 +--------------+                                                     
 | do_cow_fault | : alloc a page, set up page table, copy data        
-+---|----------+                                                     
++---|----------+ (what's the difference from do_?)
     |    +------------------+                                        
     |--> | anon_vma_prepare | ensure vma has an anon_vma             
     |    +------------------+                                        
@@ -1162,7 +1191,7 @@ Data is then duplicated from the old page to the newly allocated one, and that t
 ```
 +------------+                                                      
 | do_wp_page | : handle the fault of copy-on-write                    
-+--|---------+                                                      
++--|---------+ (what's the difference from do_cow_fault?)
    |    +----------------+                                          
    |--> | vm_normal_page | get struct page of given pte              
    |    +----------------+                                          
@@ -1204,34 +1233,26 @@ Data is then duplicated from the old page to the newly allocated one, and that t
          +------------------+                                                            
 ```
   
-```c
-const struct vm_operations_struct generic_file_vm_ops = {
-    .fault      = filemap_fault,
-    .map_pages  = filemap_map_pages,
-    .page_mkwrite   = filemap_page_mkwrite,
-};
 ```
-                     
++-------------------+                                                                        
+| __do_kernel_fault | : try to fix exception, if fail, dump info and exit task               
++----|--------------+                                                                        
+     |    +-----------------+                                                                
+     |--> | fixup_exception | if there's a fixup, let the faulted task continue from there   
+     |    +-----------------+                                                                
+     |                                                                                       
+     |--> return if there's fixup                                                            
+     |                                                                                       
+     |    +----------+                                                                       
+     |--> | show_pte | dump info                                                             
+     |    +----------+                                                                       
+     |    +-----+                                                                            
+     |--> | die | dump info                                                                  
+     |    +-----+                                                                            
+     |    +---------+                                                                        
+     +--> | do_exit | transfer child tasks to reaper, release resources, and yield scheduling
+          +---------+                                                                        
 ```
-+---------------+                                                                            
-| filemap_fault | : read ahead (async or sync)
-+---|-----------+                                                                            
-    |    +---------------+                                                                   
-    |--> | find_get_page | find page in mapping                                              
-    |    +---------------+                                                                   
-    |                                                                                        
-    |--> if found                                                                            
-    |                                                                                        
-    |        +-------------------------+                                                     
-    |------> | do_async_mmap_readahead | asynchronously read ahead if the page has such label
-    |        +-------------------------+                                                     
-    |                                                                                        
-    |--> else                                                                                
-    |                                                                                        
-    |        +------------------------+                                                      
-    +------> | do_sync_mmap_readahead | synchronously read ahead anyway                      
-             +------------------------+                                                      
-```   
   
 ```
 +-----------------+                                                                                                     
@@ -1280,35 +1301,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
               +------> update vma 'start' and 'pgoff'                              
 ```
   
-```
-+------------------+                                                                                     
-| anon_vma_prepare | : ensure vma has an anon_vma                                                        
-+----|-------------+                                                                                     
-     |                                                                                                   
-     |--> return if vma has anon_vma                                                                     
-     |                                                                                                   
-     |    +--------------------+                                                                         
-     +--> | __anon_vma_prepare | : prepare avc, link to vma list and anon_vma tree                       
-          +----|---------------+                                                                         
-               |    +----------------------+                                                             
-               |--> | anon_vma_chain_alloc | alloc an avc                                                
-               |    +----------------------+                                                             
-               |    +-------------------------+                                                          
-               |--> | find_mergeable_anon_vma | check if vma can share anon_vma with its prev or next vma
-               |    +-------------------------+                                                          
-               |                                                                                         
-               |--> if not found                                                                         
-               |                                                                                         
-               |        +----------------+                                                               
-               |------> | anon_vma_alloc |                                                               
-               |        +----------------+                                                               
-               |                                                                                         
-               |--> if vma doesn't have an anon_vma yet                                                  
-               |                                                                                         
-               |        +---------------------+                                                          
-               +------> | anon_vma_chain_link | add avc to vma list and anon_vma tree                    
-                        +---------------------+                                                          
-```
+
 
 </details>
   
@@ -1891,6 +1884,36 @@ struct page {
     |        +---------------------+                                          
     |                                                                         
     +------> try to have dst vma reuse anon_vma                               
+```
+  
+```
++------------------+                                                                                     
+| anon_vma_prepare | : ensure vma has an anon_vma                                                        
++----|-------------+                                                                                     
+     |                                                                                                   
+     |--> return if vma has anon_vma                                                                     
+     |                                                                                                   
+     |    +--------------------+                                                                         
+     +--> | __anon_vma_prepare | : prepare avc, link to vma list and anon_vma tree                       
+          +----|---------------+                                                                         
+               |    +----------------------+                                                             
+               |--> | anon_vma_chain_alloc | alloc an avc                                                
+               |    +----------------------+                                                             
+               |    +-------------------------+                                                          
+               |--> | find_mergeable_anon_vma | check if vma can share anon_vma with its prev or next vma
+               |    +-------------------------+                                                          
+               |                                                                                         
+               |--> if not found                                                                         
+               |                                                                                         
+               |        +----------------+                                                               
+               |------> | anon_vma_alloc |                                                               
+               |        +----------------+                                                               
+               |                                                                                         
+               |--> if vma doesn't have an anon_vma yet                                                  
+               |                                                                                         
+               |        +---------------------+                                                          
+               +------> | anon_vma_chain_link | add avc to vma list and anon_vma tree                    
+                        +---------------------+                                                          
 ```
   
 </details>
