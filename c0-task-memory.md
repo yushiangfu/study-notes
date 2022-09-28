@@ -1734,6 +1734,8 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ### Reverse Mapping
 
+Page unmapping uses the constructed structures, and I'm considering moving this topic to the 'Page Cache' chapter.
+  
 <details><summary> More Details </summary>
   
 ```c
@@ -1975,6 +1977,8 @@ struct page {
 </details>
   
 ### Kmap
+  
+In many cases, it's for highmem utilization, but the highmem zone contains no page in our study case.
 
 <details><summary> More Details </summary>
 
