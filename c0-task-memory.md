@@ -2076,3 +2076,4 @@ In many cases, it's for highmem utilization, but the highmem zone contains no pa
 ## <a name="reference"></a> Reference
 
 - W. Mauerer, Professional Linux Kernel Architecture
+- [World Class, DIO ZA WARUDO compilation (JoJo's Bizarre Adventure:Stardust Crusaders)](https://www.youtube.com/watch?v=DefXS17jZwE&ab_channel=WorldClass)
