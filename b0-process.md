@@ -17,7 +17,6 @@
 
 (TBD)
 
-
 ## <a name="process-and-thread"></a> Process and Thread
 
 The `process` is a concept of running logic designed to fulfill the target purpose. 
@@ -1025,6 +1024,12 @@ That said, breaking down those potential hogger functions into finer-grained exe
                       |        +-------------------------+         
                       +------> | preempt_schedule_common | schedule
                                +-------------------------+         
+```
+  
+```
++-------------+                               
+| might_sleep | : do nothing bc of our configs
++-------------+                               
 ```
   
 </details>
