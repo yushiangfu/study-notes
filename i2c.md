@@ -1,3 +1,20 @@
+## Index
+
+- [Introduction](#introduction)
+- [Driver](#driver)
+- [System Startup](#system-startup)
+- [Tools](#tools)
+- [Cheat Sheet](#cheat-sheet)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+(TBD)
+
+## <a name="driver"></a> Driver
+
+## <a name="system-startup"></a> System Startup
+
 ```
 +----------+                                      
 | i2c_init | : register i2c bus and dummy driver  
@@ -87,3 +104,9 @@
      +--> | i2c_register_adapter | set adapter's name, and register it                   
           +----------------------+                                                       
 ```
+
+## <a name="tools"></a> Tools
+
+## <a name="cheat-sheet"></a> Cheat Sheet
+
+## <a name="reference"></a> Reference
