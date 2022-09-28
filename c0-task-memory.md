@@ -1348,7 +1348,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 We've already seen the complete memory layout of a task, and now we will introduce what has been done before the main function runs. 
 For example, when we execute a 'Hello World' program from a shell, the shell first clones itself as a new one. 
 That shell replaces itself with the target binary and prints the greeting message. 
-There are other essential steps, and I list them all together here in chronological order:
+All the mapping-related essential steps are listed here in chronological order:
 
 - fork()
   1. Duplicate mm.
@@ -1362,17 +1362,19 @@ There are other essential steps, and I list them all together here in chronologi
   6. Prepare special mappings: sigpage, vvar, vdso.
   7. Copy arguments and environment variables to stack.
   8. Pass control to the linker.
- 
-Now the linker (e.g., ld.so) takes control and it helps load the libraries specified in the main program and pass control to it afterwards.
-So the memory of a task actually includes two executables: a fixed-path linker and our main program.
-If we copy a binary from elsewhere and run, it might fail to look up the linker locally and show some error message.  
   
+At this point, the linker (e.g., ld.so) takes control and helps load the libraries specified by the main program and passes control to it afterward. 
+The linker has a strong presence and is always part of a running task; its path is specified during program compilation.
+It should be noted that binaries copied from other Linux-based systems might have trouble looking up the linker locally and, unsurprisingly, abort.
+
 - linker
   1. Load libraries.
   2. Extend heap.
-  3. Pass control to main program.
+  3. Pass control to the main program.
 - main
-  1. Hello, World! 
+  1. Hello, Za Warudo!
+  
+<p align="center"><img src="images/task-memory/task-startup.png" /></p>
   
 <details><summary> More Details </summary>
   
@@ -1392,15 +1394,6 @@ If we copy a binary from elsewhere and run, it might fail to look up the linker 
       |      ...       |                |      ...       |
       +----------------+                +----------------+
 ```
-
-And deliver the control to the interpreter instead of our target executable. 
-The linker is actually also an executable rather than a regular shared library. 
-Linker helps to load other shared libraries specified by the a.out during compilation.
-
-6. [linker] map c library
-7. [linker] extend heap size
-
-Finally, the flow goes to the **main** function and prints out the famous 'Hello, World!' string.
  
 ```
                              +--- vma                    
