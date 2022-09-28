@@ -448,7 +448,7 @@ The first-level table is an array of 4098 entries: dividing the 4G virtual space
 The possible entry values are:
   
 - Unmapped
-  - Accessing this area triggers a page fault (hardware behavior).
+  - Accessing this entry triggers a page fault (hardware behavior).
 - Section mapping
   - The value stored is the destination physical address already.
   - The mapping size is 1M, and it's only used in kernel space
@@ -459,7 +459,7 @@ The second-level table is an array of 256 entries: each 4K area within a section
 Possible values are:
 
 - Unmapped
-  - Accessing this kind of area triggers a page fault (hardware behavior).
+  - Accessing this entry triggers a page fault (hardware behavior).
 - Page mapping
   - The value stored is the destination physical address.
   - The mapping size is 4K, and both kernel and user spaces use it.
@@ -1060,7 +1060,7 @@ check_stack |
       |                                                                                                   
       |            +-------------------+                                                                  
       |----------> | do_anonymous_page | ensure 2nd-level table exists, prepare pte value and update entry
-      |            +-------------------+ (aka demand allocation)                                                                 
+      |            +-------------------+ (aka demand allocation)
       |                                                                                                   
       |------> else                                                                                       
       |                                                                                                   
@@ -1461,38 +1461,38 @@ It should be noted that binaries copied from other Linux-based systems might hav
 ```
 
 ```
- 00010000-00011000 r-xp 00000000 1f:05 915        /home/root/a.out    | 2. [kernel] map 1st segment of a.out
-                                                                                                            
-                                                                                                            
- 00020000-00021000 r--p 00000000 1f:05 915        /home/root/a.out    | 3. [kernel] map 2nd segment of a.out     | 14. [linker] mprotect 'r'
- 00021000-00022000 rw-p 00001000 1f:05 915        /home/root/a.out    |                                                                        
-                                                                                                                                               
-                                                                                                                                               
- 000ac000-000cd000 rw-p 00000000 00:00 0          [heap]              | 16. [linker] extend heap size from 0
-    
- 76db8000-76f11000 r-xp 00000000 1f:04 426        /lib/libc.so.6      | 8. [linker] map file (libc, rx)                                        
-                                                                      |                                                                        
- 76f11000-76f20000 ---p 00159000 1f:04 426        /lib/libc.so.6      |      | 9. [linker] mprotect 'none'                                     
-                                                                      |                                                                        
- 76f20000-76f22000 r--p 00158000 1f:04 426        /lib/libc.so.6      |      | 10. [linker] map file (libc, rw)  | 13. [linker] mprotect 'r'
- 76f22000-76f24000 rw-p 0015a000 1f:04 426        /lib/libc.so.6      |      |                                                                 
-                                                                      |                                                                        
- 76f24000-76f2d000 rw-p 00000000 00:00 0                              |      | 11. [linker] map anon (rw)                                      
-                                                                                                                                               
- 76f30000-76f56000 r-xp 00000000 1f:04 421        /lib/ld-linux.so.3  | 4. [kernel] map 1st segment of linker                                  
-                                                                                                                                               
- 76f64000-76f66000 rw-p 00000000 00:00 0                              | 7. [linker] map anon (rw)                | 12. [linker] set tls, tid, robust list
-                                                                                                                                              
- 76f66000-76f67000 r--p 00026000 1f:04 421        /lib/ld-linux.so.3  | 5. [kernel] map 2nd segment of linker    | 15. [linker] mprotect 'r'
- 76f67000-76f68000 rw-p 00027000 1f:04 421        /lib/ld-linux.so.3  |                                                                        
-                                                                                                                                               
- 7e99e000-7e9bf000 rw-p 00000000 00:00 0          [stack]             | 1. [kernel] prepare stack                                              
-                                                                                                                                               
- 7eb92000-7eb93000 r-xp 00000000 00:00 0          [sigpage]           | 6. [kernel] prepare sigpage, vvar, and vdso                            
- 7eb93000-7eb94000 r--p 00000000 00:00 0          [vvar]              |                                                                        
- 7eb94000-7eb95000 r-xp 00000000 00:00 0          [vdso]              |                                                                        
-                                                                                                                                               
- ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]           | 0. [kernel] it's already there during boot time                        
+00010000-00011000 r-xp  /home/root/a.out    | 2. [kernel] map 1st segment of a.out
+
+
+00020000-00021000 r--p  /home/root/a.out    | 3. [kernel] map 2nd segment of a.out     | 14. [linker] mprotect 'r'
+00021000-00022000 rw-p  /home/root/a.out    |
+
+
+000ac000-000cd000 rw-p  [heap]              | 16. [linker] extend heap size from 0
+
+76db8000-76f11000 r-xp  /lib/libc.so.6      | 8. [linker] map file (libc, rx)
+                                            |
+76f11000-76f20000 ---p  /lib/libc.so.6      |      | 9. [linker] mprotect 'none'
+                                            |
+76f20000-76f22000 r--p  /lib/libc.so.6      |      | 10. [linker] map file (libc, rw)  | 13. [linker] mprotect 'r'
+76f22000-76f24000 rw-p  /lib/libc.so.6      |      |
+                                            |
+76f24000-76f2d000 rw-p                      |      | 11. [linker] map anon (rw)
+
+76f30000-76f56000 r-xp  /lib/ld-linux.so.3  | 4. [kernel] map 1st segment of linker
+
+76f64000-76f66000 rw-p                      | 7. [linker] map anon (rw)                | 12. [linker] set tls, tid, ...
+
+76f66000-76f67000 r--p  /lib/ld-linux.so.3  | 5. [kernel] map 2nd segment of linker    | 15. [linker] mprotect 'r'
+76f67000-76f68000 rw-p  /lib/ld-linux.so.3  |
+
+7e99e000-7e9bf000 rw-p  [stack]             | 1. [kernel] prepare stack
+
+7eb92000-7eb93000 r-xp  [sigpage]           | 6. [kernel] prepare sigpage, vvar, and vdso
+7eb93000-7eb94000 r--p  [vvar]              |
+7eb94000-7eb95000 r-xp  [vdso]              |
+
+ffff0000-ffff1000 r-xp  [vectors]           | 0. [kernel] it's already there during boot time
 ```
     
 ```
