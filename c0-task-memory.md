@@ -996,30 +996,30 @@ Data is then duplicated from the old page to the newly allocated one, and that t
 ```
   
 ```
-       +-----------------+
-       | __do_page_fault | : handle mm fault, or simply expand downward if it's stack
-       +----|------------+
-            |    +----------+
-            |--> | find_vma | try to find target vma based on faulted addr
-            |    +----------+
-            |
-            |--> if faulted addr < vma start
-            |
-            |------> go to 'check_stack'
-            |
-            |--> return error if not
-            |
-            |    +-----------------+
-            +--> | handle_mm_fault |
-            |    +-----------------+
-            |
-            +--> return
-            |
-            +--> if the vma is stack
-check_stack |
-            |        +--------------+
-            +------> | expand_stack |
-                     +--------------+
++-----------------+
+| __do_page_fault | : handle mm fault, or simply expand downward if it's stack
++----|------------+
+     |    +----------+
+     |--> | find_vma | try to find target vma based on faulted addr
+     |    +----------+
+     |
+     |--> if faulted addr < vma start
+     |
+     |------> go to 'check_stack'
+     |
+     |--> return error if not
+     |
+     |    +-----------------+
+     +--> | handle_mm_fault |
+     |    +-----------------+
+     |
+     +--> return
+     |
+     +--> if the vma is stack
+check_stack
+     |        +--------------+
+     +------> | expand_stack |
+              +--------------+
 ```
   
 ```
