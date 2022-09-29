@@ -59,13 +59,65 @@ bmp280_i2c_driver_init     : [X] skip, no device registered
     |    +--------------+                                                                        
     |    +-----------------------+                                                               
     |--> | bus_register_notifier | track the addition and removal of adapters                    
-    |    +-----------------------+                                                               
+    |    +-----------------------+ 'i2cdev_notifier_call'                                                              
     |                                                                                            
     |--> for each i2c dev                                                                        
     |                                                                                            
     |        +-----------------------+                                                           
     +------> | i2cdev_attach_adapter | bind to existing adapters, but there's none at the momemnt
              +-----------------------+                                                           
+```
+
+```
++----------------------+                                                                   
+| i2cdev_notifier_call | : action handler, e.g., if 'add device': prepare and register cdev
++-----|----------------+                                                                   
+      |                                                                                    
+      |--> switch action                                                                   
+      |                                                                                    
+      |--> case 'add device'                                                               
+      |                                                                                    
+      |        +-----------------------+                                                   
+      |------> | i2cdev_attach_adapter | alloc i2c_dev, init as cdev and register it       
+      |        +-----------------------+                                                   
+      |                                                                                    
+      |--> case 'del device'                                                               
+      |                                                                                    
+      |        +-----------------------+                                                   
+      +------> | i2cdev_detach_adapter | (skip)                                            
+               +-----------------------+                                                   
+```
+
+```
++-----------------------+                                                 
+| i2cdev_attach_adapter | : alloc i2c_dev, init as cdev and register it   
++-----|-----------------+                                                 
+      |                                                                   
+      |--> return if dev type != 'i2c_adapter_type'                       
+      |                                                                   
+      |    +----------------+                                             
+      |--> | to_i2c_adapter | get adapter that contains the dev           
+      |    +----------------+                                             
+      |    +------------------+                                           
+      |--> | get_free_i2c_dev | alloc i2c_dev and add to 'i2c_dev_list'   
+      |    +------------------+                                           
+      |    +-----------+                                                  
+      |--> | cdev_init | init dev with 'i2cdev_fops'                      
+      |    +-----------+                                                  
+      |    +-------------------+                                          
+      |--> | device_initialize |                                          
+      |    +-------------------+                                          
+      |                                                                   
+      |--> determine dev_t  = (i2c_major, adapter_nr)                     
+      |                                                                   
+      |--> set up i2c_dev->dev                                            
+      |                                                                   
+      |    +--------------+                                               
+      |--> | dev_set_name | "i2c-%d"                                      
+      |    +--------------+                                               
+      |    +-----------------+                                            
+      +--> | cdev_device_add | add cdev to kobj_map and register inner dev
+           +-----------------+                                            
 ```
 
 ```
