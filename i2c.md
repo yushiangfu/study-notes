@@ -16,6 +16,18 @@
 ## <a name="system-startup"></a> System Startup
 
 ```
+aspeed_i2c_ic_of_init      : [X] irqchip related; not part of i2c driver
+i2c_init                   : [O]
+tpm_tis_i2c_driver_init    : [X] tpm related; it's the i2c user instead of driver
+mctp_i2c_mod_init          : [X] netdev related
+i2c_dev_init               : [O]
+aspeed_i2c_bus_driver_init : [O]
+fsi_i2c_driver_init        : [O]
+i2c_mux_gpio_driver_init   : [?]
+bmp280_i2c_driver_init     : [?]
+```
+
+```
 +----------+                                      
 | i2c_init | : register i2c bus and dummy driver  
 +--|-------+                                      
@@ -52,6 +64,46 @@
 ```
 
 ```
++----------------------+                                                                    
+| aspeed_i2c_probe_bus | : map iomem, init controller, register isr, register adapter       
++-----|----------------+                                                                    
+      |                                                                                     
+      |--> alloc bus                                                                        
+      |                                                                                     
+      |    +-----------------------+                                                        
+      |--> | platform_get_resource | get iomem info from resource                           
+      |    +-----------------------+                                                        
+      |    +-----------------------+                                                        
+      |--> | devm_ioremap_resource | map iomem                                              
+      |    +-----------------------+                                                        
+      |    +-------------------------------+                                                
+      |--> | devm_reset_control_get_shared | (skip)                                         
+      |    +-------------------------------+                                                
+      |    +------------------------+                                                       
+      |--> | reset_control_deassert | (skip)                                                
+      |    +------------------------+                                                       
+      |                                                                                     
+      |--> set up adapter and install ops 'aspeed_i2c_algo'                                 
+      |                                                                                     
+      |--> clear interrupt if there's any (hw)                                              
+      |                                                                                     
+      |    +-----------------+                                                              
+      |--> | aspeed_i2c_init | init i2c controller (hw)                                     
+      |    +-----------------+                                                              
+      |    +----------------------+                                                         
+      |--> | irq_of_parse_and_map | get irq from of of_node                                 
+      |    +----------------------+                                                         
+      |    +------------------+                                                             
+      |--> | devm_request_irq | register isr 'aspeed_i2c_bus_irq'                           
+      |    +------------------+ (ack, based on master state: write or read, if rx done: ack)
+      |    +-----------------+                                                              
+      |--> | i2c_add_adapter | determine adapter id and register it                         
+      |    +-----------------+                                                              
+      |                                                                                     
+      +--> print "i2c bus %d registered, irq %d\n"                                          
+```
+
+```
 +-----------------+                           
 | aspeed_i2c_init | : init i2c controller (hw)
 +----|------------+                           
@@ -65,6 +117,187 @@
      |--> enable master mode (hw)             
      |                                        
      +--> enable interrupt (hw)               
+```
+
+```
++--------------------+                                                                                                 
+| aspeed_i2c_bus_irq | : ack, based on master state: write or read, if rx done: ack                                    
++----|---------------+                                                                                                 
+     |                                                                                                                 
+     |--> read interrupt bits                                                                                          
+     |                                                                                                                 
+     |--> ack all interrupts except rx done                                                                            
+     |                                                                                                                 
+     |--> (ignore the case of slave controller)                                                                        
+     |                                                                                                                 
+     |    +-----------------------+                                                                                    
+     +--> | aspeed_i2c_master_irq | based on master state, write to or read from hw reg for a byte, notify waiting task
+     |    +-----------------------+                                                                                    
+     |                                                                                                                 
+     |--> if bits has 'rx done'                                                                                        
+     |                                                                                                                 
+     +------> write hw register to ack                                                                                 
+```
+
+```
++-----------------------+                                                                                      
+| aspeed_i2c_master_irq | : based on master state, write to or read from hw reg for a byte, notify waiting task
++-----|-----------------+                                                                                      
+      |                                                                                                        
+      |--> switch master state                                                                                 
+      |                                                                                                        
+      |--> case master_tx                                                                                      
+      |                                                                                                        
+      |--> case master_tx_first                                                                                
+      |                                                                                                        
+      |------> if msg still has bytes to send                                                                  
+      |                                                                                                        
+      |----------> write next byte to hw reg and send out                                                      
+      |                                                                                                        
+      |------> else                                                                                            
+      |                                                                                                        
+      |            +-----------------------------+                                                             
+      |----------> | aspeed_i2c_next_msg_or_stop | start next msg if there's any, or otherwise stop            
+      |            +-----------------------------+                                                             
+      |                                                                                                        
+      |--> case master_rx_first                                                                                
+      |                                                                                                        
+      |--> case master_rx                                                                                      
+      |                                                                                                        
+      +------> read data from hw register                                                                      
+      |                                                                                                        
+      |------> copy to msg buf                                                                                 
+      |                                                                                                        
+      |------> if msg expects more data                                                                        
+      |                                                                                                        
+      |----------> set master state to 'master rx'                                                             
+      |                                                                                                        
+      |----------> prepare rx cmd and write to hw register                                                     
+      |                                                                                                        
+      |------> else                                                                                            
+      |                                                                                                        
+      |            +-----------------------------+                                                             
+      |----------> | aspeed_i2c_next_msg_or_stop | start next msg if there's any, or otherwise stop            
+      |            +-----------------------------+                                                             
+      |                                                                                                        
+      |--> case stop: set master state to 'invactive'                                                          
+      |                                                                                                        
+      |--> case inactive: shouldn't receive interrupt                                                          
+      |                                                                                                        
+      |--> default: unknow, so set master state to inactive                                                    
+      |                                                                                                        
+      |    +----------+                                                                                        
+      +--> | complete |                                                                                        
+           +----------+                                                                                        
+```
+
+```
++-----------------------------+                                                              
+| aspeed_i2c_next_msg_or_stop | : start next msg if there's any, or otherwise stop           
++-------|---------------------+                                                              
+        |                                                                                    
+        |--> if bus still has msg                                                            
+        |                                                                                    
+        |------> move to next msg                                                            
+        |                                                                                    
+        |        +---------------------+                                                     
+        |------> | aspeed_i2c_do_start | prepare cmd, write slave addr & cmd to hw registers 
+        |        +---------------------+                                                     
+        |                                                                                    
+        |--> else                                                                            
+        |                                                                                    
+        |        +--------------------+                                                      
+        +------> | aspeed_i2c_do_stop | set master state to stop, write 'stop' to hw register
+                 +--------------------+                                                      
+```
+
+```
++---------------------+                                                      
+| aspeed_i2c_do_start | : prepare cmd, write slave addr & cmd to hw registers
++-----|---------------+                                                      
+      |                                                                      
+      |--> set cmd to 'start | tx'                                           
+      |                                                                      
+      |--> set master state to 'master start'                                
+      |                                                                      
+      +--> if the curr msg is to read                                        
+      |                                                                      
+      |------> cmd |= 'rx'                                                   
+      |                                                                      
+      +--> write slave addr and cmd to hw registers                          
+```
+
+```
++-----------------+                                                                                                 
+| i2c_add_adapter | : determine adapter id and register it                                                          
++----|------------+                                                                                                 
+     |                                                                                                              
+     |--> if of node has specified the adapter# (not our case)                                                      
+     |                                                                                                              
+     |------> read and set to adapter                                                                               
+     |                                                                                                              
+     |        +----------------------------+                                                                        
+     |------> | __i2c_add_numbered_adapter | :                                                                      
+     |        +------|---------------------+                                                                        
+     |               |                                                                                              
+     |               |--> ensure # isn't used                                                                       
+     |               |                                                                                              
+     |               |    +----------------------+                                                                  
+     |               +--> | i2c_register_adapter | set name/bus/type, register dev and of_node, install recovery ops
+     |                    +----------------------+                                                                  
+     |                                                                                                              
+     |------> return                                                                                                
+     |                                                                                                              
+     |    +-----------+                                                                                             
+     |--> | idr_alloc | get an unused id                                                                            
+     |    +-----------+                                                                                             
+     |                                                                                                              
+     |--> set to adapter                                                                                            
+     |                                                                                                              
+     |    +----------------------+                                                                                  
+     +--> | i2c_register_adapter | set name/bus/type, register dev and of_node, install recovery ops                
+          +----------------------+                                                                                  
+```
+
+```
++----------------------+                                                                                               
+| i2c_register_adapter | : set name/bus/type, register dev and of_node, install recovery ops                           
++-----|----------------+                                                                                               
+      |                                                                                                                
+      |--> ensure adapter has installed 'i2c_adapter_lock_ops' and 'i2c_adapter_mux_root_ops'                          
+      |                                                                                                                
+      |    +----------------------------------+                                                                        
+      |--> | i2c_setup_host_notify_irq_domain | (ignore, our adapter probably won't support I2C_FUNC_SMBUS_HOST_NOTIFY)
+      |    +----------------------------------+                                                                        
+      |    +--------------+                                                                                            
+      |--> | dev_set_name | "i2c-%d"                                                                                   
+      |    +--------------+                                                                                            
+      |                                                                                                                
+      |--> dev.bus = i2c_bus_type                                                                                      
+      |                                                                                                                
+      |--> dev.type = i2c_adapter_type                                                                                 
+      |                                                                                                                
+      |    +-----------------+                                                                                         
+      |--> | device_register |                                                                                         
+      |    +-----------------+                                                                                         
+      |    +--------------------------+                                                                                
+      |--> | of_i2c_setup_smbus_alert | do nothing bc of disabled config                                               
+      |    +--------------------------+                                                                                
+      |    +-------------------+                                                                                       
+      |--> | i2c_init_recovery | install recovery ops                                                                  
+      |    +-------------------+                                                                                       
+      |    +-------------------------+                                                                                 
+      |--> | of_i2c_register_devices |                                                                                 
+      |    +-------------------------+                                                                                 
+      |    +----------------------------+                                                                              
+      |--> | i2c_scan_static_board_info | check if adapter num == bus num, this is an error                            
+      |    +----------------------------+                                                                              
+      |                                                                                                                
+      |--> for each driver registered to 'i2c_bus_type'                                                                
+      |                                                                                                                
+      |        +-----------------------+                                                                               
+      +------> | __process_new_adapter | (skip, seems it's only used by hwmon)                                         
+               +-----------------------+                                                                               
 ```
 
 ```
