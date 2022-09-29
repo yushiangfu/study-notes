@@ -16,15 +16,20 @@
 ## <a name="system-startup"></a> System Startup
 
 ```
+[init sequence]
 aspeed_i2c_ic_of_init      : [X] irqchip related; not part of i2c driver
 i2c_init                   : [O]
+pca953x_init               : [X] gpio related
 tpm_tis_i2c_driver_init    : [X] tpm related; it's the i2c user instead of driver
 mctp_i2c_mod_init          : [X] netdev related
 i2c_dev_init               : [O]
 aspeed_i2c_bus_driver_init : [O]
-fsi_i2c_driver_init        : [O]
-i2c_mux_gpio_driver_init   : [?]
-bmp280_i2c_driver_init     : [?]
+fsi_i2c_driver_init        : [X] skip, no device registered
+i2c_mux_gpio_driver_init   : [X] skip, no device registered
+pca9541_driver_init        : [O]
+pca954x_driver_init        : [O] 
+pca955x_driver_init        : [X] led related
+bmp280_i2c_driver_init     : [X] skip, no device registered
 ```
 
 ```
