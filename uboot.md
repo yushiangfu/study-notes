@@ -166,6 +166,45 @@
   +------> break loop early if no packet                                                 
 ```
 
+```
++--------+                                                                                                        
+| _start | [arch/arm/lib/vectors.S]                                                                               
++-|------+                                                                                                        
+  |    +-------+                                                                                                  
+  +--> | reset | [arch/arm/cpu/arm1176/start.S]                                                                   
+       +-|-----+                                                                                                  
+         |    +------------------+                                                                                
+         +--> | save_boot_params |                                                                                
+              +----|-------------+                                                                                
+                   |    +----------------------+                                                                  
+                   +--> | save_boot_params_ret |                                                                  
+                        +-----|----------------+                                                                  
+                              |                                                                                   
+                              |--> set cpu to svc mode                                                            
+                              |                                                                                   
+                              |    +---------------+                                                              
+                              +--> | cpu_init_crit |                                                              
+                                   +---|-----------+                                                              
+                                       |    +-------------+                                                       
+                                       +--> | mmu_disable |                                                       
+                                            +---|---------+                                                       
+                                                |    +---------------+                                            
+                                                |--> | lowlevel_init | [arch/arm/mach-aspeed/ast2500/platform.S]  
+                                                |    +---------------+                                            
+                                                |    +-------+                                                    
+                                                +--> | _main | arch/arm/lib/crt0.S                                
+                                                     +-|-----+                                                    
+                                                       |    +---------------------------+                         
+                                                       |--> | board_init_f_init_reserve | alloc the reserved space
+                                                       |    +---------------------------+                         
+                                                       |    +---------------------------+                         
+                                                       |--> | board_init_f_init_reserve | init t he reserved space
+                                                       |    +---------------------------+                         
+                                                       |    +--------------+                                      
+                                                       +--> | board_init_f | [common/board_f.c]                   
+                                                            +--------------+                                      
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
