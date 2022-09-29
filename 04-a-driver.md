@@ -204,22 +204,46 @@ It doesn't matter whether the driver or device registers first. Both flows will 
          |                                                                                                     
          |    +---------------+                                                                                
          +--> | of_device_add |                                                                                
-              +---|-----------+                                                                                
-                  |    +------------+                                                                          
-                  +--> | device_add |                                                                          
-                       +--|---------+                                                                          
-                          |    +----------------+                                                              
-                          |--> | bus_add_device |                                                              
-                          |    +---|------------+                                                              
-                          |        |                                                                           
-                          |        |--> determine which bus to register the device                             
-                          |        |                                                                           
-                          |        |    +----------------+                                                     
-                          |        +--> | klist_add_tail | append the device to the device list of bus         
-                          |             +----------------+                                                     
-                          |    +------------------+                                                            
-                          +--> | bus_probe_device | traverse each driver and try to match, call driver->probe() if matched
-                               +------------------+                                                            
+              +---------------+                                                                                
+                                                         
+```
+    
+```
++------------+
+| device_add | : add to bus, send 'add dev' to notifier, probe device
++--|---------+
+   |    +----------------+
+   |--> | bus_add_device |
+   |    +---|------------+
+   |        |
+   |        |--> determine which bus to register the device
+   |        |
+   |        |    +----------------+
+   |        +--> | klist_add_tail | append the device to the device list of bus
+   |             +----------------+
+   |
+   |--> if dev->bus is set
+   |
+   |        +------------------------------+
+   |------> | blocking_notifier_call_chain | send event 'ADD_DEVICE' to notifier, e.g.,
+   |        +------------------------------+ +----------------------+
+   |                                         | i2cdev_notifier_call | action handler
+   |                                         +----------------------+ e.g., if 'add device': prepare and register cdev
+   |    +------------------+
+   +--> | bus_probe_device | traverse each driver and try to match, call driver->probe() if matched
+        +------------------+
+```
+    
+```
++-----------------+                                                          
+| device_register | ： add to bus, send 'add dev' to notifier, probe device   
++----|------------+                                                          
+     |    +-------------------+                                              
+     |--> | device_initialize |                                              
+     |    +-------------------+                                              
+     |    +------------+                                                     
+     +--> | device_add | add to bus, send 'add dev' to notifier, probe device
+          +------------+                                                     
 ```
     
 </details>
