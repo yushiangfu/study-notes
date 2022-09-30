@@ -161,6 +161,36 @@ bmp280_i2c_driver_init     : [X] skip, no device registered
 ```
 
 ```
+tatic const struct i2c_algorithm aspeed_i2c_algo = {
+    .master_xfer    = aspeed_i2c_master_xfer,
+    .functionality  = aspeed_i2c_functionality,
+    .reg_slave  = aspeed_i2c_reg_slave,
+    .unreg_slave    = aspeed_i2c_unreg_slave,
+};
+```
+
+```
++------------------------+                                                            
+| aspeed_i2c_master_xfer | : transfer i2c packet                                      
++-----|------------------+                                                            
+      |                                                                               
+      |--> if the bus is busy && it's a single master bus                             
+      |                                                                               
+      |        +------------------------+                                             
+      |------> | aspeed_i2c_recover_bus | try to recover                              
+      |        +------------------------+                                             
+      |                                                                               
+      |--> set up bus (msg, cnt, idx, err)                                            
+      |                                                                               
+      |    +---------------------+                                                    
+      |--> | aspeed_i2c_do_start | prepare cmd, write slave addr & cmd to hw registers
+      |    +---------------------+                                                    
+      |    +----------------------------+                                             
+      +--> | wait_for_completion_timeout|                                             
+           +----------------------------+                                             
+```
+
+```
 +-----------------+                           
 | aspeed_i2c_init | : init i2c controller (hw)
 +----|------------+                           
@@ -358,41 +388,143 @@ bmp280_i2c_driver_init     : [X] skip, no device registered
 ```
 
 ```
-+---------------------+                                                    
-| i2c_mux_add_adapter | : alloc priv, set up priv->adap and register it    
-+-----|---------------+                                                    
-      |                                                                    
-      |--> alloc priv                                                      
-      |                                                                    
-      |--> set up algo operations                                          
-      |                                                                    
-      |--> set up priv->adap, e.g., parent, retry, timeout, lock ops       
-      |                                                                    
-      |--> if muxc has an of_node                                          
-      |                                                                    
-      |------> relate adaptor and child node                               
-      |                                                                    
-      |    +-----------------+                                             
-      +--> | i2c_add_adapter | set adapter's bus# and name, and register it
-           +-----------------+                                             
++---------------+                                                                                          
+| pca954x_probe |                                                                                          
++---|-----------+                                                                                          
+    |    +---------------+                                                                                 
+    |--> | i2c_mux_alloc | alloc mux core (muxc) and install ops                                           
+    |    +---------------+ +---------------------+                                                         
+    |                      | pca954x_select_chan | switch mux to target channel                            
+    |                      +----------------------+                                                        
+    |                      | pca954x_deselect_mux | switch mux to predefined 'idle state' or 0             
+    |                      +----------------------+                                                        
+    |                                                                                                      
+    |--> relate client dev and mux                                                                         
+    |                                                                                                      
+    |    +-------------------------+                                                                       
+    |--> | devm_gpiod_get_optional | reset mux if client dev asks so                                       
+    |    +-------------------------+                                                                       
+    |                                                                                                      
+    |--> determine mux chip (e.g., 9542? 9543?)                                                            
+    |                                                                                                      
+    |--> set idle state to 'idle as is' by default                                                         
+    |                                                                                                      
+    |--> further set to 'disconnect if dev property specifies                                              
+    |                                                                                                      
+    |    +--------------+                                                                                  
+    |--> | pca954x_init | determine initial ->last_chan and switch to it                                   
+    |    +--------------+                                                                                  
+    |    +-------------------+                                                                             
+    |--> | pca954x_irq_setup | ???                                                                         
+    |    +-------------------+                                                                             
+    |                                                                                                      
+    |--> for each mux channel                                                                              
+    |                                                                                                      
+    |        +---------------------+                                                                       
+    |------> | i2c_mux_add_adapter | prepare adaptor, install special ops, and register it                 
+    |        +---------------------+                                                                       
+    |                                                                                                      
+    |--> if ->irq has value                                                                                
+    |                                                                                                      
+    |        +---------------------------+                                                                 
+    |------> | devm_request_threaded_irq | install isr 'pca954x_irq_handler', which read a byte from client
+    |        +---------------------------+                                                                 
+    |    +----------+                                                                                      
+    +--> | dev_info | print "registered %d multiplexed busses for I2C %s %s\n"                             
+         +----------+                                                                                      
 ```
 
 ```
-+-----------------+                                                                      
-| i2c_add_adapter | : set adapter's bus# and name, and register it                       
-+----|------------+                                                                      
-     |                                                                                   
-     |--> if dev has an of_node                                                          
-     |                                                                                   
-     |        +----------------------------+                                             
-     |------> | __i2c_add_numbered_adapter | set adapter's bus# and name, and register it
-     |        +----------------------------+                                             
-     |                                                                                   
-     |--> set adapter's bus#                                                             
-     |                                                                                   
-     |    +----------------------+                                                       
-     +--> | i2c_register_adapter | set adapter's name, and register it                   
-          +----------------------+                                                       
++---------------------+                                              
+| pca954x_select_chan | : switch mux to target channel               
++-----|---------------+                                              
+      |    +----------------+                                        
+      |--> | pca954x_regval | given target channel, prepare reg value
+      |    +----------------+                                        
+      |                                                              
+      |--> if last_chan != reg value                                 
+      |                                                              
+      |        +-------------------+                                 
+      |------> | pca954x_reg_write |                                 
+      |        +-------------------+                                 
+      |                                                              
+      +------> ->last_chan = reg value                               
+```
+
+```
++----------------------+                                                 
+| pca954x_deselect_mux | : switch mux to predefined 'idle state' or 0    
++-----|----------------+                                                 
+      |                                                                  
+      |--> if data has defined 'idle state'                              
+      |                                                                  
+      |               +---------------------+                            
+      |------> return | pca954x_select_chan | switch to that 'idle state'
+      |               +---------------------+                            
+      |                                                                  
+      |--> if idle state == 'disconnect'                                 
+      |                                                                  
+      |------> ->last_state = 0                                          
+      |                                                                  
+      |        +-------------------+                                     
+      +------> | pca954x_reg_write | switch to 0, no matter what it means
+               +-------------------+                                     
+```
+
+```
++---------------------+                                                                    
+| i2c_mux_add_adapter | : prepare adaptor, install special ops, and register it            
++-----|---------------+                                                                    
+      |                                                                                    
+      |--> alloc priv for adapter                                                          
+      |                                                                                    
+      |--> relate it to muxc and channel idx                                               
+      |                                                                                    
+      |--> install ops, e.g.,                                                              
+      |    +-----------------------+                                                       
+      |    | __i2c_mux_master_xfer | switch mux, transfer i2c packet, switch mux to default
+      |    +-----------------------+                                                       
+      |                                                                                    
+      |--> set up priv->adap                                                               
+      |                                                                                    
+      |    +-----------------+                                                             
+      +--> | i2c_add_adapter | determine adapter id and register it                        
+           +-----------------+                                                             
+```
+
+```
++-----------------------+                                                         
+| __i2c_mux_master_xfer | : switch mux, transfer i2c packet, switch mux to default
++-----|-----------------+                                                         
+      |                                                                           
+      |--> call ->select(), e.g.,                                                 
+      |    +---------------------+                                                
+      |    | pca954x_select_chan | switch mux to target channel                   
+      |    +---------------------+                                                
+      |                                                                           
+      |    +----------------+                                                     
+      |--> | __i2c_transfer | transfer i2c packet                                 
+      |    +----------------+                                                     
+      |                                                                           
+      +--> call ->deselect(), e.g.,                                               
+           +----------------------+                                               
+           | pca954x_deselect_mux | switch mux to predefined 'idle state' or 0    
+           +----------------------+                                               
+```
+
+```
++----------------+                                         
+| __i2c_transfer | : transfer i2c packet                   
++---|------------+                                         
+    |                                                      
+    |--> while we can still retry                          
+    |                                                      
+    +------> call ->master_xfer(), e.g.,                   
+    |        +------------------------+                    
+    |        | aspeed_i2c_master_xfer | transfer i2c packet
+    |        +------------------------+                    
+    |                                                      
+    +------> break if it's not 'again' error               
 ```
 
 ## <a name="tools"></a> Tools
