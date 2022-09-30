@@ -13,6 +13,146 @@
 
 ## <a name="driver"></a> Driver
 
+```
+static const struct file_operations i2cdev_fops = {
+    .owner      = THIS_MODULE,
+    .llseek     = no_llseek,
+    .read       = i2cdev_read,
+    .write      = i2cdev_write,
+    .unlocked_ioctl = i2cdev_ioctl,
+    .compat_ioctl   = compat_i2cdev_ioctl,
+    .open       = i2cdev_open,
+    .release    = i2cdev_release,
+};
+```
+
+```
++-------------+                                                         
+| i2cdev_open | : alloc i2c_client, relate adapter, and set to file priv
++---|---------+                                                         
+    |    +-----------------+                                            
+    |--> | i2c_get_adapter | get adapter from minor (adapter nr)        
+    |    +-----------------+                                            
+    |                                                                   
+    |--> alloc i2c_client                                               
+    |                                                                   
+    +--> relate file priv, client, and adapter                          
+```
+
+```
++--------------+                                                                                              
+| i2cdev_ioctl | : i2c ioctl                                                                                  
++---|----------+                                                                                              
+    |                                                                                                         
+    |--> get i2c client from file priv                                                                        
+    |                                                                                                         
+    |--> switch cmd                                                                                           
+    |                                                                                                         
+    |--> case slave                                                                                           
+    +--> case slave_force                                                                                     
+    |                                                                                                         
+    |------> client addr = arg                                                                                
+    |                                                                                                         
+    |--> case ten bit                                                                                         
+    |                                                                                                         
+    |------> set or clear the flag of client                                                                  
+    |                                                                                                         
+    |--> case pec                                                                                             
+    |                                                                                                         
+    |------> set or clear the flag of client                                                                  
+    |                                                                                                         
+    |--> case funcs                                                                                           
+    |                                                                                                         
+    |------> get adapter functionalities                                                                      
+    |                                                                                                         
+    |--> case read write                                                                                      
+    |                                                                                                         
+    |        +-------------+                                                                                  
+    |------> | memdup_user | alloc buffer and copy msg meta from user space                                   
+    |        +-------------+                                                                                  
+    |        +-------------------+                                                                            
+    |------> | i2cdev_ioctl_rdwr | copy msg data from user, transfer i2c packet(s), copy msg data to user     
+    |        +-------------------+                                                                            
+    |                                                                                                         
+    |--> case smbus                                                                                           
+    |                                                                                                         
+    |------> copy info from user space                                                                        
+    |                                                                                                         
+    |        +--------------------+                                                                           
+    |------> | i2cdev_ioctl_smbus | copy smbus data from user, transfer i2c packet(s), copy smbus data to user
+    |        +--------------------+                                                                           
+    |                                                                                                         
+    |--> case retries                                                                                         
+    |                                                                                                         
+    |------> config adapter->retries                                                                          
+    |                                                                                                         
+    |--> case timeout                                                                                         
+    |                                                                                                         
+    +------> config adapter->timeout                                                                          
+```
+
+```
++-------------------+                                                                         
+| i2cdev_ioctl_rdwr | : copy msg data from user, transfer i2c packet(s), copy msg data to user
++----|--------------+                                                                         
+     |                                                                                        
+     |--> alloc buffer and copy msg data from user space                                      
+     |                                                                                        
+     |    +--------------+                                                                    
+     |--> | i2c_transfer | lock bus, transfer i2c packet, unlock bus                          
+     |    +--------------+                                                                    
+     |                                                                                        
+     +--> if flag specifies 'read', copy msg data to user space                               
+```
+
+```
++--------------------+                                                                             
+| i2cdev_ioctl_smbus | : copy smbus data from user, transfer i2c packet(s), copy smbus data to user
++----|---------------+                                                                             
+     |                                                                                             
+     |--> if it's 'quick' or 'write a byte'                                                        
+     |                                                                                             
+     |               +----------------+                                                            
+     +------> return | i2c_smbus_xfer | lock, transfer i2c packet(s), unlock                       
+     |               +----------------+                                                            
+     |                                                                                             
+     |--> copy smbus data from user space if necessary                                             
+     |                                                                                             
+     |    +----------------+                                                                       
+     +--> | i2c_smbus_xfer | lock, transfer i2c packet(s), unlock                                  
+     |    +----------------+                                                                       
+     |                                                                                             
+     +--> copy smbus data to user space if necessary                                               
+```
+
+```
++----------------+                                       
+| i2c_smbus_xfer | : lock, transfer i2c packet(s), unlock
++---|------------+                                       
+    |                                                    
+    |--> lock                                            
+    |                                                    
+    |    +------------------+                            
+    |--> | __i2c_smbus_xfer | transfer i2c packet(s)     
+    |    +------------------+                            
+    |                                                    
+    +--> unlock                                          
+```
+
+```
++------------------+                                                      
+| __i2c_smbus_xfer | : transfer i2c packet(s)                             
++----|-------------+                                                      
+     |                                                                    
+     |--> if adapter has ->smbus_xfer (not our case)                      
+     |                                                                    
+     |------> (ignore) and return                                         
+     |                                                                    
+     |    +-------------------------+                                     
+     +--> | i2c_smbus_xfer_emulated | emulate smbus behavior by i2c method
+          +-------------------------+                                     
+```
+
 ## <a name="system-startup"></a> System Startup
 
 ```
