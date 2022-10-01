@@ -161,6 +161,36 @@ Then the data specified in DTS instructs the kernel to execute the below three i
       +--> print "i2c controller registered, irq 17"
 ```
 
+```
+    parent ----> bus@1e78a000 {
+properties ----+     compatible = "simple-bus";
+               |     #address-cells = <0x01>;
+               |     #size-cells = <0x01>;
+               |     ranges = <0x00 0x1e78a000 0x1000>;
+
+        target ----> interrupt-controller@0 {
+    properties ----+     #interrupt-cells = <0x01>;
+                   |     compatible = "aspeed,ast2500-i2c-ic";
+                   |     reg = <0x00 0x40>;    <---- mem-type resrouce for later iomap
+                   |     interrupts = <0x0c>;  <---- hwirq 12 is mapped to virq 17 through a non-linear mapping
+                   |     interrupt-controller;
+                   |     phandle = <0x1c>;
+                     };
+
++------------------+
+| __of_get_address | interpret target's 'reg' as raw <addr, size>, and flag = resrouce_mem
++------------------+
++----------------------------+
+| of_bus_default_count_cells | get parent's 'addr-cells' and 'size-cells'
++----------------------------+
++----------------------+
+| of_translate_address | translate addr: raw 0 + parent 0x1e78_a000 = 0x1e78_a000
++----------------------+
++----------------------+
+| irq_of_parse_and_map | 12 (0x0c) is the hwirq, and it's mapped to virq 17
++----------------------+ (not a linear mapping, but a bitmap that return the next available# starting from 16)
+```
+
 ## <a name="irq-registration"></a> IRQ Registration
 
 If a device emits an interrupt for an event, its driver will prepare the ISR and register to that interrupt number. 
