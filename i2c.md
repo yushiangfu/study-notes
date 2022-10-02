@@ -14,6 +14,124 @@
 ## <a name="driver"></a> Driver
 
 ```
+                                                                                                                   
+                                                               addr=??           addr=##           addr=@@         
+                                                                                                                   
+                                            +--------+        +--------+        +--------+        +--------+       
+                                            | master |        | slave  |        | slave  |        | slave  |       
+                                            +--------+        +--------+        +--------+        +--------+       
+                                              |    |            |    |            |    |            |    |         
+                                              |    |            |    |            |    |            |    |         
+                                              |    |            |    |            |    |            |    |         
+                                              |    |            |    |            |    |            |    |         
++---------+                                   |    |            |    |            |    |            |    |         
+|      i2c-0              +-     sda  -------------|-----------------|-----------------|-----------------|---------
+|         |          i2c  |   (data)               |                 |                 |                 |         
+|      i2c-1  -----  bus  |                        |                 |                 |                 |         
+|         |               +-     scl  -----------------------------------------------------------------------------
+|         |                  (clock)                                                                               
+| AST2500 |                                                                                                        
+|         |                                                                                                        
+|         |                                                                                                        
+|      i2c-12                                                                                                      
+|         |                                                                                                        
+|      i2c-13                                                                                                      
++---------+                                                                                                        
+```
+
+```
+                                                              +--------+                          +-------+
+                                                              | master |                          | slave |
+                                                              +--------+                          +-------+
+                                                                                                           
+                                                                       +--   +-+                           
+                                                                       |     |s|           ---->           
+                                                                       |     +-+                           
+                                                                       |     +--------+-+                  
+                                                                       |     |  addr  |w|  ---->           
+                                                                       |     +--------+-+                  
+                                                                       |                                   
+                                                         i2c_msg[0]    |                     +-+           
+                                                        +----------+   |     <----           |a|           
+                                                        |  addr    |   |                     +-+           
+                    +-----+                             |  flags   |   |                                   
+                    | app |                             |  len     |   |     +----------+                  
+                    +-----+                             |  *buf -------|->   |   data   |  ---->           
+                     |  ｜                               +----------+   |     +----------+                  
+                     | +-----+                                         |                     +-+           
+                     | | lib | libi2c.so                               |     <----           |a|           
+                     | +-----+                                         |                     +-+           
+                     |  |                                              |               -                   
+            I2C_RDWR |  | I2C_SMBUS                                    |               -                   
+                   +------+                                            |               -                   
+                   | cdev |                                            |     +-+                           
+                   +------+                                            |     |p|           ---->           
+                      |                                                +--   +-+                           
+        user          |                                                                                    
+        --------------|-------------                                   +--   +-+                           
+        kernel        |                                                |     |s|           ---->           
+                      |                                                |     +-+                           
+                 +---------+                                           |     +--------+-+                  
+ aspeed_i2c_algo | adapter |                                           |     |  addr  |r|  ---->           
+                 +---------+                                           |     +--------+-+                  
+                                                                       |                                   
+                                                         i2c_msg[1]    |                     +-+           
+                                                        +----------+   |     <----           |a|           
+                                                        |  addr    |   |                     +-+           
+                                                        |  flags   |   |                                   
+                                                        |  len     |   |             +----------+          
+                                                        |  *buf <------|--   <----   |   data   |          
+                                                        +----------+   |             +----------+          
+                                                                       |     +-+                           
+                                                                       |     |a|           ---->           
+                                                                       |     +-+       -                   
+                                                                       |               -                   
+                                                                       |               -                   
+                                                                       |     +-+                           
+                                                                       |     |p|           ---->           
+                                                                       +--   +-+                           
+```
+
+```
+                                                                        
+                                                                        
+  i2c control         |      smbus control                   i2c control
+                      |                                      (emulation)
+                      |                                                 
+                      |                                                 
+                      |                                                 
+    i2c_msg           |     i2c_smbus_ioctl_data              i2c_msg   
+   +--------+         |       +-----------+                  +--------+ 
+   |  addr  |         |       |read_write |                  |  addr  | 
+   | flags  |         |       |  command  |                  | flags  | 
+   |  len   |         |       |   size    |                  |  len   | 
++---- *buf  |         |     +---- *data   |               +---- buf   | 
+|  +--------+         |     | +-----------+               |  +--------+ 
+|                     |     |                             |             
+|                     |     |                             |             
+|   +------+          |     |   +------+                  |   +------+  
++-->| data |          |     +---> len  |                  +-->| cmd  |  
+    +------+          |         +------+                      +------+  
+    | data |          |         | data |                      | len  |  
+    +------+          |         +------+                      +------+  
+    | data |          |         | data |                      | data |  
+    +------+          |         +------+                      +------+  
+        -             |         | data |                      | data |  
+        -             |         +------+                      +------+  
+    +------+          |             -                         | data |  
+    | data |          |             -                         +------+  
+    +------+          |         +------+                          -     
+                      |         | data |                          -     
+                      |         +------+                      +------+  
+                      |                                       | data |  
+                      |                                       +------+  
+                      |                                                 
+                      |                                                 
+                      |                                                 
+                      |                                                 
+```
+
+```
 static const struct file_operations i2cdev_fops = {
     .owner      = THIS_MODULE,
     .llseek     = no_llseek,
@@ -258,6 +376,28 @@ bmp280_i2c_driver_init     : [X] skip, no device registered
       |    +-----------------+                                            
       +--> | cdev_device_add | add cdev to kobj_map and register inner dev
            +-----------------+                                            
+```
+
+```
+parent ---->   bus@1e78a000 {
+                   compatible = "simple-bus";
+                   #address-cells = <0x01>;
+                   #size-cells = <0x01>;
+                   ranges = <0x00 0x1e78a000 0x1000>;
+
+    target ---->   i2c-bus@80 {
+                       #address-cells = <0x01>;
+                       #size-cells = <0x00>;
+                       #interrupt-cells = <0x01>;
+                       reg = <0x80 0x40>;            <------- reg addr = 0x1e78a000 (parent) + 0x80 (child), size is 0x40
+                       compatible = "aspeed,ast2500-i2c-bus";
+                       clocks = <0x02 0x1a>;
+                       resets = <0x02 0x07>;
+                       bus-frequency = <0x186a0>;
+                       interrupts = <0x01>;          <------- local hwirq 1 is mapped to virq 35 (non-linear mapping)
+                       interrupt-parent = <0x1c>;
+                       status = "okay";
+                   };
 ```
 
 ```
