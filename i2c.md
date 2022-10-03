@@ -271,6 +271,93 @@ static const struct file_operations i2cdev_fops = {
           +-------------------------+                                     
 ```
 
+### Mux
+
+```
+                                   ch0 ---- nvme0                           ch0 ---- nvme8
+                                   ch1 ---- nvme1                           ch1 ---- nvme9
+                     ch3   +-----+ ch2 ---- nvme2            ch4   +-----+  ch2 ---- nvme10
+               +---------- | mux | ch3 ---- nvme3      +---------- | mux |  ch3 ---- nvme11
+               |           +-----+ ch4 ---- nvme4      |           +-----+  ch4 ---- nvme12
+               |            slave  ch5 ---- nvme5      |            slave   ch5 ---- nvme13
+               |            0x75   ch6 ---- nvme6      |            0x75    ch6 ---- nvme14
+               |                   ch7 ---- nvme7      |                    ch7 ---- nvme15
+               |                                       |
+               |                                       |
+               |                                       |                    ch0 ---- nvme16
+               |                                       |                    ch1 ---- nvme17
+               |                                       |     ch3   +-----+  ch2 ---- nvme18
+               |                                       |   +------ | mux |  ch3 ---- nvme19
+               |                                       |   |       +-----+  ch4 ---- nvme20
+             +-----+                                  +-----+       slave   ch5 ---- nvme21
+             | mux |                                  | mux |       0x75    ch6 ---- nvme22
+             +--+--+                                  +--+--+               ch7 ---- nvme23
+i2c-5           |slave                                   |slave
+                |0x70                                    |0x71
+                |                                        |
+   +------------+----------------------------------------+---------------+----------------------------+
+                                                                         |
+                                                                         |slave
+                                                                         |0x72
+                                                                      +--+--+
+                                                                      | mux |  ch0 ---- nvme_m2_0
+                                                                      +-----+  ch1 ---- nvme_m2_1
+```
+
+```
+                                                                                                                                         
+                                                                 mux75                                                                   
+                  +----------- mux70                            +-----+                                                                  
+                  |                                             |  +--|---(adapter) ----- (client)                                       
+                  |                                             |  +--|---(adapter) ----- (client)                                       
+                  |            mux71                    (client)|  |--|---(adapter) ----- (client)                                       
+                  |           +-----+                   +-------|--|--|---(adapter) ----- (client)                                       
+                  |           |  +--|---(adapter)       |       |  |--|---(adapter) ----- (client)                                       
+                  |           |  +--|---(adapter)       |       |  |--|---(adapter) ----- (client)                                       
+        (adapter) |   (client)|  |--|---(adapter)       |       |  +--|---(adapter) ----- (client)                                       
+ i2c-5 -----------|-----------|--|--|---(adapter) ---+  |       |  +--|---(adapter) ----- (client)                                       
+                  |           |  |--|---(adapter) ---|--+       +-----+                                                                  
+                  |           |  |--|---(adapter)    |                                                                                   
+                  |           |  +--|---(adapter)    |                                                                                   
+                  |           |  +--|---(adapter)    |                                                                                   
+                  |           +-----+                |           mux75                                                                   
+                  |                                  |          +-----+                                                                  
+                  |                                  |          |  +--|---(adapter) ----- (client)                                       
+                  +----------- mux72                 |          |  +--|---(adapter) ----- (client)                                       
+                                                     |  (client)|  |--|---(adapter) ----- (client)                                       
+                                                     +----------|--|--|---(adapter) ----- (client)                                       
+                                                                |  |--|---(adapter) ----- (client)                                       
+                                                                |  |--|---(adapter) ----- (client)                                       
+                                                                |  +--|---(adapter) ----- (client)                                       
+                                                                |  +--|---(adapter) ----- (client)                                       
+                                                                +-----+                                                                  
+                                                                                                                             i2c_mux_priv
+                     client                                                                                                   +--------+ 
+                   +---------+                                                       client                  +------------------ muxc  | 
+      +--------------adapter |                                  i2c_mux_priv       +---------+               |                |chan_id | 
+      |            +---------+                                   +--------+  +-------adapter |<-+       muxc v                |  algo  | 
+      v                                         +------------------ muxc  |  |     +---------+  |   +----------+              |  adap  | 
+   adapter           client                     |                |chan_id |  |           |------------ parent  | <--------+   +--------+ 
+  +------+         +---------+                  v                |  algo  |  |           |      |   |  select  |          |              
+  | algo | <---------adapter | <---+       muxc                  |  adap <---+ <---------+      |   | deselect |          |       -      
+  +------+         +---------+     |   +----------+ <--------+   +--------+                     |   |   priv ------+      |       -      
+           <-----------------------|----- parent  |          |                                  |   +----------+   |      |              
+      ^              client        |   |  select  |          |       -                          |                  |      |  i2c_mux_priv
+      |            +---------+     |   | deselect |          |       -                          |      pca954x  <--+      |   +--------+ 
+      +--------------adapter |     |   |   priv ------+      |                                  |    +---------+          +------muxc  | 
+                   +---------+     |   +----------+   |      |  i2c_mux_priv                    +--> | client  |              |chan_id | 
+                                   |                  |      |   +--------+                          |  chip   |              |  algo  | 
+                                   |      pca954x  <--+      +------muxc  |                          +---------+              |  adap  | 
+                                   |    +---------+              |chan_id |                                                   +--------+ 
+                                   +--> | client  |              |  algo  |                                                              
+                                        |  chip   |              |  adap  |                                                              
+                                        +---------+              +--------+                                                              
+```
+
+```
+
+```
+
 ## <a name="system-startup"></a> System Startup
 
 ```
@@ -665,6 +752,47 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
       |        +-----------------------+                                                                               
       +------> | __process_new_adapter | (skip, seems it's only used by hwmon)                                         
                +-----------------------+                                                                               
+```
+
+```
++--------------------------+                                                                                                        
+| of_i2c_register_devices  | : for each child of adapter: register i2c client device (might trigger pca954x_probe)                  
++------|-------------------+                                                                                                        
+       |                                                                                                                            
+       |--> for each child of adapter                                                                                               
+       |                                                                                                                            
+       |        +------------------------+                                                                                          
+       +------> | of_i2c_register_device | get slave addr of child, prepare i2c client and register it (might trigger pca954x_probe)
+                +------------------------+                                                                                          
+```
+
+```
++------------------------+                                                                                              
+| of_i2c_register_device | : get slave addr of child, prepare i2c client and register it (might trigger pca954x_probe)  
++-----|------------------+                                                                                              
+      |    +-----------------------+                                                                                    
+      |--> | of_i2c_get_board_info | get property 'reg' as slave addr, save to arg info                                 
+      |    +-----------------------+                                                                                    
+      |    +-----------------------+                                                                                    
+      +--> | i2c_new_client_device | prepare 'i2c client' and register device (which potentially triggers pca954x_probe)
+           +-----------------------+                                                                                    
+```
+
+```
++-----------------------+                                                                                      
+| i2c_new_client_device | : prepare 'i2c client' and register device (which potentially triggers pca954x_probe)
++-----|-----------------+                                                                                      
+      |                                                                                                        
+      |--> alloc 'client' (in our case, it's a mux)                                                            
+      |                                                                                                        
+      |--> set up 'client'                                                                                     
+      |                                                                                                        
+      |    +---------------------+                                                                             
+      |--> | i2c_check_addr_busy | check if the slave addr is used                                             
+      |    +---------------------+                                                                             
+      |    +-----------------+                                                                                 
+      +--> | device_register | add to bus, send 'add dev' to notifier, probe device                            
+           +-----------------+                                         e.g., pca954x_probe                     
 ```
 
 ```
