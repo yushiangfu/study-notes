@@ -940,3 +940,6 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
 ## <a name="reference"></a> Reference
+
+- [S. Crump, SMBus Compatibility With an I2C Device](https://www.ti.com/lit/an/sloa132/sloa132.pdf)
+- [Ftrace:snoop i2c bus transactions](https://technolinchpin.wordpress.com/2017/08/07/ftracesnoop-i2c-bus-transactions/)
