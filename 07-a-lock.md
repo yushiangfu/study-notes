@@ -1185,6 +1185,10 @@ With the help of a temporary priority boost, the original chronological flow bec
              +---------------------+                                                         
 ```
   
+```
+ipcs -s -i <semophore id>    # show pid of the current lock owner
+```
+  
 </details>
   
 ## <a name="reference"></a> Reference
