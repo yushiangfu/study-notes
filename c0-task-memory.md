@@ -444,7 +444,7 @@ struct inode {
 Please note that memory management is highly related to platforms, and our example is based on the kernel for AST2500. 
 The page table saves the mapping information, so the hardware (MMU) understands how to translate the virtual address into a physical one. 
 It's designed as a multi-level structure, and our studying case adopts two levels. 
-The first-level table is an array of 4098 entries: dividing the 4G virtual space by 1M, and exactly each region corresponds to one entry in the table. 
+The first-level table is an array of 4096 entries: dividing the 4G virtual space by 1M, and exactly each region corresponds to one entry in the table. 
 The possible entry values are:
   
 - Unmapped
