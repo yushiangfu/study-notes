@@ -1,24 +1,40 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Device and Driver](#device-and-driver)
+- [I2C and SMBus](#i2c-and-smbus)
+- [Mux](#mux)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
+(TBD)
+
+## <a name="i2c-and-smbus"></a> I2C and SMBus
+
 The I2C protocol is one of the several ways that allow the master to communicate with other devices on the same bus. 
 The layout between buses and devices is totally decided by motherboard designers as long as they ensure no device on a bus shares the same address. 
-The master broadcasts the bus-wide unique address of the target, and only that device will respond an ack while others remain silent.
+The master broadcasts the bus-wide unique address of the target, and only that associated device will respond an ack while others remain silent.
 
-From the application's perspective, we prepare the 'I2C messages' and pass them to the device file; the I2C driver then takes over and reacts. 
-The individual message contains essential information such as slave address, read write flag, and data buffer for the driver to finish the job. 
-If it's a read operation, data collected from the slave device transfers back from the driver to the application.
+From the application's perspective, we prepare the 'message' and pass it to the device file; the driver then takes over and operates on the hardware. 
+Though a message can only be either read- or write-type, we can send a list of messages with different types for the driver to handle at once. 
+Read-type messages will collect data from the slave device and transfer them back to the application.
+
+- Read-type message
+  - slave: where to read from
+  - flags: read (1)
+  - len: how many bytes to read
+  - buf: where to place the data before returning to the application
+- Write-type message
+  - slave: where to write to
+  - flags: write (0)
+  - len: how many bytes to write
+  - buf: where to take data from before copying to the I2C controller register
 
 <p align="center"><img src="images/i2c/framework.png" /></p>
 
-## <a name="device-and-driver"></a> Device and Driver
+<details><summary> More Details </summary>
 
 ```
                                                                                                                    
@@ -277,8 +293,12 @@ static const struct file_operations i2cdev_fops = {
      +--> | i2c_smbus_xfer_emulated | emulate smbus behavior by i2c method
           +-------------------------+                                     
 ```
+  
+</details>
 
-### Mux
+### SMBus
+  
+## <a name="mux"></a> Mux
 
 ```
                                    ch0 ---- nvme0                           ch0 ---- nvme8
