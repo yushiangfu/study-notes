@@ -1,24 +1,31 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Driver](#driver)
+- [Device and Driver](#device-and-driver)
 - [System Startup](#system-startup)
-- [Tools](#tools)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+The I2C protocol is one of the several ways that allow the master to communicate with other devices on the same bus. 
+The layout between buses and devices is totally decided by motherboard designers as long as they ensure no device on a bus shares the same address. 
+The master broadcasts the bus-wide unique address of the target, and only that device will respond an ack while others remain silent.
 
-## <a name="driver"></a> Driver
+From the application's perspective, we prepare the 'I2C messages' and pass them to the device file; the I2C driver then takes over and reacts. 
+The individual message contains essential information such as slave address, read write flag, and data buffer for the driver to finish the job. 
+If it's a read operation, data collected from the slave device transfers back from the driver to the application.
+
+<p align="center"><img src="images/i2c/framework.png" /></p>
+
+## <a name="device-and-driver"></a> Device and Driver
 
 ```
                                                                                                                    
-                                                               addr=??           addr=##           addr=@@         
+                                              addr=++           addr=??           addr=##           addr=@@         
                                                                                                                    
                                             +--------+        +--------+        +--------+        +--------+       
-                                            | master |        | slave  |        | slave  |        | slave  |       
+                                            | slave  |        | slave  |        | slave  |        | slave  |       
                                             +--------+        +--------+        +--------+        +--------+       
                                               |    |            |    |            |    |            |    |         
                                               |    |            |    |            |    |            |    |         
@@ -934,8 +941,6 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
     |                                                      
     +------> break if it's not 'again' error               
 ```
-
-## <a name="tools"></a> Tools
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
