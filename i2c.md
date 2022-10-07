@@ -116,45 +116,6 @@ Read-type messages will collect data from the slave device and transfer them bac
 ```
 
 ```
-                                                                        
-                                                                        
-  i2c control         |      smbus control                   i2c control
-                      |                                      (emulation)
-                      |                                                 
-                      |                                                 
-                      |                                                 
-    i2c_msg           |     i2c_smbus_ioctl_data              i2c_msg   
-   +--------+         |       +-----------+                  +--------+ 
-   |  addr  |         |       |read_write |                  |  addr  | 
-   | flags  |         |       |  command  |                  | flags  | 
-   |  len   |         |       |   size    |                  |  len   | 
-+---- *buf  |         |     +---- *data   |               +---- buf   | 
-|  +--------+         |     | +-----------+               |  +--------+ 
-|                     |     |                             |             
-|                     |     |                             |             
-|   +------+          |     |   +------+                  |   +------+  
-+-->| data |          |     +---> len  |                  +-->| cmd  |  
-    +------+          |         +------+                      +------+  
-    | data |          |         | data |                      | len  |  
-    +------+          |         +------+                      +------+  
-    | data |          |         | data |                      | data |  
-    +------+          |         +------+                      +------+  
-        -             |         | data |                      | data |  
-        -             |         +------+                      +------+  
-    +------+          |             -                         | data |  
-    | data |          |             -                         +------+  
-    +------+          |         +------+                          -     
-                      |         | data |                          -     
-                      |         +------+                      +------+  
-                      |                                       | data |  
-                      |                                       +------+  
-                      |                                                 
-                      |                                                 
-                      |                                                 
-                      |                                                 
-```
-
-```
 static const struct file_operations i2cdev_fops = {
     .owner      = THIS_MODULE,
     .llseek     = no_llseek,
@@ -297,6 +258,75 @@ static const struct file_operations i2cdev_fops = {
 </details>
 
 ### SMBus
+  
+The SMBus protocol shares some characteristics with the I2C protocol while being sufficiently different in the ioctl argument structure and data stream.
+  
+- read_write
+  - It's like the 'flags' in the I2C message that indicate the transaction direction.
+- command
+  - SMBus devices interpret the first byte they receive as a command; however, the I2C devices have no such assumption.
+- len
+  - Instead of a flexible length attribute, it only accepts various but predefined options.
+  - e.g., I2C_SMBUS_BYTE_DATA
+  - e.g., I2C_SMBUS_WORD_DATA
+  - e.g., I2C_SMBUS_BLOCK_DATA
+- buf
+  - Depending on the chosen `len`, the I2C library might stuff the accurate size information to the head of the byte array before passing it to ioctl.
+
+The data structures are dissimilar, and I2C drivers can opt to provide exact two handlers or, surprisingly, just one going strong.
+The kernel offers an emulation function that converts SMBus ioctl data into I2C messages before going to the driver. 
+Take the combination of `len=I2C_SMBUS_BLOCK_DATA` and `read_write=write` as an example:
+  
+- The application first calls library API with `command`, `length`, and `data` arguments.
+- The library inserts the `length` to the head of `data` and prepares the SMBus ioctl structure accordingly.
+  - The field `len` within the form is then set to `I2C_SMBUS_BLOCK_DATA` instead of the actual size.
+- The kernel further prepends the `command` into data while performing the structure conversion.
+  
+Data stream for I2C and SMBus certainly differ in that `command` byte and sometimes `length` byte. 
+Knowing what kind of devices we are dealing with may be desirable before selecting transaction type in ioctl.
+  
+<p align="center"><img src="images/i2c/i2c-and-smbus.png" /></p>
+  
+<details><summary> More Details </summary>
+  
+```
+  i2c control         |      smbus control                   i2c control
+                      |                                      (emulation)
+                      |                                                 
+                      |                                                 
+                      |                                                 
+    i2c_msg           |     i2c_smbus_ioctl_data              i2c_msg   
+   +--------+         |       +-----------+                  +--------+ 
+   |  addr  |         |       |read_write |                  |  addr  | 
+   | flags  |         |       |  command  |                  | flags  | 
+   |  len   |         |       |   size    |                  |  len   | 
++---- *buf  |         |     +---- *data   |               +---- buf   | 
+|  +--------+         |     | +-----------+               |  +--------+ 
+|                     |     |                             |             
+|                     |     |                             |             
+|   +------+          |     |   +------+                  |   +------+  
++-->| data |          |     +---> len  |                  +-->| cmd  |  
+    +------+          |         +------+                      +------+  
+    | data |          |         | data |                      | len  |  
+    +------+          |         +------+                      +------+  
+    | data |          |         | data |                      | data |  
+    +------+          |         +------+                      +------+  
+        -             |         | data |                      | data |  
+        -             |         +------+                      +------+  
+    +------+          |             -                         | data |  
+    | data |          |             -                         +------+  
+    +------+          |         +------+                          -     
+                      |         | data |                          -     
+                      |         +------+                      +------+  
+                      |                                       | data |  
+                      |                                       +------+  
+                      |                                                 
+                      |                                                 
+                      |                                                 
+                      |                                                 
+```
+  
+</details>
   
 ## <a name="mux"></a> Mux
 
