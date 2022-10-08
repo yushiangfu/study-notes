@@ -1,3 +1,5 @@
+> The note is based on Linux version 5.15.0 in OpenBMC.
+
 ## Index
 
 - [Introduction](#introduction)
@@ -206,53 +208,158 @@ static const struct file_operations i2cdev_fops = {
      |                                                                                        
      +--> if flag specifies 'read', copy msg data to user space                               
 ```
+  
+```
++----------------+                                         
+| __i2c_transfer | : transfer i2c packet                   
++---|------------+                                         
+    |                                                      
+    |--> while we can still retry                          
+    |                                                      
+    +------> call ->master_xfer(), e.g.,                   
+    |        +------------------------+                    
+    |        | aspeed_i2c_master_xfer | transfer i2c packet
+    |        +------------------------+                    
+    |                                                      
+    +------> break if it's not 'again' error               
+```
+  
+```
+tatic const struct i2c_algorithm aspeed_i2c_algo = {
+    .master_xfer    = aspeed_i2c_master_xfer,
+    .functionality  = aspeed_i2c_functionality,
+    .reg_slave  = aspeed_i2c_reg_slave,
+    .unreg_slave    = aspeed_i2c_unreg_slave,
+};
+```
+  
+```
++------------------------+                                                            
+| aspeed_i2c_master_xfer | : transfer i2c packet                                      
++-----|------------------+                                                            
+      |                                                                               
+      |--> if the bus is busy && it's a single master bus                             
+      |                                                                               
+      |        +------------------------+                                             
+      |------> | aspeed_i2c_recover_bus | try to recover                              
+      |        +------------------------+                                             
+      |                                                                               
+      |--> set up bus (msg, cnt, idx, err)                                            
+      |                                                                               
+      |    +---------------------+                                                    
+      |--> | aspeed_i2c_do_start | prepare cmd, write slave addr & cmd to hw registers
+      |    +---------------------+                                                    
+      |    +----------------------------+                                             
+      +--> | wait_for_completion_timeout|                                             
+           +----------------------------+                                             
+```
 
 ```
-+--------------------+                                                                             
-| i2cdev_ioctl_smbus | : copy smbus data from user, transfer i2c packet(s), copy smbus data to user
-+----|---------------+                                                                             
-     |                                                                                             
-     |--> if it's 'quick' or 'write a byte'                                                        
-     |                                                                                             
-     |               +----------------+                                                            
-     +------> return | i2c_smbus_xfer | lock, transfer i2c packet(s), unlock                       
-     |               +----------------+                                                            
-     |                                                                                             
-     |--> copy smbus data from user space if necessary                                             
-     |                                                                                             
-     |    +----------------+                                                                       
-     +--> | i2c_smbus_xfer | lock, transfer i2c packet(s), unlock                                  
-     |    +----------------+                                                                       
-     |                                                                                             
-     +--> copy smbus data to user space if necessary                                               
++---------------------+                                                      
+| aspeed_i2c_do_start | : prepare cmd, write slave addr & cmd to hw registers
++-----|---------------+                                                      
+      |                                                                      
+      |--> set cmd to 'start | tx'                                           
+      |                                                                      
+      |--> set master state to 'master start'                                
+      |                                                                      
+      +--> if the curr msg is to read                                        
+      |                                                                      
+      |------> cmd |= 'rx'                                                   
+      |                                                                      
+      +--> write slave addr and cmd to hw registers                          
+```
+  
+```
++--------------------+                                                                                                 
+| aspeed_i2c_bus_irq | : ack, based on master state: write or read, if rx done: ack                                    
++----|---------------+                                                                                                 
+     |                                                                                                                 
+     |--> read interrupt bits                                                                                          
+     |                                                                                                                 
+     |--> ack all interrupts except rx done                                                                            
+     |                                                                                                                 
+     |--> (ignore the case of slave controller)                                                                        
+     |                                                                                                                 
+     |    +-----------------------+                                                                                    
+     +--> | aspeed_i2c_master_irq | based on master state, write to or read from hw reg for a byte, notify waiting task
+     |    +-----------------------+                                                                                    
+     |                                                                                                                 
+     |--> if bits has 'rx done'                                                                                        
+     |                                                                                                                 
+     +------> write hw register to ack                                                                                 
 ```
 
 ```
-+----------------+                                       
-| i2c_smbus_xfer | : lock, transfer i2c packet(s), unlock
-+---|------------+                                       
-    |                                                    
-    |--> lock                                            
-    |                                                    
-    |    +------------------+                            
-    |--> | __i2c_smbus_xfer | transfer i2c packet(s)     
-    |    +------------------+                            
-    |                                                    
-    +--> unlock                                          
++-----------------------+                                                                                      
+| aspeed_i2c_master_irq | : based on master state, write to or read from hw reg for a byte, notify waiting task
++-----|-----------------+                                                                                      
+      |                                                                                                        
+      |--> switch master state                                                                                 
+      |                                                                                                        
+      |--> case master_tx                                                                                      
+      |                                                                                                        
+      |--> case master_tx_first                                                                                
+      |                                                                                                        
+      |------> if msg still has bytes to send                                                                  
+      |                                                                                                        
+      |----------> write next byte to hw reg and send out                                                      
+      |                                                                                                        
+      |------> else                                                                                            
+      |                                                                                                        
+      |            +-----------------------------+                                                             
+      |----------> | aspeed_i2c_next_msg_or_stop | start next msg if there's any, or otherwise stop            
+      |            +-----------------------------+                                                             
+      |                                                                                                        
+      |--> case master_rx_first                                                                                
+      |                                                                                                        
+      |--> case master_rx                                                                                      
+      |                                                                                                        
+      +------> read data from hw register                                                                      
+      |                                                                                                        
+      |------> copy to msg buf                                                                                 
+      |                                                                                                        
+      |------> if msg expects more data                                                                        
+      |                                                                                                        
+      |----------> set master state to 'master rx'                                                             
+      |                                                                                                        
+      |----------> prepare rx cmd and write to hw register                                                     
+      |                                                                                                        
+      |------> else                                                                                            
+      |                                                                                                        
+      |            +-----------------------------+                                                             
+      |----------> | aspeed_i2c_next_msg_or_stop | start next msg if there's any, or otherwise stop            
+      |            +-----------------------------+                                                             
+      |                                                                                                        
+      |--> case stop: set master state to 'invactive'                                                          
+      |                                                                                                        
+      |--> case inactive: shouldn't receive interrupt                                                          
+      |                                                                                                        
+      |--> default: unknow, so set master state to inactive                                                    
+      |                                                                                                        
+      |    +----------+                                                                                        
+      +--> | complete |                                                                                        
+           +----------+                                                                                        
 ```
 
 ```
-+------------------+                                                      
-| __i2c_smbus_xfer | : transfer i2c packet(s)                             
-+----|-------------+                                                      
-     |                                                                    
-     |--> if adapter has ->smbus_xfer (not our case)                      
-     |                                                                    
-     |------> (ignore) and return                                         
-     |                                                                    
-     |    +-------------------------+                                     
-     +--> | i2c_smbus_xfer_emulated | emulate smbus behavior by i2c method
-          +-------------------------+                                     
++-----------------------------+                                                              
+| aspeed_i2c_next_msg_or_stop | : start next msg if there's any, or otherwise stop           
++-------|---------------------+                                                              
+        |                                                                                    
+        |--> if bus still has msg                                                            
+        |                                                                                    
+        |------> move to next msg                                                            
+        |                                                                                    
+        |        +---------------------+                                                     
+        |------> | aspeed_i2c_do_start | prepare cmd, write slave addr & cmd to hw registers 
+        |        +---------------------+                                                     
+        |                                                                                    
+        |--> else                                                                            
+        |                                                                                    
+        |        +--------------------+                                                      
+        +------> | aspeed_i2c_do_stop | set master state to stop, write 'stop' to hw register
+                 +--------------------+                                                      
 ```
   
 </details>
@@ -325,6 +432,54 @@ Please note that I don't distinguish them outside this section and continue to u
                       |                                                 
                       |                                                 
                       |                                                 
+```
+  
+```
++--------------------+                                                                             
+| i2cdev_ioctl_smbus | : copy smbus data from user, transfer i2c packet(s), copy smbus data to user
++----|---------------+                                                                             
+     |                                                                                             
+     |--> if it's 'quick' or 'write a byte'                                                        
+     |                                                                                             
+     |               +----------------+                                                            
+     +------> return | i2c_smbus_xfer | lock, transfer i2c packet(s), unlock                       
+     |               +----------------+                                                            
+     |                                                                                             
+     |--> copy smbus data from user space if necessary                                             
+     |                                                                                             
+     |    +----------------+                                                                       
+     +--> | i2c_smbus_xfer | lock, transfer i2c packet(s), unlock                                  
+     |    +----------------+                                                                       
+     |                                                                                             
+     +--> copy smbus data to user space if necessary                                               
+```
+
+```
++----------------+                                       
+| i2c_smbus_xfer | : lock, transfer i2c packet(s), unlock
++---|------------+                                       
+    |                                                    
+    |--> lock                                            
+    |                                                    
+    |    +------------------+                            
+    |--> | __i2c_smbus_xfer | transfer i2c packet(s)     
+    |    +------------------+                            
+    |                                                    
+    +--> unlock                                          
+```
+
+```
++------------------+                                                      
+| __i2c_smbus_xfer | : transfer i2c packet(s)                             
++----|-------------+                                                      
+     |                                                                    
+     |--> if adapter has ->smbus_xfer (not our case)                      
+     |                                                                    
+     |------> (ignore) and return                                         
+     |                                                                    
+     |    +-------------------------+                                     
+     +--> | i2c_smbus_xfer_emulated | emulate smbus behavior by i2c method
+          +-------------------------+                                     
 ```
   
 </details>
@@ -438,7 +593,64 @@ i2c-5           |slave                                   |slave
                                         |  chip   |              |  adap  |                                                              
                                         +---------+              +--------+                                                              
 ```
+  
+```
++---------------------+                                              
+| pca954x_select_chan | : switch mux to target channel               
++-----|---------------+                                              
+      |    +----------------+                                        
+      |--> | pca954x_regval | given target channel, prepare reg value
+      |    +----------------+                                        
+      |                                                              
+      |--> if last_chan != reg value                                 
+      |                                                              
+      |        +-------------------+                                 
+      |------> | pca954x_reg_write |                                 
+      |        +-------------------+                                 
+      |                                                              
+      +------> ->last_chan = reg value                               
+```
 
+```
++----------------------+                                                 
+| pca954x_deselect_mux | : switch mux to predefined 'idle state' or 0    
++-----|----------------+                                                 
+      |                                                                  
+      |--> if data has defined 'idle state'                              
+      |                                                                  
+      |               +---------------------+                            
+      |------> return | pca954x_select_chan | switch to that 'idle state'
+      |               +---------------------+                            
+      |                                                                  
+      |--> if idle state == 'disconnect'                                 
+      |                                                                  
+      |------> ->last_state = 0                                          
+      |                                                                  
+      |        +-------------------+                                     
+      +------> | pca954x_reg_write | switch to 0, no matter what it means
+               +-------------------+                                     
+```
+
+```
++-----------------------+                                                         
+| __i2c_mux_master_xfer | : switch mux, transfer i2c packet, switch mux to default
++-----|-----------------+                                                         
+      |                                                                           
+      |--> call ->select(), e.g.,                                                 
+      |    +---------------------+                                                
+      |    | pca954x_select_chan | switch mux to target channel                   
+      |    +---------------------+                                                
+      |                                                                           
+      |    +----------------+                                                     
+      |--> | __i2c_transfer | transfer i2c packet                                 
+      |    +----------------+                                                     
+      |                                                                           
+      +--> call ->deselect(), e.g.,                                               
+           +----------------------+                                               
+           | pca954x_deselect_mux | switch mux to predefined 'idle state' or 0    
+           +----------------------+                                               
+```
+  
 </details>
 
 ## <a name="system-startup"></a> System Startup
@@ -611,36 +823,6 @@ parent ---->   bus@1e78a000 {
 ```
 
 ```
-tatic const struct i2c_algorithm aspeed_i2c_algo = {
-    .master_xfer    = aspeed_i2c_master_xfer,
-    .functionality  = aspeed_i2c_functionality,
-    .reg_slave  = aspeed_i2c_reg_slave,
-    .unreg_slave    = aspeed_i2c_unreg_slave,
-};
-```
-
-```
-+------------------------+                                                            
-| aspeed_i2c_master_xfer | : transfer i2c packet                                      
-+-----|------------------+                                                            
-      |                                                                               
-      |--> if the bus is busy && it's a single master bus                             
-      |                                                                               
-      |        +------------------------+                                             
-      |------> | aspeed_i2c_recover_bus | try to recover                              
-      |        +------------------------+                                             
-      |                                                                               
-      |--> set up bus (msg, cnt, idx, err)                                            
-      |                                                                               
-      |    +---------------------+                                                    
-      |--> | aspeed_i2c_do_start | prepare cmd, write slave addr & cmd to hw registers
-      |    +---------------------+                                                    
-      |    +----------------------------+                                             
-      +--> | wait_for_completion_timeout|                                             
-           +----------------------------+                                             
-```
-
-```
 +-----------------+                           
 | aspeed_i2c_init | : init i2c controller (hw)
 +----|------------+                           
@@ -654,114 +836,6 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
      |--> enable master mode (hw)             
      |                                        
      +--> enable interrupt (hw)               
-```
-
-```
-+--------------------+                                                                                                 
-| aspeed_i2c_bus_irq | : ack, based on master state: write or read, if rx done: ack                                    
-+----|---------------+                                                                                                 
-     |                                                                                                                 
-     |--> read interrupt bits                                                                                          
-     |                                                                                                                 
-     |--> ack all interrupts except rx done                                                                            
-     |                                                                                                                 
-     |--> (ignore the case of slave controller)                                                                        
-     |                                                                                                                 
-     |    +-----------------------+                                                                                    
-     +--> | aspeed_i2c_master_irq | based on master state, write to or read from hw reg for a byte, notify waiting task
-     |    +-----------------------+                                                                                    
-     |                                                                                                                 
-     |--> if bits has 'rx done'                                                                                        
-     |                                                                                                                 
-     +------> write hw register to ack                                                                                 
-```
-
-```
-+-----------------------+                                                                                      
-| aspeed_i2c_master_irq | : based on master state, write to or read from hw reg for a byte, notify waiting task
-+-----|-----------------+                                                                                      
-      |                                                                                                        
-      |--> switch master state                                                                                 
-      |                                                                                                        
-      |--> case master_tx                                                                                      
-      |                                                                                                        
-      |--> case master_tx_first                                                                                
-      |                                                                                                        
-      |------> if msg still has bytes to send                                                                  
-      |                                                                                                        
-      |----------> write next byte to hw reg and send out                                                      
-      |                                                                                                        
-      |------> else                                                                                            
-      |                                                                                                        
-      |            +-----------------------------+                                                             
-      |----------> | aspeed_i2c_next_msg_or_stop | start next msg if there's any, or otherwise stop            
-      |            +-----------------------------+                                                             
-      |                                                                                                        
-      |--> case master_rx_first                                                                                
-      |                                                                                                        
-      |--> case master_rx                                                                                      
-      |                                                                                                        
-      +------> read data from hw register                                                                      
-      |                                                                                                        
-      |------> copy to msg buf                                                                                 
-      |                                                                                                        
-      |------> if msg expects more data                                                                        
-      |                                                                                                        
-      |----------> set master state to 'master rx'                                                             
-      |                                                                                                        
-      |----------> prepare rx cmd and write to hw register                                                     
-      |                                                                                                        
-      |------> else                                                                                            
-      |                                                                                                        
-      |            +-----------------------------+                                                             
-      |----------> | aspeed_i2c_next_msg_or_stop | start next msg if there's any, or otherwise stop            
-      |            +-----------------------------+                                                             
-      |                                                                                                        
-      |--> case stop: set master state to 'invactive'                                                          
-      |                                                                                                        
-      |--> case inactive: shouldn't receive interrupt                                                          
-      |                                                                                                        
-      |--> default: unknow, so set master state to inactive                                                    
-      |                                                                                                        
-      |    +----------+                                                                                        
-      +--> | complete |                                                                                        
-           +----------+                                                                                        
-```
-
-```
-+-----------------------------+                                                              
-| aspeed_i2c_next_msg_or_stop | : start next msg if there's any, or otherwise stop           
-+-------|---------------------+                                                              
-        |                                                                                    
-        |--> if bus still has msg                                                            
-        |                                                                                    
-        |------> move to next msg                                                            
-        |                                                                                    
-        |        +---------------------+                                                     
-        |------> | aspeed_i2c_do_start | prepare cmd, write slave addr & cmd to hw registers 
-        |        +---------------------+                                                     
-        |                                                                                    
-        |--> else                                                                            
-        |                                                                                    
-        |        +--------------------+                                                      
-        +------> | aspeed_i2c_do_stop | set master state to stop, write 'stop' to hw register
-                 +--------------------+                                                      
-```
-
-```
-+---------------------+                                                      
-| aspeed_i2c_do_start | : prepare cmd, write slave addr & cmd to hw registers
-+-----|---------------+                                                      
-      |                                                                      
-      |--> set cmd to 'start | tx'                                           
-      |                                                                      
-      |--> set master state to 'master start'                                
-      |                                                                      
-      +--> if the curr msg is to read                                        
-      |                                                                      
-      |------> cmd |= 'rx'                                                   
-      |                                                                      
-      +--> write slave addr and cmd to hw registers                          
 ```
 
 ```
@@ -926,43 +1000,6 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
 ```
 
 ```
-+---------------------+                                              
-| pca954x_select_chan | : switch mux to target channel               
-+-----|---------------+                                              
-      |    +----------------+                                        
-      |--> | pca954x_regval | given target channel, prepare reg value
-      |    +----------------+                                        
-      |                                                              
-      |--> if last_chan != reg value                                 
-      |                                                              
-      |        +-------------------+                                 
-      |------> | pca954x_reg_write |                                 
-      |        +-------------------+                                 
-      |                                                              
-      +------> ->last_chan = reg value                               
-```
-
-```
-+----------------------+                                                 
-| pca954x_deselect_mux | : switch mux to predefined 'idle state' or 0    
-+-----|----------------+                                                 
-      |                                                                  
-      |--> if data has defined 'idle state'                              
-      |                                                                  
-      |               +---------------------+                            
-      |------> return | pca954x_select_chan | switch to that 'idle state'
-      |               +---------------------+                            
-      |                                                                  
-      |--> if idle state == 'disconnect'                                 
-      |                                                                  
-      |------> ->last_state = 0                                          
-      |                                                                  
-      |        +-------------------+                                     
-      +------> | pca954x_reg_write | switch to 0, no matter what it means
-               +-------------------+                                     
-```
-
-```
 +---------------------+                                                                    
 | i2c_mux_add_adapter | : prepare adaptor, install special ops, and register it            
 +-----|---------------+                                                                    
@@ -981,41 +1018,6 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
       |    +-----------------+                                                             
       +--> | i2c_add_adapter | determine adapter id and register it                        
            +-----------------+                                                             
-```
-
-```
-+-----------------------+                                                         
-| __i2c_mux_master_xfer | : switch mux, transfer i2c packet, switch mux to default
-+-----|-----------------+                                                         
-      |                                                                           
-      |--> call ->select(), e.g.,                                                 
-      |    +---------------------+                                                
-      |    | pca954x_select_chan | switch mux to target channel                   
-      |    +---------------------+                                                
-      |                                                                           
-      |    +----------------+                                                     
-      |--> | __i2c_transfer | transfer i2c packet                                 
-      |    +----------------+                                                     
-      |                                                                           
-      +--> call ->deselect(), e.g.,                                               
-           +----------------------+                                               
-           | pca954x_deselect_mux | switch mux to predefined 'idle state' or 0    
-           +----------------------+                                               
-```
-
-```
-+----------------+                                         
-| __i2c_transfer | : transfer i2c packet                   
-+---|------------+                                         
-    |                                                      
-    |--> while we can still retry                          
-    |                                                      
-    +------> call ->master_xfer(), e.g.,                   
-    |        +------------------------+                    
-    |        | aspeed_i2c_master_xfer | transfer i2c packet
-    |        +------------------------+                    
-    |                                                      
-    +------> break if it's not 'again' error               
 ```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
