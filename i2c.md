@@ -373,7 +373,7 @@ The SMBus protocol shares some characteristics with the I2C protocol while being
 - command
   - SMBus devices interpret the first byte they receive as a command; however, the I2C devices have no such assumption.
 - len
-  - Instead of a flexible length attribute, it only accepts various but predefined options.
+  - Instead of a flexible length attribute, it only accepts a few predefined options.
   - e.g., I2C_SMBUS_BYTE_DATA
   - e.g., I2C_SMBUS_WORD_DATA
   - e.g., I2C_SMBUS_BLOCK_DATA
