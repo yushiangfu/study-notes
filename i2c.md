@@ -19,7 +19,7 @@ The master broadcasts the bus-wide unique address of the target, and only that a
 
 From the application's perspective, we prepare the 'message' and pass it to the device file; the driver then takes over and operates on the hardware. 
 Though a message can only be either read- or write-type, we can send a list of messages with different types for the driver to handle at once. 
-Read-type messages will collect data from the slave device and transfer them back to the application.
+Read-type messages communicate data from the slave device back to the user space application.
 
 - Read-type message
   - slave: where to read from
@@ -284,6 +284,7 @@ Take the combination of `len=I2C_SMBUS_BLOCK_DATA` and `read_write=write` as an 
   
 Data stream for I2C and SMBus certainly differ in that `command` byte and sometimes `length` byte. 
 Knowing what kind of devices we are dealing with may be desirable before selecting transaction type in ioctl.
+Please note that I don't distinguish them outside this section and continue to use the term 'I2C device' for convenience.
   
 <p align="center"><img src="images/i2c/i2c-and-smbus.png" /></p>
   
@@ -329,7 +330,34 @@ Knowing what kind of devices we are dealing with may be desirable before selecti
 </details>
   
 ## <a name="mux"></a> Mux
+  
+Sometimes I2C devices come with no or little configurable address, thus limiting the number of the same devices on a bus. 
+Mux is a particular I2C device that branches a bus into multiple channels, and the I2C controller can only see one channel at a time. 
+The benefit is that the address space behind the mux is independent of each other; therefore, the identical components can live on separate channels.
+  
+The mux mechanism is centered around adapters that transfer data for connected devices. 
+A controller is an adapter, and so is each channel of a mux, but the mux itself is not. 
+Analogous to the hardware layout, adapter hierarchy starts from the controller as root, first-level channels, second-level channels, and so on. 
+A different kind of transfer function is installed on the channel-type adapters.
 
+- transfer logic of a controller-type adaptor
+  - call I2C driver, e.g., aspeed_i2c_master_xfer()
+- transfer logic of a channel-type adaptor
+  - call parent adapter's transfer() for channel selection
+  - call parent adapter's transfer() for data transaction
+  - call parent adapter's transfer() for channel deselection if needed
+  
+The channel-type transfer logic implements a capability of recursively switching mux channels before the actual data transaction. 
+Since our studying case doesn't have the mux setting specified in DTS, the below example is taken from `aspeed-bmc-ampere-mtjade.dts`. 
+We can see that the root adapter connects to two I2C devices: mux 0x70 and mux 0x71. 
+Mux 0x71 is split into eight channels, and two of them further connect mux 0x75 and mux 0x75. 
+When we try to communicate the endpoint on a channel, the demand of channel selection is recursively sent to the root and fulfilled in reverse order. 
+The subsequent data transaction behaves similarly, and in the end, the root adapter helps forward the I2C messages to the driver for processing.
+  
+<p align="center"><img src="images/i2c/mux.png" /></p>
+  
+<details><summary> More Details </summary>
+  
 ```
                                    ch0 ---- nvme0                           ch0 ---- nvme8
                                    ch1 ---- nvme1                           ch1 ---- nvme9
@@ -411,9 +439,7 @@ i2c-5           |slave                                   |slave
                                         +---------+              +--------+                                                              
 ```
 
-```
-
-```
+</details>
 
 ## <a name="system-startup"></a> System Startup
 
