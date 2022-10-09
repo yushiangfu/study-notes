@@ -271,6 +271,32 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
 ```
   
 ```
++---------------------------+                                                                  
+| aspeed_i2c_ic_irq_handler | : the top i2c isr, for each set bit: call that bus's handler     
++------|--------------------+                                                                  
+       |    +---------------------------+                                                      
+       |--> | irq_desc_get_handler_data | get aspeed_i2c_ic from irq desc                      
+       |    +---------------------------+                                                      
+       |    +-------------------+                                                              
+       |--> | irq_desc_get_chip | get irq chip, e.g., dummy_irq_chip                           
+       |    +-------------------+                                                              
+       |    +-------------------+                                                              
+       |--> | chained_irq_enter | do nothing bc our chip is 'dummy_irq_chip'                   
+       |    +-------------------+                                                              
+       |                                                                                       
+       |--> read status from register                                                          
+       |                                                                                       
+       |--> for each set bit (bus# = 14)                                                       
+       |                                                                                       
+       |        +---------------------------+                                                  
+       |------> | generic_handle_domain_irq | given hwirq, get irq desc and call ->handle_irq()
+       |        +---------------------------+                                                  
+       |    +-----------------+                                                                
+       +--> | chained_irq_exit| do nothing bc our chip is 'dummy_irq_chip'                     
+            +-----------------+                                                                
+```
+  
+```
 +--------------------+                                                                                                 
 | aspeed_i2c_bus_irq | : ack, based on master state: write or read, if rx done: ack                                    
 +----|---------------+                                                                                                 
