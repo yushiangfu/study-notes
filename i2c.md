@@ -1108,31 +1108,39 @@ parent ---->   bus@1e78a000 {
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
 - Detect I2C devices on a bus.
-  - e.g., detect I2C devices on bus 11:
 
 ```
+E.g.,
+  
 i2cdetect -y -a 11
   
 # -y: yes, to avoid the interactive confirmation
 # -a: all devices or the tool skip the first and last few addresses
+# 11: bus 11
 ```
   
 - Transfer data with the target device on a bus.
-  - e.g., write one byte (0x40) to slave 0x71 on bus 11, and read one byte back
-  
+ 
 ```
+E.g.,
+  
 i2ctransfer -y -a 11 w1@0x71 0x40 r1
   
 # -y: yes, to avoid the interactive confirmation
 # -a: all devices or the tool skip the first and last few addresses
+# 11: bus 11
+# w1@0x71: write 1 byte to slave 0x71
+# 0x40: the data to write
+# r1: read 1 byte from the previously specified slave address
 ```
   
 - Dump transaction data from kernel space.
-  - e.g., on bus 11
   
 ```
+E.g.,
+  
 # enable i2c tracing
-/sys/kernel/debug/tracing/events/i2c/enable
+echo 1 > /sys/kernel/debug/tracing/events/i2c/enable
   
 # add a filter, or it traces on all buses by default
 echo adapter_nr==11 >/sys/kernel/debug/tracing/events/i2c/filter
