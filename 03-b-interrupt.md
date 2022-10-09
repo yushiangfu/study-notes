@@ -201,7 +201,40 @@ If kthread isn't an option to the drivers, there are two typical wrappers for us
 - _request_irq_: register handler to the interrupt number, it then generates the action to contain handler, and install it to irq descriptor.
 - _devm_request_irq_: similar to the above, except it belongs to devise resource and will be freed if kernel releases the device.
 
+```
++---------------------------+                                                                          
+| devm_request_threaded_irq | : prepare 'action' (handler, thread_fn, ...) and install to irq desc     
++------|--------------------+                                                                          
+       |    +--------------+                                                                           
+       |--> | devres_alloc | alloc dev resource                                                        
+       |    +--------------+                                                                           
+       |    +----------------------+                                                                   
+       |--> | request_threaded_irq | prepare 'action' (handler, thread_fn, ...) and install to irq desc
+       |    +----------------------+                                                                   
+       |                                                                                               
+       |--> set up dev resrouce                                                                        
+       |                                                                                               
+       |    +------------+                                                                             
+       +--> | devres_add | add resource to dev                                                         
+            +------------+                                                                             
+```
 
+```
++----------------------+                                                                     
+| request_threaded_irq | : prepare 'action' (handler, thread_fn, ...) and install to irq desc
++-----|----------------+                                                                     
+      |    +-------------+                                                                   
+      |--> | irq_to_desc | get desc of irq                                                   
+      |    +-------------+                                                                   
+      |                                                                                      
+      |--> alloc 'action'                                                                    
+      |                                                                                      
+      |--> set up action(handler, thread_fn, ...)                                            
+      |                                                                                      
+      |    +-------------+                                                                   
+      +--> | __setup_irq | install irq action to desc                                        
+           +-------------+                                                                   
+```
 
 ```
       +-------------+                                                                     
@@ -212,23 +245,25 @@ If kthread isn't an option to the drivers, there are two typical wrappers for us
 | +---| devm_request_irq | register ISR to an interrupt, and treat it as a device resource
 | |   +------------------+                                                                
 | |                                                                                       
-| |   +--------------+                                                                    
-+---->| __setup_irq  |                                                                    
-      +---|----------+                                                                    
-          |                                                                               
-          |--> if thread function is provided                                             
-          |                                                                               
-          |        +------------------+                                                   
-          |        | setup_irq_thread | create a kthread to help handle this interrupt    
-          |        +------------------+                                                   
-          |                                                                               
-          |--> install irq action to irq descriptor                                       
-          |                                                                               
-          +--> if kthread is generated                                                    
-                                                                                          
-                   +-----------------+                                                    
-                   | wake_up_process |                                                    
-                   +-----------------+                                                    
+                                                                                 
+ +--------------+                                                                
+ | __setup_irq  | : install irq action to desc                                   
+ +---|----------+                                                                
+     |                                                                           
+     |--> if thread function is provided                                         
+     |                                                                           
+     |        +------------------+                                               
+     |------> | setup_irq_thread | create a kthread to help handle this interrupt
+     |        +------------------+                                               
+     |                                                                           
+     |--> install irq action to irq descriptor                                   
+     |                                                                           
+     |    +---------------------------------------+                              
+     |--> | wake_up_and_wait_for_irq_thread_ready | wake up main                 
+     |    +---------------------------------------+                              
+     |    +---------------------------------------+                              
+     +--> | wake_up_and_wait_for_irq_thread_ready | wake up secondary            
+          +---------------------------------------+                                                                               
 ```
 
 We can inspect the information of all registered interrupts through the proc file. 
@@ -610,6 +645,74 @@ root@romulus:~# cat /proc/softirqs
     |    +--------------+                                 
     +--> | irq_mark_irq | do nothing bc of disabled config
          +--------------+                                 
+```
+
+```
++---------------------------+                                                               
+| generic_handle_domain_irq | : given hwirq, get irq desc and call ->handle_irq()           
++------|--------------------+                                                               
+       |    +---------------------+                                                         
+       |--> | irq_resolve_mapping |                                                         
+       |    +-----|---------------+                                                         
+       |          |    +-----------------------+                                            
+       |          +--> | __irq_resolve_mapping | given hwirq, look up irq_desc and return it
+       |               +-----------------------+                                            
+       |    +-----------------+                                                             
+       +--> | handle_irq_desc | get irq desc and call ->handle_irq()                        
+            +-----------------+                                                             
+```
+
+```
++-----------------+                                                                               
+| handle_irq_desc | : get irq desc and call ->handle_irq()                                        
++----|------------+                                                                               
+     |    +-----------------------+                                                               
+     |--> | irq_desc_get_irq_data | get irq data from desc                                        
+     |    +-----------------------+                                                               
+     |    +-------------------------+                                                             
+     +--> | generic_handle_irq_desc | call ->handler_irq(), e.g.,                                 
+          +-------------------------+ +-------------------+                                       
+                                      | handle_simple_irq | for each desc action: call ->handler()
+                                      +-------------------+                                       
+```
+
+```
++-------------------+                                                                 
+| handle_simple_irq | : for each desc action: call ->handler()                        
++----|--------------+                                                                 
+     |    +------------------+                                                        
+     +--> | handle_irq_event |                                                        
+          +----|-------------+                                                        
+               |                                                                      
+               |--> label 'in progress'                                               
+               |                                                                      
+               |    +-------------------------+                                       
+               |--> | handle_irq_event_percpu | for each desc action: call ->handler()
+               |    +-------------------------+                                       
+               |                                                                      
+               +--> clear 'in progress'                                               
+```
+
+```
++-------------------------+                                                     
+| handle_irq_event_percpu | : for each desc action: call ->handler()            
++------|------------------+                                                     
+       |    +---------------------------+                                       
+       +--> | __handle_irq_event_percpu | for each desc action: call ->handler()
+            +---------------------------+                                       
+```
+
+```
++---------------------------+                                                                    
+| __handle_irq_event_percpu | : for each desc action: call ->handler()                           
++------|--------------------+                                                                    
+       |                                                                                         
+       |--> for each action in desc                                                              
+       |                                                                                         
+       +------> call ->handler, e.g.,                                                            
+                +--------------------+                                                           
+                | aspeed_i2c_bus_irq | ack, based on master state: write or read, if rx done: ack
+                +--------------------+                                                           
 ```
 
 ## <a name="to-do-list"></a> To-Do List
