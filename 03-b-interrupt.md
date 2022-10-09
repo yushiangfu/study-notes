@@ -460,6 +460,158 @@ root@romulus:~# cat /proc/softirqs
          RCU:      36669
 ```
 
+```
++--------------------------+                                                      
+| of_irq_to_resource_table | : create hwirq/virq mapping, set up irq-type resource
++------|-------------------+                                                      
+       |                                                                          
+       |--> for each irq                                                          
+       |                                                                          
+       |        +--------------------+                                            
+       +------> | of_irq_to_resource | set up irq-type resource and return irq    
+                +--------------------+                                            
+```
+
+```
++--------------------+                                                                    
+| of_irq_to_resource | : set up irq-type resource and return irq                          
++----|---------------+                                                                    
+     |    +------------+                                                                  
+     |--> | of_irq_get | get hwirq, prepare virq, create mapping of them and add to domain
+     |    +------------+                                                                  
+     |                                                                                    
+     +--> set up irq-type resource                                                        
+```
+
+```
++------------+                                                                                  
+| of_irq_get | : get hwirq, prepare virq, create mapping of them and add to domain              
++--|---------+                                                                                  
+   |    +------------------+                                                                    
+   |--> | of_irq_parse_one | resolve an interrupt for device                                    
+   |    +------------------+                                                                    
+   |    +---------------+                                                                       
+   |--> | irq_find_host | given device node, look up domain                                     
+   |    +---------------+                                                                       
+   |    +-----------------------+                                                               
+   +--> | irq_create_of_mapping | get an unused virq, relate to hwirq, and add mapping to domain
+        +-----------------------+                                                               
+```
+
+```
++-----------------------+                                                                              
+| irq_create_of_mapping | : get an unused virq, relate to hwirq, and add mapping to domain             
++-----|-----------------+                                                                              
+      |    +---------------------------+                                                               
+      |--> | of_phandle_args_to_fwspec | set up fwspec based on irq_data                               
+      |    +---------------------------+                                                               
+      |    +---------------------------+                                                               
+      +--> | irq_create_fwspec_mapping | get an unused virq, relate to hwirq, and add mapping to domain
+           +---------------------------+                                                               
+```
+
+```
++---------------------------+                                                                                       
+| irq_create_fwspec_mapping | : get an unused virq, relate to hwirq, and add mapping to domain                      
++------|--------------------+                                                                                       
+       |                                                                                                            
+       |--> determine irq domain                                                                                    
+       |                                                                                                            
+       |    +----------------------+                                                                                
+       |--> | irq_domain_translate | translate if needed, return hwirq                                              
+       |    +----------------------+                                                                                
+       |    +------------------+                                                                                    
+       |--> | irq_find_mapping | check if hwirq was configured already                                              
+       |    +------------------+                                                                                    
+       |                                                                                                            
+       |--> return if it was                                                                                        
+       |                                                                                                            
+       |    +--------------------+                                                                                  
+       |--> | irq_create_mapping |                                                                                  
+       |    +----|---------------+                                                                                  
+       |         |    +-----------------------------+                                                               
+       |         +--> | irq_create_mapping_affinity | get an unused virq, relate to hwirq, and add mapping to domain
+       |              +-----------------------------+                                                               
+       |    +-----------------------+                                                                               
+       +--> | irqd_set_trigger_type |                                                                               
+            +-----------------------+                                                                               
+```
+
+```
++-----------------------------+                                                                 
+| irq_create_mapping_affinity | : get an unused virq, relate to hwirq, and add mapping to domain
++-------|---------------------+                                                                 
+        |    +------------------+                                                               
+        |--> | irq_find_mapping | check if hwirq/virq mappng exists already                     
+        |    +------------------+                                                               
+        |                                                                                       
+        |--> return if it does                                                                  
+        |                                                                                       
+        |    +------------------------+                                                         
+        |--> | irq_domain_alloc_descs | get an unused virq                                      
+        |    +------------------------+                                                         
+        |    +----------------------+                                                           
+        +--> | irq_domain_associate | set up irq data and desc, add hwirq/virq mapping to domain
+             +----------------------+                                                           
+```
+
+```
++----------------------+                                                                   
+| irq_domain_associate | : set up irq data and desc, add hwirq/virq mapping to domain      
++-----|----------------+                                                                   
+      |    +------------------+                                                            
+      |--> | irq_get_irq_data | get irq data from virq                                     
+      |    +------------------+                                                            
+      |                                                                                    
+      |--> set up irq_data with hwirq and domain                                           
+      |                                                                                    
+      |--> if domain has ->map()                                                           
+      |                                                                                    
+      |        call ->map(), e.g.,                                                         
+      |        +------------------------------+                                            
+      |        | aspeed_i2c_ic_map_irq_domain | set up desc (chip info, handler, chip data)
+      |        +------------------------------+                                            
+      |    +------------------------+                                                      
+      +--> | irq_domain_set_mapping | add hwirq/virq mapping to domain                     
+           +------------------------+                                                      
+```
+
+```
++------------------------------+                                                                         
+| aspeed_i2c_ic_map_irq_domain | : set up desc (chip info, handler, chip data)                           
++-------|----------------------+                                                                         
+        |    +--------------------------+                                                                
+        |--> | irq_set_chip_and_handler | : save chip info and install handler(handle_simple_irq) to desc
+        |    +------|-------------------+                                                                
+        |           |    +-------------------------------+                                               
+        |           +--> | irq_set_chip_and_handler_name |                                               
+        |                +-------|-----------------------+                                               
+        |                        |    +--------------+                                                   
+        |                        |--> | irq_set_chip | save chip info in desc                            
+        |                        |    +--------------+                                                   
+        |                        |    +-------------------+                                              
+        |                        +--> | __irq_set_handler | install handler to desc                      
+        |                             +-------------------+                                              
+        |    +-------------------+                                                                       
+        +--> | irq_set_chip_data | save chip data in desc                                                
+             +-------------------+                                                                       
+```
+
+```
++--------------+                                          
+| irq_set_chip | : save chip info in desc                 
++---|----------+                                          
+    |    +-------------------+                            
+    |--> | irq_get_desc_lock | given irq, get its desc    
+    |    +-------------------+                            
+    |                                                     
+    |--> set chip to desc                                 
+    |                                                     
+    |    +--------------+                                 
+    +--> | irq_mark_irq | do nothing bc of disabled config
+         +--------------+                                 
+```
+
 ## <a name="to-do-list"></a> To-Do List
 
 - Why are there duplicated hardware IRQs?
