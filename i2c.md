@@ -771,12 +771,12 @@ parent ---->   bus@1e78a000 {
                        #address-cells = <0x01>;
                        #size-cells = <0x00>;
                        #interrupt-cells = <0x01>;
-                       reg = <0x80 0x40>;            <------- reg addr = 0x1e78a000 (parent) + 0x80 (child), size is 0x40
+                       reg = <0x80 0x40>;       <------- reg addr = 0x1e78a000 (parent) + 0x80 (child), size is 0x40
                        compatible = "aspeed,ast2500-i2c-bus";
                        clocks = <0x02 0x1a>;
                        resets = <0x02 0x07>;
                        bus-frequency = <0x186a0>;
-                       interrupts = <0x01>;          <------- local hwirq 1 is mapped to virq 35 (non-linear mapping)
+                       interrupts = <0x01>;     <------- local hwirq 1 is mapped to virq 35 (non-linear mapping)
                        interrupt-parent = <0x1c>;
                        status = "okay";
                    };
@@ -813,7 +813,7 @@ parent ---->   bus@1e78a000 {
       |--> | irq_of_parse_and_map | get irq from of of_node                                 
       |    +----------------------+                                                         
       |    +------------------+                                                             
-      |--> | devm_request_irq | register isr 'aspeed_i2c_bus_irq'                           
+      |--> | devm_request_irq | prepare 'action' (handler, thread_fn, ...) and install to irq desc
       |    +------------------+ (ack, based on master state: write or read, if rx done: ack)
       |    +-----------------+                                                              
       |--> | i2c_add_adapter | determine adapter id and register it                         
@@ -912,15 +912,15 @@ parent ---->   bus@1e78a000 {
 ```
 
 ```
-+--------------------------+                                                                                                        
-| of_i2c_register_devices  | : for each child of adapter: register i2c client device (might trigger pca954x_probe)                  
-+------|-------------------+                                                                                                        
-       |                                                                                                                            
-       |--> for each child of adapter                                                                                               
-       |                                                                                                                            
-       |        +------------------------+                                                                                          
-       +------> | of_i2c_register_device | get slave addr of child, prepare i2c client and register it (might trigger pca954x_probe)
-                +------------------------+                                                                                          
++--------------------------+
+| of_i2c_register_devices  | : for each child of adapter: register i2c client device (might trigger pca954x_probe)
++------|-------------------+
+       |
+       |--> for each child of adapter
+       |
+       |        +------------------------+
+       +------> | of_i2c_register_device | get slave addr of child, prepare i2c client and register it
+                +------------------------+ (might trigger pca954x_probe)                    
 ```
 
 ```
