@@ -682,6 +682,26 @@ i2c-5           |slave                                   |slave
 ## <a name="system-startup"></a> System Startup
 
 ```
+[    0.000000] i2c controller registered, irq 17
+...
+[    2.053378] MCTP I2C interface driver
+...
+[    2.073894] i2c_dev: i2c /dev entries driver
+[    2.076731] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35
+[    2.078057] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36
+[    2.080005] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37
+[    2.081004] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38
+[    2.082583] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39
+[    2.083489] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40
+[    2.084395] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41
+[    2.085306] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42
+[    2.086268] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43
+[    2.087459] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44
+[    2.096190] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45
+[    2.097970] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46
+```
+  
+```
 [init sequence]
 aspeed_i2c_ic_of_init      : [X] irqchip related; not part of i2c driver
 i2c_init                   : [O]
@@ -698,6 +718,29 @@ pca955x_driver_init        : [X] led related
 bmp280_i2c_driver_init     : [X] skip, no device registered
 ```
 
+```
++-----------------------+                                                          
+| aspeed_i2c_ic_of_init |                                                          
++-----|-----------------+                                                          
+      |                                                                            
+      |--> set up i2c interrupt controller (i2c_ic)                                
+      |                                                                            
+      |    +----------+                                                            
+      |--> | of_iomap | read register base from DTS/DTB                            
+      |    +----------+                                                            
+      |    +----------------------+                                                
+      +--> | irq_of_parse_and_map | get parent irq                                 
+      |    +----------------------+                                                
+      |    +-----------------------+                                               
+      |--> | irq_domain_add_linear | register domain                               
+      |    +-----------------------+                                               
+      |    +----------------------------------+                                    
+      |--> | irq_set_chained_handler_and_data | handler = aspeed_i2c_ic_irq_handler
+      |    +----------------------------------+                                    
+      |                                                                            
+      +--> print "i2c controller registered, irq 17"
+```
+  
 ```
 +----------+                                      
 | i2c_init | : register i2c bus and dummy driver  
