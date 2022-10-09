@@ -139,29 +139,6 @@ Then the data specified in DTS instructs the kernel to execute the below three i
 ```
 
 ```
-+-----------------------+                                                          
-| aspeed_i2c_ic_of_init |                                                          
-+-----|-----------------+                                                          
-      |                                                                            
-      |--> set up i2c interrupt controller (i2c_ic)                                
-      |                                                                            
-      |    +----------+                                                            
-      |--> | of_iomap | read register base from DTS/DTB                            
-      |    +----------+                                                            
-      |    +----------------------+                                                
-      +--> | irq_of_parse_and_map | get parent irq                                 
-      |    +----------------------+                                                
-      |    +-----------------------+                                               
-      |--> | irq_domain_add_linear | register domain                               
-      |    +-----------------------+                                               
-      |    +----------------------------------+                                    
-      |--> | irq_set_chained_handler_and_data | handler = aspeed_i2c_ic_irq_handler
-      |    +----------------------------------+                                    
-      |                                                                            
-      +--> print "i2c controller registered, irq 17"
-```
-
-```
     parent ----> bus@1e78a000 {
 properties ----+     compatible = "simple-bus";
                |     #address-cells = <0x01>;
