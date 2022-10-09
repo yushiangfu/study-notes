@@ -680,27 +680,41 @@ i2c-5           |slave                                   |slave
 </details>
 
 ## <a name="system-startup"></a> System Startup
-
+  
+During the kernel startup, a few functions build the I2C framework and let's introduce the log a little bit.
+  
+- `aspeed_i2c_ic_of_init`
+  - All the I2C buses are designed to share one interrupt line, and the parent ISR is made ready here.
+  - Every time an interrupt arrives, the parent ISR reads from the hardware and switches to that specific bus handler accordingly.
+- `i2c_dev_init`
+  - It reserves a range of device numbers for I2C character devices (cdev) and hooks a callback.
+  - Whenever an adapter presents, that callback helps add its cdev to the object map.
+- `aspeed_i2c_probe_bus`
+  - Each I2C bus registration from DTB eventually triggers the probing function, which prepares an adapter to the I2C framework.
+  - We don't see bus 0 and bus 13 because they are disabled in the device tree and thus left out.
+  
 ```
-[    0.000000] i2c controller registered, irq 17
+[    0.000000] i2c controller registered, irq 17                               <---- aspeed_i2c_ic_of_init()
 ...
-[    2.053378] MCTP I2C interface driver
+[    2.053378] MCTP I2C interface driver                                       <---- not related
 ...
-[    2.073894] i2c_dev: i2c /dev entries driver
-[    2.076731] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35
-[    2.078057] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36
-[    2.080005] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37
-[    2.081004] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38
-[    2.082583] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39
-[    2.083489] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40
-[    2.084395] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41
-[    2.085306] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42
-[    2.086268] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43
-[    2.087459] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44
-[    2.096190] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45
-[    2.097970] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46
+[    2.073894] i2c_dev: i2c /dev entries driver                                <---- i2c_dev_init()
+[    2.076731] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35   <---- aspeed_i2c_probe_bus()
+[    2.078057] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36   <---- aspeed_i2c_probe_bus()
+[    2.080005] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37   <---- aspeed_i2c_probe_bus()
+[    2.081004] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38   <---- aspeed_i2c_probe_bus()
+[    2.082583] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39   <---- aspeed_i2c_probe_bus()
+[    2.083489] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40   <---- aspeed_i2c_probe_bus()
+[    2.084395] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41   <---- aspeed_i2c_probe_bus()
+[    2.085306] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42   <---- aspeed_i2c_probe_bus()
+[    2.086268] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43   <---- aspeed_i2c_probe_bus()
+[    2.087459] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44  <---- aspeed_i2c_probe_bus()
+[    2.096190] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45  <---- aspeed_i2c_probe_bus()
+[    2.097970] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46  <---- aspeed_i2c_probe_bus()
 ```
   
+<details><summary> More Details </summary>
+                                                                                     
 ```
 [init sequence]
 aspeed_i2c_ic_of_init      : [X] irqchip related; not part of i2c driver
@@ -1088,6 +1102,8 @@ parent ---->   bus@1e78a000 {
       +--> | i2c_add_adapter | determine adapter id and register it                        
            +-----------------+                                                             
 ```
+  
+</details>
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
