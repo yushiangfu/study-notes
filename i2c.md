@@ -1107,6 +1107,40 @@ parent ---->   bus@1e78a000 {
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
+- Detect I2C devices on a bus.
+  - e.g., detect I2C devices on bus 11:
+
+```
+i2cdetect -y -a 11
+  
+# -y: yes, to avoid the interactive confirmation
+# -a: all devices or the tool skip the first and last few addresses
+```
+  
+- Transfer data with the target device on a bus.
+  - e.g., write one byte (0x40) to slave 0x71 on bus 11, and read one byte back
+  
+```
+i2ctransfer -y -a 11 w1@0x71 0x40 r1
+  
+# -y: yes, to avoid the interactive confirmation
+# -a: all devices or the tool skip the first and last few addresses
+```
+  
+- Dump transaction data from kernel space.
+  - e.g., on bus 11
+  
+```
+# enable i2c tracing
+/sys/kernel/debug/tracing/events/i2c/enable
+  
+# add a filter, or it traces on all buses by default
+echo adapter_nr==11 >/sys/kernel/debug/tracing/events/i2c/filter
+  
+# read trace
+cat /sys/kernel/debug/tracing/trace
+```
+  
 ## <a name="reference"></a> Reference
 
 - [S. Crump, SMBus Compatibility With an I2C Device](https://www.ti.com/lit/an/sloa132/sloa132.pdf)
