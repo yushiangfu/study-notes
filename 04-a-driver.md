@@ -1,18 +1,57 @@
-> Study case: Linux version 5.15.0 on OpenBMC
+> The note is based on Linux version 5.15.43 in OpenBMC.
 
 ## Index
 
 - [Introduction](#introduction)
+- [Device File](#device-file)
 - [Device Tree](#device-tree)
-- [Driver and Device Registration](#driver-and-device-registration)
-- [Character and Block Devices](#character-and-block-devices)
+- [System Startup](#system-startup)
+- [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
-A system consists of numerous hardware components, from IP within the chip, such as timer, UART, to external devices on board, e.g., USB gadget or the PCIe card. 
-By default, kernel compiles in lots of drivers, and all we have to do is provide the list of devices that we need the kernel to help register. 
-Whenever kernel adds a device or a driver, they probe each other to see if there's a match.
+(TBD)
+
+## <a name="device-file"></a> Device File
+
+```
++-------------------+                                                                              
+| __register_chrdev |                                                                              
++----|--------------+                                                                              
+     |    +--------------------------+                                                             
+     |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
+     |    +--------------------------+                                                             
+     |                                                                                             
+     |--> prepare a 'cdev' for the dev# range                                                      
+     |                                                                                             
+     |    +----------+                                                                             
+     +--> | cdev_add | add the 'cdev' to a table for later lookup                                  
+          +----------+                                                                             
+```
+
+```
++-------------+                                         
+| chrdev_open |                                         
++---|---------+                                         
+    |                                                   
+    |--> if inode doesn't know where cdev is            
+    |                                                   
+    |------> serach cdev in 'cdev_map' based on dev#    
+    |                                                   
+    |------> save cdev addr in inode                    
+    |                                                   
+    |--> get file ops from cdev                         
+    |                                                   
+    |    +--------------+                               
+    |--> | replace_fops | replace fops of file to cdev's
+    |    +--------------+                               
+    |                                                   
+    +--> call ->open, e.g.,                             
+         +--------------+                               
+         | mtdchar_open |                               
+         +--------------+                               
+```
 
 ## <a name="device-tree"></a> Device Tree
 
@@ -135,7 +174,7 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
 [    0.257606] device: 'iio-hwmon-battery': device_add
 ```
 
-## <a name="driver-and-device-registration"></a> Driver and Device Registration
+## <a name="system-startup"></a> System Startup
 
 Before introducing driver and device, let's talk about the **bus** first. 
 We can regard the **bus** as a collection of devices and drivers, and there are numerous buses in the system.
@@ -265,49 +304,11 @@ Both **driver_attach** and **bus_probe_device** are not directly but eventually 
          +--------------+ (one driver might take care of multiple similar devices)          
 ```
 
-## <a name="character-and-block-devices"></a> Character and Block Devices
-
-```
-+-------------------+                                                                              
-| __register_chrdev |                                                                              
-+----|--------------+                                                                              
-     |    +--------------------------+                                                             
-     |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
-     |    +--------------------------+                                                             
-     |                                                                                             
-     |--> prepare a 'cdev' for the dev# range                                                      
-     |                                                                                             
-     |    +----------+                                                                             
-     +--> | cdev_add | add the 'cdev' to a table for later lookup                                  
-          +----------+                                                                             
-```
-
-```
-+-------------+                                         
-| chrdev_open |                                         
-+---|---------+                                         
-    |                                                   
-    |--> if inode doesn't know where cdev is            
-    |                                                   
-    |------> serach cdev in 'cdev_map' based on dev#    
-    |                                                   
-    |------> save cdev addr in inode                    
-    |                                                   
-    |--> get file ops from cdev                         
-    |                                                   
-    |    +--------------+                               
-    |--> | replace_fops | replace fops of file to cdev's
-    |    +--------------+                               
-    |                                                   
-    +--> call ->open, e.g.,                             
-         +--------------+                               
-         | mtdchar_open |                               
-         +--------------+                               
-```
+## <a name="cheat-sheet"></a> Cheat Sheet
 
 ## <a name="reference"></a> Reference
 
-(None)
+- W. Mauerer, Professional Linux Kernel Architecture
 
 <details>
   <summary> Messy Notes </summary>
