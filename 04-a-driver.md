@@ -16,47 +16,6 @@
 ## <a name="device-file"></a> Device File
 
 ```
-struct kobj_map {
-    struct probe {
-        struct probe *next;   // singly linked list
-        dev_t dev;            // dev# = (major, minor)
-        unsigned long range;  // range of consecutive minor#
-        struct module *owner;
-        kobj_probe_t *get;    // point to func that returns kobj
-        int (*lock)(dev_t, void *);
-        void *data;           // points to struct cdev of gendisk           
-    } *probes[255];
-    struct mutex *lock;
-};
-```
-
-```
-static struct char_device_struct {
-    struct char_device_struct *next;    // singly linked list
-    unsigned int major;                 // major#
-    unsigned int baseminor;             // smallest minor#
-    int minorct;                        // minor count = 'range' in kobj_map
-    char name[64];                      // dev identifier
-    struct cdev *cdev;                  // points to cdev
-} *chrdevs[CHRDEV_MAJOR_HASH_SIZE];
-```
-
-```
-+-------------------+                                                                              
-| __register_chrdev |                                                                              
-+----|--------------+                                                                              
-     |    +--------------------------+                                                             
-     |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
-     |    +--------------------------+                                                             
-     |                                                                                             
-     |--> prepare a 'cdev' for the dev# range                                                      
-     |                                                                                             
-     |    +----------+                                                                             
-     +--> | cdev_add | add the 'cdev' to a table for later lookup                                  
-          +----------+                                                                             
-```
-
-```
 +-------------+                                         
 | chrdev_open |                                         
 +---|---------+                                         
@@ -228,6 +187,72 @@ container     event_source  hid           mdio_bus      mmc_rpmb      sdio      
 
 When registering a driver, it must specify the bus type so the kernel knows where to append the driver structure. 
 Function **paltform_driver_register** is the helper that selects the bus **platform** automatically.
+
+
+```
+struct kobj_map {
+    struct probe {
+        struct probe *next;   // singly linked list
+        dev_t dev;            // dev# = (major, minor)
+        unsigned long range;  // range of consecutive minor#
+        struct module *owner;
+        kobj_probe_t *get;    // point to func that returns kobj
+        int (*lock)(dev_t, void *);
+        void *data;           // points to struct cdev of gendisk           
+    } *probes[255];
+    struct mutex *lock;
+};
+```
+
+```
+static struct char_device_struct {
+    struct char_device_struct *next;    // singly linked list
+    unsigned int major;                 // major#
+    unsigned int baseminor;             // smallest minor#
+    int minorct;                        // minor count = 'range' in kobj_map
+    char name[64];                      // dev identifier
+    struct cdev *cdev;                  // points to cdev
+} *chrdevs[CHRDEV_MAJOR_HASH_SIZE];
+```
+
+```
++-------------------+                                                                              
+| __register_chrdev |                                                                              
++----|--------------+                                                                              
+     |    +--------------------------+                                                             
+     |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
+     |    +--------------------------+                                                             
+     |                                                                                             
+     |--> prepare a 'cdev' for the dev# range                                                      
+     |                                                                                             
+     |    +----------+                                                                             
+     +--> | cdev_add | add the 'cdev' to a table for later lookup                                  
+          +----------+                                                                             
+```
+
+```
++----------+                                                                               
+| add_disk | :
++--|-------+                                                                               
+   |    +-----------------+                                                                
+   +--> | device_add_disk | : add device, register bdi, and scan partitions
+        +----|------------+                                                                
+             |    +------------------+                                                     
+             |--> | elevator_init_mq | (skip, there's no any elevator)                     
+             |    +------------------+                                                     
+             |    +------------+                                                           
+             |--> | device_add |                                                           
+             |    +------------+                                                           
+             |    +--------------------+                                                   
+             |--> | blk_register_queue | register the queue to sysfs, label it 'registered'
+             |    +--------------------+                                                   
+             |    +--------------+                                                         
+             |--> | bdi_register | register bdi to bdi_tree and bdi_list                   
+             |    +--------------+                                                         
+             |    +----------------------+                                                 
+             +--> | disk_scan_partitions |                                                 
+                  +----------------------+                                                 
+```
 
 ```
  +--------------------------+                                                        
