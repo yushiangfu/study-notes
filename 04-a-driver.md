@@ -31,6 +31,17 @@ struct kobj_map {
 ```
 
 ```
+static struct char_device_struct {
+    struct char_device_struct *next;    // singly linked list
+    unsigned int major;                 // major#
+    unsigned int baseminor;             // smallest minor#
+    int minorct;                        // minor count = 'range' in kobj_map
+    char name[64];                      // dev identifier
+    struct cdev *cdev;                  // points to cdev
+} *chrdevs[CHRDEV_MAJOR_HASH_SIZE];
+```
+
+```
 +-------------------+                                                                              
 | __register_chrdev |                                                                              
 +----|--------------+                                                                              
