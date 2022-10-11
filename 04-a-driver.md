@@ -16,6 +16,21 @@
 ## <a name="device-file"></a> Device File
 
 ```
+struct kobj_map {
+    struct probe {
+        struct probe *next;   // singly linked list
+        dev_t dev;            // dev# = (major, minor)
+        unsigned long range;  // range of consecutive minor#
+        struct module *owner;
+        kobj_probe_t *get;    // point to func that returns kobj
+        int (*lock)(dev_t, void *);
+        void *data;           // points to struct cdev of gendisk           
+    } *probes[255];
+    struct mutex *lock;
+};
+```
+
+```
 +-------------------+                                                                              
 | __register_chrdev |                                                                              
 +----|--------------+                                                                              
