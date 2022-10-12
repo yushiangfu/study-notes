@@ -16,8 +16,32 @@
 ## <a name="device-file"></a> Device File
 
 ```
+struct inode {
+    umode_t         i_mode;                     // file type: char or block
+    dev_t           i_rdev;                     // dev#
+    union {
+        const struct file_operations    *i_fop; // file operations
+        void (*free_inode)(struct inode *);
+    };
+    union {
+        struct pipe_inode_info  *i_pipe;
+        struct cdev     *i_cdev;
+        char            *i_link;
+        unsigned        i_dir_seq;
+    };
+}
+```
+
+```
+const struct file_operations def_chr_fops = {
+    .open = chrdev_open,
+    .llseek = noop_llseek,
+};
+```
+
+```
 +-------------+                                         
-| chrdev_open |                                         
+| chrdev_open | :
 +---|---------+                                         
     |                                                   
     |--> if inode doesn't know where cdev is            
@@ -36,6 +60,37 @@
          +--------------+                               
          | mtdchar_open |                               
          +--------------+                               
+```
+
+```
+const struct file_operations def_blk_fops = { 
+    .open       = blkdev_open,
+    .release    = blkdev_close,
+    .llseek     = blkdev_llseek,
+    .read_iter  = blkdev_read_iter,
+    .write_iter = blkdev_write_iter,
+    .iopoll     = blkdev_iopoll,
+    .mmap       = generic_file_mmap,
+    .fsync      = blkdev_fsync,
+    .unlocked_ioctl = block_ioctl,
+#ifdef CONFIG_COMPAT
+    .compat_ioctl   = compat_blkdev_ioctl,
+#endif
+    .splice_read    = generic_file_splice_read,
+    .splice_write   = iter_file_splice_write,
+    .fallocate  = blkdev_fallocate,
+};
+```
+
+```
+struct cdev {
+    struct kobject kobj;
+    struct module *owner;               // points to module if there's any
+    const struct file_operations *ops;  // file operations
+    struct list_head list;              // all inodes that represent the cdev are on the list
+    dev_t dev;                          // dev#
+    unsigned int count;                 // range of minor
+} __randomize_layout;
 ```
 
 ## <a name="device-tree"></a> Device Tree
