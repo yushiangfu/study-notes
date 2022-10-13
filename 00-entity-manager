@@ -1,0 +1,142 @@
+## Index
+
+- [Introduction](#introduction)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+(TBD)
+
+```
++---------------------------+                                                           
+| propertiesChangedCallback | : callback of property change                             
++------|--------------------+                                                           
+       |                                                                                
+       |--> set a timer expiring after 5 sec                                            
+       |                                                                                
+       +--> timer async wait                                                            
+               +-----------------------------------------------------------------------+
+               |if we receive a new request while handling an old one                  |
+               |                                                                       |
+               |    +---------------------------+                                      |
+               |--> | propertiesChangedCallback | recursive                            |
+               |    +---------------------------+                                      |
+               |                                                                       |
+               |--> return                                                             |
+               |                                                                       |
+               |in_progress = true                                                     |
+               |                                                                       |
+               |+-------------------+                                                  |
+               ||loadConfigurations | for each found json: parse and add to arg 'config'
+               |+-------------------+                                                  |
+               |                                                                       |
+               |prepare 'perform scan'                                                 |
+               |   +------------------------------------------------------------------+|
+               |   |for each (name, dev) in missing_config                            ||
+               |   |                                                                  ||
+               |   |    +--------------------+                                        ||
+               |   |    | pruneConfiguration | release configuration                  ||
+               |   |    +--------------------+                                        ||
+               |   |+------------------------+                                        ||
+               |   || deriveNewConfiguration | ensure new configuration has no old one||
+               |   |+------------------------+                                        ||
+               |   |+----------------+                                                ||
+               |   || logDeviceAdded | add dev log                                    ||
+               |   |+----------------+                                                ||
+               |   |+---------+                                                       ||
+               |   || io.post | ???                                                   ||
+               |   |+---------+                                                       ||
+               |   +------------------------------------------------------------------+|
+               |                                                                       |
+               |run the perf scan                                                      |
+               +-----------------------------------------------------------------------+
+```
+
+```
++--------------------+                                                            
+| loadConfigurations | : for each found json: parse and add to arg 'config'       
++----|---------------+                                                            
+     |    +-----------+                                                           
+     |--> | findFiles | find matched file path and add to arg list                
+     |    +-----------+ PACKAGE_DIR="/usr/share/entity-manager/                   
+     |                  SYSCONF_DIR="/etc/entity-manager/                         
+     |                                                                            
+     |--> for each json in 'found jsons'                                          
+     |                                                                            
+     |        +-----------------------+                                           
+     |------> | nlohmann::json::parse |                                           
+     |        +-----------------------+                                           
+     |                                                                            
+     |------> if parsed result is an array                                        
+     |                                                                            
+     |----------> add each element to arg 'config' separately                     
+     |                                                                            
+     |------> else                                                                
+     |                                                                            
+     +----------> add result to arg 'config'                                      
+```
+
+```
++-----------+                                             
+| findFiles | : find matched file path and add to arg list
++--|--------+                                             
+   |                                                      
+   |--> for each dir in arg                               
+   |                                                      
+   |------> for each file in dir                          
+   |                                                      
+   |----------> if match, add file path to local map      
+   |                                                      
+   |--> for each (key, value) in map                      
+   |                                                      
+   +------> add to arg 'found paths'                      
+```
+
+```
++--------------------+                                                          
+| pruneConfiguration | : release configuration                                  
++----|---------------+                                                          
+     |    +-----------------------+                                             
+     |--> | deviceRequiresPowerOn | check if dev needs power on or post complete
+     |    +-----------------------+                                             
+     |                                                                          
+     |--> return if it's power off && dev needs power on                        
+     |                                                                          
+     |    +---------------------+                                               
+     |--> | getDeviceInterfaces | get device interfaces                         
+     |    +---------------------+                                               
+     |                                                                          
+     |--> for each interface                                                    
+     |                                                                          
+     |------> remove interface from obj server if share ptr exists (?)          
+     |                                                                          
+     |    +---------------------------+                                         
+     |--> | systemConfiguration.erase | ???                                     
+     |    +---------------------------+                                         
+     |    +------------------+                                                  
+     +--> | logDeviceRemoved | remove dev log                                   
+          +------------------+                                                  
+```
+  
+```
++------------------+                                   
+| logDeviceRemoved | : remove dev log                  
++----|-------------+                                   
+     |    +------------------+                         
+     |--> | deviceHasLogging | check if dev has logging
+     |    +------------------+                         
+     |                                                 
+     |--> return if not                                
+     |                                                 
+     |--> find 'type' and 'asset' from record          
+     |                                                 
+     |--> find 'model' and 'serial number'             
+     |                                                 
+     |    +----------------+                           
+     +--> | sd_jounal_send |                           
+          +----------------+                           
+```
+  
+## <a name="reference"></a> Reference
+
+(TBD)
