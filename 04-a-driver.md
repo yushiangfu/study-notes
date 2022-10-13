@@ -3,7 +3,8 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Device File](#device-file)
+- [Character Device](#character-device)
+- [Block Device](#block-device)
 - [Device Tree](#device-tree)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
@@ -13,7 +14,7 @@
 
 (TBD)
 
-## <a name="device-file"></a> Device File
+## <a name="character-device"></a> Character File
 
 ```
 struct inode {
@@ -63,6 +64,19 @@ const struct file_operations def_chr_fops = {
 ```
 
 ```
+struct cdev {
+    struct kobject kobj;
+    struct module *owner;               // points to module if there's any
+    const struct file_operations *ops;  // file operations
+    struct list_head list;              // all inodes that represent the cdev are on the list
+    dev_t dev;                          // dev#
+    unsigned int count;                 // range of minor
+} __randomize_layout;
+```
+
+## <a name="block-device"></a> Block File
+
+```
 const struct file_operations def_blk_fops = { 
     .open       = blkdev_open,
     .release    = blkdev_close,
@@ -83,13 +97,35 @@ const struct file_operations def_blk_fops = {
 ```
 
 ```
-struct cdev {
-    struct kobject kobj;
-    struct module *owner;               // points to module if there's any
-    const struct file_operations *ops;  // file operations
-    struct list_head list;              // all inodes that represent the cdev are on the list
-    dev_t dev;                          // dev#
-    unsigned int count;                 // range of minor
+struct bdev_inode {
+    struct block_device bdev;   // all inodes that represent the block device are kept here
+    struct inode vfs_inode;
+};
+```
+
+```
+struct block_device {
+    sector_t        bd_start_sect;
+    struct disk_stats __percpu *bd_stats;
+    unsigned long       bd_stamp;
+    bool            bd_read_only;
+    dev_t           bd_dev;                 // dev#
+    int         bd_openers;                 // acount for how often the bdev is opened
+    struct inode *      bd_inode;           // points to inode that represents the bdev
+    struct super_block *    bd_super;
+    void *          bd_claiming;
+    struct device       bd_device;
+    void *          bd_holder;
+    int         bd_holders;
+    bool            bd_write_holder;
+    struct kobject      *bd_holder_dir;
+    u8          bd_partno;
+    spinlock_t      bd_size_lock;
+    struct gendisk *    bd_disk;            // points to the partition related layer
+    int         bd_fsfreeze_count;
+    struct mutex        bd_fsfreeze_mutex;
+    struct super_block  *bd_fsfreeze_sb;
+    struct partition_meta_info *bd_meta_info;
 } __randomize_layout;
 ```
 
