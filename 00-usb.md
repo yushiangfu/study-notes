@@ -8,6 +8,43 @@
 ## <a name="introduction"></a> Introduction
 
 ```
++------------------------------+                                                                                                
+| ast_vhub_epn_handle_ack_desc | : handle ack desc                                                                              
++-------|----------------------+                                                                                                
+        |                                                                                                                       
+        |--> get 'last' from hardware register                                                                                  
+        |                                                                                                                       
+        |    +--------------------------+                                                                                       
+        |--> | list_first_entry_or_null | get the first req from queue of ep                                                    
+        |    +--------------------------+                                                                                       
+        |                                                                                                                       
+        |--> while ep last != 'last'                                                                                            
+        |                                                                req                                                    
+        |------> get desc from ep last                                 +------+                                                 
+        |                                                              |  +------+                                              
+        |------> ep last++                                             |  | desc |                                              
+        |                                                              |  +------+                                              
+        |------> continue if it's not an active req                    |  | desc |                                              
+        |                                                              |  +------+                                              
+        |------> if current desc is the last specified in req          |  | desc |                                              
+        |                                                              +--+------+                                              
+        |            +---------------+                                                                                          
+        |----------> | ast_vhub_done | finalize req                                                                             
+        |            +---------------+                                                                                          
+        |            +--------------------------+                                                                               
+        |----------> | list_first_entry_or_null | get next req from list (in case somewhere adds it suddenly?)                  
+        |            +--------------------------+                                                                               
+        |                                                                                                                       
+        +----------> break                                                                                                      
+        |                                                                                                                       
+        |--> if there's more work (req)                                                                                         
+        |                                                                                                                       
+        |        +------------------------+                                                                                     
+        +------> | ast_vhub_epn_kick_desc | given req, for each desc it needs: fill addr and size info, kill hardware to process
+                 +------------------------+                                                                                     
+```
+
+```
 +---------------+                                                             
 | ast_vhub_done | : finalize req                                              
 +---|-----------+                                                             
