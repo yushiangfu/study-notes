@@ -136,6 +136,53 @@ struct block_device {
 } __randomize_layout;
 ```
 
+```
+truct gendisk {
+    int major;                      // self explained
+    int first_minor;                // self explained
+    int minors;                     // length of consecutive minor#
+    char disk_name[DISK_NAME_LEN];  // disk name in /proc and /sys
+
+    unsigned short events;
+    unsigned short event_flags;
+
+    struct xarray part_tbl;
+    struct block_device *part0;     // points to the first partition?
+
+    const struct block_device_operations *fops;
+    struct request_queue *queue;
+    void *private_data;
+
+    int flags;
+    unsigned long state;
+#define GD_NEED_PART_SCAN       0
+#define GD_READ_ONLY            1
+#define GD_DEAD             2
+
+    struct mutex open_mutex;    /* open/close mutex */
+    unsigned open_partitions;   /* number of open partitions */
+
+    struct backing_dev_info *bdi;
+    struct kobject *slave_dir;
+#ifdef CONFIG_BLOCK_HOLDER_DEPRECATED
+    struct list_head slave_bdevs;
+#endif
+    struct timer_rand_state *random;
+    atomic_t sync_io;       /* RAID */
+    struct disk_events *ev;
+#ifdef  CONFIG_BLK_DEV_INTEGRITY
+    struct kobject integrity_kobj;
+#endif  /* CONFIG_BLK_DEV_INTEGRITY */
+#if IS_ENABLED(CONFIG_CDROM)
+    struct cdrom_device_info *cdi;
+#endif
+    int node_id;
+    struct badblocks *bb;
+    struct lockdep_map lockdep_map;
+    u64 diskseq;
+}
+```
+
 ## <a name="device-tree"></a> Device Tree
 
 Device tree source (DTS) is the text file describing the list of devices of the SoC and gets compiled into Device tree blob (DTB). 
@@ -453,12 +500,6 @@ Both **driver_attach** and **bus_probe_device** are not directly but eventually 
          +--------------+ (one driver might take care of multiple similar devices)          
 ```
 
-## <a name="cheat-sheet"></a> Cheat Sheet
-
-## <a name="reference"></a> Reference
-
-- W. Mauerer, Professional Linux Kernel Architecture
-
 <details>
   <summary> Messy Notes </summary>
     
@@ -513,10 +554,18 @@ Code flow:
             prepare chip
         
 ```
-                                                   
+
+## <a name="cheat-sheet"></a> Cheat Sheet
+
 ```
 ls -l /sys/dev/char
 ls -l /sys/dev/block                                                   
+cat /proc/partitions
+ls -l /dev
 ```
+
+## <a name="reference"></a> Reference
+
+- W. Mauerer, Professional Linux Kernel Architecture
     
 </details>
