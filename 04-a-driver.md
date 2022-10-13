@@ -138,48 +138,14 @@ struct block_device {
 
 ```
 truct gendisk {
-    int major;                      // self explained
-    int first_minor;                // self explained
-    int minors;                     // length of consecutive minor#
-    char disk_name[DISK_NAME_LEN];  // disk name in /proc and /sys
-
-    unsigned short events;
-    unsigned short event_flags;
-
-    struct xarray part_tbl;
-    struct block_device *part0;     // points to the first partition?
-
-    const struct block_device_operations *fops;
-    struct request_queue *queue;
-    void *private_data;
-
-    int flags;
-    unsigned long state;
-#define GD_NEED_PART_SCAN       0
-#define GD_READ_ONLY            1
-#define GD_DEAD             2
-
-    struct mutex open_mutex;    /* open/close mutex */
-    unsigned open_partitions;   /* number of open partitions */
-
-    struct backing_dev_info *bdi;
-    struct kobject *slave_dir;
-#ifdef CONFIG_BLOCK_HOLDER_DEPRECATED
-    struct list_head slave_bdevs;
-#endif
-    struct timer_rand_state *random;
-    atomic_t sync_io;       /* RAID */
-    struct disk_events *ev;
-#ifdef  CONFIG_BLK_DEV_INTEGRITY
-    struct kobject integrity_kobj;
-#endif  /* CONFIG_BLK_DEV_INTEGRITY */
-#if IS_ENABLED(CONFIG_CDROM)
-    struct cdrom_device_info *cdi;
-#endif
-    int node_id;
-    struct badblocks *bb;
-    struct lockdep_map lockdep_map;
-    u64 diskseq;
+    int major;                                  // self explained
+    int first_minor;                            // self explained
+    int minors;                                 // length of consecutive minor#
+    char disk_name[DISK_NAME_LEN];              // disk name in /proc and /sys
+    struct block_device *part0;                 // points to the first partition?
+    const struct block_device_operations *fops; // low-level device operations
+    struct request_queue *queue;                // request queue
+    void *private_data;                         // private data of driver
 }
 ```
 
@@ -397,6 +363,48 @@ static struct char_device_struct {
              |    +----------------------+                                                 
              +--> | disk_scan_partitions |                                                 
                   +----------------------+                                                 
+```
+
+```
++---------------+                                                            
+| add_partition | : prepare bdev_inode, decide dev#, set up and register dev,
++---|-----------+   insert partno to gendisk, add inode to table             
+    |    +---------+                                                         
+    |--> | xa_load | check if part_no is already in gendisk part_tbl         
+    |    +---------+                                                         
+    |                                                                        
+    |--> return 'busy' if it's the case                                      
+    |                                                                        
+    |    +------------+                                                      
+    |--> | bdev_alloc | prepare a bdev_inode                                 
+    |    +------------+                                                      
+    |                                                                        
+    |--> save start/size info in bdev and inode separately                   
+    |                                                                        
+    |    +--------------+                                                    
+    |--> | dev_set_name | set dev name                                       
+    |    +--------------+                                                    
+    |                                                                        
+    |--> set up class/type/parent of dev                                     
+    |                                                                        
+    |    +-------+                                                           
+    |--> | MKDEV | prepare dev#                                              
+    |    +-------+                                                           
+    |                                                                        
+    |--> if arg 'info' is provided                                           
+    |                                                                        
+    |        +---------+                                                     
+    |------> | kmemdup | duplicate one for for block dev                     
+    |        +---------+                                                     
+    |    +------------+                                                      
+    |--> | device_add |                                                      
+    |    +------------+                                                      
+    |    +-----------+                                                       
+    |--> | xa_insert | insert partno to gendisk part_tbl                     
+    |    +-----------+                                                       
+    |    +----------+                                                        
+    +--> | bdev_add | add to inode table (able to be looked up)              
+         +----------+                                                        
 ```
 
 ```
