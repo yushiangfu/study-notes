@@ -149,6 +149,22 @@ truct gendisk {
 }
 ```
 
+```
+struct request_queue {
+    struct elevator_queue   *elevator;  // points to io scheduler
+    unsigned long       queue_flags;
+    unsigned long       nr_requests;
+    struct queue_limits limits;         // all kinds of limitations
+}
+```
+
+```
+struct queue_limits {
+    unsigned int        max_sectors;            // max sectors the device can handle in one request
+    unsigned int        max_segment_size;       // max segment size in one request
+};
+```
+
 ## <a name="device-tree"></a> Device Tree
 
 Device tree source (DTS) is the text file describing the list of devices of the SoC and gets compiled into Device tree blob (DTB). 
@@ -570,6 +586,7 @@ ls -l /sys/dev/char
 ls -l /sys/dev/block                                                   
 cat /proc/partitions
 ls -l /dev
+/sys/block
 ```
 
 ## <a name="reference"></a> Reference
