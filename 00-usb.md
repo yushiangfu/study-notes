@@ -94,6 +94,120 @@
       +--> | writel | kick hardware to process descriptors                                                       
            +--------+                                                                                            
 ```
+
+```
++----------------------+                                               
+| ast_vhub_ep0_do_send | : copy from req to ep buffer, and trigger send
++-----|----------------+                                               
+      |                                                                
+      |--> label 'last_desc' if it's the status from gadget            
+      |                                                                
+      |--> if we're done (can receive)                                 
+      |                                                                
+      |        +--------+                                              
+      |------> | writel | write 'rx buff ready' to hw reg              
+      |        +--------+                                              
+      |        +---------------+                                       
+      |------> | ast_vhub_done | finalize req                          
+      |        +---------------+                                       
+      |                                                                
+      +------> return                                                  
+      |                                                                
+      |--> decide chunk size                                           
+      |                                                                
+      |    +--------+                                                  
+      |--> | memcpy | copy data from req to ep buffer                  
+      |    +--------+                                                  
+      |    +--------+                                                  
+      +--> | writel | save chunck size and trigger send                
+           +--------+                                                  
+```
+
+```
++---------------+                                
+| ast_vhub_nuke | : finalize all req on ep       
++---|-----------+                                
+    |                                            
+    |--> while ep queue still has something      
+    |                                            
+    |        +------------------+                
+    |------> | list_first_entry | get the 1st req
+    |        +------------------+                
+    |        +---------------+                   
+    +------> | ast_vhub_done | finalize req      
+             +---------------+                   
+```
+
+```
++----------------------+                                       
+| ast_vhub_epn_ack_irq | : ack epn irq                         
++-----|----------------+                                       
+      |                                                        
+      |--> if the ep is in desc mode                           
+      |                                                        
+      |        +------------------------------+                
+      |------> | ast_vhub_epn_handle_ack_desc | handle ack desc
+      |        +------------------------------+                
+      |                                                        
+      |--> else                                                
+      |                                                        
+      |        +-------------------------+                     
+      +------> | ast_vhub_epn_handle_ack | handle ack          
+               +-------------------------+                     
+```
+
+```
+ +-------------------------+                                                                               
+ | ast_vhub_epn_handle_ack | : handle ack                                                                  
+ +------|------------------+                                                                               
+        |    +-------+                                                                                     
+        |--> | readl | read ep status                                                                      
+        |    +-------+                                                                                     
+        |    +--------------------------+                                                                  
+        |--> | list_first_entry_or_null | get the 1st request                                              
+        |    +--------------------------+                                                                  
+        |                                                                                                  
+        |--> return if no req                                                                              
+        |                                                                                                  
+        |--> go to 'next chunk' if req isn't active                                                        
+        |                                                                                                  
+        |--> clear 'active' on req                                                                         
+        |                                                                                                  
+        |--> prepare data buffer if needed, and adjust size                                                
+        |                                                                                                  
+        |--> label 'last' on req if it's a short packet                                                    
+        |                                                                                                  
+        |--> if no other desc needs handling                                                               
+        |                                                                                                  
+        |        +---------------+                                                                         
+        |------> | ast_vhub_done | finalize req                                                            
+        |        +---------------+                                                                         
+        |        +--------------------------+                                                              
+        |------> | list_first_entry_or_null | pick up next req                                             
+        |        +--------------------------+                                                              
+        |                                                                                                  
+        |------> return if nothing to do                                                                   
+ next chunk                                                                                                
+        |    +-------------------+                                                                         
+        +--> | ast_vhub_epn_kick | prepare buf, save addr to hw reg, label 'active' on req, and kick and hw
+             +-------------------+                                                                         
+```
+
+```
++-------------------+                                                                           
+| ast_vhub_epn_kick | : prepare buf, save addr to hw reg, label 'active' on req, and kick and hw
++----|--------------+                                                                           
+     |                                                                                          
+     |--> calculate chunk size                                                                  
+     |                                                                                          
+     |--> prepare buffer and write addr to hw register                                          
+     |                                                                                          
+     |--> label 'active' on req (packet on the fly)                                             
+     |                                                                                          
+     |    +--------+                                                                            
+     +--> | writel | kick the hw                                                                
+          +--------+                                                                            
+```
   
 ## <a name="reference"></a> Reference
 
