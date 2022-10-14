@@ -61,8 +61,8 @@
     |--> if the req isn't internal                                            
     |                                                                         
     |        +-----------------------------+                                  
-    +------> | usb_gadget_giveback_request | control led and call ->complete()
-             +-----------------------------+                                  
+    +------> | usb_gadget_giveback_request | control led and call ->complete(), e.g.,
+             +-----------------------------+ composite_setup_complete()
 ```
 
 ```
