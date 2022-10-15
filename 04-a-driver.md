@@ -146,7 +146,7 @@ truct gendisk {
     const struct block_device_operations *fops; // low-level device operations
     struct request_queue *queue;                // request queue
     void *private_data;                         // private data of driver
-}
+};
 ```
 
 ```c
@@ -155,7 +155,7 @@ struct request_queue {
     unsigned long       queue_flags;
     unsigned long       nr_requests;
     struct queue_limits limits;         // all kinds of limitations
-}
+};
 ```
 
 ```c
@@ -172,7 +172,79 @@ struct request {
     struct bio *biotail;                // points to the last bio in list
     struct list_head queuelist;         // list node, but rarely used
     unsigned short nr_phys_segments;    // number of segments in a request
-}
+};
+```
+
+```c
+struct bio {
+    struct bio      *bi_next;       // node in singly linked list
+    struct block_device *bi_bdev;   // points to the related block dev
+    bio_end_io_t        *bi_end_io; // called when transfer completes, so block layer can, e.g., wake up sleeping task
+    void            *bi_private;    // for driver-specific data
+    unsigned short      bi_vcnt;    // entry# in io vector
+    struct bio_vec      *bi_io_vec; // points to io vector
+};
+```
+
+```c
+struct bio_vec {
+    struct page *bv_page;       // points to the page used for data transfer
+    unsigned int    bv_len;     // specifies how many bytes in page are used if bv_offset is set
+    unsigned int    bv_offset;  // offset within the page, usually 0
+};
+```
+
+```
++------------+                                                                                             
+| submit_bio | : append bio to task or wrap as request and add to a queue
++--|---------+                                                                                             
+   |    +-------------------+                                                                              
+   +--> | submit_bio_noacct |                                                                              
+        +----|--------------+                                                                              
+             |                                                                                             
+             |--> if bio_list of current task is in use                                                    
+             |                                                                                             
+             |        +--------------+                                                                     
+             |------> | bio_list_add | append the bio to the bio_list                                      
+             |        +--------------+                                                                     
+             |                                                                                             
+             +------> return                                                                               
+             |                                                                                             
+             |--> if gendisk doesn't have ->submit_bio()                                                   
+             |                                                                                             
+             |        +------------------------+      +--------------+                                     
+             +------> | __submit_bio_noacct_mq | ---> | __submit_bio | prepare 'request' and add to a queue
+             |        +------------------------+      +--------------+                                     
+             |                                                                                             
+             |------> return                                                                               
+             |                                                                                             
+             |    +---------------------+      +--------------+                                            
+             +--> | __submit_bio_noacct | ---> | __submit_bio | prepare 'request' and add to a queue       
+                  +---------------------+      +--------------+                                            
+```
+
+```
++--------------+
+| __submit_bio | : prepare 'request' and add to a queue
++---|----------+
+    |
+    |--> if disk has ->submit_bio()
+    |
+    |        call ->submit_bio()
+    |
+    |        return
+    |
+    |    +-------------------+
+    +--> | blk_mq_submit_bio |
+         +----|--------------+
+              |    +------------------------+
+              |--> | __blk_mq_alloc_request | prepare 'request'
+              |    +------------------------+
+              |    +-------------+
+              |--> | blk_mq_plug | get plug from the current task
+              |    +-------------+
+              |
+              +--> add the 'request' to plug list or io scheduler queue
 ```
 
 ## <a name="device-tree"></a> Device Tree
