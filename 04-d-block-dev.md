@@ -119,58 +119,6 @@ The Block layer assumes the role of caching IO requests altogether, and it deliv
   <summary> Code trace </summary>
 
 ```
-+------------+                                                                                             
-| submit_bio | : append bio to task or wrap as request and add to a queue
-+--|---------+                                                                                             
-   |    +-------------------+                                                                              
-   +--> | submit_bio_noacct |                                                                              
-        +----|--------------+                                                                              
-             |                                                                                             
-             |--> if bio_list of current task is in use                                                    
-             |                                                                                             
-             |        +--------------+                                                                     
-             |------> | bio_list_add | append the bio to the bio_list                                      
-             |        +--------------+                                                                     
-             |                                                                                             
-             +------> return                                                                               
-             |                                                                                             
-             |--> if gendisk doesn't have ->submit_bio()                                                   
-             |                                                                                             
-             |        +------------------------+      +--------------+                                     
-             +------> | __submit_bio_noacct_mq | ---> | __submit_bio | prepare 'request' and add to a queue
-             |        +------------------------+      +--------------+                                     
-             |                                                                                             
-             |------> return                                                                               
-             |                                                                                             
-             |    +---------------------+      +--------------+                                            
-             +--> | __submit_bio_noacct | ---> | __submit_bio | prepare 'request' and add to a queue       
-                  +---------------------+      +--------------+                                            
-```
-
-```
-+--------------+
-| __submit_bio | : prepare 'request' and add to a queue
-+---|----------+
-    |
-    |--> if disk has ->submit_bio()
-    |
-    |        call ->submit_bio()
-    |
-    |        return
-    |
-    |    +-------------------+
-    +--> | blk_mq_submit_bio |
-         +----|--------------+
-              |    +------------------------+
-              |--> | __blk_mq_alloc_request | prepare 'request'
-              |    +------------------------+
-              |    +-------------+
-              |--> | blk_mq_plug | get plug from the current task
-              |    +-------------+
-              |
-              +--> add the 'request' to plug list or io scheduler queue
-```
-```
 +-----------------+                                                                                                         
 | blk_finish_plug | : for each entity in list, add to a queue (e.g., io scheduler queue or mtd queue)
 +----|------------+                                                                                                         
