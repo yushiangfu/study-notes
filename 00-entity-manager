@@ -153,6 +153,98 @@
         +--> save field location in arg                                                            
 ```
   
+```
++---------------+                                                                
+| formatIPMIFRU | : given fru, format (key, value) pairs and save in arg 'result'
++---|-----------+                                                                
+    |                                                                            
+    |--> for each fru area                                                       
+    |                                                                            
+    |        +--------------+                                                    
+    |------> | verifyOffset | (skip)                                             
+    |        +--------------+                                                    
+    |                                                                            
+    |------> switch area                                                         
+    |                                                                            
+    |------> case chassis                                                        
+    |                                                                            
+    |----------> set result["CHASSIS_TYPE"]                                      
+    |                                                                            
+    |----------> use 'chassisFruAreas' for field names                           
+    |                                                                            
+    |------> case board                                                          
+    |                                                                            
+    |----------> set result["BOARD_LANGUAGE_CODE"]                               
+    |                                                                            
+    |----------> set result["BOARD_MANUFACTURE_DATE"]                            
+    |                                                                            
+    |------> case product                                                        
+    |                                                                            
+    |----------> set result["PRODUCT_LANGUAGE_CODE"]                             
+    |                                                                            
+    |------> while decode state is ok                                            
+    |                                                                            
+    |            +---------------+                                               
+    |----------> | decodeFRUData | given type, decode fru data into string       
+    |            +---------------+                                               
+    |                                                                            
+    |----------> decide 'name'                                                   
+    |                                                                            
+    +----------> set result[name]                                                
+```
+
+```
++---------------+                                          
+| decodeFRUData | : given type, decode fru data into string
++---|-----------+                                          
+    |                                                      
+    |--> if iter reaches the end                           
+    |                                                      
+    |------> return pari(decode_state, string)             
+    |                                                      
+    |--> decode type and length                            
+    |                                                      
+    |--> switch type                                       
+    |                                                      
+    |--> case binary                                       
+    |                                                      
+    |------> prepare string                                
+    |                                                      
+    |--> case bcd plus                                     
+    |                                                      
+    |------> prepare string                                
+    |                                                      
+    |--> case six bit ascii                                
+    |                                                      
+    +------> prepare string                                
+```
+  
+```
++------------------+                                          
+| readBaseboardFRU | : read in "/etc/fru/baseboard.fru.bin"   
++----|-------------+                                          
+     |                                                        
+     |--> have an ifstream of "/etc/fru/baseboard.fru.bin"    
+     |                                                        
+     |--> prepare baseboardFRUFile (can't find its definition)
+     |                                                        
+     |--> if it's good (what's good?)                         
+     |                                                        
+     +------> read data to baseboardFRUFile                   
+```
+
+```
++-------------------+                                                                        
+| getI2cDevicePaths | : iterate target dir and add (bus, path) of i2c file to arg 'bus paths'
++----|--------------+                                                                        
+     |                                                                                       
+     |--> for each entry under arg 'dir path'                                                
+     |                                                                                       
+     |------> if it's a i2c device                                                           
+     |                                                                                       
+     +----------> add the (bus, path) to arg 'bus paths'                                     
+```
+  
 ## <a name="reference"></a> Reference
 
 (TBD)
