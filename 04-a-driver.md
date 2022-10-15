@@ -227,6 +227,9 @@ struct bio_vec {
 +--------------+
 | __submit_bio | : prepare 'request' and add to a queue
 +---|----------+
+    |    +-------------------+
+    +--> | submit_bio_checks | add offset to sector of partion, so it becomes disk-wise sector
+    |    +-------------------+
     |
     |--> if disk has ->submit_bio()
     |
@@ -245,6 +248,25 @@ struct bio_vec {
               |    +-------------+
               |
               +--> add the 'request' to plug list or io scheduler queue
+```
+
+```
++-------------------+                                                                                           
+| submit_bio_checks | : add offset to sector of partion, so it becomes disk-wise sector                         
++----|--------------+                                                                                           
+     |    +-------------+                                                                                       
+     |--> | blk_mq_plug | get current plug                                                                      
+     |    +-------------+                                                                                       
+     |                                                                                                          
+     |--> if bio isn't set 'remapped'                                                                           
+     |                                                                                                          
+     |------> if bdev is a partition                                                                            
+     |                                                                                                          
+     |            +---------------------+                                                                       
+     |----------> | blk_partition_remap | adjust the partition-wise offset to disk-wise offset, label 'remapped'
+     |            +---------------------+                                                                       
+     |                                                                                                          
+     +--> perform a few other checks                                                                            
 ```
 
 ## <a name="device-tree"></a> Device Tree
