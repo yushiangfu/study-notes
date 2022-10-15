@@ -136,6 +136,22 @@
      +--> | sd_jounal_send |                           
           +----------------+                           
 ```
+
+```
++-----------------------------+                                                                    
+| findFruAreaLocationAndField | : given property name, find the outer fru area and save info in arg
++-------|---------------------+                                                                    
+        |                                                                                          
+        |--> given area, determine offset and field names                                          
+        |                                                                                          
+        |--> set up params for fru-area                                                            
+        |                                                                                          
+        |--> for each item in field-names                                                          
+        |                                                                                          
+        |------> break if arg property if found                                                    
+        |                                                                                          
+        +--> save field location in arg                                                            
+```
   
 ## <a name="reference"></a> Reference
 
