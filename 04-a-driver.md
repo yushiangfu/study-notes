@@ -269,6 +269,12 @@ struct bio_vec {
      +--> perform a few other checks                                                                            
 ```
 
+```c
+struct task_struct {
+    struct bio_list         *bio_list;
+};
+```
+
 ## <a name="device-tree"></a> Device Tree
 
 Device tree source (DTS) is the text file describing the list of devices of the SoC and gets compiled into Device tree blob (DTB). 
