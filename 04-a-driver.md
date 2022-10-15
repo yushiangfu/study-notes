@@ -16,7 +16,7 @@
 
 ## <a name="character-device"></a> Character File
 
-```
+```c
 struct inode {
     umode_t         i_mode;                     // file type: char or block
     dev_t           i_rdev;                     // dev#
@@ -33,7 +33,7 @@ struct inode {
 }
 ```
 
-```
+```c
 const struct file_operations def_chr_fops = {
     .open = chrdev_open,
     .llseek = noop_llseek,
@@ -63,7 +63,7 @@ const struct file_operations def_chr_fops = {
          +--------------+                               
 ```
 
-```
+```c
 struct cdev {
     struct kobject kobj;
     struct module *owner;               // points to module if there's any
@@ -76,7 +76,7 @@ struct cdev {
 
 ## <a name="block-device"></a> Block File
 
-```
+```c
 const struct file_operations def_blk_fops = { 
     .open       = blkdev_open,
     .release    = blkdev_close,
@@ -120,14 +120,14 @@ const struct file_operations def_blk_fops = {
     +--> assign bdev mapping to file                             
 ```
 
-```
+```c
 struct bdev_inode {
     struct block_device bdev;   // all inodes that represent the block device are kept here
     struct inode vfs_inode;
 };
 ```
 
-```
+```c
 struct block_device {
     dev_t           bd_dev;                 // dev#
     int         bd_openers;                 // acount for how often the bdev is opened
@@ -136,7 +136,7 @@ struct block_device {
 } __randomize_layout;
 ```
 
-```
+```c
 truct gendisk {
     int major;                                  // self explained
     int first_minor;                            // self explained
@@ -149,7 +149,7 @@ truct gendisk {
 }
 ```
 
-```
+```c
 struct request_queue {
     struct elevator_queue   *elevator;  // points to io scheduler
     unsigned long       queue_flags;
@@ -158,11 +158,21 @@ struct request_queue {
 }
 ```
 
-```
+```c
 struct queue_limits {
     unsigned int        max_sectors;            // max sectors the device can handle in one request
     unsigned int        max_segment_size;       // max segment size in one request
 };
+```
+
+```c
+struct request {
+    struct request_queue *q;            // points to the queue
+    struct bio *bio;                    // points to the transferring bio
+    struct bio *biotail;                // points to the last bio in list
+    struct list_head queuelist;         // list node, but rarely used
+    unsigned short nr_phys_segments;    // number of segments in a request
+}
 ```
 
 ## <a name="device-tree"></a> Device Tree
