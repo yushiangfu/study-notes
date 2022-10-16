@@ -275,6 +275,51 @@ struct task_struct {
 };
 ```
 
+```c
+struct elevator_mq_ops {
+    int (*init_sched)(struct request_queue *, struct elevator_type *); 
+    void (*exit_sched)(struct elevator_queue *); 
+    int (*init_hctx)(struct blk_mq_hw_ctx *, unsigned int);
+    void (*exit_hctx)(struct blk_mq_hw_ctx *, unsigned int);
+    void (*depth_updated)(struct blk_mq_hw_ctx *); 
+
+    bool (*allow_merge)(struct request_queue *, struct request *, struct bio *); 
+    bool (*bio_merge)(struct request_queue *, struct bio *, unsigned int);
+    int (*request_merge)(struct request_queue *q, struct request **, struct bio *); 
+    void (*request_merged)(struct request_queue *, struct request *, enum elv_merge);
+    void (*requests_merged)(struct request_queue *, struct request *, struct request *); 
+    void (*limit_depth)(unsigned int, struct blk_mq_alloc_data *); 
+    void (*prepare_request)(struct request *); 
+    void (*finish_request)(struct request *); 
+    void (*insert_requests)(struct blk_mq_hw_ctx *, struct list_head *, bool);
+    struct request *(*dispatch_request)(struct blk_mq_hw_ctx *); 
+    bool (*has_work)(struct blk_mq_hw_ctx *); 
+    void (*completed_request)(struct request *, u64);
+    void (*requeue_request)(struct request *); 
+    struct request *(*former_request)(struct request_queue *, struct request *); 
+    struct request *(*next_request)(struct request_queue *, struct request *); 
+    void (*init_icq)(struct io_cq *); 
+    void (*exit_icq)(struct io_cq *); 
+};
+```
+
+```c
+struct elevator_type
+{
+    struct kmem_cache *icq_cache;
+    struct elevator_mq_ops ops;
+    size_t icq_size;
+    size_t icq_align;
+    struct elv_fs_entry *elevator_attrs;    // attributes shown in sysfs
+    const char *elevator_name;              // identifer for users to select
+    const char *elevator_alias;
+    const unsigned int elevator_features;
+    struct module *elevator_owner;
+    char icq_cache_name[ELV_NAME_MAX + 6];
+    struct list_head list;                  // doubly linked list node
+};
+```
+
 ## <a name="device-tree"></a> Device Tree
 
 Device tree source (DTS) is the text file describing the list of devices of the SoC and gets compiled into Device tree blob (DTB). 
@@ -554,6 +599,17 @@ static struct char_device_struct {
                        +---------------+                                                                                     
 ```
 
+```
+struct resource {
+    resource_size_t start;  // start addr or irq
+    resource_size_t end;    // end addr or irq
+    const char *name;       // displays in /proc
+    unsigned long flags;    // e.g., indicate the resource type
+    unsigned long desc;
+    struct resource *parent, *sibling, *child;  // hierarchy
+};
+```
+
 The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
 The rest is similar to the driver registration.
 It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
@@ -697,6 +753,7 @@ ls -l /sys/dev/block
 cat /proc/partitions
 ls -l /dev
 /sys/block
+cat /proc/iomem
 ```
 
 ## <a name="reference"></a> Reference
