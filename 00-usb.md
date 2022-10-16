@@ -529,6 +529,190 @@
     +--> print "Initialized virtual hub in USB%d mode\n"                                        
 ```
   
+```
++-------------------+
+| ast_vhub_init_dev | : prepare vhub/endpoints/port/gadget, add devices
++----|--------------+
+     |
+     |--> set up 'vhub dev'
+     |
+     |    +-------------------+
+     |--> | ast_vhub_init_ep0 | (so each device also has an ep0?)
+     |    +-------------------+
+     |    +---------+
+     |--> | kcalloc | alloc that many endpoints beside ep0 (at most 30)
+     |    +---------+
+     |    +---------+
+     |--> | kzalloc | alloc device for port
+     |    +---------+
+     |    +--------------+
+     |--> | dev_set_name |
+     |    +--------------+
+     |    +------------+
+     |--> | device_add |
+     |    +------------+
+     |
+     +--> set up gadget and install 'ast_vhub_udc_ops' (udc for usb device controller)
+     |
+     |    +--------------------+
+     +--> | usb_add_gadget_udc | init gadget, prepare udc, add devices respectively, try binding udc to driver
+     |    +--------------------+
+     |
+     +--> label 'registered' on 'vhub dev'
+```
+
+```
++--------------------+                                                                                                  
+| usb_add_gadget_udc | : init gadget, prepare udc, add devices respectively, try binding udc to driver                  
++----|---------------+                                                                                                  
+     |    +----------------------------+                                                                                
+     +--> | usb_add_gadget_udc_release | : init gadget, prepare udc, add devices respectively, try binding udc to driver
+          +------|---------------------+                                                                                
+                 |    +-----------------------+                                                                         
+                 |--> | usb_initialize_gadget | set name, init work                                                     
+                 |    +-----------------------+                                                                         
+                 |    +----------------+                                                                                
+                 +--> | usb_add_gadget | prepare udc, add two devices (gadge/udc), try binding udc to driver            
+                      +----------------+                                                                                
+```
+
+```
++----------------+                                                                      
+| usb_add_gadget | : prepare udc, add two devices (gadge/udc), try binding udc to driver
++---|------------+                                                                      
+    |                                                                                   
+    |--> alloc udc                                                                      
+    |                                                                                   
+    |--> set up udc                                                                     
+    |                                                                                   
+    |    +------------+                                                                 
+    |--> | device_add | add gadget                                                      
+    |    +------------+                                                                 
+    |                                                                                   
+    |--> relate udc and gadget                                                          
+    |                                                                                   
+    |    +---------------+                                                              
+    |--> | list_add_tail | add udc to 'udc_list'                                        
+    |    +---------------+                                                              
+    |    +------------+                                                                 
+    |--> | device_add | add udc                                                         
+    |    +------------+                                                                 
+    |    +----------------------+                                                       
+    |--> | usb_gadget_set_state | set state 'not attached', schedule gadget work        
+    |    +----------------------+                                                       
+    |    +------------------------------+                                               
+    +--> | check_pending_gadget_drivers | for each driver in list, try binding udc to it
+         +------------------------------+                                               
+```
+
+```
++------------------------------+                                                             
+| check_pending_gadget_drivers | ： for each driver in list, try binding udc to it            
++-------|----------------------+                                                             
+        |                                                                                    
+        |--> for each driver on 'gadget_driver_pending_list'                                 
+        |                                                                                    
+        |------> if match                                                                    
+        |                                                                                    
+        |            +--------------------+                                                  
+        |----------> | udc_bind_to_driver | relate udc/driver, set gadget speed and start udc
+        |            +--------------------+                                                  
+        |        +---------------+                                                           
+        +------> | list_del_init | remove driver from the pending list                       
+                 +---------------+                                                           
+```
+
+```
++--------------------+                                                                                     
+| udc_bind_to_driver | : relate udc/driver, set gadget speed and start udc                                 
++----|---------------+                                                                                     
+     |                                                                                                     
+     |--> save driver info in udc                                                                          
+     |                                                                                                     
+     |    +--------------------------+                                                                     
+     |--> | usb_gadget_udc_set_speed | call gadget ops to set speed                                        
+     |    +--------------------------+                                                                     
+     |                                                                                                     
+     |--> call driver->bind()                                                                              
+     |                                                                                                     
+     |    +----------------------+                                                                         
+     |--> | usb_gadget_udc_start | call gadget's ->udc_start()                                             
+     |    +----------------------+                                                                         
+     |    +-----------------------------------+                                                            
+     |--> | usb_gadget_enable_async_callbacks | call gadget's ->udc_async_callbacks() if it exists         
+     |    +-----------------------------------+                                                            
+     |    +-------------------------+                                                                      
+     +--> | usb_udc_connect_control | let gadget connect to host if 'udc vbus' exists, otherwise disconnect
+          +-------------------------+                                                                      
+```
+
+```
++-------------------+                                                     
+| ast_vhub_init_hub | : init vhub's work and descriptors                  
++----|--------------+                                                     
+     |    +-----------+                                                   
+     |--> | INIT_WORK | ast_vhub_wake_work: resume each port, wake up host
+     |    +-----------+                                                   
+     |    +--------------------+                                          
+     +--> | ast_vhub_init_desc | init descriptors of vhub                 
+          +--------------------+                                          
+```
+
+```
++--------------------+                                              
+| ast_vhub_wake_work | : resume each port, wake up host             
++----|---------------+                                              
+     |                                                              
+     |--> for each port in vhub                                     
+     |                                                              
+     |------> ensure the port is in 'suspend' status                
+     |                                                              
+     |        +---------------------+                               
+     |------> | ast_vhub_dev_resume | call vhub driver->resume()    
+     |        +---------------------+                               
+     |    +---------------------------+                             
+     +--> | ast_vhub_send_host_wakeup | write hw reg to wake up host
+          +---------------------------+                             
+```
+  
+```
++--------------------+                           
+| ast_vhub_init_desc | : init descriptors of vhub
++----|---------------+                           
+     |                                           
+     |--> init vhub dev descriptor               
+     |                                           
+     |--> init vhub config descriptor            
+     |                                           
+     |--> init vhub hub descriptor               
+     |                                           
+     +--> init vhub string descriptor            
+```
+
+```
++------------------+                                         
+| ast_vhub_init_hw | : init hw                               
++----|-------------+                                         
+     |                                                       
+     |--> enable phy                                         
+     |                                                       
+     |--> set descriptor ring size                           
+     |                                                       
+     |--> reset all devices                                  
+     |                                                       
+     |--> disable and clean up ack/nack interrupts           
+     |                                                       
+     |--> have default setting for ep0, enable hw hub for ep1
+     |                                                       
+     |--> configure ep0 dma buffer                           
+     |                                                       
+     |--> clear address                                      
+     |                                                       
+     |--> pull up hub (the effect of insertion?)             
+     |                                                       
+     +--> enable some interrupts                             
+```
+  
 ## <a name="reference"></a> Reference
 
 - [T. Petazzoni, Using USB gadget drivers](https://bootlin.com/doc/legacy/usb-gadget/usb_gadget_drivers.pdf)
