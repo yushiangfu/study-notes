@@ -634,6 +634,19 @@ struct device_driver {
 };
 ```
 
+```c
+struct bus_type {
+    const char      *name;                                  // name shown in /sys
+    int (*match)(struct device *dev, struct device_driver *drv);    // attempt to find the matching driver for a given device
+    int (*probe)(struct device *dev);                       // link driver and device
+    void (*remove)(struct device *dev);                     // remove the unlink between driver and device
+    void (*shutdown)(struct device *dev);                   // power management operation
+    int (*suspend)(struct device *dev, pm_message_t state); // power management operation
+    int (*resume)(struct device *dev);                      // power management operation
+    struct subsys_private *p;                               // list heads for both drivers and devices
+};
+```
+
 The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
 The rest is similar to the driver registration.
 It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
@@ -780,6 +793,7 @@ cat /proc/partitions
 ls -l /dev
 /sys/block
 cat /proc/iomem
+ls /sys/bus
 ```
 
 ## <a name="reference"></a> Reference
