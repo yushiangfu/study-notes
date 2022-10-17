@@ -10,6 +10,43 @@
 ### entity-manager
 
 ```
+entity_manager.cpp
++------+
+| main |
++-|----+
+  |
+  |--> ->request_name("xyz.openbmc_project.EntityManager")
+  |
+  |--> .add_manager("/xyz/openbmc_project/inventory")
+  |
+  |--> .add_interface("/xyz/openbmc_project/EntityManager", "xyz.openbmc_project.EntityManager")
+  |
+  |--> prepare callback for 'name owner change match'
+  |       +---------------------------------------------------------+
+  |       |+---------------------------+                            |
+  |       || propertiesChangedCallback | callback of property change|
+  |       |+---------------------------+                            |
+  |       +---------------------------------------------------------+
+  |
+  |--> do the same for 'interface added match', 'interfaces remove match'
+  |
+  |--> io.post()
+  |
+  |--> ->register_method('rescan')
+  |       +---------------------------------------------------------+
+  |       |+---------------------------+                            |
+  |       || propertiesChangedCallback | callback of property change|
+  |       |+---------------------------+                            |
+  |       +---------------------------------------------------------+
+  |
+  |    +-----------------+
+  |--> | setupPowerMatch |
+  |    +-----------------+
+  |
+  +--> io.run()
+```
+
+```
 +---------------------------+                                                           
 | propertiesChangedCallback | : callback of property change                             
 +------|--------------------+                                                           
@@ -126,7 +163,7 @@
 ### fru-device
 
 ```
-FruDevice.cpp
+fru_device.cpp
 +------+
 | main |
 +-|----+
