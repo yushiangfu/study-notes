@@ -148,19 +148,12 @@ FruDevice.cpp
   |      |+--------------+                                          |
   |      +----------------------------------------------------------+
   |
-  |--> ->register_method() * n, for 'resan bus', 'get raw fru', 'write fru'
+  |--> ->register_method() * n, for 'rescan bus', 'get raw fru', 'write fru'
   |
   |-->  prepare event handler
   |        +--------------------------+
   |        |rescan busses if power on |
   |        +--------------------------+
-  |
-  |-->  register the handler to dbus?
-  |
-  |-->  prepare event handler
-  |        +------------------------+
-  |        |update backup prod name |
-  |        +------------------------+
   |
   |-->  register the handler to dbus?
   |
@@ -173,11 +166,9 @@ FruDevice.cpp
   |
   |--> register the monitor callback?
   |
-  |--> if power is on now
-  |
-  |        +--------------+
-  |------> | rescanBusses | scan i2c busses and register fru to dbus
-  |        +--------------+
+  |    +--------------+
+  |--> | rescanBusses | scan i2c busses and register fru to dbus
+  |    +--------------+
   +--> io.run()
 ```
 
@@ -289,18 +280,14 @@ FruDevice.cpp
      |                                                                                    
      |------> if it's 'asset tag'                                                         
      |                                                                                    
-     |---------->   ->register_property                                                   
+     |----------> call ->register_property()
      |                                                                                    
      |                +------------------------------------------------------------------+
      |                |+-------------------+                                             |
      |                || updateFRUProperty | update fru property, write back to somewhere|
      |                |+-------------------+                                             |
      |                +------------------------------------------------------------------+
-     |                                                                                    
-     +------> elif it's 'info_am1' or 'info_am2'                                          
-     |                                                                                    
-     |              ->register_property                                                   
-     |                                                                                    
+     |                                                                    
      |--> ->register_property (bus)                                                       
      |                                                                                    
      +--> ->register_property (addr)                                                      
@@ -353,7 +340,7 @@ FruDevice.cpp
     |                                                      
     |--> if iter reaches the end                           
     |                                                      
-    |------> return pari(decode_state, string)             
+    |------> return pair(decode_state, string)             
     |                                                      
     |--> decode type and length                            
     |                                                      
@@ -361,7 +348,11 @@ FruDevice.cpp
     |                                                      
     |--> case binary                                       
     |                                                      
-    |------> prepare string                                
+    |------> prepare string   
+    |
+    |--> case language dependent
+    |                                                      
+    |------> shift iter
     |                                                      
     |--> case bcd plus                                     
     |                                                      
@@ -379,10 +370,7 @@ FruDevice.cpp
      |    +------------+                                                                                   
      |--> | getFRUInfo | given (bus, addr), get fru info from map                                          
      |    +------------+                                                                                   
-     |    +-----------------------------+                                                                  
-     |--> | findFruAreaLocationAndField | given property name, find the outer fru area and save info in arg
-     |    +-----------------------------+                                                                  
-     |                                                                                                     
+     |                                                                                    
      |--> write len and data of requested property                                                         
      |                                                         ENABLE_FRU_AREA_RESIZE isn't defined        
      |--> copy remaining data to main fru area                                                             
@@ -399,40 +387,18 @@ FruDevice.cpp
 ```
 
 ```
-+-----------------------------+                                                                    
-| findFruAreaLocationAndField | : given property name, find the outer fru area and save info in arg
-+-------|---------------------+                                                                    
-        |                                                                                          
-        |--> given area, determine offset and field names                                          
-        |                                                                                          
-        |--> set up params for fru-area                                                            
-        |                                                                                          
-        |--> for each item in field-names                                                          
-        |                                                                                          
-        |------> break if arg property if found                                                    
-        |                                                                                          
-        +--> save field location in arg                                                            
-```
-
-```
 +----------+                                                                      
 | writeFRU |  : given (bus, addr), write fru data accordingly                     
 +--|-------+                                                                      
-   |    +-----------+                                                             
-   |--> | formatFRU | verify if fru format is valid                               
-   |    +-----------+                                                             
+   |    +---------------+                                                             
+   |--> | formatIPMIFRU | verify if fru format is valid by parsing it
+   |    +---------------+                                                             
    |                                                                              
    |--> if bus is 0 && addr is 0 (baseboard fru)                                  
    |                                                                              
-   |------> write data to "/var/.smci/fru/baseboard.fru.bin"                      
+   |------> write data to "/etc/fru/baseboard.fru.bin"                      
    |                                                                              
    +------> return                                                                
-   |                                                                              
-   |--> if bus is 1 && addr is 0 (backup fru)                                     
-   |                                                                              
-   +------> write data to "/var/.smci/fru/backup.fru.bin"                         
-   |                                                                              
-   |------> return                                                                
    |                                                                              
    |--> if that (bus, addr) has a eeprom                                          
    |                                                                              
