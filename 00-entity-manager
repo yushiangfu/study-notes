@@ -7,6 +7,8 @@
 
 (TBD)
 
+### entity-manager
+
 ```
 +---------------------------+                                                           
 | propertiesChangedCallback | : callback of property change                             
@@ -77,22 +79,6 @@
 ```
 
 ```
-+-----------+                                             
-| findFiles | : find matched file path and add to arg list
-+--|--------+                                             
-   |                                                      
-   |--> for each dir in arg                               
-   |                                                      
-   |------> for each file in dir                          
-   |                                                      
-   |----------> if match, add file path to local map      
-   |                                                      
-   |--> for each (key, value) in map                      
-   |                                                      
-   +------> add to arg 'found paths'                      
-```
-
-```
 +--------------------+                                                          
 | pruneConfiguration | : release configuration                                  
 +----|---------------+                                                          
@@ -137,22 +123,189 @@
           +----------------+                           
 ```
 
+### fru-device
+
 ```
-+-----------------------------+                                                                    
-| findFruAreaLocationAndField | : given property name, find the outer fru area and save info in arg
-+-------|---------------------+                                                                    
-        |                                                                                          
-        |--> given area, determine offset and field names                                          
-        |                                                                                          
-        |--> set up params for fru-area                                                            
-        |                                                                                          
-        |--> for each item in field-names                                                          
-        |                                                                                          
-        |------> break if arg property if found                                                    
-        |                                                                                          
-        +--> save field location in arg                                                            
+FruDevice.cpp
++------+
+| main |
++-|----+
+  |    +-----------+
+  |--> | findFiles | find matched file path (i2c devices) and add to arg list
+  |    +-----------+
+  |    +---------------+
+  |--> | loadBlacklist | (skip)
+  |    +---------------+
+  |
+  |--> ->request_name   service "xyz.openbmc_project.FruDevice"
+  |
+  |--> .add_interface   add interface "xyz.openbmc_project.FruDeviceManager" to obj "/xyz/openbmc_project/FruDevice"
+  |
+  |--> ->register_method() for 'rescan'
+  |      +----------------------------------------------------------+
+  |      |+--------------+                                          |
+  |      || rescanBusses | scan i2c busses and register fru to dbus |
+  |      |+--------------+                                          |
+  |      +----------------------------------------------------------+
+  |
+  |--> ->register_method() * n, for 'resan bus', 'get raw fru', 'write fru'
+  |
+  |-->  prepare event handler
+  |        +--------------------------+
+  |        |rescan busses if power on |
+  |        +--------------------------+
+  |
+  |-->  register the handler to dbus?
+  |
+  |-->  prepare event handler
+  |        +------------------------+
+  |        |update backup prod name |
+  |        +------------------------+
+  |
+  |-->  register the handler to dbus?
+  |
+  |-->  prepare monitor for new i2c dev
+  |        +----------------+
+  |        |+--------------+|
+  |        || rescanOneBus ||
+  |        |+--------------+|
+  |        +----------------+
+  |
+  |--> register the monitor callback?
+  |
+  |--> if power is on now
+  |
+  |        +--------------+
+  |------> | rescanBusses | scan i2c busses and register fru to dbus
+  |        +--------------+
+  +--> io.run()
 ```
-  
+
+```
++-----------+                                             
+| findFiles | : find matched file path and add to arg list
++--|--------+                                             
+   |                                                      
+   |--> for each dir in arg                               
+   |                                                      
+   |------> for each file in dir                          
+   |                                                      
+   |----------> if match, add file path to local map      
+   |                                                      
+   |--> for each (key, value) in map                      
+   |                                                      
+   +------> add to arg 'found paths'                      
+```
+
+```
++--------------+
+| rescanBusses | : scan i2c busses and register fru to dbus
++---|----------+
+    |
+    |--> set 1-second expirationfor the timer
+    |
+    |    +-------------+
+    +--> | .async_wait |
+         +-------------+
+             +-------------------------------------------------------------------------------------------+
+             |+-------------------+                                                                      |
+             || getI2cDevicePaths | iterate target dir and add (bus, path) of i2c file to arg 'bus paths'|
+             |+-------------------+                                                                      |
+             |                                                                                           |
+             |for each path in 'bus paths': add to local 'i2c buses'                                     |
+             |                                                                                           |
+             |clear global 'found devices'                                                               |
+             |                                                                                           |
+             |prepare 'find devices with callback'                                                       |
+             |   +--------------------------------------------------------------+                        |
+             |   |+------------------+                                          |                        |
+             |   || readBaseboardFRU | read in "/etc/fru/baseboard.fru.bin"     |                        |
+             |   |+------------------+                                          |                        |
+             |   |                                                              |                        |
+             |   |for each device map in bus map                                |                        |
+             |   |                                                              |                        |
+             |   +--> for each device in device map                             |                        |
+             |   |                                                              |                        |
+             |   |        +--------------------+                                |                        |
+             |   +------> | addFruObjectToDbus | register fru properties to dbus|                        |
+             |   |        +--------------------+                                |                        |
+             |   +--------------------------------------------------------------+                        |
+             |                                                                                           |
+             |->run()                                                                                    |
+             +-------------------------------------------------------------------------------------------+
+```
+
+```
++-------------------+                                                                        
+| getI2cDevicePaths | : iterate target dir and add (bus, path) of i2c file to arg 'bus paths'
++----|--------------+                                                                        
+     |                                                                                       
+     |--> for each entry under arg 'dir path'                                                
+     |                                                                                       
+     |------> if it's a i2c device                                                           
+     |                                                                                       
+     +----------> add the (bus, path) to arg 'bus paths'                                     
+```
+
+```
++------------------+                                          
+| readBaseboardFRU | : read in "/etc/fru/baseboard.fru.bin"   
++----|-------------+                                          
+     |                                                        
+     |--> have an ifstream of "/etc/fru/baseboard.fru.bin"    
+     |                                                        
+     |--> prepare baseboardFRUFile (can't find its definition)
+     |                                                        
+     |--> if it's good (what's good?)                         
+     |                                                        
+     +------> read data to baseboardFRUFile                   
+```
+
+```
++--------------------+                                                                    
+| addFruObjectToDbus | : register fru properties to dbus                                  
++----|---------------+                                                                    
+     |    +---------------+                                                               
+     |--> | formatIPMIFRU | given fru, format (key, value) pairs and save in arg 'result' 
+     |    +---------------+                                                               
+     |                                                                                    
+     |--> decide 'product name'                                                           
+     |                                                                                    
+     |--> for each bus-map in dbus-interface-map                                          
+     |                                                                                    
+     |------> if it's a mux                                                               
+     |                                                                                    
+     |----------> return if the device is already added                                   
+     |                                                                                    
+     |------> found = true, continue to see if there's higher match                       
+     |                                                                                    
+     |--> if found                                                                        
+     |                                                                                    
+     |------> add suffix to 'product name'                                                
+     |                                                                                    
+     |--> map[(bus, addr)] = interface                                                    
+     |                                                                                    
+     |--> for each property in formatted-fru                                              
+     |                                                                                    
+     |------> if it's 'asset tag'                                                         
+     |                                                                                    
+     |---------->   ->register_property                                                   
+     |                                                                                    
+     |                +------------------------------------------------------------------+
+     |                |+-------------------+                                             |
+     |                || updateFRUProperty | update fru property, write back to somewhere|
+     |                |+-------------------+                                             |
+     |                +------------------------------------------------------------------+
+     |                                                                                    
+     +------> elif it's 'info_am1' or 'info_am2'                                          
+     |                                                                                    
+     |              ->register_property                                                   
+     |                                                                                    
+     |--> ->register_property (bus)                                                       
+     |                                                                                    
+     +--> ->register_property (addr)                                                      
+```
+
 ```
 +---------------+                                                                
 | formatIPMIFRU | : given fru, format (key, value) pairs and save in arg 'result'
@@ -218,33 +371,89 @@
     |                                                      
     +------> prepare string                                
 ```
-  
+
 ```
-+------------------+                                          
-| readBaseboardFRU | : read in "/etc/fru/baseboard.fru.bin"   
-+----|-------------+                                          
-     |                                                        
-     |--> have an ifstream of "/etc/fru/baseboard.fru.bin"    
-     |                                                        
-     |--> prepare baseboardFRUFile (can't find its definition)
-     |                                                        
-     |--> if it's good (what's good?)                         
-     |                                                        
-     +------> read data to baseboardFRUFile                   
++-------------------+                                                                                      
+| updateFRUProperty | : update fru property, write back to somewhere                                       
++----|--------------+                                                                                      
+     |    +------------+                                                                                   
+     |--> | getFRUInfo | given (bus, addr), get fru info from map                                          
+     |    +------------+                                                                                   
+     |    +-----------------------------+                                                                  
+     |--> | findFruAreaLocationAndField | given property name, find the outer fru area and save info in arg
+     |    +-----------------------------+                                                                  
+     |                                                                                                     
+     |--> write len and data of requested property                                                         
+     |                                                         ENABLE_FRU_AREA_RESIZE isn't defined        
+     |--> copy remaining data to main fru area                                                             
+     |                                                                                                     
+     |    +-----------------------------+                                                                  
+     |--> | updateFRUAreaLenAndChecksum | update the final area len and csum                               
+     |    +-----------------------------+                                                                  
+     |    +----------+                                                                                     
+     |--> | writeFRU | given (bus, addr), write fru data accordingly                                       
+     |    +----------+                                                                                     
+     |    +--------------+                                                                                 
+     +--> | rescanBusses | recursive?                                                                      
+          +--------------+                                                                                 
 ```
 
 ```
-+-------------------+                                                                        
-| getI2cDevicePaths | : iterate target dir and add (bus, path) of i2c file to arg 'bus paths'
-+----|--------------+                                                                        
-     |                                                                                       
-     |--> for each entry under arg 'dir path'                                                
-     |                                                                                       
-     |------> if it's a i2c device                                                           
-     |                                                                                       
-     +----------> add the (bus, path) to arg 'bus paths'                                     
++-----------------------------+                                                                    
+| findFruAreaLocationAndField | : given property name, find the outer fru area and save info in arg
++-------|---------------------+                                                                    
+        |                                                                                          
+        |--> given area, determine offset and field names                                          
+        |                                                                                          
+        |--> set up params for fru-area                                                            
+        |                                                                                          
+        |--> for each item in field-names                                                          
+        |                                                                                          
+        |------> break if arg property if found                                                    
+        |                                                                                          
+        +--> save field location in arg                                                            
 ```
-  
+
+```
++----------+                                                                      
+| writeFRU |  : given (bus, addr), write fru data accordingly                     
++--|-------+                                                                      
+   |    +-----------+                                                             
+   |--> | formatFRU | verify if fru format is valid                               
+   |    +-----------+                                                             
+   |                                                                              
+   |--> if bus is 0 && addr is 0 (baseboard fru)                                  
+   |                                                                              
+   |------> write data to "/var/.smci/fru/baseboard.fru.bin"                      
+   |                                                                              
+   +------> return                                                                
+   |                                                                              
+   |--> if bus is 1 && addr is 0 (backup fru)                                     
+   |                                                                              
+   +------> write data to "/var/.smci/fru/backup.fru.bin"                         
+   |                                                                              
+   |------> return                                                                
+   |                                                                              
+   |--> if that (bus, addr) has a eeprom                                          
+   |                                                                              
+   |------> write fru to it                                                       
+   |                                                                              
+   +------> return                                                                
+   |                                                                              
+   |    +-------+                                                                 
+   |--> | ioctl | set slave                                                       
+   |    +-------+                                                                 
+   |                                                                              
+   |--> while the write hans't completed yet                                      
+   |                                                                              
+   |        +-------+                                                             
+   |------> | ioctl | set slave                                                   
+   |        +-------+                                                             
+   |        +---------------------------+                                         
+   +------> | i2c_smbus_write_byte_data | write data to slave through i2c protocol
+            +---------------------------+                                         
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
