@@ -599,7 +599,7 @@ static struct char_device_struct {
                        +---------------+                                                                                     
 ```
 
-```
+```c
 struct resource {
     resource_size_t start;  // start addr or irq
     resource_size_t end;    // end addr or irq
@@ -607,6 +607,30 @@ struct resource {
     unsigned long flags;    // e.g., indicate the resource type
     unsigned long desc;
     struct resource *parent, *sibling, *child;  // hierarchy
+};
+```
+
+```c
+struct device {
+    struct device       *parent;            // points to parent device
+    struct kobject kobj;                    // generic kobject framework
+    struct bus_type *bus;                   // points to the bus where the device belongs to
+    truct device_driver *driver;            // points to the corresponding driver
+    void        *platform_data;             // private to platform code
+    void        *driver_data;               // private to driver code
+    void    (*release)(struct device *dev); // release resource to kernel
+};
+```
+
+```c
+struct device_driver {
+    const char      *name;                  // driver identifier
+    struct bus_type     *bus;               // points to the bus where the driver belongs to
+    int (*probe) (struct device *dev);      // check if the driver can be applied to arg device
+    int (*remove) (struct device *dev);     // call when device is removed 
+    void (*shutdown) (struct device *dev);  // power management related
+    int (*suspend) (struct device *dev, pm_message_t state);    // power management related
+    int (*resume) (struct device *dev);     // power management related
 };
 ```
 
@@ -744,6 +768,8 @@ Code flow:
             prepare chip
         
 ```
+                                                   
+</details>
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
@@ -760,4 +786,4 @@ cat /proc/iomem
 
 - W. Mauerer, Professional Linux Kernel Architecture
     
-</details>
+
