@@ -222,7 +222,7 @@ FruDevice.cpp
              |   |        +--------------------+                                |                        |
              |   +--------------------------------------------------------------+                        |
              |                                                                                           |
-             |->run()                                                                                    |
+             |->run(), it calls findI2CDevices()                                                           |
              +-------------------------------------------------------------------------------------------+
 ```
 
@@ -418,6 +418,72 @@ FruDevice.cpp
    |        +---------------------------+                                         
    +------> | i2c_smbus_write_byte_data | write data to slave through i2c protocol
             +---------------------------+                                         
+```
+
+```
++----------------+                                                                
+| findI2CDevices | : given bus range and addr range, try read fru from each slave 
++---|------------+                                                                
+    |                                                                             
+    |--> for each bus in arg 'buses'                                              
+    |                                                                             
+    |        +------------+                                                       
+    |------> | getRootBus | get root adapter                                      
+    |        +------------+                                                       
+    |                                                                             
+    |------> continue if the root bus is in blacklist                             
+    |                                                                             
+    |        +------------+                                                       
+    +------> | getBusFRUs | given bus and addr range, try read fru from each slave
+             +------------+                                                       
+```
+
+```
++------------+                                                                
+| getBusFRUs | : given bus and addr range, try read fru from each slave       
++--|---------+                                                                
+   |                                                                          
+   |--> prepare function 'future'                                             
+   |       +-----------------------------------------------------------------+
+   |       |+----------------+                                               |
+   |       || findI2CEeproms | （skip)                                        |
+   |       |+----------------+                                               |
+   |       |                                                                 |
+   |       |for each slave in range [first, last]                            |
+   |       |                                                                 |
+   |       |    +-------+                                                    |
+   |       +--> | ioctl | set slave                                          |
+   |       |    +-------+                                                    |
+   |       |    +---------------------+                                      |
+   |       +--> | i2c_smbus_read_byte | probe                                |
+   |       |    +---------------------+                                      |
+   |       |    +--------------------+                                       |
+   |       +--> | makeProbeInterface | for (bus, addr), add interface to dbus|
+   |       |    +--------------------+                                       |
+   |       |    +-----------------+                                          |
+   |       +--> | readFRUContents | read fru contents                        |
+   |       |    +-----------------+                                          |
+   |       +-----------------------------------------------------------------+
+   |                                                                          
+   +--> fugure.get()                                                          
+```
+
+```
++-----------------+                                          
+| readFRUContents | : read fru contents                      
++----|------------+                                          
+     |                                                       
+     |--> return if we fail to find the fru header           
+     |                                                       
+     +--> for each fru area                                  
+     |                                                       
+     +------> read data, e.g., through i2c protocol          
+     |                                                       
+     |--> if the fru has multi records                       
+     |                                                       
+     |------> read data, e.g., through i2c protocol          
+     |                                                       
+     +--> read the remaining data, e.g., through i2c protocol
 ```
 
 ## <a name="reference"></a> Reference
