@@ -288,6 +288,35 @@ entity_manager.cpp
 ### fru-device
 
 ```
+root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
+`-/xyz
+  `-/xyz/openbmc_project
+    `-/xyz/openbmc_project/FruDevice
+      `-/xyz/openbmc_project/FruDevice/my-fru     <-- detected fru show up here
+      `-/xyz/openbmc_project/FruDevice/our-fru    <-- these two are fake, used for example
+```
+
+```
+root@romulus:~# busctl introspect xyz.openbmc_project.FruDevice /xyz/openbmc_project/FruDevice
+NAME                                 TYPE      SIGNATURE RESULT/VALUE FLAGS
+org.freedesktop.DBus.Introspectable  interface -         -            -
+.Introspect                          method    -         s            -
+org.freedesktop.DBus.Peer            interface -         -            -
+.GetMachineId                        method    -         s            -
+.Ping                                method    -         -            -
+org.freedesktop.DBus.Properties      interface -         -            -
+.Get                                 method    ss        v            -
+.GetAll                              method    s         a{sv}        -
+.Set                                 method    ssv       -            -
+.PropertiesChanged                   signal    sa{sv}as  -            -
+xyz.openbmc_project.FruDeviceManager interface -         -            -   <-- prepared by fru-device
+.GetRawFru                           method    yy        ay           -   <-- prepared by fru-device
+.ReScan                              method    -         -            -   <-- prepared by fru-device
+.ReScanBus                           method    y         -            -   <-- prepared by fru-device
+.WriteFru                            method    yyay      -            -   <-- prepared by fru-device
+```
+
+```
 fru_device.cpp
 +------+
 | main |
