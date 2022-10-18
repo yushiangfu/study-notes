@@ -160,6 +160,131 @@ entity_manager.cpp
           +----------------+                           
 ```
 
+```
++------------------+                                                              
+| PerformScan::run | : parse configurations and generate dbus objects             
++----|-------------+                                                              
+     |                                                                            
+     |--> for each configuration                                                  
+     |                                                                            
+     |------> continue if we fail to find 'probe'                                 
+     |                                                                            
+     |------> continue if we fail to find 'name'                                  
+     |                                                                            
+     |------> 'probe name' = 'find name'                                          
+     |                                                                            
+     |------>  if 'probe name' is in object member 'passedProbes'                 
+     |                                                                            
+     |-----------> remove the current configuration from configurations           
+     |                                                                            
+     |-----------> continue                                                       
+     |                                                                            
+     |------> prepare 'probe command' from the give 'probe name'                  
+     |                                                                            
+     |        +---------------+                                                   
+     |------> | findProbeType | return the found type                             
+     |        +---------------+                                                   
+     |                                                                            
+     |------> continue if found                                                   
+     |                                                                            
+     |------> (reaching here means not found)                                     
+     |                                                                            
+     |------> have the interface pushed back to 'dbusProbeInterfaces'             
+     |                                                                            
+     |------> have the probe ptr pushed back to 'dbusProbePointers'               
+     |                                                                            
+     |    +-----------------+                                                     
+     +--> | findDbusObjects | given interfaces, ensure all instances are in 'scan'
+          +-----------------+                                                     
+```
+
+```
++---------------+                        
+| findProbeType | : return the found type
++---|-----------+                        
+    |                                    
+    |--> for each type in 'probeTypes'   
+    |                                    
+    +------> return the found type       
+```
+
+```
++-----------------+                                                                               
+| findDbusObjects | : given interfaces, ensure all instances are in 'scan'                        
++----|------------+                                                                               
+     |                                                                                            
+     |--> remove those already-obtained interfaces from arg                                       
+     |                                                                                            
+     +--> prepare method_call                                                                     
+             +-----------------------------------------------------------------------------------+
+             |+--------------------+                                                             |
+             || processDbusObjects | ensure all instances under 'interface subtree' are in 'scan'|
+             |+--------------------+                                                             |
+             |for                                                                                |
+             |service: xyz.openbmc_project.ObjectMapper                                          |
+             |object: /xyz/openbmc_project/object_mapper                                         |
+             |interface: xyz.openbmc_project.ObjectMapper                                        |
+             +-----------------------------------------------------------------------------------+
+```
+
+```
++--------------------+                                                               
+| processDbusObjects | : ensure all instances under 'interface subtree' are in 'scan'
++----|---------------+                                                               
+     |                                                                               
+     |--> for each (path, obj) in 'interface subtree'                                
+     |                                                                               
+     |        +------------------+                                                   
+     |------> | registerCallback | ensure the (path, match) is in dbusMatches        
+     |        +------------------+                                                   
+     |                                                                               
+     |------> for (bus, ifaces) in obj                                               
+     |                                                                               
+     |----------> for each iface                                                     
+     |                                                                               
+     |----------> if the iface doesn't start with 'org.freedesktop'                  
+     |                                                                               
+     |                +---------------+                                              
+     +--------------> | getInterfaces | ensure arg instance is in 'scan'             
+                      +---------------+                                              
+```
+
+```
++------------------+                                                    
+| registerCallback | : ensure the (path, match) is in dbusMatches       
++----|-------------+                                                    
+     |                                                                  
+     |--> return if path is already in dbusMatches                      
+     |                                                                  
+     |--> prepare event handler                                         
+     |       +---------------------------------------------------------+
+     |       |+---------------------------+                            |
+     |       || propertiesChangedCallback | callback of property change|
+     |       |+---------------------------+                            |
+     |       +---------------------------------------------------------+
+     |                                                                  
+     |--> prepare match = rule + handler                                
+     |                                                                  
+     +--> place match in dbusMatches                                    
+```
+
+```
++---------------+                                         
+| getInterfaces | : ensure arg instance is in 'scan'      
++---|-----------+                                         
+    |                                                     
+    +--> prepare async method call                        
+            +--------------------------------------------+
+            |+----------------------------+              |
+            ||probe_obj[path][iface] = arg|              |
+            |+----------------------------+              |
+            |for                                         |
+            |service: bus name                           |
+            |object: path                                |
+            |interface: "org.freedesktop.DBus.Properties"|
+            +--------------------------------------------+
+```
+
 ### fru-device
 
 ```
