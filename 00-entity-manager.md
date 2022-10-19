@@ -1,11 +1,57 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Sensor Detection](#sensor-detection)
+- [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
 (TBD)
+
+## <a name="sensor-detection"></a> Sensor Detection
+
+It starts with the daemon `fru-device` scanning all the I2C buses under `/dev/` and attempt to find out potential FRU devices.
+After reading and parsing FRU data, valid ones are further published to D-Bus as the below.
+
+```
+E.g.,
+
+root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
+`-/xyz
+  `-/xyz/openbmc_project
+    `-/xyz/openbmc_project/FruDevice
+      `-/xyz/openbmc_project/FruDevice/my-fru
+      `-/xyz/openbmc_project/FruDevice/our-fru
+```
+
+The daemon `entity-manager` registers callback to events of internface addtion and removal, and the new interfaces in objects triggers that callback.
+It then reads in files under `/usr/share/entity-manager/configurations/` and compare their `Probe` rule.
+
+```
+E.g.,
+
+"Probe": "xyz.openbmc_project.FruDevice({'BOARD_PRODUCT_NAME': 'SP3RT040X16'})",
+```
+
+If the product name 'SP3RT040X16' matches to any of the found FRU device, the corresponding `Exposes` gets added to D-Bus by `entity-manager`.
+The sensor daemons provided by `dbus-sensors` the take over after noticing the sensor record on D-Bus.
+
+```
+E.g.,
+
+root@romulus:~# busctl tree xyz.openbmc_project.EntityManager
+`-/xyz
+  `-/xyz/openbmc_project
+    |-/xyz/openbmc_project/EntityManager
+    `-/xyz/openbmc_project/inventory
+      `-/xyz/openbmc_project/inventory/system
+        `-/xyz/openbmc_project/inventory/system/board
+          `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer
+            `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer/PCIE_SSD_Retimer_Temp
+```
+
+<details><summary> More Details </summary>
 
 ### entity-manager
 
@@ -286,15 +332,6 @@ entity_manager.cpp
 ```
 
 ### fru-device
-
-```
-root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
-`-/xyz
-  `-/xyz/openbmc_project
-    `-/xyz/openbmc_project/FruDevice
-      `-/xyz/openbmc_project/FruDevice/my-fru     <-- detected fru show up here
-      `-/xyz/openbmc_project/FruDevice/our-fru    <-- these two are fake, used for example
-```
 
 ```
 root@romulus:~# busctl introspect xyz.openbmc_project.FruDevice /xyz/openbmc_project/FruDevice
@@ -676,7 +713,23 @@ fru_device.cpp
      |                                                       
      +--> read the remaining data, e.g., through i2c protocol
 ```
+  
+</details>
 
+## <a name="cheat-sheet"></a> Cheat Sheet
+
+- Check found FRU devices.
+
+```
+busctl tree xyz.openbmc_project.FruDevice
+```
+  
+- Check matched exposes.
+  
+```
+busctl tree xyz.openbmc_project.EntityManager
+```
+  
 ## <a name="reference"></a> Reference
 
-(TBD)
+[openbmc/entity-manager](https://github.com/openbmc/entity-manager)
