@@ -11,8 +11,12 @@
 
 ## <a name="sensor-detection"></a> Sensor Detection
 
-It starts with the daemon `fru-device` scanning all the I2C buses under `/dev/` and attempt to find out potential FRU devices.
-After reading and parsing FRU data, valid ones are further published to D-Bus as the below.
+An `entity` is physically detachable devices such as backplanes, PSUs, PCIe cards, etc. 
+Taking PCIe cards as an example, they can plug in any slot; therefore, we have to dynamically detect what kind of device is installed in which place. 
+Based on the assumption that entities are equipped with valid FRU, finding an FRU means an entity exists in the system. 
+The misleading-named daemon `fru-device`, which isn't a device, is responsible for doing the scanning work, and folder `/dev/` is a good starting place. 
+For each I2C file, `fru-device` communicates to almost every potential slave device and reads data from it if feasible. 
+After performing FRU format parsing, the valid devices are further published to D-Bus, as shown below.
 
 ```
 E.g.,
@@ -21,21 +25,15 @@ root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
 `-/xyz
   `-/xyz/openbmc_project
     `-/xyz/openbmc_project/FruDevice
-      `-/xyz/openbmc_project/FruDevice/my-fru
-      `-/xyz/openbmc_project/FruDevice/our-fru
+      `-/xyz/openbmc_project/FruDevice/my-fru     <-- detected fru device
+      `-/xyz/openbmc_project/FruDevice/our-fru    <-- detected fru device
 ```
 
-The daemon `entity-manager` registers callback to events of internface addtion and removal, and the new interfaces in objects triggers that callback.
-It then reads in files under `/usr/share/entity-manager/configurations/` and compare their `Probe` rule.
-
-```
-E.g.,
-
-"Probe": "xyz.openbmc_project.FruDevice({'BOARD_PRODUCT_NAME': 'SP3RT040X16'})",
-```
-
-If the product name 'SP3RT040X16' matches to any of the found FRU device, the corresponding `Exposes` gets added to D-Bus by `entity-manager`.
-The sensor daemons provided by `dbus-sensors` the take over after noticing the sensor record on D-Bus.
+The daemon `entity-manager` has registered callbacks to interface addition and removal, so it's closely tied to events such as FRU device addition. 
+It then elegantly takes over the work and reads in files under `/usr/share/entity-manager/configurations/`. 
+Followed by comparing FRU information on D-Bus with the specified `Probe` rules from each configuration, like product name and/or part number. 
+The intent is to check if we can find a supported entity; if found, the `entity-manager` adds the corresponding `Exposes` to the D-Bus hierarchy. 
+It's sufficed to regard the `Exposes` as attributes of an entity, e.g., name, type, controller bus, and address.
 
 ```
 E.g.,
@@ -48,8 +46,13 @@ root@romulus:~# busctl tree xyz.openbmc_project.EntityManager
       `-/xyz/openbmc_project/inventory/system
         `-/xyz/openbmc_project/inventory/system/board
           `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer
-            `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer/PCIE_SSD_Retimer_Temp
+            `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer/PCIE_SSD_Retimer_Temp    <-- name
 ```
+
+When entity information is in readiness, a suite of sensor daemons dedicates to reading sensor values and updating the record. 
+From the `fru device` and `entity manager` to sensor daemons, they don't talk to each other; instead, the D-Bus mechanism has them work sequentially.
+
+<p align="center"><img src="images/openbmc/entity-manager.png" /></p>
 
 <details><summary> More Details </summary>
 
