@@ -647,6 +647,36 @@ struct bus_type {
 };
 ```
 
+```
++--------------+                                            
+| bus_register | : register bus and prepare files under /sys
++---|----------+                                            
+    |                                                       
+    |--> alloc private                                      
+    |                                                       
+    |    +------------------+                               
+    |--> | kobject_set_name |                               
+    |    +------------------+                               
+    |    +---------------+                                  
+    |--> | kset_register | add to bus subsystem
+    |    +---------------+                                  
+    |    +-----------------+                                
+    |--> | bus_create_file | create files under /sys        
+    |    +-----------------+                                
+    |    +---------------------+                            
+    |--> | kset_create_and_add | register "devices" kset to sysfs
+    |    +---------------------+                            
+    |    +---------------------+                            
+    |--> | kset_create_and_add | register "drivers" kset to sysfs
+    |    +---------------------+                            
+    |    +-----------------+                                
+    |--> | add_probe_files | create files under /sys        
+    |    +-----------------+                                
+    |    +----------------+                                 
+    +--> | bus_add_groups | create files under /sys         
+         +----------------+                                 
+```
+
 The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
 The rest is similar to the driver registration.
 It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
@@ -671,18 +701,30 @@ It doesn't matter whether the driver or device registers first. Both flows will 
 ```
     
 ```
++-----------------+                                                          
+| device_register | ： add to bus, send 'add dev' to notifier, probe device   
++----|------------+                                                          
+     |    +-------------------+                                              
+     |--> | device_initialize |                                              
+     |    +-------------------+                                              
+     |    +------------+                                                     
+     +--> | device_add | add to bus, send 'add dev' to notifier, probe device
+          +------------+                                                     
+```
+    
+```
 +------------+
 | device_add | : add to bus, send 'add dev' to notifier, probe device
 +--|---------+
+   |    +--------------+
+   |--> | dev_set_name |
+   |    +--------------+
+   |    +-------------+
+   +--> | kobject_add | register to device subsystem (kset is set in, e.g., device_initialize)
+   |    +-------------+
    |    +----------------+
-   |--> | bus_add_device |
-   |    +---|------------+
-   |        |
-   |        |--> determine which bus to register the device
-   |        |
-   |        |    +----------------+
-   |        +--> | klist_add_tail | append the device to the device list of bus
-   |             +----------------+
+   |--> | bus_add_device | create files in /sys, add device to list of bus
+   |    +----------------+
    |
    |--> if dev->bus is set
    |
@@ -693,19 +735,28 @@ It doesn't matter whether the driver or device registers first. Both flows will 
    |                                         +----------------------+ e.g., if 'add device': prepare and register cdev
    |    +------------------+
    +--> | bus_probe_device | traverse each driver and try to match, call driver->probe() if matched
-        +------------------+
+   |    +------------------+
+   |
+   |--> if parent dev exists
+   |
+   |        +----------------+
+   +------> | klist_add_tail | add dev to parent's children list
+            +----------------+
 ```
     
 ```
-+-----------------+                                                          
-| device_register | ： add to bus, send 'add dev' to notifier, probe device   
-+----|------------+                                                          
-     |    +-------------------+                                              
-     |--> | device_initialize |                                              
-     |    +-------------------+                                              
-     |    +------------+                                                     
-     +--> | device_add | add to bus, send 'add dev' to notifier, probe device
-          +------------+                                                     
++----------------+                                                     
+| bus_add_device | : create files in /sys, add device to list of bus   
++---|------------+                                                     
+    |    +-------------------+                                         
+    |--> | sysfs_create_link | sysfs: create device in bus folder      
+    |    +-------------------+                                         
+    |    +-------------------+                                         
+    |--> | sysfs_create_link | sysfs: create bus in device folder      
+    |    +-------------------+                                         
+    |    +----------------+                                            
+    +--> | klist_add_tail | append the device to the device list of bus
+         +----------------+                                            
 ```
     
 </details>
@@ -793,6 +844,7 @@ cat /proc/partitions
 ls -l /dev
 /sys/block
 cat /proc/iomem
+cat /proc/ioports
 ls /sys/bus
 ```
 
