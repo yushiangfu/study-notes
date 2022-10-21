@@ -132,7 +132,7 @@ entity_manager.cpp
                |   || logDeviceAdded | add dev log                                    ||
                |   |+----------------+                                                ||
                |   |+---------+                                                       ||
-               |   || io.post | ???                                                   ||
+               |   || io.post | publishNewConfiguration                               ||
                |   |+---------+                                                       ||
                |   +------------------------------------------------------------------+|
                |                                                                       |
@@ -208,7 +208,187 @@ entity_manager.cpp
      +--> | sd_jounal_send |                           
           +----------------+                           
 ```
+  
+```
++-------------------------+                                                                                          
+| publishNewConfiguration | : export device, write current configs to /var/configuration/, post board exposes to dbus
++------|------------------+                                                                                          
+       |    +--------------+                                                                                         
+       |--> | loadOverlays | for each found entity: for each config in exposes: export device to specified bus path  
+       |    +--------------+                                                                                         
+       |                                                                                                             
+       |--> io.post                                                                                                  
+       |       +------------------------------------------------------------------------+                            
+       |       |+----------------+                                                      |                            
+       |       || writeJsonFiles | write system configurations to "/var/configuration/" |                            
+       |       |+----------------+                                                      |                            
+       |       +------------------------------------------------------------------------+                            
+       |                                                                                                             
+       +--> io.post                                                                                                  
+               +-----------------------------------------------------------+                                         
+               |+------------+                                             |                                         
+               || postToDbus | post board related info and exposes to dbus |                                         
+               |+------------+                                             |                                         
+               +-----------------------------------------------------------+                                         
+```
+  
+```
++--------------+                                                                                         
+| loadOverlays | : for each found entity: for each config in exposes: export device to specified bus path
++---|----------+                                                                                         
+    |                                                                                                    
+    |--> create folder "/tmp/overlays"                                                                   
+    |                                                                                                    
+    |--> for each entity in system configurations                                                        
+    |                                                                                                    
+    |------> continue if we don't have valid 'Exposes'                                                   
+    |                                                                                                    
+    |------> for each config in 'Exposes' (one 'Exposes' can have multiple configs inside)               
+    |                                                                                                    
+    |----------> continue if we don't have valid 'Status' ('disabled' is invalid)                        
+    |                                                                                                    
+    |----------> continue if we don't have valid 'Type'                                                  
+    |                                                                                                    
+    |----------> locate 'Type' from devices::exportTemplates                                             
+    |                                                                                                    
+    |----------> if found                                                                                
+    |                                                                                                    
+    |                +--------------+                                                                    
+    +--------------> | exportDevice | export device to specified bus path                                
+                     +--------------+                                                                    
+```
+  
+```
++--------------+                                                                                                                
+| exportDevice | : export device to specified bus path                                                                          
++---|----------+                                                                                                                
+    |                                                                                                                           
+    |--> for each key in config                                                                                                 
+    |                                                                                                                           
+    |------> if key == 'Name'                                                                                                   
+    |                                                                                                                           
+    |----------> replace unwanted char with underline, e.g., space to underline                                                 
+    |                                                                                                                           
+    |------> if key == 'Bus'                                                                                                    
+    |                                     const boost::container::flat_map<const char*, ExportTemplate, CmpStr>                 
+    |----------> read value                   exportTemplates{                                                                  
+    |                                             {{"EEPROM_24C01",    <--------------------------------------- type            
+    |------> elif key == 'Address'                  ExportTemplate("24c01 $Address",    <---------------------- params          
+    |                                                              "/sys/bus/i2c/devices/i2c-$Bus",    <------- bus path        
+    |----------> read value                                        "new_device",    <-------------------------- add             
+    |                                                              "delete_device",    <----------------------- remove          
+    |------> elif key == 'ChannelNames'                            createsHWMon::noHWMonDir)},    <------------ has hwmon folder
+    |                                                                                                                           
+    |------> replace variable in exportTemplate to real value                                                                   
+    |                                                                                                                           
+    |        +-------------+                                                                                                    
+    |------> | buildDevice | ensure the device file is created                                                                  
+    |        +-------------+                                                                                                    
+    |                                                                                                                           
+    |------> if 'Type' ends with 'Mux'                                                                                          
+    |                                                                                                                           
+    |            +---------+                                                                                                    
+    +----------> | linkMux | create channel link under "/dev/i2c-mux"                                                           
+                 +---------+                                                                                                    
+```
+  
+```
++-------------+                                                                               
+| buildDevice | : ensure the device file is created                                           
++---|---------+                                                                               
+    |    +-----------------+                                                                  
+    |--> | deviceIsCreated | given bus and addr, prepare path and check if it's created or not
+    |    +-----------------+                                                                  
+    |                                                                                         
+    |--> return if it's already created                                                       
+    |                                                                                         
+    |    +--------------+                                                                     
+    +--> | createDevice | create device file and feed params                                  
+         +--------------+                                                                     
+```
 
+```
++-----------------+                                                                    
+| deviceIsCreated | : given bus and addr, prepare path and check if it's created or not
++----|------------+                                                                    
+     |                                                                                 
+     |--> return error if 'bus' or 'address' isn't specified                           
+     |                                                                                 
+     |    +---------------+                                                            
+     |--> | deviceDirName | prepare name as %bus-$addr                                 
+     |    +---------------+                                                            
+     |                                                                                 
+     |--> extend to absolute path (this is folder)                                     
+     |                                                                                 
+     |--> append '/hwmon' to path if specified                                         
+     |                                                                                 
+     +--> check if it's already there and return                                       
+```
+
+```
++------------+                                                                    
+| postToDbus | : post board related info and exposes to dbus                      
++--|---------+                                                                    
+   |                                                                              
+   |--> for each (board id, board config) in new configurations                   
+   |                                                                              
+   |------> determine board type                                                  
+   |                                                                              
+   |------> create interfaces for board object                                    
+   |                                                                              
+   |        +-----------------------+                                             
+   |------> | createAddObjectMethod | register method "AddObject"                 
+   |        +-----------------------+                                             
+   |        +---------------------------+                                         
+   |------> | populateInterfaceFromJson | populate interface from json to dbus    
+   |        +---------------------------+                                         
+   |                                                                              
+   |------> for (property name, property value) in board items                    
+   |                                                                              
+   |            +-----------------+                                               
+   |----------> | createInterface |                                               
+   |            +-----------------+                                               
+   |            +---------------------------+                                     
+   |----------> | populateInterfaceFromJson | populate interface from json to dbus
+   |            +---------------------------+                                     
+   |                                                                              
+   |------> for each expose                                                       
+   |                                                                              
+   |----------> decide item type                                                  
+   |                                                                              
+   |----------> create interface and populate it                                  
+   |                                                                              
+   |----------> for (name, config) in item                                        
+   |                                                                              
+   +--------------> create interface and populate it                              
+```
+  
+```
++-----------------------+                                                             
+| createAddObjectMethod | : register method "AddObject"                               
++-----|-----------------+                                                             
+      |                                                                               
+      +--> register method "AddObject"                                                
+              +----------------------------------------------------------------------+
+              |find 'Name' and 'Type' from data                                      |
+              |                                                                      |
+              |for expose in exposes                                                 |
+              |                                                                      |
+              |    (name, type) shouldn't exist already                              |
+              |                                                                      |
+              |    given type, find target schema                                    |
+              |                                                                      |
+              |    append new data to found exposes                                  |
+              |                                                                      |
+              |    +-----------------+                                               |
+              |    | createInterface |                                               |
+              |    +-----------------+                                               |
+              |    +---------------------------+                                     |
+              |    | populateInterfaceFromJson | populate interface from json to dbus|
+              |    +---------------------------+                                     |
+              +----------------------------------------------------------------------+
+```
+  
 ```
 +------------------+                                                              
 | PerformScan::run | : parse configurations and generate dbus objects             
