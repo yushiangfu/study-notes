@@ -993,7 +993,89 @@ parent ---->   bus@1e78a000 {
       +------> | __process_new_adapter | (skip, seems it's only used by hwmon)                                         
                +-----------------------+                                                                               
 ```
+  
+```
+struct device_type i2c_adapter_type = {
+    .groups     = i2c_adapter_groups,
+    .release    = i2c_adapter_dev_release,
+};
 
+
+static const struct attribute_group *i2c_adapter_groups[] = {   \    -+
+    &i2c_adapter_group,                     \                         | generated
+    NULL,                           \                                 | by macro
+}                                                                    -+
+
+
+static const struct attribute_group i2c_adapter_group = {       \    -+
+    .attrs = i2c_adapter_attrs,                 \                     | generated
+};                                                                   -+ by macro
+
+
+static struct attribute *i2c_adapter_attrs[] = {
+    &dev_attr_name.attr,
+    &dev_attr_new_device.attr,
+    &dev_attr_delete_device.attr,
+    NULL
+};
+
+
+struct device_attribute dev_attr_new_device = {     \                -+
+    .attr = {.name = "new_device",                \                   |
+        .mode = 0x200 },     \                                        | generated
+    .store  = new_device_store,                       \               | by macro
+}                                                                    -+
+
+
+struct device_attribute dev_attr_delete_device = {     \             -+
+    .attr = {.name = "delete_device",                \                |
+        .mode = S_IWUSR },     \                                      | generated
+    .show   = NULL,                        \                          | by macro
+    .store  = delete_device_store,                       \            |
+}                                                                    -+
+```
+
+```
++------------------+                                                                   
+| new_device_store | : get (type, addr) from buf, register new i2c client dev          
++----|-------------+                                                                   
+     |    +----------------+                                                           
+     |--> | to_i2c_adapter | get adapter from dev                                      
+     |    +----------------+                                                           
+     |                                                                                 
+     |--> parse arg buf to get (type, addr)                                            
+     |                                                                                 
+     |    +-----------------------+                                                    
+     |--> | i2c_new_client_device | prepare 'i2c client' and register device           
+     |    +-----------------------+ (which potentially triggers other i2c driver probe)
+     |    +---------------+                                                            
+     |--> | list_add_tail | add client dev to the list of adapter                      
+     |    +---------------+                                                            
+     |                                                                                 
+     +--> print "%s: Instantiated device %s at 0x%02hx\n", "new_device"                
+```
+  
+```
++---------------------+                                       
+| delete_device_store | : remove i2c client dev from adapter  
++-----|---------------+                                       
+      |                                                       
+      |--> parse addr from arg buf                            
+      |                                                       
+      |--> for each client of adapter                         
+      |                                                       
+      |------> if addr matches                                
+      |                                                       
+      |----------> print "%s: Deleting device %s at 0x%02hx\n"
+      |                                                       
+      |            +----------+                               
+      |----------> | list_del | remove client dev from adapter
+      |            +----------+                               
+      |            +-----------------------+                  
+      +----------> | i2c_unregister_device |                  
+                   +-----------------------+                  
+```
+  
 ```
 +--------------------------+
 | of_i2c_register_devices  | : for each child of adapter: register i2c client device (might trigger pca954x_probe)
