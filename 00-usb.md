@@ -9,6 +9,32 @@
 
 ## <a name="introduction"></a> Introduction
 
+(TBD)
+
+## tmp
+
+```
+struct usb_driver {
+    const char *name;                           // driver name (must be unique)
+    int (*probe) (struct usb_interface *intf,
+              const struct usb_device_id *id);  // check if (device, driver) match
+    struct usbdrv_wrap drvwrap;                 // usb driver wrapper
+};
+```
+
+```
+struct usbdrv_wrap {
+    struct device_driver driver;    // driver
+    int for_devices;                // 0: interface driver, else: device driver
+};
+```
+
+```
+struct usb_device_id {
+    __u16       match_flags;    // specifies which fields to compare
+};
+```
+
 ## <a name="behavior"></a> Behavior
 
 ```
