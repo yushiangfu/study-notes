@@ -677,6 +677,40 @@ struct bus_type {
          +----------------+                                 
 ```
 
+```
++-----------------+                                                                    
+| driver_register | : ensure driver is in bus, probe devices if newly registered       
++----|------------+                                                                    
+     |    +-------------+                                                              
+     |--> | driver_find | check if it's already registered                             
+     |    +-------------+                                                              
+     |    +----------------+                                                           
+     +--> | bus_add_driver | add driver to list of bus, probe devices to find match(es)
+          +----------------+                                                           
+```
+
+```
++----------------+                                                             
+| bus_add_driver | : add driver to list of bus, probe devices to find match(es)
++---|------------+                                                             
+    |                                                                          
+    |--> alloc private                                                         
+    |                                                                          
+    |--> drvier kset = bus-driver kset                                         
+    |                                                                          
+    |    +----------------+                                                    
+    |--> | klist_add_tail | add drvier to the driver list of bus               
+    |    +----------------+                                                    
+    |                                                                          
+    |--> if bus 'auto probe' is labeled                                        
+    |                                                                          
+    |        +---------------+                                                 
+    |------> | driver_attach | probe each device in bus to find the match      
+    |        +---------------+                                                 
+    |                                                                          
+    +--> create files under /sys/                                              
+```
+
 The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
 The rest is similar to the driver registration.
 It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
