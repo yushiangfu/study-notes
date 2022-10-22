@@ -33,27 +33,42 @@
 ```
 
 ```
-+------------------------------------------+                                                                  
++------------------------------------------+
 | GetSensorConfiguration::getConfiguration | : get configuration path if it with matches any of the interfaces
-+----------|-------------------------------+                                                                  
-           |                                                                                                  
-           |--> for each type, add to interface                                                               
-           |                                                                                                  
-           |    +-----------------------------------+                                                         
-           +--> | dbusConnection->async_method_call |                                                         
-                +-------------------------------------+                                                       
-                | for each (path, dict) in ret        |                                                       
-                |                                     |                                                       
-                |     for each interface in dict      |                                                       
-                |                                     |                                                       
-                |         find something in interface |                                                       
-                |                                     |                                                       
-                |         continue if not found       |                                                       
-                |                                     |                                                       
-                |         +---------------+           |                                                       
-                |         | self->getPath |           |                                                       
-                |         +---------------+           |                                                       
-                +-------------------------------------+                                                       
++----------|-------------------------------+
+           |
+           |--> for each type, add to interface
+           |
+           |    +-----------------------------------+
+           +--> | dbusConnection->async_method_call |
+                +------------------------------------------+
+                | for each (path, dict) in ret             |
+                |                                          |
+                |     for each interface in dict           |
+                |                                          |
+                |         find something in interface      |
+                |                                          |
+                |         continue if not found            |
+                |                                          |
+                |         +---------------+                |
+                |         | self->getPath | get what path? |
+                |         +---------------+                |
+                +------------------------------------------+                                                     
+```
+
+```
++---------------------------------+                     
+| GetSensorConfiguration::getPath | : get what path?    
++--------|------------------------+                     
+         |                                              
+         +--> ->async_method_call                       
+                 +-----------------------------------+  
+                 |->respData[path][iface] = arg data |  
+                 +-----------------------------------+  
+                 srv = owner                            
+                 obj = path                             
+                 ifc = "org.freedesktop.DBus.Properties"
+                 mth = "GetAll"                         
 ```
 
 ```
@@ -112,7 +127,132 @@
         +------> add to the end of arg 'matches'                                    
 ```
 
-## NVMe
+### adcsensor
+
+```
++------+                                              
+| main | : register callbacks to create sensors       
++-|----+ ADCSensorMain.cpp                            
+  |                                                   
+  |--> prepare service "xyz.openbmc_project.ADCSensor"
+  |                                                   
+  |--> io.post                                        
+  |       +---------------------------------+         
+  |       |+---------------+                |         
+  |       || createSensors | create sensors |         
+  |       |+---------------+                |         
+  |       +---------------------------------+         
+  |                                                   
+  |--> prepare event handler                          
+  |       +------------------------------------------+
+  |       |insert msg path to local 'sensor changed' |
+  |       |                                          |
+  |       |.async_wait                               |
+  |       |   +---------------------------------+    |
+  |       |   |+---------------+                |    |
+  |       |   || createSensors | create sensors |    |
+  |       |   |+---------------+                |    |
+  |       |   +---------------------------------+    |
+  |       +------------------------------------------+
+  |                                                   
+  |--> prepare cpu presence handler                   
+  |       +------------------------------------------+
+  |       |read msg to local 'values'                |
+  |       |                                          |
+  |       |if 'Presence' found in 'values'           |
+  |       |                                          |
+  |       |    add it to global 'cpuPresence'        |
+  |       |                                          |
+  |       |    .async_wait                           |
+  |       |       +---------------------------------+|
+  |       |       |+---------------+                ||
+  |       |       || createSensors | create sensors ||
+  |       |       |+---------------+                ||
+  |       |       +---------------------------------+|
+  |       +------------------------------------------+
+  |                                                   
+  |--> for each sensor types                          
+  |                                                   
+  |------> register the event handler                 
+  |                                                   
+  +--> register cpu presence handler                  
+```
+
+```
++---------------+                                                                                                           
+| createSensors | : create sensors                                                                                          
++---|-----------+                                                                                                           
+    |                                                                                                                       
+    |--> prepare callback for 'sensor config getter'                                                                        
+    |       +--------------------------------------------------------------------------------------------------------------+
+    |       |check if "/sys/class/hwmon" has files (sensors)                                                               |
+    |       |                                                                                                              |
+    |       |for path of each adc sensor                                                                                   |
+    |       |                                                                                                              |
+    |       |--> continue if it's not "iio_hwmon"                                                                          |
+    |       |                                                                                                              |
+    |       |--> for sensor in configurations                                                                              |
+    |       |                                                                                                              |
+    |       |------> attempt to get sensor_data and iface_path of sensor                                                   |
+    |       |                                                                                                              |
+    |       |------> break if found                                                                                        |
+    |       |                                                                                                              |
+    |       |    +----------------------------+                                                                            |
+    |       |--> | parseThresholdsFromConfig  | given sensor data, find pairs of (hysteresis, direction, severity, value), |
+    |       |    +----------------------------+ and push bask to arg vector                                                |
+    |       |                                                                                                              |
+    |       |--> determine 'scale factor', 'poll rate'                                                                     |
+    |       |                                                                                                              |
+    |       |--> handle requirement of 'power state' and 'cpu' if specified                                                |
+    |       |                                                                                                              |
+    |       |--> handle gpio if needed                                                                                     |
+    |       |                                                                                                              |
+    |       |    +----------------------+                                                                                  |
+    |       +--> | ADCSensor::setupRead | alloc buffer and handle response                                                 |
+    |       |    +----------------------+                                                                                  |
+    |       +--------------------------------------------------------------------------------------------------------------+
+    |    +------------------------------------------+                                                                       
+    +--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces       
+         +------------------------------------------+                                                                       
+```
+
+```
++----------------------+                                          
+| ADCSensor::setupRead | : alloc buffer and handle response       
++-----|----------------+                                          
+      |                                                           
+      |--> alloc buffer                                           
+      |                                                           
+      |--> if it's the case of bridge gpio                        
+      |                                                           
+      |------> (skip)                                             
+      |                                                           
+      |--> else                                                   
+      |                                                           
+      +------> ::async_read_until                                 
+                  +----------------------------------------------+
+                  |+---------------------------+                 |
+                  || ADCSensor::handleResponse | handle response |
+                  |+---------------------------+                 |
+                  +----------------------------------------------+
+```
+
+```
++---------------------------+                                              
+| ADCSensor::handleResponse | : handle response                            
++------|--------------------+                                              
+       |                                                                   
+       |--> open file                                                      
+       |                                                                   
+       +--> .async_wait                                                    
+               +----------------------------------------------------------+
+               |+----------------------+                                  |
+               || ADCSensor::setupRead | alloc buffer and handle response |
+               |+----------------------+                                  |
+               +----------------------------------------------------------+
+```
+
+### nvmesensor
 
 ```
 +---------------------------------------------------+                                            
