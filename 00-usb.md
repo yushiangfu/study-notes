@@ -15,10 +15,11 @@
 
 ```
 struct usb_driver {
-    const char *name;                           // driver name (must be unique)
+    const char *name;                                   // driver name (must be unique)
     int (*probe) (struct usb_interface *intf,
-              const struct usb_device_id *id);  // check if (device, driver) match
-    struct usbdrv_wrap drvwrap;                 // usb driver wrapper
+              const struct usb_device_id *id);          // check if (device, driver) match
+    void (*disconnect) (struct usb_interface *intf);    // work with usb interface
+    struct usbdrv_wrap drvwrap;                         // usb driver wrapper
 };
 ```
 
@@ -34,6 +35,65 @@ struct usb_device_id {
     __u16       match_flags;    // specifies which fields to compare
 };
 ```
+
+```
++---------------------+                                                                  
+| usb_register_driver | : register a usb interface driver                                
++-----|---------------+                                                                  
+      |                                                                                  
+      |--> set up driver wrapper                                                         
+      |                                                                                  
+      |    +-----------------+                                                           
+      |--> | driver_register | ensure driver is in bus, probe devices if newly registered
+      |    +-----------------+                                                           
+      |    +------------------------+                                                    
+      |--> | usb_create_newid_files | creawte new-id files under /sys/                   
+      |    +------------------------+                                                    
+      |                                                                                  
+      +--> print "%s: registered new interface driver %s\n"                              
+```
+
+```
+struct usb_device {
+    int     devnum; // unique device number
+    char        devpath[16];        // dev position in usb tree topology
+    u32     route;
+    enum usb_device_state   state;  // e.g., attached, configured, ...
+    enum usb_device_speed   speed;  // e.g., low, full, high, ...
+    unsigned int        rx_lanes;
+    unsigned int        tx_lanes;
+    enum usb_ssp_rate   ssp_rate;
+
+    struct usb_tt   *tt;
+    int     ttport;
+
+    unsigned int toggle[2];
+
+    struct usb_device *parent;  // points to usb huuub
+    struct usb_bus *bus;        // point to usb_bus
+    struct usb_host_endpoint ep0; 
+
+    struct device dev;  // generic device model
+
+    struct usb_device_descriptor descriptor;    // more detailed dev data
+    struct usb_host_bos *bos;
+    struct usb_host_config *config; // list of possible configs
+
+    struct usb_host_config *actconfig;  // poitns current working config
+    struct usb_host_endpoint *ep_in[16];
+    struct usb_host_endpoint *ep_out[16];
+
+    char **rawdescriptors;
+
+    unsigned short bus_mA;
+    u8 portnum;
+    u8 level;
+    u8 devaddr;
+    char *product;      // hw info
+    char *manufacturer; // hw info
+    char *serial;       // hw info
+    int maxchild;       // if self is a usb hub, this specifies how many ports it has
+};
 
 ## <a name="behavior"></a> Behavior
 
