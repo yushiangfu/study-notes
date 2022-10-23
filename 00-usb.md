@@ -57,43 +57,60 @@ struct usb_device_id {
 struct usb_device {
     int     devnum; // unique device number
     char        devpath[16];        // dev position in usb tree topology
-    u32     route;
     enum usb_device_state   state;  // e.g., attached, configured, ...
     enum usb_device_speed   speed;  // e.g., low, full, high, ...
-    unsigned int        rx_lanes;
-    unsigned int        tx_lanes;
-    enum usb_ssp_rate   ssp_rate;
-
-    struct usb_tt   *tt;
-    int     ttport;
-
-    unsigned int toggle[2];
-
-    struct usb_device *parent;  // points to usb huuub
-    struct usb_bus *bus;        // point to usb_bus
-    struct usb_host_endpoint ep0; 
-
-    struct device dev;  // generic device model
-
+    struct usb_device *parent;      // points to usb huuub
+    struct usb_bus *bus;            // point to usb_bus
+    struct device dev;              // generic device model
     struct usb_device_descriptor descriptor;    // more detailed dev data
-    struct usb_host_bos *bos;
-    struct usb_host_config *config; // list of possible configs
-
-    struct usb_host_config *actconfig;  // poitns current working config
-    struct usb_host_endpoint *ep_in[16];
-    struct usb_host_endpoint *ep_out[16];
-
-    char **rawdescriptors;
-
-    unsigned short bus_mA;
-    u8 portnum;
-    u8 level;
-    u8 devaddr;
+    struct usb_host_config *config;             // list of possible configs
+    struct usb_host_config *actconfig;          // poitns current working config
     char *product;      // hw info
     char *manufacturer; // hw info
     char *serial;       // hw info
     int maxchild;       // if self is a usb hub, this specifies how many ports it has
 };
+```
+
+```
+struct usb_bus {
+    struct device *controller;  // points to controller
+    struct device *sysdev;      /* as seen from firmware or bus */
+    int busnum;             // unique bus number
+    const char *bus_name;   // unique bus name
+    u8 uses_pio_for_control;    /*
+                     * Does the host controller use PIO
+                     * for control transfers?
+                     */
+    u8 otg_port;            /* 0, or number of OTG/HNP port */
+    unsigned is_b_host:1;       /* true during some HNP roleswitches */
+    unsigned b_hnp_enable:1;    /* OTG: did A-Host enable HNP? */
+    unsigned no_stop_on_short:1;    /*
+                     * Quirk: some controllers don't stop
+                     * the ep queue on a short transfer
+                     * with the URB_SHORT_NOT_OK flag set.
+                     */
+    unsigned no_sg_constraint:1;    /* no sg constraint */
+    unsigned sg_tablesize;      /* 0 or largest number of sg list entries */
+
+    int devnum_next;        /* Next open device number in
+                     * round-robin allocation */
+    struct mutex devnum_next_mutex; /* devnum_next mutex */
+
+    struct usb_devmap devmap;   /* device address allocation map */
+    struct usb_device *root_hub;    /* Root hub */
+    struct usb_bus *hs_companion;   /* Companion EHCI bus, if any */
+
+    int bandwidth_allocated;    /* on this bus: how much of the time
+                     * reserved for periodic (intr/iso)
+                     * requests is used, on average?
+                     * Units: microseconds/frame.
+                     * Limits: Full/low speed reserve 90%,
+                     * while high speed reserves 80%.
+                     */
+    int bandwidth_int_reqs;     /* number of Interrupt requests */
+    int bandwidth_isoc_reqs;
+```
 
 ## <a name="behavior"></a> Behavior
 
