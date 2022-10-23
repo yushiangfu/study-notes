@@ -14,7 +14,46 @@
 
 (TBD)
 
-## <a name="character-device"></a> Character File
+## <a name="character-device"></a> Character Device
+
+The virtual filesystem supports a few file types, two of which are character and block devices that behave as interfaces exported to user space.
+Traditionally we place all device files under `/dev/`; list the files it contains, and we can see each file's type, major, and minor number. 
+We can also create a device file elsewhere through `mknod`; as long as we specify the above three attributes correctly, they work no differently.
+
+```
+root@romulus:~# ls -l /dev/
+...
+crw-------    1 root     root       89,   1 Oct 23 04:00 /dev/i2c-1
+crw-------    1 root     root       89,  10 Oct 23 04:00 /dev/i2c-10
+crw-------    1 root     root       89,  11 Oct 23 04:00 /dev/i2c-11
+...
+brw-rw----    1 root     disk       31,   0 Oct 23 04:00 /dev/mtdblock0
+brw-rw----    1 root     disk       31,   1 Oct 23 04:00 /dev/mtdblock1
+brw-rw----    1 root     disk       31,   2 Oct 23 04:00 /dev/mtdblock2
+|                                    |    |
+v                                    v    v
+file type                         major  minor
+```
+
+Roughly speaking, not strictly correct, character files can be any non-storage devices such as I2C, SPI, TTY, and so on. 
+Though the underlying devices vary, the applications work on them through typical file operations like handling regular files. 
+On the kernel side, no uniform functions are provided since only the specific driver knows how to manage its hardware. 
+Therefore, the kernel solely offers the `open`, which locates the corresponding driver and switches to it.
+
+- open
+    - The virtual filesystem generates a `file` structure in kernel space accessible by file identifier from user space.
+    - Given a type, major, and minor number, it finds the target `cdev` from the related table and fetches the file operations (fops) from it.
+    - Immediately attaches the specific file operations, the replacement for default ones, to the opened `file`.
+- read
+    - It's up to the driver since no default function is available.
+- write
+    - It's up to the driver since no default function is available.
+- ioctl
+    - It's up to the driver since no default function is available.
+
+<p align="center"><img src="images/device/character-device.png" /></p>
+
+<details><summary> More Details </summary>
 
 ```c
 struct inode {
@@ -73,8 +112,10 @@ struct cdev {
     unsigned int count;                 // range of minor
 } __randomize_layout;
 ```
+    
+</details>
 
-## <a name="block-device"></a> Block File
+## <a name="block-device"></a> Block Device
 
 ```c
 const struct file_operations def_blk_fops = { 
