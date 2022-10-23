@@ -45,11 +45,11 @@ Therefore, the kernel solely offers the `open`, which locates the corresponding 
     - Given a type, major, and minor number, it finds the target `cdev` from the related table and fetches the file operations (fops) from it.
     - Immediately attaches the specific file operations, the replacement for default ones, to the opened `file`.
 - read
-    - It's up to the driver since no default function is available.
+    - No default function is available.
 - write
-    - It's up to the driver since no default function is available.
+    - No default function is available.
 - ioctl
-    - It's up to the driver since no default function is available.
+    - No default function is available.
 
 <p align="center"><img src="images/device/character-device.png" /></p>
 
