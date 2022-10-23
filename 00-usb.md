@@ -97,8 +97,8 @@ struct usb_bus {
                      * round-robin allocation */
     struct mutex devnum_next_mutex; /* devnum_next mutex */
 
-    struct usb_devmap devmap;   /* device address allocation map */
-    struct usb_device *root_hub;    /* Root hub */
+    struct usb_devmap devmap;   // bitmap for dev# tracking
+    struct usb_device *root_hub;    // points to root hub
     struct usb_bus *hs_companion;   /* Companion EHCI bus, if any */
 
     int bandwidth_allocated;    /* on this bus: how much of the time
