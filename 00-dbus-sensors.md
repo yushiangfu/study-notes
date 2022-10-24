@@ -252,6 +252,97 @@
                +----------------------------------------------------------+
 ```
 
+### cpusensor
+
+```
++--------------+                                                                                                    
+| getCpuConfig | : create sensors, read peci adapter name(s) from file to cpu_configs                               
++---|----------+                                                                                                    
+    |                                                                                                               
+    |--> for each sensor types                                                                                      
+    |                                                                                                               
+    |        +------------------------+                                                                             
+    |------> | getSensorConfiguration | update cache if needed, find type-matched one and add to arg                
+    |        +------------------------+                                                                             
+    |                                                                                                               
+    |--> for each sensor types                                                                                      
+    |                                                                                                               
+    |------> for each sensor in config                                                                              
+    |                                                                                                               
+    |----------> for each base_conf in sensor                                                                       
+    |                                                                                                               
+    |--------------> handle 'Name' from base_conf                                                                   
+    |                                                                                                               
+    |--------------> check if cpu is present through gpio                                                           
+    |                                                                                                               
+    |--------------> if inventory iface && present                                                                  
+    |                                                                                                               
+    |------------------> .add_interface("xyz.openbmc_project.Inventory.Item")                                       
+    |                                                                                                               
+    |------------------> ->register_property("PrettyName")                                                          
+    |                                                                                                               
+    |------------------> ->register_property("Present")                                                             
+    |                                                                                                               
+    |------------------> move iface to inventoryIfaces[name]                                                        
+    |                                                                                                               
+    |------------------> if present                                                                                 
+    |                                                                                                               
+    |----------------------> under /sys/, find hwmon sensor name with 'input'                                       
+    |                                                                                                               
+    |                        +------------------+                                                                   
+    |----------------------> | createSensorName |                                                                   
+    |                        +------------------+                                                                   
+    |                                                                                                               
+    |----------------------> create a sensor and save it in 'gCpuSensors'                                           
+    |                                                                                                               
+    |----------------------> find (bus, addr) from config and save them to cpu_config                               
+    |                                                                                                               
+    |                        +--------------------------------+                                                     
+    +----------------------> | addConfigsForOtherPeciAdapters | read peci adapter name from file, add to cpu_configs
+    |                        +--------------------------------+                                                     
+    |                                                                                                               
+    |--> if we did parse something                                                                                  
+    |                                                                                                               
+    +------> print 'CPU config is parsed' or 'CPU configs are parsed'                                               
+```
+
+```
++------------------------+                                                               
+| getSensorConfiguration | : update cache if needed, find type-matched one and add to arg
++-----|------------------+                                                               
+      |                                                                                  
+      |--> if not use cache                                                              
+      |                                                                                  
+      |------> ->new_method_call("GetManagedObjects")                                    
+      |                                                                                  
+      |------> ->call(arg is the output of the above func)                               
+      |                                                                                  
+      |------> read reply                                                                
+      |                                                                                  
+      |--> for each path_pair in managed_obj                                             
+      |                                                                                  
+      |------> find type-matched one                                                     
+      |                                                                                  
+      +------> if found, add to arg 'response' and break                                 
+```
+
+```
++--------------------------------+                                                       
+| addConfigsForOtherPeciAdapters | : read peci adapter name from file, add to cpu_configs
++-------|------------------------+                                                       
+        |    +-----------+                                                               
+        |--> | findFiles | find files with name 'peci' (peci adapter)                    
+        |    +-----------+                                                               
+        |                                                                                
+        |--> for each peci adapter                                                       
+        |                                                                                
+        |        +-----------------------------+                                         
+        |------> | readPeciAdapterNameFromFile | read adapter name from file             
+        |        +-----------------------------+                                         
+        |                                                                                
+        +------> add to cpu_configs                                                      
+```
+
 ### nvmesensor
 
 ```
