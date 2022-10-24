@@ -117,6 +117,29 @@ struct cdev {
 
 ## <a name="block-device"></a> Block Device
 
+Block device files uniformly represent storage such as hard drive, pen drive, NVMe, and non-persistent storage like ramdisk. 
+Besides the difference in medium and transfer protocol complexity, they are merely used as spaces from which we save files and read. 
+Commonly speaking, drive data operation is slow, especially compared to processor cache and memory. 
+Such drawback indicates that optimizations are necessary and have been made between application and driver layers.
+
+- VFS Layer
+    - Given the type, major, and minor numbers, it grabs the corresponding block device (bdev) and saves it in the `file` for the following use.
+- Address Space
+    - A file duplication, a.k.a. page cache, is kept in memory for faster operation while retaining interfaces toward the actual file in storage.
+    - Reads from disk if the file doesn't exist in memory yet.
+    - Writes the file to disk periodically or on demand.
+    - (will be covered on another page)
+- Block Layer
+    - A per-bdev queue holds requests for a while, giving the IO scheduler a chance to do its job before consigning them to the driver.
+    - (will be covered on another page)
+- Driver
+    - Drops the command to the hardware controller for actual read and write actions.
+    - (will be covered on another page)
+
+<p align="center"><img src="images/device/block-device.png" /></p>
+
+<details><summary> More Details </summary>
+
 ```c
 const struct file_operations def_blk_fops = { 
     .open       = blkdev_open,
@@ -360,6 +383,8 @@ struct elevator_type
     struct list_head list;                  // doubly linked list node
 };
 ```
+    
+</details>
 
 ## <a name="device-tree"></a> Device Tree
 
