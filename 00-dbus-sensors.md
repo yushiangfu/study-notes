@@ -255,6 +255,57 @@
 ### cpusensor
 
 ```
++------+
+| main | : create cpu sensors
++-|----+ CPUSensorMain.cpp
+  |
+  |--> .async_wait
+  |
+  |        +--------------+
+  |------> | getCpuConfig | create sensors, read peci adapter name(s) from file to cpu_configs
+  |        +--------------+
+  |
+  |------> if it gets nothing in the above func
+  |
+  |            +----------------+
+  +----------> | detectCpuAsync | : try to get dimm temp and cpu id, create sensors
+  |            +---|------------+
+  |                |
+  |                +--> timer.async_wait
+  |                        +--------------------------------------------------------------+
+  |                        |+-----------+                                                 |
+  |                        || detectCpu | try to get dimm temp and cpu id, create sensors |
+  |                        |+-----------+                                                 |
+  |                        +--------------------------------------------------------------+
+  |
+  |--> prepare event handler
+  |       +-----------------------------------------------------------------------------------------+
+  |       |timer.async_wait                                                                         |
+  |       |   +------------------------------------------------------------------------------------+|
+  |       |   |+--------------+                                                                    ||
+  |       |   || getCpuConfig | create sensors, read peci adapter name(s) from file to cpu_configs ||
+  |       |   |+--------------+                                                                    ||
+  |       |   |+----------------+                                                                  ||
+  |       |   || detectCpuAsync | try to get dimm temp and cpu id, create sensors                  ||
+  |       |   |+----------------+                                                                  ||
+  |       |   +------------------------------------------------------------------------------------+|
+  |       +-----------------------------------------------------------------------------------------+
+  |
+  |--> for each sensor type
+  |
+  |------> register the handler
+  |
+  |--> ->request_name("xyz.openbmc_project.CPUSensor")
+  |
+  |    +-----------------------------+
+  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match
+  |    +-----------------------------+
+  |    +--------+
+  +--> | io.run |
+       +--------+
+```
+
+```
 +--------------+                                                                                                    
 | getCpuConfig | : create sensors, read peci adapter name(s) from file to cpu_configs                               
 +---|----------+                                                                                                    
@@ -341,6 +392,55 @@
         |        +-----------------------------+                                         
         |                                                                                
         +------> add to cpu_configs                                                      
+```
+
+```
++-----------+                                                   
+| detectCpu | : try to get dimm temp and cpu id, create sensors 
++-|---------+                                                   
+  |                                                             
+  |--> for each cpu config                                      
+  |                                                             
+  |------> continue if it's aleady 'ready'                      
+  |                                                             
+  |------> open peci dev file                                   
+  |                                                             
+  |------> ioctl(ping)                                          
+  |                                                             
+  |------> if normal                                            
+  |                                                             
+  |----------> get dimm temp and set state = 'ready'            
+  |                                                             
+  |------> else                                                 
+  |                                                             
+  |----------> set state = 'off'                                
+  |                                                             
+  |------> if state changes                                     
+  |                                                             
+  +----------> if it's 'off' to 'ready' or 'on'                 
+  |                                                             
+  |--------------> if old state is 'off'                        
+  |                                                             
+  |------------------> ioctl: get cpu id                        
+  |                                                             
+  +--------------> determine rescan delay                       
+  |                                                             
+  |----------> save new state in config                         
+  |                                                             
+  |--> if rescan_delay is set                                   
+  |                                                             
+  |------> timer.async_wait                                     
+  |           +---------------------------------+               
+  |           |+---------------+                |               
+  |           || createSensors | create sensors |               
+  |           |+---------------+                |               
+  |           +---------------------------------+               
+  |                                                             
+  |--> if not yet all cpu are pinged                            
+  |                                                             
+  |        +----------------+                                   
+  +------> | detectCpuAsync | recursive call                    
+           +----------------+                                   
 ```
 
 ### nvmesensor
