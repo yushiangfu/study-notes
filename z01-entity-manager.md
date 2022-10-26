@@ -11,8 +11,6 @@
 
 ## <a name="sensor-detection"></a> Sensor Detection
 
-### 1. fru-device
-
 An `entity` is physically detachable devices such as backplanes, PSUs, PCIe cards, etc. 
 Taking PCIe cards as an example, they can plug in any slot; therefore, we have to dynamically detect what kind of device is installed in which place. 
 Based on the assumption that entities are equipped with valid FRU, finding an FRU means an entity exists in the system. 
@@ -36,6 +34,7 @@ root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
 ```
 from dbus perspective
   
+fru_device.cpp
 +------+                                                                                                          
 | main |                                                                                                          
 +-|----+                                                                                                          
@@ -439,8 +438,6 @@ fru_device.cpp
 ```
   
 </details>
-
-### 2. entity-manager
 
 The daemon `entity-manager` has registered callbacks to interface addition and removal, so it's closely tied to events such as FRU device addition. 
 It then elegantly takes over the work and reads in files under `/usr/share/entity-manager/configurations/`. 
