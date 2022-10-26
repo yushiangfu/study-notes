@@ -40,15 +40,15 @@ Though the underlying devices vary, the applications work on them through typica
 On the kernel side, no uniform functions are provided since only the specific driver knows how to manage its hardware. 
 Therefore, the kernel solely offers the `open`, which locates the corresponding driver and switches to it.
 
-- open
+- `open`
     - The virtual filesystem generates a `file` structure in kernel space accessible by file identifier from user space.
     - Given a type, major, and minor number, it finds the target `cdev` from the related table and fetches the file operations (fops) from it.
     - Immediately attaches the specific file operations, the replacement for default ones, to the opened `file`.
-- read
+- `read`
     - No default function is available.
-- write
+- `write`
     - No default function is available.
-- ioctl
+- `ioctl`
     - No default function is available.
 
 <p align="center"><img src="images/device/character-device.png" /></p>
@@ -124,6 +124,7 @@ Such drawback indicates that optimizations are necessary and have been made betw
 
 - VFS Layer
     - Given the type, major, and minor numbers, it grabs the corresponding block device (bdev) and saves it in the `file` for the following use.
+    - Default operations are ready for `open`, `read`, `write`, and `ioctl`.
 - Address Space
     - A file duplication, a.k.a. page cache, is kept in memory for faster operation while retaining interfaces toward the actual file in storage.
     - Reads from disk if the file doesn't exist in memory yet.
@@ -148,17 +149,35 @@ Surprise! Nothing is here; please refer to another page that hasn't existed!
 
 ## <a name="device-tree"></a> Device Tree
 
-Device tree source (DTS) is the text file describing the list of devices of the SoC and gets compiled into Device tree blob (DTB). 
-The kernel will know where to find them in memory for parsing and sequentially registering devices on the list. 
-There are also DTS files for inclusion only (DTSI), which helps avoid content duplication.
+Kernel features a significantly tremendous collection of drivers, which can be configured by users before the image is built. 
+As for devices, they are provided by the device tree (DT), which encompasses a list of enabled and disabled devices. 
+Given the same kernel, we can prepare DT files of different hardware configurations and flexibly pick one feeding kernel according to the platforms. 
+Here are the typical terms related to the device tree and the corresponding files in our study case:
 
-```
-arch/arm/boot/dts/aspeed-g5.dtsi            : base; list of supported components in processor 'apeed'
-arch/arm/boot/dts/openbmc-flash-layout.dtsi : partition layout in SPI flash
-arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts: overwrite; specially tailored for machine 'romulus'
-```
+- Device Tree Source (DTS)
+    - for human to write and configure
+    - e.g., `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts`
+- Device Tree Source Include Files (DTSI)
+    - for DTS to use as the base and later overwrite specific nodes if necessary.
+    - e.g., `arch/arm/boot/dts/aspeed-g5.dtsi`
+    - e.g., `arch/arm/boot/dts/openbmc-flash-layout.dtsi`
+- Device Tree Blob (DTB)
+    - for kernel to parse
+    - e.g., `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb`
 
-DTS files arrange devices in a hierarchy structure, and each parent can have a few properties and child nodes. 
+Device tree, as the name suggests, nodes are appropriately arranged in the parent-children hierarchy, starting with the root node `/`. 
+Each node contains a few properties (e.g., status), and it can extend to more nodes of the next level as long as it represents a bus. 
+Device nodes vary from I2C controller, SPI controller, timer to interrupt controller, and so on. 
+Except for interrupt controllers and disabled components, the kernel registers the remaining devices, and here's how they are handled:
+
+1. Traverse each driver and attempt to find a match.
+2. If found, the driver starts probing, initializing the infrastructure by throwing together properties, irq number, and iomem fed from the node.
+
+Later, when drivers register to the framework, it similarly goes through the devices to find the soul mate and set up. 
+Registration sequence doesn't matter, and the net result is that some matched drivers further prepare the character and block device interfaces.
+
+<details><summary> More Details </summary>
+
 Property **#address-cells** and **size-cells** in parent node specify how to interpret property **reg** of children. 
 The most common node properties are the register base and hardware interrupt number, and the kernel will regard them as device resources when parsing.
 
@@ -187,9 +206,6 @@ platform_get_resource(pdev, IORESOURCE_MEM, 0); // access the MEM type resource 
 platform_get_resource(pdev, IORESOURCE_MEM, 1); // access the MEM type resource with index = 1
 platform_get_resource(pdev, IORESOURCE_IRQ, 0); // access the IRQ type resource with index = 0
 ```
-
-If many DTS and DTSI files are involved in the DTB complication, it might be challenging to know whether a device is enabled or disabled eventually. 
-Utility **dtc** can construct the DTS from DTB and give us a quick inspection without booting up the target system.
 
 ```
 dtc -I dtb -O dts arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb  # construct dts from dtb
@@ -267,6 +283,8 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
 [    0.257606] device: 'iio-hwmon-battery': device_add
 ```
 
+</details>
+    
 ## <a name="system-startup"></a> System Startup
 
 Before introducing driver and device, let's talk about the **bus** first. 
