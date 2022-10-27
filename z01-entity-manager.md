@@ -35,35 +35,46 @@ root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
 from dbus perspective
   
 fru_device.cpp
-+------+                                                                                                          
-| main |                                                                                                          
-+-|----+                                                                                                          
-  |                                                                                                               
-  |--> set up service: xyz.openbmc_project.FruDevice                                                              
-  |                                                                                                               
-  |--> set up object: /xyz/openbmc_project/FruDevice                                                              
-  |                                                                                                               
-  |    +--------------+                                                                                           
-  +--> | rescanBusses |                                                                                           
-       +-|------------+                                                                                           
-         |    +------------------------------+                                                                    
-         |--> | FindDevicesWithCallback::run |                                                                    
-         |    +-|----------------------------+                                                                    
-         |      |    +----------------+                                                                           
-         |      +--> | findI2CDevices |                                                                           
-         |           +-|--------------+                                                                           
-         |             |    +------------+                                                                        
-         |             +--> | getBusFRUs |                                                                        
-         |                  +-|----------+                                                                        
-         |                    |    +--------------------+                                                         
-         |                    +--> | makeProbeInterface | set up object: /xyz/openbmc_project/FruDevice/$bus_$addr
-         |                         +--------------------+                                                         
-         |    +---------------------------------------------------+                                               
-         +--> | FindDevicesWithCallback::~FindDevicesWithCallback |                                               
-              +-|-------------------------------------------------+                                               
-                |    +--------------------+                                                                       
-                +--> | addFruObjectToDbus | set up object: /xyz/openbmc_project/FruDevice/$product_name           
-                     +--------------------+                                                                       
++------+
+| main |
++-|----+
+  |
+  |--> set up service: xyz.openbmc_project.FruDevice
+  |
+  |--> set up object: /xyz/openbmc_project/FruDevice
+  |
+  |    +--------------+
+  +--> | rescanBusses |
+       +-|------------+
+         |    +------------------------------+
+         |--> | FindDevicesWithCallback::run |
+         |    +-|----------------------------+
+         |      |    +----------------+
+         |      +--> | findI2CDevices |
+         |           +-|--------------+
+         |             |
+         |             +--> for each bus
+         |             |
+         |             |        +------------+
+         |             +------> | getBusFRUs |
+         |                      +-|----------+
+         |                        |
+         |                        +--> for each addr in specified range
+         |                        |
+         |                        |        +--------------------+
+         |                        +------> | makeProbeInterface | set up object: /xyz/openbmc_project/FruDevice/$bus_$addr
+         |                                 +--------------------+
+         |    +---------------------------------------------------+
+         +--> | FindDevicesWithCallback::~FindDevicesWithCallback |
+              +-|-------------------------------------------------+
+                |
+                +--> for each bus
+                |
+                +------> for each device
+                |
+                |            +--------------------+
+                +----------> | addFruObjectToDbus | set up object: /xyz/openbmc_project/FruDevice/$product_name
+                             +--------------------+                                                             
                                                                                                                   
                                                                                                                   
   +----- main                                                                                                     
@@ -465,7 +476,58 @@ From the `fru device` and `entity manager` to sensor daemons, they don't talk to
 <p align="center"><img src="images/openbmc/entity-manager.png" /></p>
 
 <details><summary> More Details </summary>
-
+  
+```
+from dbus perspective
+  
+entity_manager.cpp
++------+                                                                                                                  
+| main |                                                                                                                  
++-|----+                                                                                                                  
+  |                                                                                                                       
+  |--> set up service: xyz.openbmc_project.EntityManager                                                                  
+  |                                                                                                                       
+  |--> set up object: /xyz/openbmc_project/EntityManager                                                                  
+  |                                                                                                                       
+  |    +---------------------------+                                                                                      
+  +--> | propertiesChangedCallback |                                                                                      
+       +-|-------------------------+                                                                                      
+         |    +------------------+                                                                                        
+         |--> | PerformScan::run |                                                                                        
+         |    +-|----------------+                                                                                        
+         |      |    +-----------------+                                                                                  
+         |      +--> | findDbusObjects | call service: xyz.openbmc_project.ObjectMapper                                   
+         |           +-----------------+      object: /xyz/openbmc_project/object_mapper                                  
+         |                                    interface: xyz.openbmc_project.ObjectMapper                                 
+         |                                    method: GetSubTree                                                          
+         |                                                                                                                
+         |    +---------------------------+                                                                               
+         +--> | PerformScan::~PerformScan |                                                                               
+              +-|-------------------------+                                                                               
+                |    +------------+                                                                                       
+                +--> | postToDbus |                                                                                       
+                     +-|----------+                                                                                       
+                       |                                                                                                  
+                       |--> for each board                                                                                
+                       |                                                                                                  
+                       |------> set up object: /xyz/openbmc_project/inventory/system/$board_type/$board_key               
+                       |                                                                                                  
+                       |------> for each item                                                                             
+                       |                                                                                                  
+                       +----------> set up object: /xyz/openbmc_project/inventory/system/$board_type/$board_key/$item_name
+                                                                                                                          
+                                                                                                                          
+  +------- main                                                                                                           
+  |+------ name owner changed                                                                                             
+  ||+----- interface added                                                                                                
+  |||+---- interface removed                                                                                              
+  ||||+--- property changed                                                                                               
+  |||||                                                                                                                   
++-vvvvv---------------------+                                                                                             
+| propertiesChangedCallback |                                                                                             
++---------------------------+                                                                                             
+```
+  
 ```
 entity_manager.cpp
 +------+
