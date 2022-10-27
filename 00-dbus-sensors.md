@@ -443,6 +443,303 @@
            +----------------+                                   
 ```
 
+### exitairtempsensor
+
+```
+ExitAirTempSensor.cpp                                                              
++------+                                                                            
+| main | : create sensors and update sensor reading                                 
++-|----+                                                                            
+  |                                                                                 
+  |--> ->request_name("xyz.openbmc_project.ExitAirTempSensor")                      
+  |                                                                                 
+  |--> io.post                                                                      
+  |                                                                                 
+  |        +--------------+                                                         
+  |------> | createSensor | create sensors                                          
+  |        +--------------+                                                         
+  |                                                                                 
+  |--> prepare event handler                                                        
+  |       +-------------------------------------+                                   
+  |       |.async_wait                          |                                   
+  |       |   +--------------------------------+|                                   
+  |       |   |+--------------+                ||                                   
+  |       |   || createSensor | create sensors ||                                   
+  |       |   |+--------------+                ||                                   
+  |       |   +--------------------------------+|                                   
+  |       +-------------------------------------+                                   
+  |                                                                                 
+  |--> for each monitor interfaces                                                  
+  |                                                                                 
+  |------> prepare match rule and register the event handler                        
+  |                                                                                 
+  |    +-----------------------------+                                              
+  +--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match
+       +-----------------------------+                                              
+```
+
+```
++--------------+                                                                                                                 
+| createSensor | : create sensors                                                                                                
++-|------------+                                                                                                                 
+  |                                                                                                                              
+  |--> prepare a GetSensorConfiguration with callback                                                                            
+  |       +---------------------------------------------------------------------------------------------------------------------+
+  |       |for each pair in response                                                                                            |
+  |       |                                                                                                                     |
+  |       |--> for each entry in the pair                                                                                       |
+  |       |                                                                                                                     |
+  |       +------> if the entry is a exit_air_iface                                                                             |
+  |       |                                                                                                                     |
+  |       |            +---------------------------+                                                                            |
+  |       +----------> | parseThresholdsFromConfig | given sensor data, find pairs of (hysteresis, direction, severity, value), |
+  |       |            +---------------------------+ and push bask to arg vector                                                |
+  |       |                                                                                                                     |
+  |       +----------> set up threshold                                                                                         |
+  |       |                                                                                                                     |
+  |       +------> elif it's a cfm_iface                                                                                        |
+  |       |                                                                                                                     |
+  |       |            +---------------------------+                                                                            |
+  |       +----------> | parseThresholdsFromConfig | given sensor data, find pairs of (hysteresis, direction, severity, value), |
+  |       |            +---------------------------+ and push bask to arg vector                                                |
+  |       |                                                                                                                     |
+  |       +----------> set up threshold                                                                                         |
+  |       |                                                                                                                     |
+  |       |if there's a exit_air_sensor                                                                                         |
+  |       |                                                                                                                     |
+  |       |    +-------------------------+                                                                                      |
+  |       +--> | CFMSensor::setupMatches | set match rule and register callback to update sensor reading                        |
+  |       |    +-------------------------+                                                                                      |
+  |       |    +-------------------------+                                                                                      |
+  |       +--> | CFMSensor::updateReading| update sensor reading (even it's nan)                                                |
+  |       |    +-------------------------+                                                                                      |
+  |       +---------------------------------------------------------------------------------------------------------------------+
+  |    +------------------------------------------+                                                                              
+  +--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces              
+       +------------------------------------------+                                                                         
+```
+
+```
++-------------------------+                                                                                           
+| CFMSensor::setupMatches | : set match rule and register callback to update sensor reading                           
++-|-----------------------+                                                                                           
+  |    +------------------+                                                                                           
+  |--> | setupSensorMatch | prepare event handler calling arg callback, register to 'xyz.openbmc_project.Sensor.Value'
+  |    +------------------+                                                                                           
+  |        +--------------------------------------------------------------------------+                               
+  |        |if tach_path isn't in range yet                                           |                               
+  |        |                                                                          |                               
+  |        |    +--------------------------+                                          |                               
+  |        +--> | CFMSensor::addTachRanges | add tach range and update sensor reading |                               
+  |        |    +--------------------------+                                          |                               
+  |        |                                                                          |                               
+  |        |else                                                                      |                               
+  |        |                                                                          |                               
+  |        |    +--------------------------+                                          |                               
+  |        +--> | CFMSensor::updateReading | update sensor reading (even it's nan)    |                               
+  |        |    +--------------------------+                                          |                               
+  |        +--------------------------------------------------------------------------+                               
+  |                                                                                                                   
+  |--> ->async_method_call                                                                                            
+  |       +----------------------------------------------+                                                            
+  |       |->getMaxRpm                                   |                                                            
+  |       |                                              |                                                            
+  |       |->register_property "Limit"                   |                                                            
+  |       |                                              |                                                            
+  |       | +-----------+                                |                                                            
+  |       | | setMaxPWM | get class to set out limit max |                                                            
+  |       | +-----------+                                |                                                            
+  |       +----------------------------------------------+                                                            
+  |       get "Limit"                                                                                                 
+  |                                                                                                                   
+  +--> set match rule and register callback                                                                           
+          +---------------------------------------------+                                                             
+          |get reading  from arg value                  |                                                             
+          |                                             |                                                             
+          |->getMaxRpm                                  |                                                             
+          |                                             |                                                             
+          |->set_property"Limit"                        |                                                             
+          |                                             |                                                             
+          |+-----------+                                |                                                             
+          || setMaxPWM | get class to set out limit max |                                                             
+          |+-----------+                                |                                                             
+          +---------------------------------------------+                                                             
+```
+
+```
++------------------+                                                                   
+| setupSensorMatch | : prepare callback, register to 'xyz.openbmc_project.Sensor.Value'
++-|----------------+                                                                   
+  |                                                                                    
+  |--> prepare event handler                                                           
+  |       +--------------------+                                                       
+  |       |read value from msg |                                                       
+  |       |                    |                                                       
+  |       |call arg callback   |                                                       
+  |       +--------------------+                                                       
+  |                                                                                    
+  +--> reigster the handler to 'xyz.openbmc_project.Sensor.Value'                      
+```
+
+```
++--------------------------+                                                     
+| CFMSensor::addTachRanges | : add tach range and update sensor reading          
++-|------------------------+                                                     
+  |                                                                              
+  +--> ->async_method_call                                                       
+          +---------------------------------------------------------------------+
+          |+-------------------------------------------------------------------+|
+          ||prepare pair (min, max) and add to range                           ||
+          ||                                                                   ||
+          ||+--------------------------+                                       ||
+          ||| CFMSensor::updateReading | update sensor reading (even it's nan) ||
+          ||+--------------------------+                                       ||
+          |+-------------------------------------------------------------------+|
+          |service: serviceName                                                 |
+          |object: path                                                         |
+          |interface: org.freedesktop.DBus.Properties                           |
+          |method: GetAll                                                       |
+          +---------------------------------------------------------------------+
+```
+
+```
++--------------------------+                                                                        
+| CFMSensor::updateReading | : update sensor reading (even it's nan)                                
++-|------------------------+                                                                        
+  |    +----------------------+                                                                     
+  |--> | CFMSensor::calculate | calculate total cfm (cubic feet per minute)                         
+  |    +----------------------+                                                                     
+  |                                                                                                 
+  |--> if value changes && parent exists                                                            
+  |                                                                                                 
+  |------> parent->updateReading                                                                    
+  |                                                                                                 
+  |        +---------------------+                                                                  
+  |------> | Sensor::updateValue | update property "Value", update instrumentation, check thresholds
+  |        +---------------------+                                                                  
+  |                                                                                                 
+  |--> else                                                                                         
+  |                                                                                                 
+  |        +---------------------+                                                                  
+  +------> | Sensor::updateValue | update property "Value", update instrumentation, check thresholds
+           +---------------------+                                                                  
+```
+
+```
++----------------------+                                              
+| CFMSensor::calculate | : calculate total cfm (cubic feet per minute)
++-|--------------------+                                              
+  |                                                                   
+  |--> for each tach                                                  
+  |                                                                   
+  |------> calculate the cfm (cubic feet per minute)                  
+  |                                                                   
+  |------> accumulate to total                                        
+  |                                                                   
+  +--> value = total / 100 (percent)                                  
+```
+
+```
++---------------------+                                                                                              
+| Sensor::updateValue | : update property "Value", update instrumentation, check thresholds                          
++-|-------------------+                                                                                              
+  |    +-----------------------------+                                                                               
+  |--> | Sensor::updateValueProperty | update property "Value" if needed                                             
+  |    +-----------------------------+                                                                               
+  |    +-------------------------------+                                                                             
+  |--> | Sensor::updateInstrumentation | update instrumentation attributes                                           
+  |    +-------------------------------+                                                                             
+  |    +------------------------------------+                                                                        
+  |--> | ExitAirTempSensor::checkThresholds |                                                                        
+  |    +-|----------------------------------+                                                                        
+  |      |    +-----------------------------+                                                                        
+  |      +--> | thresholds::checkThresholds | compare arg value to each threshold of sensor, return whatever we found
+  |           +-----------------------------+                                                                        
+  |                                                                                                                  
+  |--> if the valud is valid                                                                                         
+  |                                                                                                                  
+  +------> label 'functional' and 'available'                                                                        
+```
+
+```
++-----------------------------+                                    
+| Sensor::updateValueProperty | : update property "Value" if needed
++-|---------------------------+                                    
+  |    +------------------------+                                  
+  +--> | Sensor::updateProperty | update property if needed        
+       +------------------------+                                  
+```
+
+```
++------------------------+                                            
+| Sensor::updateProperty | : update property if needed                
++-|----------------------+                                            
+  |    +------------------------+                                     
+  |--> | Sensor::requiresUpdate | determine if we need to update value
+  |    +------------------------+                                     
+  |                                                                   
+  |--> if we need                                                     
+  |                                                                   
+  +------> ->set_property                                             
+```
+
+```
++------------------------+                                       
+| Sensor::requiresUpdate | : determine if we need to update value
++-|----------------------+                                       
+  |                                                              
+  |--> return true if we have a nan                              
+  |                                                              
+  |--> return true if difference > threshold                     
+  |                                                              
+  +--> return false                                              
+```
+
+```
++-----------------------------+                                                                          
+| thresholds::checkThresholds | : compare arg value to each threshold of sensor, return whatever we found
++-|---------------------------+                                                                          
+  |                                                                                                      
+  | for each threshold in sensor                                                                         
+  |                                                                                                      
+  |------> if the direction is 'high'                                                                    
+  |                                                                                                      
+  |----------> if arg value >= threshold                                                                 
+  |                                                                                                      
+  |--------------> append value to local list                                                            
+  |                                                                                                      
+  |----------> elif value < (threshold - hysteresis)                                                     
+  |                                                                                                      
+  +--------------> append value to local list                                                            
+  |                                                                                                      
+  |------> elif the direction is 'low'                                                                   
+  |                                                                                                      
+  |----------> if arg value <= threshold                                                                 
+  |                                                                                                      
+  |--------------> append value to local list                                                            
+  |                                                                                                      
+  |----------> elif value > (threshold - hysteresis)                                                     
+  |                                                                                                      
+  +--------------> append value to local list                                                            
+```
+
+```
++-----------+                                 
+| setMaxPWM | : get class to set out limit max
++-|---------+                                 
+  |                                           
+  +--> ->async_method_call                    
+          +---------------------------------+ 
+          |for each (path, obj_dict) in ret | 
+          |                                 | 
+          |    ->async_method_call          | 
+          |       +------------------+      | 
+          |       |set "OutLimitMax" |      | 
+          |       +------------------+      | 
+          +---------------------------------+ 
+          get "Class"                         
+```
+
 ### nvmesensor
 
 ```
