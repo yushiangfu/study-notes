@@ -740,6 +740,124 @@ ExitAirTempSensor.cpp
           get "Class"                         
 ```
 
+### fansensor
+
+```
+FanMain.cpp                                                    
++------+                                                        
+| main |                                                        
++-|----+                                                        
+  |                                                             
+  |--> ->request_name("xyz.openbmc_project.FanSensor")          
+  |                                                             
+  |--> io.post                                                  
+  |       +-------------------------------------+               
+  |       |+---------------+                    |               
+  |       || createSensors | create fan sensors |               
+  |       |+---------------+                    |               
+  |       +-------------------------------------+               
+  |                                                             
+  |--> prepare event handler                                    
+  |       +-------------------------------------+               
+  |       |+---------------+                    |               
+  |       || createSensors | create fan sensors |               
+  |       |+---------------+                    |               
+  |       +-------------------------------------+               
+  |                                                             
+  |--> for each sensor type                                     
+  |                                                             
+  |------> prepare match rule and register event handler        
+  |                                                             
+  |--> prepare event handler                                    
+  |       +----------------------------------------------------+
+  |       |+------------------------+                          |
+  |       || createRedundancySensor | create redundancy sensor |
+  |       |+------------------------+                          |
+  |       +----------------------------------------------------+
+  |                                                             
+  |--> prepare match rule and register event handler            
+  |                                                             
+  |    +-----------------------------+                          
+  +--> | setupManufacturingModeMatch |                          
+       +-----------------------------+                          
+```
+
+```
++---------------+                                                                                                  
+| createSensors | : create fan sensors                                                                             
++-|-------------+                                                                                                  
+  |                                                                                                                
+  |--> prepare callback for GetSensorConfiguration                                                                 
+  |       +------------------------------------------------------------------------------+                         
+  |       |+-----------+                                                                 |                         
+  |       || findFiles | find files under "/sys/class/hwmon" and add to arg paths        |                         
+  |       |+-----------+                                                                 |                         
+  |       |                                                                              |                         
+  |       |for each found path                                                           |                         
+  |       |                                                                              |                         
+  |       |    +------------+                                                            |                         
+  |       |    | getFanType | get fan type (aspeed, nuvoton or i2c) based on device name |                         
+  |       |    +------------+                                                            |                         
+  |       |                                                                              |                         
+  |       |    for each sensor in configurations                                         |                         
+  |       |                                                                              |                         
+  |       |        if type is aspeed or nuvoton                                          |                         
+  |       |                                                                              |                         
+  |       |            save sensor data and break (bc there's only one sucn sensor)      |                         
+  |       |                                                                              |                         
+  |       |        if type is i2c                                                        |                         
+  |       |                                                                              |                         
+  |       |            if (bus, addr) of configuration and device match                  |                         
+  |       |                                                                              |                         
+  |       |                save sensor data and break                                    |                         
+  |       |                                                                              |                         
+  |       |    +---------------------------+                                             |                         
+  |       |    | parseThresholdsFromConfig |                                             |                         
+  |       |    +---------------------------+                                             |                         
+  |       |                                                                              |                         
+  |       |    handle presence sensor if there's any                                     |                         
+  |       |                                                                              |                         
+  |       |    set power state if "PowerState" is found                                  |                         
+  |       |                                                                              |                         
+  |       |    prepare tach sensor                                                       |                         
+  |       |                                                                              |                         
+  |       |    prepare pwm sensor                                                        |                         
+  |       |                                                                              |                         
+  |       |+------------------------+                                                    |                         
+  |       || createRedundancySensor | create redundancy sensor                           |                         
+  |       |+------------------------+                                                    |                         
+  |       +------------------------------------------------------------------------------+                         
+  |    +------------------------------------------+                                                                
+  |--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces
+  |    +------------------------------------------+                                                                
+  |    +-------------------------------------------------+                                                         
+  +--> | GetSensorConfiguration::~GetSensorConfiguration | call callback                                           
+       +-------------------------------------------------+                                                         
+```
+
+```
++------------------------+                                     
+| createRedundancySensor | : create redundancy sensor          
++-|----------------------+                                     
+  |                                                            
+  +--> ->async_method_call                                     
+          +---------------------------------------------------+
+          |for each path_pair in manage_obj                   |
+          |                                                   |
+          |    for each interface in path_pair                |
+          |                                                   |
+          |        if interface matches the redundancy config |
+          |                                                   |
+          |            save it in systemRedundancy            |
+          |                                                   |
+          |            return (bc currently only support one) |
+          +---------------------------------------------------+
+          "xyz.openbmc_project.EntityManager"                  
+          "/"                                                  
+          "org.freedesktop.DBus.ObjectManager"                 
+          "GetManagedObjects"                                  
+```
+
 ### nvmesensor
 
 ```
