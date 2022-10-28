@@ -149,9 +149,12 @@ Surprise! Nothing is here; please refer to another page that hasn't existed!
 
 ## <a name="device-tree"></a> Device Tree
 
-Kernel features a significantly tremendous collection of drivers, which can be configured by users before the image is built. 
-As for devices, they are provided by the device tree (DT), which encompasses a list of enabled and disabled devices. 
-Given the same kernel, we can prepare DT files of different hardware configurations and flexibly pick one feeding kernel according to the platforms. 
+Kernel features a significantly tremendous collection of drivers, which users can configure before the image is built. 
+We can enable a decent number of built-in drivers or standalone modules to support the chip, such as AST2500. 
+However, hardware configurations inevitably differ, like adding mux on motherboard A or disabling unused SPI controller on motherboard B. 
+Instead of having device info fixed inside the kernel and building images for each kind, the developers come up with the idea: device tree. 
+The parent-children hierarchy starts with the root `/`, and nodes are mostly descriptors of devices and come with generic or driver-specific properties. 
+We select a device tree of a hardware configuration for the kernel before startup; later kernel parses the input and matches the drivers accordingly. 
 Here are the typical terms related to the device tree and the corresponding files in our study case:
 
 - Device Tree Source (DTS)
@@ -165,16 +168,7 @@ Here are the typical terms related to the device tree and the corresponding file
     - for kernel to parse
     - e.g., `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb`
 
-Device tree, as the name suggests, nodes are appropriately arranged in the parent-children hierarchy, starting with the root node `/`. 
-Each node contains a few properties (e.g., status), and it can extend to more nodes of the next level as long as it represents a bus. 
-Device nodes vary from I2C controller, SPI controller, timer to interrupt controller, and so on. 
-Except for interrupt controllers and disabled components, the kernel registers the remaining devices, and here's how they are handled:
-
-1. Traverse each driver and attempt to find a match.
-2. If found, the driver starts probing, initializing the infrastructure by throwing together properties, irq number, and iomem fed from the node.
-
-Later, when drivers register to the framework, it similarly goes through the devices to find the soul mate and set up. 
-Registration sequence doesn't matter, and the net result is that some matched drivers further prepare the character and block device interfaces.
+<p align="center"><img src="images/device/device-tree.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -287,6 +281,14 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
     
 ## <a name="system-startup"></a> System Startup
 
+Except for interrupt controllers and disabled components, the kernel registers the remaining devices, and here's how they are handled:
+
+1. Traverse each driver and attempt to find a match.
+2. If found, the driver starts probing, initializing the infrastructure by throwing together properties, irq number, and iomem fed from the node.
+
+Later, when drivers register to the framework, it similarly goes through the devices to find the soul mate and set up. 
+Registration sequence doesn't matter, and the net result is that some matched drivers further prepare the character and block device interfaces.
+    
 ```
 [    0.000000] Booting Linux on physical CPU 0x0
 [    0.000000] Linux version 5.15.69-gaae649813251-dirty (bobfu@bobfu-Vostro-5402) (arm-linux-gnueabi-gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #4 SMP Wed Oct 26 23:47:31 PDT 2022
@@ -494,107 +496,7 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
 [    2.306754]   with environment:
 [    2.306773]     HOME=/
 [    2.306789]     TERM=linux
-[    4.359076] jffs2: notice: (113) jffs2_build_xattr_subsystem: complete building xattr subsystem, 21 of xdatum (18 unchecked, 3 orphan) and 37 of xref (13 dead, 0 orphan) found.
-[    4.638590] overlayfs: upper fs does not support tmpfile.
-[    4.644067] overlayfs: upper fs does not support RENAME_WHITEOUT.
-[    9.385993] systemd[1]: Current system time is further ahead 15y after build time, but cannot correct: Invalid argument
-[    9.459965] systemd[1]: Failed to find module 'autofs4'
-[    9.897512] systemd[1]: systemd 251.3+ running in system mode (+PAM -AUDIT -SELINUX -APPARMOR -IMA -SMACK +SECCOMP -GCRYPT -GNUTLS -OPENSSL -ACL +BLKID -CURL -ELFUTILS -FIDO2 -IDN2 -IDN -IPTC +KMOD -LIBCRYPTSETUP +LIBFDISK -PCRE2 -PWQUALITY -P11KIT -QRENCODE -TPM2 -BZIP2 -LZ4 -XZ -ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON -UTMP +SYSVINIT default-hierarchy=hybrid)
-[    9.898636] systemd[1]: Detected architecture arm.
-[   10.035174] systemd[1]: Hostname set to <romulus>.
-[   15.106770] systemd[1]: /lib/systemd/system/phosphor-ipmi-net@.socket:3: Invalid interface name, ignoring: sys-subsystem-net-devices-%i.device
-[   15.233475] systemd[1]: Queued start job for default target Multi-User System.
-[   15.265896] systemd[1]: Created slice Slice /system/getty.
-[   15.277978] systemd[1]: Created slice Slice /system/mapper-wait.
-[   15.287097] systemd[1]: Created slice Slice /system/modprobe.
-[   15.295199] systemd[1]: Created slice Slice /system/obmc-led-group-start.
-[   15.305301] systemd[1]: Created slice Slice /system/op-reset-chassis-on.
-[   15.313669] systemd[1]: Created slice Slice /system/op-reset-chassis-running.
-[   15.324827] systemd[1]: Created slice Slice /system/org.openbmc.control.Power.
-[   15.333473] systemd[1]: Created slice Slice /system/phosphor-certificate-manager.
-[   15.342885] systemd[1]: Created slice Slice /system/phosphor-discover-system-state.
-[   15.353491] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.
-[   15.362179] systemd[1]: Created slice Slice /system/phosphor-ipmi-net.
-[   15.371888] systemd[1]: Created slice Slice /system/phosphor-reset-host-running.
-[   15.381027] systemd[1]: Created slice Slice /system/serial-getty.
-[   15.392249] systemd[1]: Created slice Slice /system/xyz.openbmc_project.State.Chassis.
-[   15.400339] systemd[1]: Created slice Slice /system/xyz.openbmc_project.State.Host.
-[   15.408568] systemd[1]: Started Dispatch Password Requests to Console Directory Watch.
-[   15.413750] systemd[1]: Started Forward Password Requests to Wall Directory Watch.
-[   15.420315] systemd[1]: Reached target Host0 running after reset.
-[   15.423225] systemd[1]: Reached target Path Units.
-[   15.425353] systemd[1]: Reached target Remote File Systems.
-[   15.427325] systemd[1]: Reached target Slice Units.
-[   15.430206] systemd[1]: Reached target Swaps.
-[   15.460931] systemd[1]: Listening on Syslog Socket.
-[   15.513532] systemd[1]: Listening on Process Core Dump Socket.
-[   15.520570] systemd[1]: Listening on initctl Compatibility Named Pipe.
-[   15.584889] systemd[1]: Journal Audit Socket was skipped because of a failed condition check (ConditionSecurity=audit).
-[   15.593754] systemd[1]: Listening on Journal Socket (/dev/log).
-[   15.601306] systemd[1]: Listening on Journal Socket.
-[   15.610536] systemd[1]: Listening on Network Service Netlink Socket.
-[   15.630564] systemd[1]: Listening on udev Control Socket.
-[   15.638155] systemd[1]: Listening on udev Kernel Socket.
-[   15.643824] systemd[1]: Huge Pages File System was skipped because of a failed condition check (ConditionPathExists=/sys/kernel/mm/hugepages).
-[   15.647116] systemd[1]: POSIX Message Queue File System was skipped because of a failed condition check (ConditionPathExists=/proc/sys/fs/mqueue).
-[   15.684086] systemd[1]: Mounting Kernel Debug File System...
-[   15.743057] systemd[1]: Mounting Kernel Trace File System...
-[   15.825905] systemd[1]: Mounting Temporary Directory /tmp...
-[   15.844632] systemd[1]: Create List of Static Device Nodes was skipped because of a failed condition check (ConditionFileNotEmpty=/lib/modules/5.15.69-gaae649813251-dirty/modules.devname).
-[   15.956388] systemd[1]: Starting Load Kernel Module configfs...
-[   16.006177] systemd[1]: Starting Load Kernel Module fuse...
-[   16.037569] systemd[1]: File System Check on Root Device was skipped because of a failed condition check (ConditionPathIsReadWrite=!/).
-[   16.063064] systemd[1]: systemd-journald.service: unit configures an IP firewall, but the local system does not support BPF/cgroup firewalling.
-[   16.063533] systemd[1]: (This warning is only shown for the first unit using IP firewalling.)
-[   16.106578] systemd[1]: Starting Journal Service...
-[   16.174875] systemd[1]: Load Kernel Modules was skipped because all trigger condition checks failed.
-[   16.208727] systemd[1]: Starting Generate network units from Kernel command line...
-[   16.275032] systemd[1]: Starting Remount Root and Kernel File Systems...
-[   16.388865] systemd[1]: Starting Apply Kernel Variables...
-[   16.556149] systemd[1]: Starting Coldplug All udev Devices...
-[   17.125792] systemd[1]: Mounted Kernel Debug File System.
-[   17.175893] systemd[1]: Mounted Kernel Trace File System.
-[   17.215933] systemd[1]: Mounted Temporary Directory /tmp.
-[   17.651402] systemd[1]: modprobe@configfs.service: Deactivated successfully.
-[   17.813834] systemd[1]: Finished Load Kernel Module configfs.
-[   17.868848] systemd[1]: modprobe@fuse.service: Deactivated successfully.
-[   17.912617] systemd[1]: Finished Load Kernel Module fuse.
-[   17.943313] systemd[1]: Finished Generate network units from Kernel command line.
-[   18.027953] systemd[1]: Finished Remount Root and Kernel File Systems.
-[   18.046458] systemd[1]: Finished Apply Kernel Variables.
-[   18.138918] systemd[1]: Reached target Preparation for Network.
-[   18.157486] systemd[1]: FUSE Control File System was skipped because of a failed condition check (ConditionPathExists=/sys/fs/fuse/connections).
-[   18.204810] systemd[1]: Mounting Kernel Configuration File System...
-[   18.264448] systemd[1]: Rebuild Hardware Database was skipped because of a failed condition check (ConditionNeedsUpdate=/etc).
-[   18.266551] systemd[1]: Platform Persistent Storage Archival was skipped because of a failed condition check (ConditionDirectoryNotEmpty=/sys/fs/pstore).
-[   18.268813] systemd[1]: Create System Users was skipped because of a failed condition check (ConditionNeedsUpdate=/etc).
-[   18.355884] systemd[1]: Starting Create Static Device Nodes in /dev...
-[   18.580050] systemd[1]: Mounted Kernel Configuration File System.
-[   19.383539] systemd[1]: Finished Create Static Device Nodes in /dev.
-[   19.406912] systemd[1]: Reached target Preparation for Local File Systems.
-[   19.484039] systemd[1]: Mounting /var/volatile...
-[   19.565234] systemd[1]: Starting Rule-based Manager for Device Events and Files...
-[   19.700449] systemd[1]: Mounted /var/volatile.
-[   19.782678] systemd[1]: Bind mount volatile /var/cache was skipped because of a failed condition check (ConditionPathIsReadWrite=!/var/cache).
-[   19.784464] systemd[1]: Bind mount volatile /var/lib was skipped because of a failed condition check (ConditionPathIsReadWrite=!/var/lib).
-[   19.870533] systemd[1]: Starting Load/Save Random Seed...
-[   19.913133] systemd[1]: Bind mount volatile /var/spool was skipped because of a failed condition check (ConditionPathIsReadWrite=!/var/spool).
-[   19.918536] systemd[1]: Bind mount volatile /srv was skipped because of a failed condition check (ConditionPathIsReadWrite=!/srv).
-[   19.919790] systemd[1]: Reached target Local File Systems.
-[   20.333632] systemd[1]: Finished Load/Save Random Seed.
-[   20.339335] systemd[1]: First Boot Complete was skipped because of a failed condition check (ConditionFirstBoot=yes).
-[   20.341361] systemd[1]: Commit a transient machine-id on disk was skipped because of a failed condition check (ConditionPathIsMountPoint=/etc/machine-id).
-[   20.783753] systemd[1]: Started Journal Service.
-[   21.513675] systemd-journald[147]: Received client request to flush runtime journal.
-[   33.765884] 8021q: adding VLAN 0 to HW filter on device eth0
-[   33.769054] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.769902] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.770251] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.770704] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.771094] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.771495] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.788013] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
-[   33.788301] ftgmac100 1e660000.ethernet eth0: NCSI: Handler for packet type 0x82 returned -19
+...
 ```
     
 Before introducing driver and device, let's talk about the **bus** first. 
