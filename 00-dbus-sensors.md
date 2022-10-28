@@ -740,6 +740,62 @@ ExitAirTempSensor.cpp
           get "Class"                         
 ```
 
+### externalsensor
+
+```
+ExternalSensorMain.cpp
++------+
+| main |
++-|----+
+  |
+  |--> io.post
+  |       +------------------------------------------+
+  |       |+---------------+                         |
+  |       || createSensors | create external sensors |
+  |       |+---------------+                         |
+  |       +------------------------------------------+
+  |
+  |--> prepare event handler
+  |       +-----------------------------------------------+
+  |       |.async_wait                                    |
+  |       |   +------------------------------------------+|
+  |       |   |+---------------+                         ||
+  |       |   || createSensors | create external sensors ||
+  |       |   |+---------------+                         ||
+  |       |   +------------------------------------------+|
+  |       +-----------------------------------------------+
+  |
+  |--> register event handler to property change
+  |
+  +--> io.run
+```
+
+```
++---------------+                                                                                                  
+| createSensors | : create external sensors                                                                        
++-|-------------+                                                                                                  
+  |                                                                                                                
+  |--> prepare callback for GetSensorConfiguration                                                                 
+  |       +----------------------------------------------------+                                                   
+  |       |for each pair in sensor configs                     |                                                   
+  |       |                                                    |                                                   
+  |       |    parse basic info from config                    |                                                   
+  |       |                                                    |                                                   
+  |       |    +---------------------------+                   |                                                   
+  |       |    | parseThresholdsFromConfig |                   |                                                   
+  |       |    +---------------------------+                   |                                                   
+  |       |                                                    |                                                   
+  |       |    prepare external sensor entry                   |                                                   
+  |       |                                                    |                                                   
+  |       |    +-------------------------------+               |                                                   
+  |       |    | ExternalSensor::initWriteHook | update timer? |                                                   
+  |       |    +-------------------------------+               |                                                   
+  |       +----------------------------------------------------+                                                   
+  |    +------------------------------------------+                                                                
+  +--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces
+       +------------------------------------------+                                                                
+```
+
 ### fansensor
 
 ```
