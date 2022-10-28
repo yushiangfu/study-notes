@@ -914,6 +914,113 @@ FanMain.cpp
           "GetManagedObjects"                                  
 ```
 
+### hwmontempsensor
+
+```
+HwmonTempMain.cpp                                                                  
++------+                                                                            
+| main |                                                                            
++-|----+                                                                            
+  |                                                                                 
+  |--> io.post                                                                      
+  |       +---------------------------------------+                                 
+  |       |+---------------+                      |                                 
+  |       || createSensors | create hwmon sensors |                                 
+  |       |+---------------+                      |                                 
+  |       +---------------------------------------+                                 
+  |                                                                                 
+  |--> prepare event handler                                                        
+  |       +---------------------------------------+                                 
+  |       |+---------------+                      |                                 
+  |       || createSensors | create hwmon sensors |                                 
+  |       |+---------------+                      |                                 
+  |       +---------------------------------------+                                 
+  |                                                                                 
+  |--> for each sensor type                                                         
+  |                                                                                 
+  |------> register event handler to property change                                
+  |                                                                                 
+  |    +-----------------------------+                                              
+  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match
+  |    +-----------------------------+                                              
+  |                                                                                 
+  |--> prepare match rule and callback                                              
+  |       +---------------------------------------------------+                     
+  |       |+------------------+                               |                     
+  |       || interfaceRemoved | remove sensors from interface |                     
+  |       |+------------------+                               |                     
+  |       +---------------------------------------------------+                     
+  |    +--------+                                                                   
+  +--> | io.run |                                                                   
+       +--------+                                                                   
+```
+
+```
++---------------+                                                                                                        
+| createSensors | : create hwmon sensors                                                                                 
++-|-------------+                                                                                                        
+  |                                                                                                                      
+  |--> prepare callback for GetSensorConfiguration                                                                       
+  |       +-------------------------------------------------------------------------------------------------------------+
+  |       |find specific temp and pressure sensors under "/sys/bus/iio/devices" and "/sys/class/hwmon"                  |
+  |       |                                                                                                             |
+  |       |for each path                                                                                                |
+  |       |                                                                                                             |
+  |       +--> parse (bus, addr) from device name                                                                       |
+  |       |                                                                                                             |
+  |       |    +---------------------+                                                                                  |
+  |       +--> | getSensorParameters | prepare sensor param                                                             |
+  |       |    +---------------------+                                                                                  |
+  |       |                                                                                                             |
+  |       |--> for obj_path in sensor_configs                                                                           |
+  |       |                                                                                                             |
+  |       |------> decide sensor type                                                                                   |
+  |       |                                                                                                             |
+  |       |------> get (bus, addr) from config                                                                          |
+  |       |                                                                                                             |
+  |       +------> continue if (bus, addr) pair mismatch between device and config                                      |
+  |       |                                                                                                             |
+  |       |    +---------------------------+                                                                            |
+  |       +--> | parseThresholdsFromConfig | given sensor data, find pairs of (hysteresis, direction, severity, value), |
+  |       |    +---------------------------+ and push bask to arg vector                                                |
+  |       |                                                                                                             |
+  |       |--> determine poll_rate and power-state                                                                      |
+  |       |                                                                                                             |
+  |       +--> prepare HwmonTempSensor                                                                                  |
+  |       +-------------------------------------------------------------------------------------------------------------+
+  |    +------------------------------------------+                                                                      
+  +--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces      
+       +------------------------------------------+                                                                      
+```
+
+```
++---------------------+                                        
+| getSensorParameters | : prepare sensor param                 
++-|-------------------+                                        
+  |                                                            
+  |--> prepare default sensor params                           
+  |                                                            
+  |--> if path ends with "_raw"                                
+  |                                                            
+  |------> overwrite default param by "_offset" and "_scale"   
+  |                                                            
+  |--> if file name is "in_pressure_input" or "in_pressure_raw"
+  |                                                            
+  +------> overwrite min, max, scale, type, and unit           
+```
+
+```
++------------------+                                
+| interfaceRemoved | : remove sensors from interface
++----|-------------+                                
+     |                                              
+     |--> read msg from interface                   
+     |                                              
+     |--> for each sensor                           
+     |                                              
+     +------> erase sensor                          
+```
+
 ### nvmesensor
 
 ```
