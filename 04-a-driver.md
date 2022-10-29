@@ -297,9 +297,11 @@ It doesn't matter whether a device or driver registers first because the framewo
 1. Whenever a device is added, it traverses the drivers on the same bus hoping to find the match and vice versa for drivers.
 2. Once found, the driver starts probing: initializing the software infrastructure of the device by information fetched from its DT node.
 3. If that driver intends to export the probed device to user space further:
-    1. It reserves a specific or dynamic-selected range of device numbers.
+    1. It requests a specific or dynamic-selected range of device numbers.
     2. Ready cdev or bdev, and insert to the corresponding table for later lookup from syscall `open`.
    
+<p align="center"><img src="images/device/match-and-probe.png" /></p>
+    
 ```
 [    0.000000] Booting Linux on physical CPU 0x0
 [    0.000000] Linux version 5.15.69-gaae649813251-dirty (bobfu@bobfu-Vostro-5402) (arm-linux-gnueabi-gcc (Ubuntu ...
@@ -822,6 +824,12 @@ chosen {
     
 # rebuild the kernel with a larger log buffer if necessary
 CONFIG_LOG_BUF_SHIFT=17
+```
+    
+- Convert DTB to DTS.
+    
+```
+dtc -I dtb -O dts arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb > dts.txt
 ```
 
 ## <a name="reference"></a> Reference
