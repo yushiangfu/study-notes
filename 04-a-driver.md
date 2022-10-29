@@ -172,9 +172,6 @@ Here are the typical terms related to the device tree and the corresponding file
 
 <details><summary> More Details </summary>
 
-Property **#address-cells** and **size-cells** in parent node specify how to interpret property **reg** of children. 
-The most common node properties are the register base and hardware interrupt number, and the kernel will regard them as device resources when parsing.
-
 ```
     ahb {
         compatible = "simple-bus";
@@ -191,11 +188,8 @@ The most common node properties are the register base and hardware interrupt num
             clocks = <&syscon ASPEED_CLK_AHB>;
             status = "disabled";
             interrupts = <19>;                  // c. hardware irq
-```
-
-The kernel will add resources for the above item a, b, and c. So the driver can later access them by the usage:
-
-```
+    
+    
 platform_get_resource(pdev, IORESOURCE_MEM, 0); // access the MEM type resource with index = 0
 platform_get_resource(pdev, IORESOURCE_MEM, 1); // access the MEM type resource with index = 1
 platform_get_resource(pdev, IORESOURCE_IRQ, 0); // access the IRQ type resource with index = 0
@@ -206,9 +200,9 @@ dtc -I dtb -O dts arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb  # construct dts 
 dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts from filesystem (not that useful to me)
 ```
 
-- List of devices added from DTB in function **of_platform_default_populate_init**
-
 ```
+- List of devices added from DTB in function **of_platform_default_populate_init**
+    
 [    0.180038] device: 'ahb': device_add
 [    0.198481] device: '1e620000.spi': device_add
 [    0.203438] device: '1e630000.spi': device_add
@@ -282,7 +276,7 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
 ## <a name="system-startup"></a> System Startup
     
 When power is on, the kernel starts initializing fundamental subsystems like process and memory management. 
-Quite a series of relatively less critical routines follow; these functions are grouped at the build stage into any of the below categories:
+Quite a series of relatively less critical routines follow; these init calls are grouped at the build stage into any of the below categories:
     
 - console_initcall
 - early_initcall
@@ -516,9 +510,8 @@ It doesn't matter whether a device or driver registers first because the framewo
 ...
 ```
     
-Before introducing driver and device, let's talk about the **bus** first. 
-We can regard the **bus** as a collection of devices and drivers, and there are numerous buses in the system.
-
+<details><summary> More Details </summary>
+    
 ```
                                         +-------+        +-------+
                                    ┌──► | dev A | ◄────► | dev B |
@@ -532,10 +525,49 @@ bus_type        +---------------+  │
                                    └──► | drv C | ◄────► | drv D | ◄────► | drv E |
                                         +-------+        +-------+        +-------+
 ```
+    
+```c
+struct bus_type {
+    const char      *name;                                  // name shown in /sys
+    int (*match)(struct device *dev, struct device_driver *drv);    // attempt to find the matching driver for a given device
+    int (*probe)(struct device *dev);                       // link driver and device
+    void (*remove)(struct device *dev);                     // remove the unlink between driver and device
+    void (*shutdown)(struct device *dev);                   // power management operation
+    int (*suspend)(struct device *dev, pm_message_t state); // power management operation
+    int (*resume)(struct device *dev);                      // power management operation
+    struct subsys_private *p;                               // list heads for both drivers and devices
+};
+```
 
-When registering a driver, it must specify the bus type so the kernel knows where to append the driver structure. 
-Function **paltform_driver_register** is the helper that selects the bus **platform** automatically.
-
+```
++--------------+                                            
+| bus_register | : register bus and prepare files under /sys
++---|----------+                                            
+    |                                                       
+    |--> alloc private                                      
+    |                                                       
+    |    +------------------+                               
+    |--> | kobject_set_name |                               
+    |    +------------------+                               
+    |    +---------------+                                  
+    |--> | kset_register | add to bus subsystem
+    |    +---------------+                                  
+    |    +-----------------+                                
+    |--> | bus_create_file | create files under /sys        
+    |    +-----------------+                                
+    |    +---------------------+                            
+    |--> | kset_create_and_add | register "devices" kset to sysfs
+    |    +---------------------+                            
+    |    +---------------------+                            
+    |--> | kset_create_and_add | register "drivers" kset to sysfs
+    |    +---------------------+                            
+    |    +-----------------+                                
+    |--> | add_probe_files | create files under /sys        
+    |    +-----------------+                                
+    |    +----------------+                                 
+    +--> | bus_add_groups | create files under /sys         
+         +----------------+                                 
+```
 
 ```
 struct kobj_map {
@@ -565,7 +597,7 @@ static struct char_device_struct {
 
 ```
 +-------------------+                                                                              
-| __register_chrdev |                                                                              
+| __register_chrdev | :
 +----|--------------+                                                                              
      |    +--------------------------+                                                             
      |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
@@ -580,7 +612,7 @@ static struct char_device_struct {
 
 ```
  +--------------------------+                                                        
- | platform_driver_register |                                                        
+ | platform_driver_register | :
  +------|-------------------+                                                        
         |                                                                            
         |--> driver bus = platform_bus_type                                          
@@ -659,56 +691,6 @@ struct device_driver {
 };
 ```
 
-```c
-struct bus_type {
-    const char      *name;                                  // name shown in /sys
-    int (*match)(struct device *dev, struct device_driver *drv);    // attempt to find the matching driver for a given device
-    int (*probe)(struct device *dev);                       // link driver and device
-    void (*remove)(struct device *dev);                     // remove the unlink between driver and device
-    void (*shutdown)(struct device *dev);                   // power management operation
-    int (*suspend)(struct device *dev, pm_message_t state); // power management operation
-    int (*resume)(struct device *dev);                      // power management operation
-    struct subsys_private *p;                               // list heads for both drivers and devices
-};
-```
-
-```
-+--------------+                                            
-| bus_register | : register bus and prepare files under /sys
-+---|----------+                                            
-    |                                                       
-    |--> alloc private                                      
-    |                                                       
-    |    +------------------+                               
-    |--> | kobject_set_name |                               
-    |    +------------------+                               
-    |    +---------------+                                  
-    |--> | kset_register | add to bus subsystem
-    |    +---------------+                                  
-    |    +-----------------+                                
-    |--> | bus_create_file | create files under /sys        
-    |    +-----------------+                                
-    |    +---------------------+                            
-    |--> | kset_create_and_add | register "devices" kset to sysfs
-    |    +---------------------+                            
-    |    +---------------------+                            
-    |--> | kset_create_and_add | register "drivers" kset to sysfs
-    |    +---------------------+                            
-    |    +-----------------+                                
-    |--> | add_probe_files | create files under /sys        
-    |    +-----------------+                                
-    |    +----------------+                                 
-    +--> | bus_add_groups | create files under /sys         
-         +----------------+                                 
-```
-
-The kernel prepares the device structure for any device from DTS/DTB, parses its node properties, and then allocates resource structures accordingly. 
-The rest is similar to the driver registration.
-It doesn't matter whether the driver or device registers first. Both flows will trigger the probe mechanism to find the match within the bus.
-
-<details>
-  <summary> Code Trace </summary>
-
 ```
 +---------------------------------+                                                                            
 | of_platform_device_create_pdata |                                                                            
@@ -783,10 +765,6 @@ It doesn't matter whether the driver or device registers first. Both flows will 
     +--> | klist_add_tail | append the device to the device list of bus
          +----------------+                                            
 ```
-    
-</details>
-
-Both **driver_attach** and **bus_probe_device** are not directly but eventually go to **really_probe**, which triggers the driver defined probe function
 
 ```
 +--------------+                                                                            
@@ -802,81 +780,50 @@ Both **driver_attach** and **bus_probe_device** are not directly but eventually 
     +--> | driver_bound | attach the device to the driver, but not vice versa               
          +--------------+ (one driver might take care of multiple similar devices)          
 ```
-
-<details>
-  <summary> Messy Notes </summary>
-    
-To debug init calls, we add _initcall_debug_ to _bootargs_ in DTS.
-
-```
-    chosen {
-        stdout-path = &uart5;
-        bootargs = "console=ttyS4,115200 earlycon initcall_debug";
-    };
-
-```
-
-Please note that by default the debug log won't display during boot time, and we need to utilize _dmesg_ to check it instead. 
-
-- Related log
-```
-[    1.489785] aspeed-smc 1e620000.spi: Using 50 MHz SPI frequency
-[    1.493323] aspeed-smc 1e620000.spi: n25q256a (32768 Kbytes)
-[    1.493947] aspeed-smc 1e620000.spi: CE0 window [ 0x20000000 - 0x22000000 ] 32MB
-[    1.494494] aspeed-smc 1e620000.spi: CE1 window [ 0x22000000 - 0x2a000000 ] 128MB
-[    1.494842] aspeed-smc 1e620000.spi: read control register: 203b0045
-[    1.728658] random: crng init done
-[    1.923572] 5 fixed-partitions partitions found on MTD device bmc
-[    1.923940] Creating 5 MTD partitions on "bmc":
-[    1.924305] 0x000000000000-0x000000060000 : "u-boot"
-[    1.927399] 0x000000060000-0x000000080000 : "u-boot-env"
-[    1.930167] 0x000000080000-0x0000004c0000 : "kernel"
-[    1.932337] 0x0000004c0000-0x000001c00000 : "rofs"
-[    1.934627] 0x000001c00000-0x000002000000 : "rwfs"
-
-▲ fmc: spi@1e620000/flash@0
-------------------------------------------------------------------------------------------
-▼ spi1: spi@1e630000/flash@0
-
-[    1.941091] aspeed-smc 1e630000.spi: Using 100 MHz SPI frequency
-[    1.942534] aspeed-smc 1e630000.spi: mx66l1g45g (131072 Kbytes)
-[    1.942806] aspeed-smc 1e630000.spi: CE0 window resized to 120MB (AST2500 HW quirk)
-[    1.943841] aspeed-smc 1e630000.spi: CE0 window [ 0x30000000 - 0x37800000 ] 120MB
-[    1.944343] aspeed-smc 1e630000.spi: CE1 window [ 0x37800000 - 0x38000000 ] 8MB
-[    1.944715] aspeed-smc 1e630000.spi: CE0 window too small for chip 128MB
-[    1.945007] aspeed-smc 1e630000.spi: read control register: 203c0045
-[    1.947181] aspeed-smc 1e630000.spi: Calibration area too uniform, using low speed
-
-Code flow:
-[aspeed_smc_probe]
-    prepare controller
-    get 1st MEM resource and map it as registers
-    get 2nd MEM resource and map it as AHB base <- ?
-    [aspeed_smc_setup_flash]
-        for each flash connected to the controller (e.g. only 1)
-            prepare chip
-        
-```
                                                    
 </details>
+    
+### Device File Generation
+    
+In OpenBmc, it seems different from the udev framework that creates the device file, and I'd like to check the devtmpfs some other day.
+    
+(TBD)
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
+- Check character devices that are exported to user space.
+
 ```
-ls -l /sys/dev/char
-ls -l /sys/dev/block                                                   
-cat /proc/partitions
-ls -l /dev
-/sys/block
+ls -l /sys/dev/char/    # display in (major: minor)
+```
+    
+- Check block devices that are exported to user space.
+    
+```
+ls -l /sys/dev/block/   # display in (major: minor)
+ls -l /sys/block/       # display in name
+```
+
+- Check the IO layout.
+    
+```
 cat /proc/iomem
-cat /proc/ioports
-ls /sys/bus
+cat /proc/ioports   # empty in our study case
+```
+    
+- Debug init calls.
+    
+```
+# append initcall_debug to bootargs in dts
+chosen {
+    stdout-path = &uart5;
+    bootargs = "console=ttyS4,115200 earlycon initcall_debug";
+};
+    
+# rebuild the kernel with a larger log buffer if necessary
 CONFIG_LOG_BUF_SHIFT=17
-initcall_debug
 ```
 
 ## <a name="reference"></a> Reference
 
 - W. Mauerer, Professional Linux Kernel Architecture
-    
-
