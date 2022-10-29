@@ -280,18 +280,35 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
 </details>
     
 ## <a name="system-startup"></a> System Startup
-
-Except for interrupt controllers and disabled components, the kernel registers the remaining devices, and here's how they are handled:
-
-1. Traverse each driver and attempt to find a match.
-2. If found, the driver starts probing, initializing the infrastructure by throwing together properties, irq number, and iomem fed from the node.
-
-Later, when drivers register to the framework, it similarly goes through the devices to find the soul mate and set up. 
-Registration sequence doesn't matter, and the net result is that some matched drivers further prepare the character and block device interfaces.
     
+When power is on, the kernel starts initializing fundamental subsystems like process and memory management. 
+Quite a series of relatively less critical routines follow; these functions are grouped at the build stage into any of the below categories:
+    
+- console_initcall
+- early_initcall
+- pure_initcall
+- core_initcall
+- postcore_initcall
+- arch_initcall
+    - the device tree parsing function belongs here
+- subsys_initcall
+- fs_initcall
+- rootfs_initcall
+- device_initcall   
+- late_initcall
+    
+The import from the device tree happens in arch_initcall, while driver registrations happen in all the sections. 
+It doesn't matter whether a device or driver registers first because the framework operates as below:
+
+1. Whenever a device is added, it traverses the drivers on the same bus hoping to find the match and vice versa for drivers.
+2. Once found, the driver starts probing: initializing the software infrastructure of the device by information fetched from its DT node.
+3. If that driver intends to export the probed device to user space further:
+    1. It reserves a specific or dynamic-selected range of device numbers.
+    2. Ready cdev or bdev, and insert to the corresponding table for later lookup from syscall `open`.
+   
 ```
 [    0.000000] Booting Linux on physical CPU 0x0
-[    0.000000] Linux version 5.15.69-gaae649813251-dirty (bobfu@bobfu-Vostro-5402) (arm-linux-gnueabi-gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #4 SMP Wed Oct 26 23:47:31 PDT 2022
+[    0.000000] Linux version 5.15.69-gaae649813251-dirty (bobfu@bobfu-Vostro-5402) (arm-linux-gnueabi-gcc (Ubuntu ...
 [    0.000000] CPU: ARMv6-compatible processor [410fb767] revision 7 (ARMv7), cr=00c5387d
 [    0.000000] CPU: VIPT aliasing data cache, unknown instruction cache
 [    0.000000] OF: fdt: Machine model: Romulus BMC
@@ -323,7 +340,7 @@ Registration sequence doesn't matter, and the net result is that some matched dr
 [    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes, linear)
 [    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
 [    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
-[    0.000000] Memory: 354588K/505856K available (9216K kernel code, 830K rwdata, 2248K rodata, 1024K init, 186K bss, 85732K reserved, 65536K cma-reserved, 0K highmem)
+[    0.000000] Memory: 354588K/505856K available (9216K kernel code, 830K rwdata, 2248K rodata, 1024K init ...
 [    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
 [    0.000000] ftrace: allocating 28976 entries in 85 pages
 [    0.000000] ftrace: allocated 85 pages with 4 groups
@@ -514,13 +531,6 @@ bus_type        +---------------+  │
                                    │    +-------+        +-------+        +-------+
                                    └──► | drv C | ◄────► | drv D | ◄────► | drv E |
                                         +-------+        +-------+        +-------+
-```
-
-```
-root@romulus:/sys/bus# ls
-clockevents   cpu           fsi           i2c           media         nvmem         serio         usb
-clocksource   edac          gpio          iio           mmc           platform      soc           w1
-container     event_source  hid           mdio_bus      mmc_rpmb      sdio          spi           workqueue
 ```
 
 When registering a driver, it must specify the bus type so the kernel knows where to append the driver structure. 
