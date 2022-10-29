@@ -534,6 +534,10 @@ struct elevator_type
          +----------+                                                        
 ```
 
+```
+cat /proc/partitions
+```
+
 ## <a name="reference"></a> Reference
 
 (TBD)
