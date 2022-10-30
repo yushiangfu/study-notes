@@ -302,215 +302,158 @@ It doesn't matter whether a device or driver registers first because the framewo
    
 <p align="center"><img src="images/device/probe.png" /></p>
     
-```
-[    0.000000] Booting Linux on physical CPU 0x0
-[    0.000000] Linux version 5.15.69-gaae649813251-dirty (bobfu@bobfu-Vostro-5402) (arm-linux-gnueabi-gcc (Ubuntu ...
-[    0.000000] CPU: ARMv6-compatible processor [410fb767] revision 7 (ARMv7), cr=00c5387d
-[    0.000000] CPU: VIPT aliasing data cache, unknown instruction cache
-[    0.000000] OF: fdt: Machine model: Romulus BMC
-[    0.000000] earlycon: ns16550a0 at MMIO 0x1e784000 (options '')
-[    0.000000] printk: bootconsole [ns16550a0] enabled
-[    0.000000] Memory policy: Data cache writeback
-[    0.000000] Reserved memory: created CMA memory pool at 0x9d000000, size 16 MiB
-[    0.000000] OF: reserved mem: initialized node framebuffer, compatible id shared-dma-pool
-[    0.000000] Reserved memory: created CMA memory pool at 0x96000000, size 32 MiB
-[    0.000000] OF: reserved mem: initialized node jpegbuffer, compatible id shared-dma-pool
-[    0.000000] cma: Reserved 16 MiB at 0x9c000000
-[    0.000000] Ignoring RAM at 0x9ee00000-0xa0000000
-[    0.000000] Consider using a HIGHMEM enabled kernel.
-[    0.000000] Zone ranges:
-[    0.000000]   Normal   [mem 0x0000000080000000-0x000000009eefffff]
-[    0.000000]   HighMem  empty
-[    0.000000] Movable zone start for each node
-[    0.000000] Early memory node ranges
-[    0.000000]   node   0: [mem 0x0000000080000000-0x0000000097ffffff]
-[    0.000000]   node   0: [mem 0x0000000098000000-0x000000009bffffff]
-[    0.000000]   node   0: [mem 0x000000009c000000-0x000000009edfffff]
-[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000009edfffff]
-[    0.000000] CPU: All CPU(s) started in SVC mode.
-[    0.000000] percpu: Embedded 16 pages/cpu s35340 r8192 d22004 u65536
-[    0.000000] pcpu-alloc: s35340 r8192 d22004 u65536 alloc=16*4096
-[    0.000000] pcpu-alloc: [0] 0 
-[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 125476
-[    0.000000] Kernel command line: console=ttyS4,115200 earlycon
-[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes, linear)
-[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
-[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
-[    0.000000] Memory: 354588K/505856K available (9216K kernel code, 830K rwdata, 2248K rodata, 1024K init ...
-[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
-[    0.000000] ftrace: allocating 28976 entries in 85 pages
-[    0.000000] ftrace: allocated 85 pages with 4 groups
-[    0.000000] trace event string verifier disabled
-[    0.000000] rcu: Hierarchical RCU implementation.
-[    0.000000] rcu: 	RCU event tracing is enabled.
-[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=2 to nr_cpu_ids=1.
-[    0.000000] 	Rude variant of Tasks RCU enabled.
-[    0.000000] 	Tracing variant of Tasks RCU enabled.
-[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
-[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=1
-[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
-[    0.000000] i2c controller registered, irq 17
-[    0.000000] clocksource: FTTMR010-TIMER2: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 77222644334 ns
-[    0.000112] sched_clock: 32 bits at 24MHz, resolution 40ns, wraps every 86767015915ns
-[    0.001752] Switching to timer-based delay loop, resolution 40ns
------ console_initcall section starts -----
------ console_initcall section ends -----
-[    0.005743] Calibrating delay loop (skipped), value calculated using timer frequency.. 49.50 BogoMIPS (lpj=247500)
-[    0.006114] pid_max: default: 32768 minimum: 301
-[    0.009279] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
-[    0.009468] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
-[    0.026029] CPU: Testing write buffer coherency: ok
------ early_initcall section starts -----
-[    0.039965] Setting up static identity map for 0x80100000 - 0x80100078
-[    0.040797] rcu: Hierarchical SRCU implementation.
-[    0.044779] ASPEED AST2500 rev A1 (04010303)
------ early_initcall section ends -----
-[    0.046486] smp: Bringing up secondary CPUs ...
-[    0.046641] smp: Brought up 1 node, 1 CPU
-[    0.046826] SMP: Total of 1 processors activated (49.50 BogoMIPS).
-[    0.047021] CPU: All CPU(s) started in SVC mode.
-[    0.057870] devtmpfs: initialized
------ pure_initcall section starts -----
------ pure_initcall section ends -----
------ core_initcall section starts -----
-[    0.076306] VFP support v0.3: implementor 41 architecture 1 part 20 variant b rev 5
-[    0.091632] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
-[    0.092715] futex hash table entries: 256 (order: 2, 16384 bytes, linear)
-[    0.098764] pinctrl core: initialized pinctrl subsystem
-[    0.114512] NET: Registered PF_NETLINK/PF_ROUTE protocol family
------ core_initcall section ends -----
------ postcore_initcall section starts -----
-[    0.125983] DMA: preallocated 256 KiB pool for atomic coherent allocations
------ postcore_initcall section ends -----
------ arch_initcall section starts -----
-[    0.130412] hw-breakpoint: debug architecture 0x0 unsupported.
------ arch_initcall section ends -----
------ subsys_initcall section starts -----    
-[    0.185670] Kprobes globally optimized
-[    0.205378] SCSI subsystem initialized
-[    0.206391] usbcore: registered new interface driver usbfs
-[    0.206812] usbcore: registered new interface driver hub
-[    0.207223] usbcore: registered new device driver usb
-[    0.208119] mc: Linux media interface: v0.10
-[    0.208577] videodev: Linux video capture interface: v2.00
-[    0.209095] pps_core: LinuxPPS API ver. 1 registered
-[    0.209419] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
-[    0.210041] PTP clock support registered
-[    0.210386] EDAC MC: Ver: 3.0.0
-[    0.221265] mctp: management component transport protocol core
-[    0.221491] NET: Registered PF_MCTP protocol family
------ subsys_initcall section ends -----  
------ fs_initcall section starts -----    
-[    0.232205] clocksource: Switched to clocksource FTTMR010-TIMER2
-[    0.286552] NET: Registered PF_INET protocol family
-[    0.288124] IP idents hash table entries: 8192 (order: 4, 65536 bytes, linear)
-[    0.291880] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
-[    0.292201] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
-[    0.292481] TCP established hash table entries: 4096 (order: 2, 16384 bytes, linear)
-[    0.292830] TCP bind hash table entries: 4096 (order: 3, 32768 bytes, linear)
-[    0.293143] TCP: Hash tables configured (established 4096 bind 4096)
-[    0.294303] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
-[    0.294691] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
-[    0.296047] NET: Registered PF_UNIX/PF_LOCAL protocol family
------ fs_initcall section ends -----
------ rootfs_initcall section starts -----
------ rootfs_initcall section ends -----
------ device_initcall section starts -----
-[    0.303449] Unpacking initramfs...
-[    0.324379] workingset: timestamp_bits=30 max_order=17 bucket_order=0
-[    0.333170] squashfs: version 4.0 (2009/01/31) Phillip Lougher
-[    0.333798] jffs2: version 2.2. (SUMMARY)  © 2001-2006 Red Hat, Inc.
-[    0.335792] NET: Registered PF_ALG protocol family
-[    0.348923] gpio-819 (nic_func_mode0): hogged as output/low
-[    0.349182] gpio-820 (nic_func_mode1): hogged as output/low
-[    0.349355] gpio-943 (seq_cont): hogged as output/low
-[    0.365049] ipmi-bt-host 1e789140.ibt: Found bt bmc device
-[    0.366584] ipmi-bt-host 1e789140.ibt: Using IRQ 34
-[    0.385032] Serial: 8250/16550 driver, 6 ports, IRQ sharing enabled
-[    0.392850] 1e787000.serial: ttyS5 at MMIO 0x1e787000 (irq = 34, base_baud = 1546875) is a ASPEED VUART
-[    0.407534] 1e783000.serial: ttyS0 at MMIO 0x1e783000 (irq = 32, base_baud = 1500000) is a 16550A
-[    0.412622] 1e784000.serial: ttyS4 at MMIO 0x1e784000 (irq = 33, base_baud = 1500000) is a 16550A
-[    0.414064] printk: console [ttyS4] enabled
-[    0.414556] printk: bootconsole [ns16550a0] disabled
-[    0.424346] timeriomem_rng 1e6e2078.hwrng: 32bits from 0x(ptrval) @ 1us
-[    0.426618] aspeed_gfx 1e6e6000.display: assigned reserved memory node framebuffer
-[    0.466909] [drm] Initialized aspeed-gfx-drm 1.0.0 20180319 for 1e6e6000.display on minor 0
-[    0.502691] aspeed_gfx 1e6e6000.display: [drm] fb0: aspeed-gfx-drmd frame buffer device
-[    0.523210] loop: module loaded
-[    0.540976] random: crng init done
-[    0.586796] spi-nor spi0.0: n25q256a (32768 Kbytes)
-[    1.344986] spi-aspeed-smc 1e620000.spi: CE0 read buswidth:2 [0x203b0641]
-[    1.675808] Freeing initrd memory: 1076K
-[    1.762860] 5 fixed-partitions partitions found on MTD device bmc
-[    1.763113] Creating 5 MTD partitions on "bmc":
-[    1.763369] 0x000000000000-0x000000060000 : "u-boot"
-[    1.765620] 0x000000060000-0x000000080000 : "u-boot-env"
-[    1.766919] 0x000000080000-0x0000004c0000 : "kernel"
-[    1.768134] 0x0000004c0000-0x000001c00000 : "rofs"
-[    1.769322] 0x000001c00000-0x000002000000 : "rwfs"
-[    1.775133] spi-nor spi1.0: mx66l1g45g (131072 Kbytes)
-[    1.775289] spi-aspeed-smc 1e630000.spi: CE0 window resized to 120MB (AST2500 HW quirk)
-[    1.775864] spi-aspeed-smc 1e630000.spi: CE0 window (120MB) too small for mapping
-[    1.783126] spi-aspeed-smc 1e630000.spi: Calibration area too uniform, using low speed
-[    1.783342] spi-aspeed-smc 1e630000.spi: CE0 read buswidth:2 [0x203c0041]
-[    1.829208] ftgmac100 1e660000.ethernet: Read MAC address 52:54:00:12:34:56 from chip
-[    1.829612] ftgmac100 1e660000.ethernet: Using NCSI interface
-[    1.842780] ftgmac100 1e660000.ethernet eth0: irq 20, mapped at 0a792023
-[    1.843482] MCTP I2C interface driver
-[    1.843690] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
-[    1.843969] ehci-platform: EHCI generic platform driver
-[    1.844593] usbcore: registered new interface driver usb-storage
-[    1.845091] usbcore: registered new interface driver pl2303
-[    1.845426] usbserial: USB Serial support registered for pl2303
-[    1.860765] aspeed_vhub 1e6a0000.usb-vhub: Initialized virtual hub in USB2 mode
-[    1.863027] i2c_dev: i2c /dev entries driver
-[    1.865924] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35
-[    1.866938] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36
-[    1.867731] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37
-[    1.868507] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38
-[    1.869326] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39
-[    1.870070] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40
-[    1.870956] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41
-[    1.872189] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42
-[    1.873143] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43
-[    1.873938] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44
-[    1.879169] rtc-rv8803 11-0032: registered as rtc0
-[    1.880576] rtc-rv8803 11-0032: setting system clock to 2022-10-27T14:31:13 UTC (1666881073)
-[    1.882506] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45
-[    1.883936] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46
-[    1.885895] aspeed-video 1e700000.video: assigned reserved memory node jpegbuffer
-[    1.891435] Driver for 1-wire Dallas network protocol.
-[    1.893721] w83773g 12-004c: error writing config rate register
-[    1.900103] sdhci: Secure Digital Host Controller Interface driver
-[    1.900259] sdhci: Copyright(c) Pierre Ossman
-[    1.900362] sdhci-pltfm: SDHCI platform and OF driver helper
-[    1.904658] usbcore: registered new interface driver usbhid
-[    1.904878] usbhid: USB HID core driver
-[    1.910429] SPI driver bmp280 has no spi_device_id for bosch,bmp085
-[    1.916138] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled)
-[    2.212752] fsi-master-acf gpio-fsi: Coprocessor startup timeout !
-[    2.233701] NET: Registered PF_INET6 protocol family
-[    2.241406] Segment Routing with IPv6
-[    2.242001] In-situ OAM (IOAM) with IPv6
-[    2.243175] NET: Registered PF_PACKET protocol family
-[    2.243544] 8021q: 802.1Q VLAN Support v1.8
------ device_initcall section ends -----
------ late_initcall section starts -----
-[    2.244279] Registering SWP/SWPB emulation handler
-[    2.256221] printk: console [netcon0] enabled
-[    2.256452] netconsole: network logging started
-[    2.260362] input: gpio-keys as /devices/platform/gpio-keys/input/input0
------ late_initcall section ends -----
-[    2.289015] Freeing unused kernel image (initmem) memory: 1024K
-[    2.306049] Checked W+X mappings: passed, no W+X pages found
-[    2.306450] Run /init as init process
-[    2.306663]   with arguments:
-[    2.306725]     /init
-[    2.306754]   with environment:
-[    2.306773]     HOME=/
-[    2.306789]     TERM=linux
-...
-```
+- [log] console_initcall
+    ```
+    (functions exist but print no log)
+    ```
+ - [log] early_initcall   
+    ```
+    [    0.039965] Setting up static identity map for 0x80100000 - 0x80100078
+    [    0.040797] rcu: Hierarchical SRCU implementation.
+    [    0.044779] ASPEED AST2500 rev A1 (04010303)
+    ```
+- [log] pure_initcall
+    ```
+    (functions exist but print no log)
+    ```
+- [log] core_initcall
+    ```
+    [    0.076306] VFP support v0.3: implementor 41 architecture 1 part 20 variant b rev 5
+    [    0.091632] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+    [    0.092715] futex hash table entries: 256 (order: 2, 16384 bytes, linear)
+    [    0.098764] pinctrl core: initialized pinctrl subsystem
+    [    0.114512] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+    ```
+- [log] postcore_initcall    
+    ```
+    [    0.125983] DMA: preallocated 256 KiB pool for atomic coherent allocations
+    ```
+- [log] arch_initcall
+    ```
+    [    0.130412] hw-breakpoint: debug architecture 0x0 unsupported.
+    ```
+- [log] subsys_initcall 
+    ```
+    [    0.185670] Kprobes globally optimized
+    [    0.205378] SCSI subsystem initialized
+    [    0.206391] usbcore: registered new interface driver usbfs
+    [    0.206812] usbcore: registered new interface driver hub
+    [    0.207223] usbcore: registered new device driver usb
+    [    0.208119] mc: Linux media interface: v0.10
+    [    0.208577] videodev: Linux video capture interface: v2.00
+    [    0.209095] pps_core: LinuxPPS API ver. 1 registered
+    [    0.209419] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+    [    0.210041] PTP clock support registered
+    [    0.210386] EDAC MC: Ver: 3.0.0
+    [    0.221265] mctp: management component transport protocol core
+    [    0.221491] NET: Registered PF_MCTP protocol family
+    ```
+- [log] fs_initcall 
+    ```
+    [    0.232205] clocksource: Switched to clocksource FTTMR010-TIMER2
+    [    0.286552] NET: Registered PF_INET protocol family
+    [    0.288124] IP idents hash table entries: 8192 (order: 4, 65536 bytes, linear)
+    [    0.291880] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+    [    0.292201] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+    [    0.292481] TCP established hash table entries: 4096 (order: 2, 16384 bytes, linear)
+    [    0.292830] TCP bind hash table entries: 4096 (order: 3, 32768 bytes, linear)
+    [    0.293143] TCP: Hash tables configured (established 4096 bind 4096)
+    [    0.294303] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+    [    0.294691] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+    [    0.296047] NET: Registered PF_UNIX/PF_LOCAL protocol family
+    ```
+- [log] rootfs_initcall
+    ```
+    (functions exist but print no log)
+    ```
+- [log] device_initcall  
+    ```
+    [    0.303449] Unpacking initramfs...
+    [    0.324379] workingset: timestamp_bits=30 max_order=17 bucket_order=0
+    [    0.333170] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+    [    0.333798] jffs2: version 2.2. (SUMMARY)  © 2001-2006 Red Hat, Inc.
+    [    0.335792] NET: Registered PF_ALG protocol family
+    [    0.348923] gpio-819 (nic_func_mode0): hogged as output/low
+    [    0.349182] gpio-820 (nic_func_mode1): hogged as output/low
+    [    0.349355] gpio-943 (seq_cont): hogged as output/low
+    [    0.365049] ipmi-bt-host 1e789140.ibt: Found bt bmc device
+    [    0.366584] ipmi-bt-host 1e789140.ibt: Using IRQ 34
+    [    0.385032] Serial: 8250/16550 driver, 6 ports, IRQ sharing enabled
+    [    0.392850] 1e787000.serial: ttyS5 at MMIO 0x1e787000 (irq = 34, base_baud = 1546875) is a ASPEED VUART
+    [    0.407534] 1e783000.serial: ttyS0 at MMIO 0x1e783000 (irq = 32, base_baud = 1500000) is a 16550A
+    [    0.412622] 1e784000.serial: ttyS4 at MMIO 0x1e784000 (irq = 33, base_baud = 1500000) is a 16550A
+    [    0.414064] printk: console [ttyS4] enabled
+    [    0.414556] printk: bootconsole [ns16550a0] disabled
+    [    0.424346] timeriomem_rng 1e6e2078.hwrng: 32bits from 0x(ptrval) @ 1us
+    [    0.426618] aspeed_gfx 1e6e6000.display: assigned reserved memory node framebuffer
+    [    0.466909] [drm] Initialized aspeed-gfx-drm 1.0.0 20180319 for 1e6e6000.display on minor 0
+    [    0.502691] aspeed_gfx 1e6e6000.display: [drm] fb0: aspeed-gfx-drmd frame buffer device
+    [    0.523210] loop: module loaded
+    [    0.540976] random: crng init done
+    [    0.586796] spi-nor spi0.0: n25q256a (32768 Kbytes)
+    [    1.344986] spi-aspeed-smc 1e620000.spi: CE0 read buswidth:2 [0x203b0641]
+    [    1.675808] Freeing initrd memory: 1076K
+    [    1.762860] 5 fixed-partitions partitions found on MTD device bmc
+    [    1.763113] Creating 5 MTD partitions on "bmc":
+    [    1.763369] 0x000000000000-0x000000060000 : "u-boot"
+    [    1.765620] 0x000000060000-0x000000080000 : "u-boot-env"
+    [    1.766919] 0x000000080000-0x0000004c0000 : "kernel"
+    [    1.768134] 0x0000004c0000-0x000001c00000 : "rofs"
+    [    1.769322] 0x000001c00000-0x000002000000 : "rwfs"
+    [    1.775133] spi-nor spi1.0: mx66l1g45g (131072 Kbytes)
+    [    1.775289] spi-aspeed-smc 1e630000.spi: CE0 window resized to 120MB (AST2500 HW quirk)
+    [    1.775864] spi-aspeed-smc 1e630000.spi: CE0 window (120MB) too small for mapping
+    [    1.783126] spi-aspeed-smc 1e630000.spi: Calibration area too uniform, using low speed
+    [    1.783342] spi-aspeed-smc 1e630000.spi: CE0 read buswidth:2 [0x203c0041]
+    [    1.829208] ftgmac100 1e660000.ethernet: Read MAC address 52:54:00:12:34:56 from chip
+    [    1.829612] ftgmac100 1e660000.ethernet: Using NCSI interface
+    [    1.842780] ftgmac100 1e660000.ethernet eth0: irq 20, mapped at 0a792023
+    [    1.843482] MCTP I2C interface driver
+    [    1.843690] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+    [    1.843969] ehci-platform: EHCI generic platform driver
+    [    1.844593] usbcore: registered new interface driver usb-storage
+    [    1.845091] usbcore: registered new interface driver pl2303
+    [    1.845426] usbserial: USB Serial support registered for pl2303
+    [    1.860765] aspeed_vhub 1e6a0000.usb-vhub: Initialized virtual hub in USB2 mode
+    [    1.863027] i2c_dev: i2c /dev entries driver
+    [    1.865924] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35
+    [    1.866938] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36
+    [    1.867731] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37
+    [    1.868507] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38
+    [    1.869326] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39
+    [    1.870070] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40
+    [    1.870956] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41
+    [    1.872189] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42
+    [    1.873143] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43
+    [    1.873938] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44
+    [    1.879169] rtc-rv8803 11-0032: registered as rtc0
+    [    1.880576] rtc-rv8803 11-0032: setting system clock to 2022-10-27T14:31:13 UTC (1666881073)
+    [    1.882506] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45
+    [    1.883936] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46
+    [    1.885895] aspeed-video 1e700000.video: assigned reserved memory node jpegbuffer
+    [    1.891435] Driver for 1-wire Dallas network protocol.
+    [    1.893721] w83773g 12-004c: error writing config rate register
+    [    1.900103] sdhci: Secure Digital Host Controller Interface driver
+    [    1.900259] sdhci: Copyright(c) Pierre Ossman
+    [    1.900362] sdhci-pltfm: SDHCI platform and OF driver helper
+    [    1.904658] usbcore: registered new interface driver usbhid
+    [    1.904878] usbhid: USB HID core driver
+    [    1.910429] SPI driver bmp280 has no spi_device_id for bosch,bmp085
+    [    1.916138] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled)
+    [    2.212752] fsi-master-acf gpio-fsi: Coprocessor startup timeout !
+    [    2.233701] NET: Registered PF_INET6 protocol family
+    [    2.241406] Segment Routing with IPv6
+    [    2.242001] In-situ OAM (IOAM) with IPv6
+    [    2.243175] NET: Registered PF_PACKET protocol family
+    [    2.243544] 8021q: 802.1Q VLAN Support v1.8
+    ```
+- [log] late_initcall
+    ```
+    [    2.244279] Registering SWP/SWPB emulation handler
+    [    2.256221] printk: console [netcon0] enabled
+    [    2.256452] netconsole: network logging started
+    [    2.260362] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+    ```
     
 <details><summary> More Details </summary>
     
