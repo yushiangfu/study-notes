@@ -3,7 +3,8 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Behavior](#behavior)
+- [Framework](#framework)
+- [Virtual Hub](#virtual-hub)
 - [System Startup](#system-startup)
 - [Reference](#reference)
 
@@ -11,7 +12,7 @@
 
 (TBD)
 
-## tmp
+## <a name="framework"></a> Framework
 
 ```
 struct usb_driver {
@@ -112,7 +113,7 @@ struct usb_bus {
     int bandwidth_isoc_reqs;
 ```
 
-## <a name="behavior"></a> Behavior
+## <a name="virtual-hub"></a> Virtual Hub
 
 ```
 +--------------+                                                                                                  
@@ -582,6 +583,39 @@ struct usb_bus {
 ```
 
 ## <a name="system-startup"></a> System Startup
+
+```
+usb_common_init     :create /sys/kernel/debug/usb
+usb_init
+usb_udc_init
+ehci_hcd_init
+ehci_platform_init
+usb_storage_driver_init
+usb_serial_init
+usb_serial_module_init
+gadget_cfs_init
+ast_vhub_driver_init
+mass_storagemod_init
+hidmod_init
+hid_init
+hid_generic_init
+hid_init?
+aspeed_adc_driver_init
+```
+
+```
++-----------------+                                            
+| usb_common_init | : create /sys/kernel/debug/usb             
++----|------------+                                            
+     |    +--------------------+                               
+     |--> | debugfs_create_dir | /sys/kernel/debug/usb?        
+     |    +--------------------+                               
+     |    +------------------+                                 
+     +--> | ledtrig_usb_init | do nothing bc of disabled config
+          +------------------+                                 
+```
+
+### Virtual Hub
 
 ```
 +----------------+                                                                              
