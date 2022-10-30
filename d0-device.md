@@ -300,7 +300,7 @@ It doesn't matter whether a device or driver registers first because the framewo
     1. It requests a specific or dynamic-selected range of device numbers.
     2. Ready cdev or bdev, and insert to the corresponding table for later lookup from syscall `open`.
    
-<p align="center"><img src="images/device/match-and-probe.png" /></p>
+<p align="center"><img src="images/device/probe.png" /></p>
     
 ```
 [    0.000000] Booting Linux on physical CPU 0x0
