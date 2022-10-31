@@ -568,11 +568,11 @@ struct usb_bus {
 ## <a name="system-startup"></a> System Startup
 
 ```
-usb_common_init     :create /sys/kernel/debug/usb
-usb_init
-usb_udc_init
-ehci_hcd_init
-ehci_platform_init
+usb_common_init     : create /sys/kernel/debug/usb
+usb_init            : register bus, notifier, intf driver 'usbfs_driver' & 'hub_driver', dev driver 'usb_generic_driver'
+usb_udc_init        : register 'udc' class
+ehci_hcd_init       : create /sys/kernel/debug/usb/ehci
+ehci_platform_init  : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
 usb_storage_driver_init
 usb_serial_init
 usb_serial_module_init
@@ -720,6 +720,46 @@ aspeed_adc_driver_init
   |    +----------------+                                                                             
   +--> | device_reprobe | in case probing criteria of the device changes, it might need another driver
        +----------------+                                                                             
+```
+
+```
++---------------+                                                           
+| ehci_hcd_init | : create /sys/kernel/debug/usb/ehci                       
++-|-------------+                                                           
+  |                                                                         
+  |--> print "ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver"   
+  |                                                                         
+  |    +--------------------+                                               
+  |--> | debugfs_create_dir | /sys/kernel/debug/usb/ehci                    
+  |    +--------------------+                                               
+  |    +---------------------------+                                        
+  +--> | platform_register_drivers | register nothing bc of disabled configs
+       +---------------------------+                                        
+```
+
+```
++--------------------+                                                                           
+| ehci_platform_init | : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
++-|------------------+                                                                           
+  |                                                                                              
+  |--> print ehci-platform: EHCI generic platform driver                                         
+  |                                                                                              
+  |    +------------------+                                                                      
+  |--> | ehci_init_driver | determine 'ehci_platform_hc_driver' and overwrite some attributes    
+  |    +------------------+                                                                      
+  |    +--------------------------+                                                              
+  +--> | platform_driver_register | register platform driver 'ehci_platform_driver'              
+       +--------------------------+                                                              
+```
+
+```
++------------------+                                                                    
+| ehci_init_driver | : determine 'ehci_platform_hc_driver' and overwrite some attributes
++-|----------------+                                                                    
+  |                                                                                     
+  |--> have global 'ehci_platform_hc_driver' point to 'ehci_hc_driver'                  
+  |                                                                                     
+  +--> apply 'platform_overrides' to overwrite some attributes                          
 ```
 
 ### Virtual Hub
