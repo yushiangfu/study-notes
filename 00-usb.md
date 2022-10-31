@@ -198,8 +198,8 @@ struct usb_bus {
   |--> if there's more work (req)
   |
   |        +------------------------+
-  +------> | ast_vhub_epn_kick_desc | given req, for each desc it needs: fill addr and size info, kill hardware to process
-           +------------------------+
+  +------> | ast_vhub_epn_kick_desc | given req, for each desc it needs: fill addr and size info,
+           +------------------------+ kill hardware to process
 ```
 
 ```
@@ -573,9 +573,9 @@ usb_init            : register bus, notifier, intf driver 'usbfs_driver' & 'hub_
 usb_udc_init        : register 'udc' class
 ehci_hcd_init       : create /sys/kernel/debug/usb/ehci
 ehci_platform_init  : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
-usb_storage_driver_init
-usb_serial_init
-usb_serial_module_init
+usb_storage_driver_init : init template and register 'usb_storage_driver'
+usb_serial_init         : prepare tty driver, register bus 'usb-serial'
+usb_serial_module_init  : register usb intf driver, register arg drivers to bus 'usb-serial'
 gadget_cfs_init
 ast_vhub_driver_init
 mass_storagemod_init
@@ -738,6 +738,7 @@ aspeed_adc_driver_init
 ```
 
 ```
+ehci-platform.c
 +--------------------+                                                                           
 | ehci_platform_init | : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
 +-|------------------+                                                                           
@@ -760,6 +761,88 @@ aspeed_adc_driver_init
   |--> have global 'ehci_platform_hc_driver' point to 'ehci_hc_driver'                  
   |                                                                                     
   +--> apply 'platform_overrides' to overwrite some attributes                          
+```
+
+```
+storage/usb.c                                                               
++-------------------------+                                                  
+| usb_storage_driver_init | : init template and register 'usb_storage_driver'
++-|-----------------------+                                                  
+  |                                                                          
+  |--> init 'usb_stor_host_template'                                         
+  |                                                                          
+  +--> register interface driver 'usb_storage_driver'                        
+```
+
+```
++-----------------+                                                    
+| usb_serial_init | : prepare tty driver, register bus 'usb-serial'    
++-|---------------+                                                    
+  |    +------------------+                                            
+  |--> | tty_alloc_driver | prepare tty driver                         
+  |    +------------------+                                            
+  |                                                                    
+  |--> assign to 'usb_serial_tty_driver'                               
+  |                                                                    
+  |    +--------------+                                                
+  |--> | bus_register | 'usb_serial_bus_type'                          
+  |    +--------------+                                                
+  |                                                                    
+  |--> further set up 'usb_serial_tty_driver'                          
+  |                                                                    
+  |    +--------------------+                                          
+  |--> | tty_set_operations | 'serial_ops'                             
+  |    +--------------------+                                          
+  |    +-----------------------------+                                 
+  +--> | usb_serial_generic_register | do nothing bc of disabled config
+       +-----------------------------+                                 
+```
+
+```
+serial/pl2303.c                                                                                                    
++------------------------+                                                                                           
+| usb_serial_module_init | : register usb intf driver, register arg drivers to bus 'usb-serial'                      
++-|----------------------+                                                                                           
+  |    +-----------------------------+                                                                               
+  +--> | usb_serial_register_drivers | : register usb intf driver, register arg drivers to bus 'usb-serial'          
+       +-|---------------------------+                                                                               
+         |                                                                                                           
+         |--> alloc usb_driver                                                                                       
+         |                                                                                                           
+         |--> set up driver and install ops                                                                          
+         |                                                                                                           
+         |    +--------------+                                                                                       
+         |--> | usb_register | register usb interface driver                                                         
+         |    +--------------+                                                                                       
+         |                                                                                                           
+         |--> for each driver in arg 'serial_drivers'                                                                
+         |                                                                                                           
+         |------> save the newly allocated usb_driver ptr                                                            
+         |                                                                                                           
+         |        +---------------------+                                                                            
+         |------> | usb_serial_register | add driver to 'usb_serial_driver_list', register driver to bus 'usb-serial'
+         |        +---------------------+                                                                            
+         |                                                                                                           
+         |--> set id_table for match                                                                                 
+         |                                                                                                           
+         |    +---------------+                                                                                      
+         +--> | driver_attach | try match device and probe (but I don't see the 'bus' set anywhere)                  
+              +---------------+                                                                                      
+```
+
+```
++---------------------+                                                                              
+| usb_serial_register | : add driver to 'usb_serial_driver_list', register driver to bus 'usb-serial'
++-|-------------------+                                                                              
+  |    +----------------------------+                                                                
+  |--> | usb_serial_operations_init | reset some fields                                              
+  |    +----------------------------+                                                                
+  |                                                                                                  
+  |--> add driver to 'usb_serial_driver_list'                                                        
+  |                                                                                                  
+  |    +-------------------------+                                                                   
+  +--> | usb_serial_bus_register | set driver bus type to 'usb-serial', register driver              
+       +-------------------------+                                                                   
 ```
 
 ### Virtual Hub
