@@ -246,3 +246,24 @@ which is further written out to each valid console if there's any.
 
 There are still other interesting topics worth digging into, such as pseudo TTY and serial over LAN. Hope this note helps, thanks!
 
+```
++------------------+                               
+| tty_alloc_driver | : prepare tty driver          
++-|----------------+                               
+  |    +--------------------+                      
+  +--> | __tty_alloc_driver | : prepare tty driver 
+       +-|------------------+                      
+         |                                         
+         |--> alloc and set up tty_driver          
+         |                                         
+         |--> if flag has no 'devpts_mem'          
+         |                                         
+         |------> alloc ttys and termios for driver
+         |                                         
+         |--> if flag has no 'dynamic_alloc'       
+         |                                         
+         |------> alloc ports for driver           
+         |                                         
+         +--> alloc cdevs for driver               
+```
+
