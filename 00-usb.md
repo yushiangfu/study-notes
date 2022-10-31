@@ -577,8 +577,8 @@ usb_storage_driver_init : init template and register 'usb_storage_driver'
 usb_serial_init         : prepare tty driver, register bus 'usb-serial'
 usb_serial_module_init  : register usb intf driver, register arg drivers to bus 'usb-serial'
 gadget_cfs_init         : init gadget_subsys and prepare config_fs for it
-ast_vhub_driver_init
-mass_storagemod_init
+ast_vhub_driver_init    : register ast vhub driver
+mass_storagemod_init    : set up function driver by args, register the function driver
 hidmod_init
 hid_init
 hid_generic_init
@@ -855,6 +855,113 @@ serial/pl2303.c
    |    +-----------------------------+                                                                     
    +--> | configfs_register_subsystem | prepare sb of config_fs, alloc a folder and publish it to user space
         +-----------------------------+                                                                     
+```
+
+```
+function/f_mass_storage.c                                                                   
++----------------------+                                                                     
+| mass_storagemod_init | : set up function driver by args, register the function driver      
++-|--------------------+                                                                     
+  |                                                                                          
+  |--> prepare function driver (fsg_alloc_inst, fsg_alloc)                                   
+  |        +----------------+                                                                
+  |        | fsg_alloc_inst | alloc opts, set up 'func_inst' and 'common', return 'func_inst'
+  |        +----------------+                                                                
+  |        +-----------+                                                                     
+  |        | fsg_alloc | alloc fsg, set up 'function' and return it                          
+  |        +-----------+                                                                     
+  |    +-----------------------+                                                             
+  +--> | usb_function_register | register function driver to 'func_list'                     
+       +-----------------------+                                                             
+```
+
+```
++----------------+                                                                             
+| fsg_alloc_inst | : alloc opts, set up 'func_inst' and 'common', return 'func_inst'           
++-|--------------+                                                                             
+  |                                                                                            
+  |--> alloc opts                                                                              
+  |                                                                                            
+  |--> install free func 'fsg_free_inst'                                                       
+  |                                                                                            
+  |    +------------------+                                                                    
+  |--> | fsg_common_setup | ensure 'common' exists and init it                                 
+  |    +------------------+                                                                    
+  |    +----------------------------+                                                          
+  |--> | fsg_common_set_num_buffers | alloc buf heads and buffer to replace the one of 'common'
+  |    +----------------------------+                                                          
+  |                                                                                            
+  |--> print ", version: " FSG_DRIVER_VERSION "\n"                                             
+  |                                                                                            
+  |    +-----------------------+                                                               
+  |--> | fsg_common_create_lun | prepare lun, save in 'common'                                 
+  |    +-----------------------+                                                               
+  |    +-----------------------------+                                                         
+  |--> | config_group_init_type_name | ???                                                     
+  |    +-----------------------------+                                                         
+  |    +-----------------------------+                                                         
+  |--> | config_group_init_type_name | ???                                                     
+  |    +-----------------------------+                                                         
+  |    +----------------------------+                                                          
+  +--> | configfs_add_default_group | ???                                                      
+       +----------------------------+                                                          
+```
+
+```
++----------------------------+                                                            
+| fsg_common_set_num_buffers | : alloc buf heads and buffer to replace the one of 'common'
++-|--------------------------+                                                            
+  |                                                                                       
+  |--> alloc buf_head * n                                                                 
+  |                                                                                       
+  |--> alloc buffer for each buf_head                                                     
+  |                                                                                       
+  |    +--------------------------+                                                       
+  |--> | _fsg_common_free_buffers | free buf heads and their buffer                       
+  |    +--------------------------+                                                       
+  |                                                                                       
+  +--> install the newly generated buf heads to 'common'                                  
+```
+
+```
++-----------------------+                                                             
+| fsg_common_create_lun | : prepare lun, save in 'common'                             
++-|---------------------+                                                             
+  |                                                                                   
+  |--> alloc and setup lun                                                            
+  |                                                                                   
+  |--> if common->sysfs has no value                                                  
+  |                                                                                   
+  |------> set lun name                                                               
+  |                                                                                   
+  |--> else                                                                           
+  |                                                                                   
+  |------> set lun name                                                               
+  |                                                                                   
+  |        +-----------------+                                                        
+  |------> | device_register | register lun device                                    
+  |        +-----------------+                                                        
+  |                                                                                   
+  |--> save lun in 'common'                                                           
+  |                                                                                   
+  |--> if cfg has name                                                                
+  |                                                                                   
+  |        +--------------+                                                           
+  |------> | fsg_lun_open | set up arg curlun by file attributes and block/sector info
+  |        +--------------+                                                           
+  |                                                                                   
+  +--> prepare lun file info and print it                                             
+```
+
+```
++--------------+                                                             
+| fsg_lun_open | : set up arg curlun by file attributes and block/sector info
++-|------------+                                                             
+  |    +-----------+                                                         
+  |--> | filp_open |                                                         
+  |    +-----------+                                                         
+  |                                                                          
+  +--> set up arg curlun by file attributes and block/sector info            
 ```
 
 ### Virtual Hub
