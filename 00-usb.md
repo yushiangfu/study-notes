@@ -576,7 +576,7 @@ ehci_platform_init  : determine 'ehci_platform_hc_driver', and register 'ehci_pl
 usb_storage_driver_init : init template and register 'usb_storage_driver'
 usb_serial_init         : prepare tty driver, register bus 'usb-serial'
 usb_serial_module_init  : register usb intf driver, register arg drivers to bus 'usb-serial'
-gadget_cfs_init
+gadget_cfs_init         : init gadget_subsys and prepare config_fs for it
 ast_vhub_driver_init
 mass_storagemod_init
 hidmod_init
@@ -843,6 +843,18 @@ serial/pl2303.c
   |    +-------------------------+                                                                   
   +--> | usb_serial_bus_register | set driver bus type to 'usb-serial', register driver              
        +-------------------------+                                                                   
+```
+
+```
+ +-----------------+                                                                                        
+ | gadget_cfs_init | : init gadget_subsys and prepare config_fs for it                                      
+ +-|---------------+                                                                                        
+   |    +-------------------+                                                                               
+   |--> | config_group_init |                                                                               
+   |    +-------------------+                                                                               
+   |    +-----------------------------+                                                                     
+   +--> | configfs_register_subsystem | prepare sb of config_fs, alloc a folder and publish it to user space
+        +-----------------------------+                                                                     
 ```
 
 ### Virtual Hub
