@@ -1021,6 +1021,220 @@ HwmonTempMain.cpp
      +------> erase sensor                          
 ```
 
+### intrusionsensor
+
+```
+src/IntrusionSensorMain.cpp                                                                          
++------+                                                                                              
+| main |                                                                                              
++-|----+                                                                                              
+  |                                                                                                   
+  |--> ->request_name("xyz.openbmc_project.IntrusionSensor")                                          
+  |                                                                                                   
+  |--> add object: "/xyz/openbmc_project/Intrusion/Chassis_Intrusion"                                 
+  |                                                                                                   
+  |    +--------------------------+                                                                   
+  |--> | getIntrusionSensorConfig | determine type (gpio or pch), and further get its properties      
+  |    +--------------------------+                                                                   
+  |    +-------------------------------+                                                              
+  |--> | ChassisIntrusionSensor::start | init if it's not yet done                                    
+  |    +-------------------------------+                                                              
+  |                                                                                                   
+  |--> prepare event handler                                                                          
+  |       +------------------------------------------------------------------------------------------+
+  |       |+--------------------------+                                                              |
+  |       || getIntrusionSensorConfig | determine type (gpio or pch), and further get its properties |
+  |       |+--------------------------+                                                              |
+  |       |+-------------------------------+                                                         |
+  |       || ChassisIntrusionSensor::start | init if it's not yet done                               |
+  |       |+-------------------------------+                                                         |
+  |       +------------------------------------------------------------------------------------------+
+  |                                                                                                   
+  |--> prepare match rule and register event handler                                                  
+  |                                                                                                   
+  |    +---------------------+                                                                        
+  |--> | initializeLanStatus | init lan status                                                        
+  |    +---------------------+                                                                        
+  |                                                                                                   
+  |--> if successful                                                                                  
+  |                                                                                                   
+  |------> prepare match rule (lan status changes) and callback                                       
+  |           +---------------------------------------------------------------------------+           
+  |           |+------------------------+                                                 |           
+  |           || processLanStatusChange | update 'lanStatusMap' connection status changes |           
+  |           |+------------------------+                                                 |           
+  |           +---------------------------------------------------------------------------+           
+  |                                                                                                   
+  +------> prepare match rule (nic name config changes) and callback                                  
+              +------------------------------------------------------+                                
+              |+----------------+                                    |                                
+              || getNicNameInfo | get config and update 'lanInfoMap' |                                
+              |+----------------+                                    |                                
+              +------------------------------------------------------+                                
+```
+
+```
++--------------------------+                                                                  
+| getIntrusionSensorConfig | : determine type (gpio or pch), and further get its properties   
++-|------------------------+                                                                  
+  |    +------------------------+                                                             
+  |--> | getSensorConfiguration | update cache if needed, find type-matched one and add to arg
+  |    +------------------------+                                                             
+  |                                                                                           
+  |--> for each obj_path in sensor_configs                                                    
+  |                                                                                           
+  |------> determine type (gpio or pch)                                                       
+  |                                                                                           
+  |------> if it's gpio type                                                                  
+  |                                                                                           
+  |----------> get property 'polarity' and 'inverted'                                         
+  |                                                                                           
+  |------> if it's pch type                                                                   
+  |                                                                                           
+  +----------> get property 'bus' and 'addr'                                                  
+```
+
+```
++-------------------------------+                                                                                  
+| ChassisIntrusionSensor::start | : init if it's not yet done                                                      
++-|-----------------------------+                                                                                  
+  |                                                                                                                
+  |--> return if the properties are already applied                                                                
+  |                                                                                                                
+  |--> if type is pch or gpio                                                                                      
+  |                                                                                                                
+  |------> if it's gpio but not yet init                                                                           
+  |                                                                                                                
+  |            +--------------------------------------------+                                                      
+  +----------> | ChassisIntrusionSensor::initGpioDeviceFile | init the specific gpio line                          
+  |            +--------------------------------------------+                                                      
+  |                                                                                                                
+  +------> if type is pch                                                                                          
+  |                                                                                                                
+  |            +-----------------------------------------------+                                                   
+  |----------> | ChassisIntrusionSensor::pollSensorStatusByPch | read status by i2c and update to property 'Status'
+  |            +-----------------------------------------------+                                                   
+  |                                                                                                                
+  |------> elif type is gpio                                                                                       
+  |                                                                                                                
+  |            +------------------------------------------------+                                                  
+  +----------> | ChassisIntrusionSensor::pollSensorStatusByGpio | read gpio value and update to property 'Status'  
+               +------------------------------------------------+                                                  
+```
+
+```
++-----------------------------------------------+                                                     
+| ChassisIntrusionSensor::pollSensorStatusByPch | : read status by i2c and update to property 'Status'
++-|---------------------------------------------+                                                     
+  |                                                                                                   
+  +--> .async_wait                                                                                    
+          +--------------------------------------------------------------------------+                
+          |+----------------+                                                        |                
+          || i2cReadFromPch | perform i2c read                                       |                
+          |+----------------+                                                        |                
+          |                                                                          |                
+          |if value is valid                                                         |                
+          |                                                                          |                
+          |    +-------------------------------------+                               |                
+          +--> | ChassisIntrusionSensor::updateValue | set property "Status" = value |                
+          |    +-------------------------------------+                               |                
+          |+-----------------------------------------------+                         |                
+          || ChassisIntrusionSensor::pollSensorStatusByPch | recursive               |                
+          |+-----------------------------------------------+                         |                
+          +--------------------------------------------------------------------------+                
+```
+
+```
++------------------------------------------------+                                                  
+| ChassisIntrusionSensor::pollSensorStatusByGpio | : read gpio value and update to property 'Status'
++-|----------------------------------------------+                                                  
+  |                                                                                                 
+  +--> .async_wait                                                                                  
+          +-------------------------------------------------------------------------------------+   
+          |+----------------------------------+                                                 |   
+          || ChassisIntrusionSensor::readGpio | read gpio value and update to property 'Status' |   
+          |+----------------------------------+                                                 |   
+          |+------------------------------------------------+                                   |   
+          || ChassisIntrusionSensor::pollSensorStatusByGpio | recursive                         |   
+          |+------------------------------------------------+                                   |   
+          +-------------------------------------------------------------------------------------+   
+```
+
+```
++----------------------------------+                                                  
+| ChassisIntrusionSensor::readGpio | : read gpio value and update to property 'Status'
++-|--------------------------------+                                                  
+  |                                                                                   
+  |--> read gpio value                                                                
+  |                                                                                   
+  |--> if value is valid                                                              
+  |                                                                                   
+  |        +-------------------------------------+                                    
+  +------> | ChassisIntrusionSensor::updateValue | set property "Status" = value      
+           +-------------------------------------+                                    
+```
+
+```
++---------------------+                                      
+| initializeLanStatus | : init lan status                    
++-|-------------------+                                      
+  |    +----------------+                                    
+  |--> | getNicNameInfo | get config and update 'lanInfoMap' 
+  |    +----------------+                                    
+  |    +-----------+                                         
+  |--> | findFiles | find eth* under "/sys/class/net/"       
+  |    +-----------+                                         
+  |                                                          
+  |--> for each found path                                   
+  |                                                          
+  |------> get eth number                                    
+  |                                                          
+  +------> pathSuffixMap[pathSuffix] = ethNum;               
+  |                                                          
+  +------> ->async_method_call                               
+              +--------------------------------------+       
+              |determine if lan is connected         |       
+              |                                      |       
+              |lanStatusMap[ethNum] = isLanConnected |       
+              +--------------------------------------+       
+              "org.freedesktop.network1"                     
+              "/org/freedesktop/network1/link/_" + pathSuffix
+              "org.freedesktop.DBus.Properties"              
+              "Get"                                          
+```
+
+```
++----------------+                                     
+| getNicNameInfo | : get config and update 'lanInfoMap'
++-|--------------+                                     
+  |                                                    
+  |--> prepare callback for GetSensorConfiguration     
+  |       +------------------------------------+       
+  |       |for each sensor config              |       
+  |       |                                    |       
+  |       |    get "EthIndex" and "Name"       |       
+  |       |                                    |       
+  |       |    if both are found               |       
+  |       |                                    |       
+  |       |        lanInfoMap[Ethindex] = Name |       
+  |       +------------------------------------+       
+  |    +------------------------------------------+    
+  +--> | GetSensorConfiguration::getConfiguration |    
+       +------------------------------------------+    
+```
+
+```
++------------------------+                                                  
+| processLanStatusChange | : update 'lanStatusMap' connection status changes
++-|----------------------+                                                  
+  |                                                                         
+  |--> get property "OperationalState"                                      
+  |                                                                         
+  |--> if connection status changes                                         
+  |                                                                         
+  +------> lanStatusMap[ethNum] = newLanConnected                           
+```
+
 ### nvmesensor
 
 ```
