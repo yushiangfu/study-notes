@@ -579,7 +579,7 @@ usb_serial_module_init  : register usb intf driver, register arg drivers to bus 
 gadget_cfs_init         : init gadget_subsys and prepare config_fs for it
 ast_vhub_driver_init    : register ast vhub driver
 mass_storagemod_init    : set up function driver by args, register the function driver
-hidmod_init
+hidmod_init             : set up function driver by args, register the function driver
 hid_init
 hid_generic_init
 hid_init?
@@ -962,6 +962,74 @@ function/f_mass_storage.c
   |    +-----------+                                                         
   |                                                                          
   +--> set up arg curlun by file attributes and block/sector info            
+```
+
+```
+function/f_hid.c                                                             
++-------------+                                                               
+| hidmod_init | : set up function driver by args, register the function driver
++-|-----------+                                                               
+  |                                                                           
+  |--> prepare function driver based on                                       
+  |        +-----------------+                                                
+  |        | hidg_alloc_inst | prepare opts                                   
+  |        +-----------------+                                                
+  |        +------------+                                                     
+  |        | hidg_alloc | alloc hidg, set up it based on opts, install ops    
+  |        +------------+                                                     
+  |    +-----------------------+                                              
+  +--> | usb_function_register | register function driver to 'func_list'      
+       +-----------------------+                                              
+```
+
+```
++-----------------+                                                                 
+| hidg_alloc_inst | : prepare opts                                                  
++-|---------------+                                                                 
+  |                                                                                 
+  |--> alloc opts                                                                   
+  |                                                                                 
+  |--> set free_func = hidg_free_inst                                               
+  |                                                                                 
+  |--> if hidg_ida isn't set yet                                                    
+  |                                                                                 
+  |        +------------+                                                           
+  |------> | ghid_setup | create class 'hidg' and request a range of dev_t          
+  |        +------------+                                                           
+  |    +----------------+                                                           
+  |--> | hidg_get_minor | get a minor from requested dev_t range, and assign to opts
+  |    +----------------+                                                           
+  |    +-----------------------------+                                              
+  +--> | config_group_init_type_name | ???                                          
+       +-----------------------------+                                              
+```
+
+```
++------------+                                                   
+| ghid_setup | : create class 'hidg' and request a range of dev_t
++-|----------+                                                   
+  |    +--------------+                                          
+  |--> | class_create | 'hidg'                                   
+  |    +--------------+                                          
+  |    +---------------------+                                   
+  |--> | alloc_chrdev_region | request dev_t for 'hidg'          
+  |    +---------------------+                                   
+  |                                                              
+  +--> save requested dev_t somewhere                            
+```
+
+```
++------------+                                                   
+| hidg_alloc | : alloc hidg, set up it based on opts, install ops
++--|---------+                                                   
+   |                                                             
+   |--> alloc hidg                                               
+   |                                                             
+   |--> get of opts that contains arg func_inst                  
+   |                                                             
+   |--> set up hidg based on opts                                
+   |                                                             
+   +--> install operations to hidg                               
 ```
 
 ### Virtual Hub
