@@ -38,23 +38,6 @@ struct usb_device_id {
 ```
 
 ```
-+---------------------+                                                                  
-| usb_register_driver | : register a usb interface driver                                
-+-----|---------------+                                                                  
-      |                                                                                  
-      |--> set up driver wrapper                                                         
-      |                                                                                  
-      |    +-----------------+                                                           
-      |--> | driver_register | ensure driver is in bus, probe devices if newly registered
-      |    +-----------------+                                                           
-      |    +------------------------+                                                    
-      |--> | usb_create_newid_files | creawte new-id files under /sys/                   
-      |    +------------------------+                                                    
-      |                                                                                  
-      +--> print "%s: registered new interface driver %s\n"                              
-```
-
-```
 struct usb_device {
     int     devnum; // unique device number
     char        devpath[16];        // dev position in usb tree topology
@@ -604,15 +587,139 @@ aspeed_adc_driver_init
 ```
 
 ```
-+-----------------+                                            
-| usb_common_init | : create /sys/kernel/debug/usb             
-+----|------------+                                            
-     |    +--------------------+                               
-     |--> | debugfs_create_dir | /sys/kernel/debug/usb?        
-     |    +--------------------+                               
-     |    +------------------+                                 
-     +--> | ledtrig_usb_init | do nothing bc of disabled config
-          +------------------+                                 
++-----------------+                                         
+| usb_common_init | : create /sys/kernel/debug/usb          
++-|---------------+                                         
+  |    +--------------------+                               
+  |--> | debugfs_create_dir | /sys/kernel/debug/usb?        
+  |    +--------------------+                               
+  |    +------------------+                                 
+  +--> | ledtrig_usb_init | do nothing bc of disabled config
+       +------------------+                                                           
+```
+
+```
++----------+                                                                                                     
+| usb_init | : register bus, notifier, intf driver 'usbfs_driver' & 'hub_driver', dev driver 'usb_generic_driver'
++-|--------+                                                                                                     
+  |    +-------------------+                                                                                     
+  |--> | usb_init_pool_max | init pool_max = 64 in our case                                                      
+  |    +-------------------+                                                                                     
+  |    +------------------+                                                                                      
+  |--> | usb_debugfs_init | create /sys/kernel/debug/usb/devices                                                 
+  |    +------------------+                                                                                      
+  |    +-------------------+                                                                                     
+  |--> | usb_acpi_register | do nothing bc of disabled config                                                    
+  |    +-------------------+                                                                                     
+  |    +--------------+                                                                                          
+  |--> | bus_register | 'usb_bus_type'                                                                           
+  |    +--------------+                                                                                          
+  |    +-----------------------+                                                                                 
+  |--> | bus_register_notifier | register notifier for later file addition or removal under /sys/                
+  |    +-----------------------+                                                                                 
+  |    +----------------+                                                                                        
+  |--> | usb_major_init | prepare and register cdev                                                              
+  |    +----------------+                                                                                        
+  |    +--------------+                                                                                          
+  |--> | usb_register | register usb interface driver 'usbfs_driver'                                             
+  |    +--------------+                                                                                          
+  |    +----------------+                                                                                        
+  |--> | usb_devio_init | init usb dev io                                                                        
+  |    +----------------+                                                                                        
+  |    +--------------+                                                                                          
+  |--> | usb_hub_init | register usb interface driver 'hub_driver'                                               
+  |    +--------------+                                                                                          
+  |    +----------------------------+                                                                            
+  +--> | usb_register_device_driver | register usb device driver 'usb_generic_driver' and probe devices          
+       +----------------------------+                                                                            
+```
+
+```
++--------------+                                                
+| usb_register | : register usb interface driver                
++-|------------+                                                
+  |    +---------------------+                                  
+  +--> | usb_register_driver | : register usb interface driver  
+       +-|-------------------+                                  
+         |                                                      
+         |--> set up arg driver                                 
+         |                                                      
+         |    +-----------------+                               
+         |--> | driver_register |                               
+         |    +-----------------+                               
+         |    +------------------------+                        
+         |--> | usb_create_newid_files | create files under /sys
+         |    +------------------------+                        
+         |                                                      
+         +--> print "%s: registered new interface driver %s\n"  
+```
+
+```
++----------------+                                             
+| usb_devio_init | : init usb dev io                           
++-|--------------+                                             
+  |    +------------------------+                              
+  |--> | register_chrdev_region | reserve a range of dev_t     
+  |    +------------------------+                              
+  |    +-----------+                                           
+  |--> | cdev_init | usbdev_file_operations                    
+  |    +-----------+                                           
+  |    +----------+                                            
+  |--> | cdev_add | register cdev                              
+  |    +----------+                                            
+  |    +---------------------+                                 
+  +--> | usb_register_notify | register notifer for dev removal
+       +---------------------+                                 
+```
+
+```
++--------------+                                                  
+| usb_hub_init | : register usb interface driver 'hub_driver'     
++-|------------+                                                  
+  |    +--------------+                                           
+  |--> | usb_register | register usb interface driver 'hub_driver'
+  |    +--------------+                                           
+  |    +-----------------+                                        
+  +--> | alloc_workqueue | "usb_hub_wq"                           
+       +-----------------+                                        
+```
+
+```
++----------------------------+                                                                 
+| usb_register_device_driver | : register usb device driver and probe devices                  
++-|--------------------------+                                                                 
+  |                                                                                            
+  |--> set up arg new_udriver                                                                  
+  |                                                                                            
+  |    +-----------------+                                                                     
+  |--> | driver_register |                                                                     
+  |    +-----------------+                                                                     
+  |                                                                                            
+  +--> print "%s: registered new device driver %s\n"                                           
+  |                                                                                            
+  |--> for each device in usb bus                                                              
+  |                                                                                            
+  |        +---------------------------+                                                       
+  +------> | __usb_bus_reprobe_drivers | check if driver and device match (reprobe is possible)
+           +---------------------------+                                                       
+```
+
+```
++---------------------------+                                                                         
+| __usb_bus_reprobe_drivers | : check if driver and device match (reprobe is possible)                
++-|-------------------------+                                                                         
+  |                                                                                                   
+  |--> return if the current driver isn't usb_generic_driver                                          
+  |                                                                                                   
+  |    +-----------------------+                                                                      
+  |--> | usb_driver_applicable | check if driver and device match                                     
+  |    +-----------------------+                                                                      
+  |                                                                                                   
+  |--> return if matched                                                                              
+  |                                                                                                   
+  |    +----------------+                                                                             
+  +--> | device_reprobe | in case probing criteria of the device changes, it might need another driver
+       +----------------+                                                                             
 ```
 
 ### Virtual Hub
