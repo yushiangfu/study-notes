@@ -568,11 +568,11 @@ struct usb_bus {
 ## <a name="system-startup"></a> System Startup
 
 ```
-usb_common_init     : create /sys/kernel/debug/usb
-usb_init            : register bus, notifier, intf driver 'usbfs_driver' & 'hub_driver', dev driver 'usb_generic_driver'
-usb_udc_init        : register 'udc' class
-ehci_hcd_init       : create /sys/kernel/debug/usb/ehci
-ehci_platform_init  : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
+usb_common_init         : create /sys/kernel/debug/usb
+usb_init                : register bus, notifier, intf driver 'usbfs_driver' & 'hub_driver', dev driver 'usb_generic_driver'
+usb_udc_init            : register 'udc' class
+ehci_hcd_init           : create /sys/kernel/debug/usb/ehci
+ehci_platform_init      : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
 usb_storage_driver_init : init template and register 'usb_storage_driver'
 usb_serial_init         : prepare tty driver, register bus 'usb-serial'
 usb_serial_module_init  : register usb intf driver, register arg drivers to bus 'usb-serial'
@@ -582,8 +582,7 @@ mass_storagemod_init    : set up function driver by args, register the function 
 hidmod_init             : set up function driver by args, register the function driver
 hid_init                : register bus and create /sys/kernel/debug/hid/
 hid_generic_init        : register hid driver 'hid_generic', trigger the match between dev/drv
-hid_init?
-aspeed_adc_driver_init
+hid_init                : init quirks, register 'hid_driver'
 ```
 
 ```
@@ -1077,6 +1076,61 @@ hid/hid-generic.c
                                   |        +---------------------------+                   
                                   +------> | __hid_bus_reprobe_drivers | try to match      
                                            +---------------------------+                   
+```
+
+```
+usbhid/hid-core.c                                                      
++----------+                                                            
+| hid_init | : init quirks, register 'hid_driver'                       
++-|--------+                                                            
+  |    +-----------------+                                              
+  |--> | hid_quirks_init | for each quirk: ensure it's in 'dquirks_list'
+  |    +-----------------+                                              
+  |    +--------------+                                                 
+  |--> | usb_register | register usb interface driver                   
+  |    +--------------+                                                 
+  |                                                                     
+  +--> print "usbhid: USB HID core driver"                              
+```
+
+```
++-----------------+                                                                              
+| hid_quirks_init | : for each quirk: ensure it's in 'dquirks_list'                              
++-|---------------+                                                                              
+  |                                                                                              
+  |--> for each quirk param                                                                      
+  |                                                                                              
+  |------> fetch (vendor, product, quirks) from param                                            
+  |                                                                                              
+  |        +-------------------+                                                                 
+  +------> | hid_modify_dquirk | prepare quirk_new based on arg id, ensure it's in 'dquirks_list'
+           +-------------------+                                                                 
+```
+
+```
++-------------------+                                                                   
+| hid_modify_dquirk | : prepare quirk_new based on arg id, ensure it's in 'dquirks_list'
++-|-----------------+                                                                   
+  |                                                                                     
+  |--> alloc hid_dev                                                                    
+  |                                                                                     
+  |--> alloc quirk_new                                                                  
+  |                                                                                     
+  |--> set up hid_dev and quirk_new based on arg id                                     
+  |                                                                                     
+  |--> for each node on dquirks_list                                                    
+  |                                                                                     
+  |        +------------------+                                                         
+  |------> | hid_match_one_id |                                                         
+  |        +------------------+                                                         
+  |                                                                                     
+  |------> if match                                                                     
+  |                                                                                     
+  |----------> replace node with quirk_new for a better match                           
+  |                                                                                     
+  |--> if not match (new node)                                                          
+  |                                                                                     
+  +------> append quirk_new to the end of 'dquirks_list'                                
 ```
 
 ### Virtual Hub
