@@ -580,7 +580,7 @@ gadget_cfs_init         : init gadget_subsys and prepare config_fs for it
 ast_vhub_driver_init    : register ast vhub driver
 mass_storagemod_init    : set up function driver by args, register the function driver
 hidmod_init             : set up function driver by args, register the function driver
-hid_init
+hid_init                : register bus and create /sys/kernel/debug/hid/
 hid_generic_init
 hid_init?
 aspeed_adc_driver_init
@@ -1030,6 +1030,22 @@ function/f_hid.c
    |--> set up hidg based on opts                                
    |                                                             
    +--> install operations to hidg                               
+```
+
+```
+hid/hid-core.c                                              
++----------+                                                 
+| hid_init | : register bus and create /sys/kernel/debug/hid/
++--|-------+                                                 
+   |    +--------------+                                     
+   |--> | bus_register | 'hid_bus_type'                      
+   |    +--------------+                                     
+   |    +-------------+                                      
+   |--> | hidraw_init | do nothing bc of disabled config     
+   |    +-------------+                                      
+   |    +----------------+                                   
+   +--> | hid_debug_init | create /sys/kernel/debug/hid/     
+        +----------------+                                   
 ```
 
 ### Virtual Hub
