@@ -581,7 +581,7 @@ ast_vhub_driver_init    : register ast vhub driver
 mass_storagemod_init    : set up function driver by args, register the function driver
 hidmod_init             : set up function driver by args, register the function driver
 hid_init                : register bus and create /sys/kernel/debug/hid/
-hid_generic_init
+hid_generic_init        : register hid driver 'hid_generic', trigger the match between dev/drv
 hid_init?
 aspeed_adc_driver_init
 ```
@@ -1033,19 +1033,50 @@ function/f_hid.c
 ```
 
 ```
-hid/hid-core.c                                              
+hid/hid-core.c                                             
 +----------+                                                 
 | hid_init | : register bus and create /sys/kernel/debug/hid/
-+--|-------+                                                 
-   |    +--------------+                                     
-   |--> | bus_register | 'hid_bus_type'                      
-   |    +--------------+                                     
-   |    +-------------+                                      
-   |--> | hidraw_init | do nothing bc of disabled config     
-   |    +-------------+                                      
-   |    +----------------+                                   
-   +--> | hid_debug_init | create /sys/kernel/debug/hid/     
-        +----------------+                                   
++-|--------+                                                 
+  |    +--------------+                                      
+  |--> | bus_register | 'hid_bus_type'                       
+  |    +--------------+                                      
+  |    +-------------+                                       
+  |--> | hidraw_init | do nothing bc of disabled config      
+  |    +-------------+                                       
+  |    +----------------+                                    
+  +--> | hid_debug_init | create /sys/kernel/debug/hid/      
+       +----------------+                                                            
+```
+
+```
+hid/hid-generic.c                                                                         
++------------------+                                                                       
+| hid_generic_init | : register hid driver 'hid_generic', trigger the match between dev/drv
++-|----------------+                                                                       
+  |    +---------------------+                                                             
+  +--> | hid_register_driver |                                                             
+       +-|-------------------+                                                             
+         |    +-----------------------+                                                    
+         +--> | __hid_register_driver |                                                    
+              +-|---------------------+                                                    
+                |                                                                          
+                |--> set bus = hid_bus_type                                                
+                |                                                                          
+                |    +-----------------+                                                   
+                +--> | driver_register |                                                   
+                     +-|---------------+                                                   
+                       |                                                                   
+                       |--> for each driver on bus                                         
+                       |                                                                   
+                       |        +------------------------+                                 
+                       +------> | __hid_bus_driver_added |                                 
+                                +-|----------------------+                                 
+                                  |                                                        
+                                  |--> for each device on bus                              
+                                  |                                                        
+                                  |        +---------------------------+                   
+                                  +------> | __hid_bus_reprobe_drivers | try to match      
+                                           +---------------------------+                   
 ```
 
 ### Virtual Hub
