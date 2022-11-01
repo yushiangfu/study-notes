@@ -1235,6 +1235,101 @@ src/IntrusionSensorMain.cpp
   +------> lanStatusMap[ethNum] = newLanConnected                           
 ```
 
+### ipmbsensor
+
+```
+src/IpmbSensor.cpp                                                                   
++------+                                                                              
+| main |                                                                              
++-|----+                                                                              
+  |                                                                                   
+  |--> ->request_name("xyz.openbmc_project.IpmbSensor")                               
+  |                                                                                   
+  |--> io.post                                                                        
+  |       +--------------------------------------+                                    
+  |       |+---------------+                     |                                    
+  |       || createSensors | create ipmb sensors |                                    
+  |       |+---------------+                     |                                    
+  |       +--------------------------------------+                                    
+  |                                                                                   
+  |--> prepare event handler                                                          
+  |       +--------------------------------------------+                              
+  |       |.async_wait                                 |                              
+  |       |   +--------------------------------------+ |                              
+  |       |   |+---------------+                     | |                              
+  |       |   || createSensors | create ipmb sensors | |                              
+  |       |   |+---------------+                     | |                              
+  |       |   +--------------------------------------+ |                              
+  |       +--------------------------------------------+                              
+  |                                                                                   
+  |--> prepare match rule (config changes) and register event handler                 
+  |                                                                                   
+  |--> prepare match rule (power changes) and register another handler                
+  |       +--------------------------------------------------------+                  
+  |       |+---------------+                                       |                  
+  |       || reinitSensors | if power is one: send request to init |                  
+  |       |+---------------+                                       |                  
+  |       +--------------------------------------------------------+                  
+  |    +-----------------------------+                                                
+  +--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match  
+       +-----------------------------+                                                
+```
+
+```
++---------------+                                    
+| createSensors | : create ipmb sensors              
++-|-------------+                                    
+  |                                                  
+  +--> ->async_method_call                           
+          +-----------------------------------------+
+          |for each pair in response                |
+          |                                         |
+          |    for each entry in pair               |
+          |                                         |
+          |        set up sensor based on the entry |
+          +-----------------------------------------+
+          entityManagerName                          
+          "/"                                        
+          "org.freedesktop.DBus.ObjectManager"       
+          "GetManagedObjects"                        
+```
+
+```
++---------------+                                               
+| reinitSensors | : if power is one: send request to init       
++-|-------------+                                               
+  |                                                             
+  |--> read arg msg                                             
+  |                                                             
+  |--> find power status                                        
+  |                                                             
+  |--> if power is on                                           
+  |                                                             
+  +------> ->async_wait                                         
+              +------------------------------------------------+
+              |+------------------------+                      |
+              || IpmbSensor::runInitCmd | send request to init |
+              |+------------------------+                      |
+              +------------------------------------------------+
+```
+
+```
++------------------------+                            
+| IpmbSensor::runInitCmd | : send request to init     
++-|----------------------+                            
+  |                                                   
+  |--> if 'initCommand' is set                        
+  |                                                   
+  +------> ->async_method_call                        
+              +-----------------------+               
+              |check if error happens |               
+              +-----------------------+               
+              "xyz.openbmc_project.Ipmi.Channel.Ipmb" 
+              "/xyz/openbmc_project/Ipmi/Channel/Ipmb"
+              "org.openbmc.Ipmb"                      
+              "sendRequest"                           
+```
+
 ### nvmesensor
 
 ```
