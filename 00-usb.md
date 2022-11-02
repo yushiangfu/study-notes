@@ -565,6 +565,167 @@ struct usb_bus {
   +--> case 'set/clear feature': blabla
 ```
 
+```
++--------------+                                                                                   
+| gadgets_make | : alloc gadget_info, set up groups, composite & dev, install driver               
++-|------------+                                                                                   
+  |                                                                                                
+  |--> alloc gadget_info                                                                           
+  |                                                                                                
+  |    +-----------------------------+                                                             
+  |--> | config_group_init_type_name | set up root group right under /sys/kernel/config/usb_gadget/
+  |    +-----------------------------+                                                             
+  |    +-----------------------------+                                         +---------------+   
+  |--> | config_group_init_type_name | set up 'functions' group                | function_make |   
+  |    +-----------------------------+                                         +---------------+   
+  |    +----------------------------+                                                              
+  |--> | configfs_add_default_group | add 'functions' group to root group                          
+  |    +----------------------------+                                                              
+  |    +-----------------------------+                                         +------------------+
+  |--> | config_group_init_type_name | set up 'configs' group                  | config_desc_make |
+  |    +-----------------------------+                                         +------------------+
+  |    +----------------------------+                                                              
+  |--> | configfs_add_default_group | add 'configs' group to root group                            
+  |    +----------------------------+                                                              
+  |    +-----------------------------+                                                             
+  |--> | config_group_init_type_name | set up 'strings' group                                      
+  |    +-----------------------------+                                                             
+  |    +----------------------------+                                                              
+  |--> | configfs_add_default_group | add 'strings' group to root group                            
+  |    +----------------------------+                                                              
+  |    +-----------------------------+                                         +--------------+    
+  |--> | config_group_init_type_name | set up 'os_desc' group                  | os_desc_link |    
+  |    +-----------------------------+                                         +--------------+    
+  |    +----------------------------+                                                              
+  |--> | configfs_add_default_group | add 'os_desc' group to root group                            
+  |    +----------------------------+                                                              
+  |                                                                                                
+  |--> set up 'composite'                                                                          
+  |                                                                                                
+  |--> set desc type as 'device' (not config, not interface, not endpoint...)                      
+  |                                                                                                
+  |--> set up 'composite dev'                                                                      
+  |                                                                                                
+  +--> gadget_driver = configfs_driver_template                                                    
+```
+
+```
++---------------+                                                                       
+| function_make | : given name, alloc instance and set name, add instance to gadget_info
++-|-------------+                                                                       
+  |                                                                                     
+  |--> prepare name buf                                                                 
+  |                                                                                     
+  |    +---------------------------+                                                    
+  |--> | usb_get_function_instance | find arg-matched func_driver to alloc instance     
+  |    +---------------------------+                                                    
+  |    +----------------------+                                                         
+  |--> | config_item_set_name | set item name                                           
+  |    +----------------------+                                                         
+  |                                                                                     
+  |--> get gadget_info from arg group                                                   
+  |                                                                                     
+  |    +---------------+                                                                
+  +--> | list_add_tail | append func_instance to gadget_info                            
+       +---------------+                                                                
+```
+
+```
++---------------------------+                                                          
+| usb_get_function_instance | : find arg-matched func_driver to alloc instance         
++-|-------------------------+                                                          
+  |    +-------------------------------+                                               
+  |--> | try_get_usb_function_instance | find arg-matched func_driver to alloc instance
+  |    +-------------------------------+                                               
+  |                                                                                    
+  +--> return if it's successful                                                       
+```
+
+```
++-------------------------------+                                                 
+| try_get_usb_function_instance | : find arg-matched func_driver to alloc instance
++-|-----------------------------+                                                 
+  |                                                                               
+  |--> for each func_driver on 'func_list'                                        
+  |                                                                               
+  |------> continue if arg name mismatches driver name                            
+  |                                                                               
+  |------> ->alloc_inst(), e.g.,                                                  
+  |        +-----------------+                                                    
+  |        | hidg_alloc_inst | prepare opts                                       
+  |        +-----------------+                                                    
+  |                                                                               
+  |------> save func_driver in func_instance                                      
+  |                                                                               
+  +------> break                                                                  
+```
+
+```
++------------------+                                                                                     
+| config_desc_make | : prepare config and create items of name and 'strings', add config to composite dev
++-|----------------+                                                                                     
+  |                                                                                                      
+  |--> get gadget_info from arg group                                                                    
+  |                                                                                                      
+  |--> prepare name buf                                                                                  
+  |                                                                                                      
+  |--> alloc config and set up (e.g., config value)                                                      
+  |                                                                                                      
+  |    +-----------------------------+                                  +---------------------+          
+  |--> | config_group_init_type_name | create item of arg name          | config_usb_cfg_link |          
+  |    +-----------------------------+                                  +---------------------+          
+  |    +-----------------------------+                                                                   
+  |--> | config_group_init_type_name |  create item 'strings'                                            
+  |    +-----------------------------+                                                                   
+  |    +----------------------------+                                                                    
+  |--> | configfs_add_default_group | add string group to root group                                     
+  |    +----------------------------+                                                                    
+  |    +---------------------+                                                                           
+  +--> | usb_add_config_only | ensure config is in composite dev                                         
+       +---------------------+                                                                           
+```
+
+```
++---------------------+                                              
+| config_usb_cfg_link | : alloc function and append to config        
++-|-------------------+                                              
+  |                                                                  
+  |--> check if func_inst comes from the gadget (it should)          
+  |                                                                  
+  |    +------------------+                                          
+  |--> | usb_get_function | get func_driver and call its ->alloc_func
+  |    +------------------+                                          
+  |    +---------------+                                             
+  +--> | list_add_tail | append the allocated function to config     
+       +---------------+                                             
+```
+
+```
++---------------------+                                           
+| usb_add_config_only | : ensure config is in composite dev       
++-|-------------------+                                           
+  |                                                               
+  |--> return error if no config value                            
+  |                                                               
+  |--> for each composite config                                  
+  |                                                               
+  |------> return error if there's other config has the same value
+  |                                                               
+  |    +---------------+                                          
+  +--> | list_add_tail | append config to composite dev           
+       +---------------+                                          
+```
+
+```
++--------------+                                                   
+| os_desc_link | : find target usb config and save in composite dev
++-|------------+                                                   
+  |                                                                
+  |--> find target config from composite dev                       
+  |                                                                
+  +--> save its usb config in composite dev                        
+```
+
 ## <a name="system-startup"></a> System Startup
 
 ```
@@ -578,7 +739,11 @@ usb_serial_init         : prepare tty driver, register bus 'usb-serial'
 usb_serial_module_init  : register usb intf driver, register arg drivers to bus 'usb-serial'
 gadget_cfs_init         : init gadget_subsys and prepare config_fs for it
 ast_vhub_driver_init    : register ast vhub driver
+ecmmod_init             : disabled by default (CONFIG_USB_CONFIGFS_ECM)
+gethmod_init            : disabled by default (CONFIG_USB_CONFIGFS_ECM_SUBSET)
+rndismod_init           : disabled by default (CONFIG_USB_CONFIGFS_RNDIS)
 mass_storagemod_init    : set up function driver by args, register the function driver
+ffsmod_init             : disabled by default (CONFIG_USB_CONFIGFS_F_FS)
 hidmod_init             : set up function driver by args, register the function driver
 hid_init                : register bus and create /sys/kernel/debug/hid/
 hid_generic_init        : register hid driver 'hid_generic', trigger the match between dev/drv
