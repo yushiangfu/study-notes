@@ -1330,6 +1330,197 @@ src/IpmbSensor.cpp
               "sendRequest"                           
 ```
 
+### mcutempsensor
+
+```
++------+                                                                            
+| main |                                                                            
++-|----+                                                                            
+  |                                                                                 
+  |--> ->request_name("xyz.openbmc_project.MCUTempSensor")                          
+  |                                                                                 
+  |--> io.post                                                                      
+  |      +------------------------------------------+                               
+  |      | +--------------+                         |                               
+  |      | |createSensors | create mcu temp sensors |                               
+  |      | +--------------+                         |                               
+  |      +------------------------------------------+                               
+  |                                                                                 
+  |--> prepare event handler                                                        
+  |      +------------------------------------------+                               
+  |      | +--------------+                         |                               
+  |      | |createSensors | create mcu temp sensors |                               
+  |      | +--------------+                         |                               
+  |      +------------------------------------------+                               
+  |                                                                                 
+  |--> prepare match rule and register event handler                                
+  |                                                                                 
+  |    +-----------------------------+                                              
+  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match
+  |    +-----------------------------+                                              
+  |                                                                                 
+  +--> io.run                                                                       
+```
+
+```
++---------------+                                                                                                           
+| createSensors | : create mcu temp sensors                                                                                 
++-|-------------+                                                                                                           
+  |                                                                                                                         
+  +--> ->async_method_call                                                                                                  
+          +----------------------------------------------------------------------------------------------------------------+
+          |for each path_pair in response                                                                                  |
+          |                                                                                                                |
+          |    for each entry in path                                                                                      |
+          |                                                                                                                |
+          |        +---------------------------+                                                                           |
+          |        | parseThresholdsFromConfig | given sensor data, find pairs of (hysteresis, direction, severity, value) |
+          |        +---------------------------+ and push bask to arg vector                                               |
+          |                                                                                                                |
+          |        load property 'bus', 'addr', 'reg', 'class'                                                             |
+          |                                                                                                                |
+          |        prepare 'MCUTempSensor'                                                                                 |
+          |                                                                                                                |
+          |        +---------------------+                                                                                 |
+          |        | MCUTempSensor::init | init properties, update value                                                   |
+          |        +---------------------+                                                                                 |
+          +----------------------------------------------------------------------------------------------------------------+
+          entityManagerName                                                                                                 
+          "/"                                                                                                               
+          "org.freedesktop.DBus.ObjectManager"                                                                              
+          "GetManagedObjects"                                                                                               
+```
+
+```
++---------------------+                                                               
+| MCUTempSensor::init | : init properties, update value                               
++-|-------------------+                                                               
+  |    +------------------------------+                                               
+  +--> | Sensor::setInitialProperties | init properties                               
+  |    +------------------------------+                                               
+  |    +---------------------+                                                        
+  +--> | MCUTempSensor::read | read value through i2c channel, update property 'value'
+       +---------------------+                                                        
+```
+
+```
++------------------------------+                                                                          
+| Sensor::setInitialProperties | : init properties                                                        
++-|----------------------------+                                                                          
+  |                                                                                                       
+  |--> if read_state is specified as 'on' or 'biospost'                                                   
+  |                                                                                                       
+  |        +-----------------+                                                                            
+  |------> | setupPowerMatch | prepare two callbacks for getting power_status and bios_has_post separately
+  |        +-----------------+                                                                            
+  |    +-------------------+                                                                              
+  |--> | createAssociation | prepare association and register to "Associations"                           
+  |    +-------------------+                                                                              
+  |                                                                                                       
+  |--> register property "Unit", "MaxValue", "MinValue", "Value"                                          
+  |                                                                                                       
+  |--> for each threshold                                                                                 
+  |                                                                                                       
+  |------> determine level and alarm                                                                      
+  |                                                                                                       
+  |------> ->register_property                                                                            
+  |                                                                                                       
+  |------> ->register_property (alarm)                                                                    
+  |                                                                                                       
+  |--> ->register_property ("Mutable")                                                                    
+  |                                                                                                       
+  |--> ->register_property ("Available")                                                                  
+  |                                                                                                       
+  +--> ->register_property ("Functional")                                                                 
+                                                                                                          
+```
+
+```
++-----------------+                                                                              
+| setupPowerMatch | : prepare two callbacks for getting power_status and bios_has_post separately
++-|---------------+                                                                              
+  |                                                                                              
+  |--> return if it's set already                                                                
+  |                                                                                              
+  |--> prepare match rule and callback                                                           
+  |       +----------------------------+                                                         
+  |       |read msg                    |                                                         
+  |       |                            |                                                         
+  |       |find power_status           |                                                         
+  |       |                            |                                                         
+  |       |if not on                   |                                                         
+  |       |                            |                                                         
+  |       +--> powerStatusOn = false   |                                                         
+  |       |                            |                                                         
+  |       |.async_wait                 |                                                         
+  |       |    +----------------------+|                                                         
+  |       |    | powerStatusOn = true ||                                                         
+  |       |    +----------------------+|                                                         
+  |       +----------------------------+                                                         
+  |                                                                                              
+  |--> prepare match rule and callback                                                           
+  |       +--------------------------------------+                                               
+  |       |read msg                              |                                               
+  |       |                                      |                                               
+  |       |read value to determine 'biosHasPost' |                                               
+  |       +--------------------------------------+                                               
+  |    +----------------+                                                                        
+  |--> | getPowerStatus | get power status                                                       
+  |    +----------------+                                                                        
+  |    +---------------+                                                                         
+  +--> | getPostStatus | get post status                                                         
+       +---------------+                                                                         
+```
+
+```
++----------------+                   
+| getPowerStatus | : get power status
++-|--------------+                   
+  |                                  
+  +--> ->async_method_call           
+          +-------------------------+
+          |determine if power is on |
+          +-------------------------+
+          power::busname             
+          power::path                
+          properties::interface      
+          properties::get            
+```
+
+```
++---------------+                   
+| getPostStatus | : get post status 
++-|-------------+                   
+  |                                 
+  +--> ->async_method_call          
+          +------------------------+
+          |determine 'biosHasPost' |
+          +------------------------+
+          post::busname             
+          post::path                
+          properties::interface     
+          properties::get           
+```
+
+```
++---------------------+                                                                               
+| MCUTempSensor::read | : read value through i2c channel, update property 'value'                     
++-|-------------------+                                                                               
+  |                                                                                                   
+  +--> .async_wait                                                                                    
+          +------------------------------------------------------------------------------------------+
+          |+--------------------+                                                                    |
+          || getMCURegsInfoWord | read data through i2c channel                                      |
+          |+--------------------+                                                                    |
+          |+---------------------+                                                                   |
+          || Sensor::updateValue | update property "Value", update instrumentation, check thresholds |
+          |+---------------------+                                                                   |
+          |+---------------------+                                                                   |
+          || MCUTempSensor::read | recursive                                                         |
+          |+---------------------+                                                                   |
+          +------------------------------------------------------------------------------------------+
+```
+
 ### nvmesensor
 
 ```
