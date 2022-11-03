@@ -1729,3 +1729,148 @@ src/IpmbSensor.cpp
      +------> | context->removeSensor | remove sensor value                     
               +-----------------------+                                         
 ```
+
+### psusensor
+
+```
+src/PSUSensorMain.cpp
++------+                                                                              
+| main |                                                                              
++-|----+                                                                              
+  |                                                                                   
+  +--> ->request_name("xyz.openbmc_project.PSUSensor")                                
+  |                                                                                   
+  |    +--------------------+                                                         
+  |--> | propertyInitialize | init tables                                             
+  |    +--------------------+                                                         
+  |                                                                                   
+  |--> io.post                                                                        
+  |       +-------------------------------------+                                     
+  |       |+---------------+                    |                                     
+  |       || createSensors | create pwm sensors |                                     
+  |       |+---------------+                    |                                     
+  |       +-------------------------------------+                                     
+  |                                                                                   
+  |--> prepare event_handler                                                          
+  |       +------------------------------------------+                                
+  |       |.async_wait                               |                                
+  |       |   +-------------------------------------+|                                
+  |       |   |+---------------+                    ||                                
+  |       |   || createSensors | create pwm sensors ||                                
+  |       |   |+---------------+                    ||                                
+  |       |   +-------------------------------------+|                                
+  |       +------------------------------------------+                                
+  |                                                                                   
+  |--> for each sensor type                                                           
+  |                                                                                   
+  |------> prepare match rule and register event_handler                              
+  |                                                                                   
+  |    +-----------------------------+                                                
+  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match  
+  |    +-----------------------------+                                                
+  |                                                                                   
+  +--> io.run                                                                         
+```
+
+```
++---------------+                                                                                                  
+| createSensors | : create pwm sensors                                                                             
++-|-------------+                                                                                                  
+  |                                                                                                                
+  |--> prepare callback for GetSensorConfiguration                                                                 
+  |       +---------------------------------------------+                                                          
+  |       |+-----------------------+                    |                                                          
+  |       || createSensorsCallback | create pwm sensors |                                                          
+  |       |+-----------------------+                    |                                                          
+  |       +---------------------------------------------+                                                          
+  |                                                                                                                
+  |    +------------------------------------------+                                                                
+  +--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces
+       +------------------------------------------+                                                                
+```
+
+```
++-----------------------+                                                                      
+| createSensorsCallback | : create pwm sensors                                                 
++-|---------------------+                                                                      
+  |    +-----------+                                                                           
+  |--> | findFiles | find pmbus under "/sys/class/hwmon"                                       
+  |    +-----------+                                                                           
+  |                                                                                            
+  |--> for each pmbus path                                                                     
+  |                                                                                            
+  |------> read line from file                                                                 
+  |                                                                                            
+  |------> for each obj_path in sensor_configs                                                 
+  |                                                                                            
+  |----------> get (bus, addr) from device name                                                
+  |                                                                                            
+  |----------> get (bus, addr) from config                                                     
+  |                                                                                            
+  +----------> continue if (bus, addr) mismatch between device_name and config                 
+  |                                                                                            
+  |            +---------------------------+                                                   
+  +----------> | parseThresholdsFromConfig |                                                   
+  |            +---------------------------+                                                   
+  |        +------------+                                                                      
+  |------> | checkEvent | save the paths of attr files under /sys/, and save to 'eventPathList'
+  |        +------------+                                                                      
+  |        +-----------------+                                                                 
+  |------> | checkGroupEvent | save file names in 'groupEventPathList'                         
+  |        +-----------------+                                                                 
+  |                                                                                            
+  |------> check if there are more sensors in the same interface                               
+  |                                                                                            
+  |------> set poll_rate, labels, ...                                                          
+  |                                                                                            
+  |------> for each sensor path                                                                
+  |                                                                                            
+  |            +----------------+                                                              
+  |----------> | checkPWMSensor | for each name in table: save path in 'pwmSensors'            
+  |            +----------------+                                                              
+  |            +---------------------------+                                                   
+  |----------> | parseThresholdsFromConfig |                                                   
+  |            +---------------------------+                                                   
+  |                                                                                            
+  +----------> make pwm_sensor and save in 'sensors'                                           
+```
+
+```
++------------+                                                                        
+| checkEvent | : save the paths of attr files under /sys/, and save to 'eventPathList'
++-|----------+                                                                        
+  |                                                                                   
+  |--> for each event match                                                           
+  |                                                                                   
+  |------> for each event attr                                                        
+  |                                                                                   
+  |----------> assemble file name                                                     
+  |                                                                                   
+  +----------> save file name in 'eventPathList'                                      
+```
+
+```
++-----------------+                                          
+| checkGroupEvent | : save file names in 'groupEventPathList'
++-|---------------+                                          
+  |                                                          
+  |--> for each group event match                            
+  |                                                          
+  |------> for each event                                    
+  |                                                          
+  |----------> for each attr                                 
+  |                                                          
+  |--------------> assemble file name and save in 'pathList' 
+  |                                                          
+  +------> save 'pathList' in 'groupEventPathList'           
+```
+
+```
++----------------+                                                    
+| checkPWMSensor | : for each name in table: save path in 'pwmSensors'
++-|--------------+                                                    
+  |                                                                   
+  |--> for each name in pwm_table                                     
+  |                                                                   
+  +------> save sensor path in 'pwmSensors'                           
+```
