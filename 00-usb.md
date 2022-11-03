@@ -1255,6 +1255,97 @@ serial/pl2303.c
 ```
 
 ```
++-------------+                                                               
+| ecmmod_init | : set up function driver by args, register the function driver
++-|-----------+                                                               
+  |                                                                           
+  |--> prepare function driver (ecm_alloc_inst, ecm_alloc)                    
+  |                                                                           
+  |        +----------------+                                                 
+  |        | ecm_alloc_inst | alloc opts, prepare netdev                      
+  |        +----------------+                                                 
+  |        +-----------+                                                      
+  |        | ecm_alloc | alloc ecm, set up port and install ops               
+  |        +-----------+                                                      
+  |    +-----------------------+                                              
+  +--> | usb_function_register |                                              
+       +-----------------------+                                              
+```
+
+```
++----------------+                                                                                       
+| ecm_alloc_inst | : alloc opts, prepare netdev                                                          
++---|------------+                                                                                       
+    |                                                                                                    
+    |--> alloc opts                                                                                      
+    |                                                                                                    
+    |--> install free func = ecm_free_inst                                                               
+    |                                                                                                    
+    |    +----------------------+                                                                        
+    |--> | gether_setup_default | alloc netdev, set name, generate random mac for dev & host, install ops
+    |    +----------------------+                                                                        
+    |    +-----------------------------+                                                                 
+    +--> | config_group_init_type_name | set item = ""?                                                  
+         +-----------------------------+                                                                 
+```
+
+```
++----------------------+                                                                                      
+| gether_setup_default | : alloc netdev, set name, generate random mac for dev & host, install ops            
++-|--------------------+                                                                                      
+  |    +---------------------------+                                                                          
+  +--> | gether_setup_name_default | : alloc netdev, set name, generate random mac for dev & host, install ops
+       +-|-------------------------+                                                                          
+         |    +----------------+                                                                              
+         |--> | alloc_etherdev | alloc net_dev                                                                
+         |    +----------------+                                                                              
+         |                                                                                                    
+         |--> label mac type as 'random'                                                                      
+         |                                                                                                    
+         |    +---------------------+                                                                         
+         |--> | skb_queue_head_init | init skb list                                                           
+         |    +---------------------+                                                                         
+         |                                                                                                    
+         |--> decide net_dev name                                                                             
+         |                                                                                                    
+         |    +-----------------+                                                                             
+         |--> | eth_random_addr | generate random mac for dev                                                 
+         |    +-----------------+                                                                             
+         |                                                                                                    
+         |--> print "using random %s ethernet address\n", "self"                                              
+         |                                                                                                    
+         |    +-----------------+                                                                             
+         |--> | eth_random_addr | generate random mac for host                                                
+         |    +-----------------+                                                                             
+         |                                                                                                    
+         |--> print "using random %s ethernet address\n", "host"                                              
+         |                                                                                                    
+         |--> install 'eth_netdev_ops' for net_dev                                                            
+         |                                                                                                    
+         |--> install 'ops' for eth tool                                                                      
+         |                                                                                                    
+         |--> set dev type = 'gadget'                                                                         
+         |                                                                                                    
+         +--> set max/min mtu                                                                                 
+```
+
+```
++-----------+                                            
+| ecm_alloc | : alloc ecm, set up port and install ops   
++-|---------+                                            
+  |                                                      
+  |--> alloc ecm                                         
+  |                                                      
+  |--> get opts from arg fi                              
+  |                                                      
+  |    +--------------------------+                      
+  +--> | gether_get_host_addr_cdc | get mac in cdc format
+  |    +--------------------------+                      
+  |                                                      
+  +--> set up port and install ops                       
+```
+
+```
 function/f_mass_storage.c                                                                   
 +----------------------+                                                                     
 | mass_storagemod_init | : set up function driver by args, register the function driver      
