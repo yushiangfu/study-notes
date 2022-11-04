@@ -174,3 +174,49 @@
   |                                                                                        
   +------> handlerMap[key] = handler                                                       
 ```
+
+```
++-------------------------+                                                                                               
+| ipmiStorageWriteFruData | : read fru file to cache (memory), overwrite specified range, ask service to write back (file)
++-|-----------------------+                                                                                               
+  |    +--------+                                                                                                         
+  |--> | getFru | get (raw) fru                                                                                           
+  |    +--------+                                                                                                         
+  |                                                                                                                       
+  |--> resize fru cache if it's larger than expected                                                                      
+  |                                                                                                                       
+  |--> copy fru_cache to arg data_to_write                                                                                
+  |                                                                                                                       
+  |--> determine if we are at the end                                                                                     
+  |                                                                                                                       
+  |--> if yes                                                                                                             
+  |                                                                                                                       
+  |------> stop timer                                                                                                     
+  |                                                                                                                       
+  |        +----------+                                                                                                   
+  |------> | writeFru | ask fru_device service to help write fru                                                          
+  |        +----------+                                                                                                   
+  |                                                                                                                       
+  |------> count_written = fru_cache size                                                                                 
+  |                                                                                                                       
+  |--> else                                                                                                               
+  |                                                                                                                       
+  |------> start timer (ask fru_device service to help write fru)                                                         
+  |                                                                                                                       
+  +------> count_written = 0                                                                                              
+```
+
+```
++--------+                                                       
+| getFru | : get (raw) fru                                       
++-|------+                                                       
+  |                                                              
+  |--> clear fru cache                                           
+  |                                                              
+  |--> ->yield_method_call "xyz.openbmc_project.FruDevice"       
+  |                        "/xyz/openbmc_project/FruDevice"      
+  |                        "xyz.openbmc_project.FruDeviceManager"
+  |                        "GetRawFru"                           
+  |                                                              
+  +--> udpate 'lastDevId'                                        
+```
