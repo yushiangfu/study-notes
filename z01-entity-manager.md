@@ -19,14 +19,14 @@ For each I2C file, `fru-device` communicates to almost every potential slave dev
 After performing FRU format parsing, the valid devices are further published to D-Bus, as shown below.
 
 ```
-E.g.,
+# example from repo 'entity-manager'
 
 root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
 `-/xyz
   `-/xyz/openbmc_project
     `-/xyz/openbmc_project/FruDevice
-      `-/xyz/openbmc_project/FruDevice/my-fru     <-- detected fru device
-      `-/xyz/openbmc_project/FruDevice/our-fru    <-- detected fru device
+      |-/xyz/openbmc_project/FruDevice/Super_Great
+      |-/xyz/openbmc_project/FruDevice/Super_Great_0
 ```
 
 <details><summary> More Details </summary>
@@ -457,7 +457,7 @@ The intent is to check if we can find a supported entity; if found, the `entity-
 It's sufficed to regard the `Exposes` as attributes of an entity, e.g., name, type, controller bus, and address.
 
 ```
-E.g.,
+# example from repo 'entity-manager'
 
 root@romulus:~# busctl tree xyz.openbmc_project.EntityManager
 `-/xyz
@@ -466,14 +466,14 @@ root@romulus:~# busctl tree xyz.openbmc_project.EntityManager
     `-/xyz/openbmc_project/inventory
       `-/xyz/openbmc_project/inventory/system
         `-/xyz/openbmc_project/inventory/system/board
-          `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer
-            `-/xyz/openbmc_project/inventory/system/board/PCIE_SSD_Retimer/PCIE_SSD_Retimer_Temp
+          |-/xyz/openbmc_project/inventory/system/board/18_Great_Card
+          | |-/xyz/openbmc_project/inventory/system/board/18_Great_Card/18_great_local
+          |-/xyz/openbmc_project/inventory/system/board/19_Great_Card
+          | |-/xyz/openbmc_project/inventory/system/board/19_Great_Card/19_great_local
 ```
 
 When entity information is in readiness, a suite of sensor daemons dedicates to reading sensor values and updating the record. 
 From the `fru device` and `entity manager` to sensor daemons, they don't talk to each other; instead, the D-Bus mechanism has them work sequentially.
-
-<p align="center"><img src="images/openbmc/entity-manager.png" /></p>
 
 <details><summary> More Details </summary>
   
@@ -986,6 +986,8 @@ entity_manager.cpp
   
 </details>
   
+<p align="center"><img src="images/openbmc/entity-manager.png" /></p>
+  
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
 - Check found FRU devices.
@@ -1002,4 +1004,4 @@ busctl tree xyz.openbmc_project.EntityManager
   
 ## <a name="reference"></a> Reference
 
-[openbmc/entity-manager](https://github.com/openbmc/entity-manager)
+[Entity Manager](https://github.com/openbmc/entity-manager)
