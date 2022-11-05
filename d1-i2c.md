@@ -1216,6 +1216,14 @@ i2ctransfer -y -a 11 w1@0x71 0x40 r1
 # r1: read 1 byte from the previously specified slave address
 ```
   
+```
+Equivalent:
+  
+ipmitool i2c bus=11 0xe2 0x01 0x40
+  
+# 0xe2 is the 8-bit address representation of 0x71
+```
+  
 - Dump transaction data from kernel space.
   
 ```
