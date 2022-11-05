@@ -1,7 +1,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Sensor Daemon](#sensor-daemon)
+- [Sensor Daemons](#sensor-daemons)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
@@ -9,9 +9,20 @@
 
 (TBD)
 
-## <a name="sensor-daemon"></a> Sensor Daemon
+## <a name="sensor-daemons"></a> Sensor Daemons
 
 ### adcsensor
+
+An analog-to-digital converter (ADC) is a component that transfers analog signals, such as voltage or sound, into a digital value. 
+The ADC sensor task is a daemon running in the background firmly and following the below steps:
+
+- requests the service `xyz.openbmc_project.ADCSensor`
+- obtains ADC descriptors from `xyz.openbmc_project.ObjectMapper`
+- finds existing ADC hardware under `/sys/class/hwmon`
+- sets up an ADC sensor for each matched pair of (descriptor, component)
+- sensors read values and update to DBus periodically
+
+<details><summary> More Details </summary>
 
 ```
 from dbus perspective                                                                                  
@@ -245,6 +256,8 @@ from dbus perspective
                  ifc = "org.freedesktop.DBus.Properties"
                  mth = "GetAll"                         
 ```
+                    
+</details>
 
 ### cpusensor
 
