@@ -1,133 +1,58 @@
-## Thresholds
+## Index
 
-```
-+---------------------------+
-| parseThresholdsFromConfig | : given sensor data, find pairs of (hysteresis, direction, severity, value),
-+------|--------------------+   and push bask to arg vector
-       |
-       |--> for (intf, cfg) in sensor data
-       |
-       |------> continue if can't find "Thresholds"
-       |
-       |------> ignore arg 'match label'
-       |
-       |------> ignore arg 'sensorr index'
-       |
-       |------> find "Hysteresis", "Direction", "Severity", "Value" and parse
-       |
-       +------> append to arg 'thresholdVector'                                                                                    
-```
+- [Introduction](#introduction)
+- [Sensor Daemon](#sensor-daemon)
+- [Cheat Sheet](#cheat-sheet)
+- [Reference](#reference)
 
-## Utils
+## <a name="introduction"></a> Introduction
 
-```
-+------------------------+
-| GetSensorConfiguration |
-|  --------------------  |
-|    getPath()           |
-|    getConfiguration()  |
-|    dbusConnection      |
-|    callback            |
-|    respData            |
-+------------------------+
-```
+(TBD)
 
-```
-+------------------------------------------+
-| GetSensorConfiguration::getConfiguration | : get configuration path if it with matches any of the interfaces
-+----------|-------------------------------+
-           |
-           |--> for each type, add to interface
-           |
-           |    +-----------------------------------+
-           +--> | dbusConnection->async_method_call |
-                +------------------------------------------+
-                | for each (path, dict) in ret             |
-                |                                          |
-                |     for each interface in dict           |
-                |                                          |
-                |         find something in interface      |
-                |                                          |
-                |         continue if not found            |
-                |                                          |
-                |         +---------------+                |
-                |         | self->getPath | get what path? |
-                |         +---------------+                |
-                +------------------------------------------+                                                     
-```
-
-```
-+---------------------------------+                     
-| GetSensorConfiguration::getPath | : get what path?    
-+--------|------------------------+                     
-         |                                              
-         +--> ->async_method_call                       
-                 +-----------------------------------+  
-                 |->respData[path][iface] = arg data |  
-                 +-----------------------------------+  
-                 srv = owner                            
-                 obj = path                             
-                 ifc = "org.freedesktop.DBus.Properties"
-                 mth = "GetAll"                         
-```
-
-```
-+-----------------------------+                                                          
-| setupManufacturingModeMatch | : prepare handlers for manufacturing mode match          
-+-------|---------------------+                                                          
-        |                                                                                
-        |--> special mode intf = "xyz.openbmc_project.Security.SpecialMode"              
-        |                                                                                
-        |--> prepare handler for special mode intf add                                   
-        |    +------------------------------------------------------------------------+  
-        |    | +--------+                                                             |  
-        |    | | m.read | read msg into path and interfaces                           |  
-        |    | +--------+                                                             |  
-        |    | +---------------------+                                                |  
-        |    | | interfaceAdded.find | find special mode intf from interfaces         |  
-        |    | +---------------------+                                                |  
-        |    | +-------------------+                                                  |  
-        |    | | propertyList.find | find "SpecialMode" from property of interface    |  
-        |    | +-------------------+                                                  |  
-        |    | +-------------------------+                                            |  
-        |    | | handleSpecialModeChange | determine 'manufacturingMode' (global var) |  
-        |    | +-------------------------+                                            |  
-        |    +------------------------------------------------------------------------+  
-        |                                                                                
-        |-->  prepare handler for mode change                                            
-        |     +-------------------------------------------------------------------------+
-        |     |+--------+                                                               |
-        |     || m.read | read msg into interface and property                          |
-        |     |+--------+                                                               |
-        |     |+------------------------+                                               |
-        |     || propertiesChanged.find | find "SpecialMode" from property of interface |
-        |     |+------------------------+                                               |
-        |     |+-------------------------+                                              |
-        |     || handleSpecialModeChange | determine 'manufacturingMode' (global var)   |
-        |     |+-------------------------+                                              |
-        |     +-------------------------------------------------------------------------+
-        |                                                                                
-        +--> prepare handler for manufacturing mode                                      
-             +-----------------------------------------------------------------------+   
-             |+-------------------------+                                            |   
-             || handleSpecialModeChange | determine 'manufacturingMode' (global var) |   
-             |+-------------------------+                                            |   
-             +-----------------------------------------------------------------------+   
-```
-
-```
-+-------------------------------+                                                   
-| setupPropertiesChangedMatches | : for each types: prepare match and add to matches
-+-------|-----------------------+                                                   
-        |                                                                           
-        |--> for each type in arg 'types'                                           
-        |                                                                           
-        |------> prepare match = (bus, string, handler)                             
-        |                                                                           
-        +------> add to the end of arg 'matches'                                    
-```
+## <a name="sensor-daemon"></a> Sensor Daemon
 
 ### adcsensor
+
+```
+from dbus perspective                                                                                  
+                                                                                                        
++------+                                                                                                
+| main |                                                                                                
++-|----+                                                                                                
+  |                                                                                                     
+  |--> request service: "xyz.openbmc_project.ADCSensor"                                                 
+  |                                                                                                     
+  |    +---------------+                                                                                
+  +--> | createSensors |                                                                                
+       +-|-------------+                                                                                
+         |    +------------------------------------------+                                              
+         |--> | GetSensorConfiguration::getConfiguration | arg = "xyz.openbmc_project.Configuration.ADC"
+         |    +-|----------------------------------------+                                              
+         |      |                                                                                       
+         |      +--> call interface: "xyz.openbmc_project.ObjectMapper"                                 
+         |                object: "/xyz/openbmc_project/object_mapper"                                  
+         |                interface: "xyz.openbmc_project.ObjectMapper"                                 
+         |                method: "GetSubTree"                                                          
+         |                                                                                              
+         |    +-------------------------------------------------+                                       
+         +--> | GetSensorConfiguration::~GetSensorConfiguration |                                       
+              +-|-----------------------------------------------+                                       
+                |                                                                                       
+                |--> for each candidate ("/sys/class/hwmon/hwmon*/in*_input")                           
+                |                                                                                       
+                +------> prepare ADCSensor                                                              
+                         +----------------------+                                                       
+                         | ADCSensor::ADCSensor |                                                       
+                         +-|--------------------+                                                       
+                           |                                                                            
+                           +--> set up object: "/xyz/openbmc_project/sensors/voltage/" + name           
+                                                                                                        
+                                                                                                        
++---------------+                                                                                       
+| createSensors | <---- main                                                                            
++---------------+ <---- property change (interface: "xyz.openbmc_project.Configuration.ADC")            
+                  <---- property change (interface: "xyz.openbmc_project.Inventory.Item")               
+```
 
 ```
 +------+                                              
@@ -217,6 +142,24 @@
 ```
 
 ```
++---------------------------+
+| parseThresholdsFromConfig | : given sensor data, find pairs of (hysteresis, direction, severity, value),
++------|--------------------+   and push bask to arg vector
+       |
+       |--> for (intf, cfg) in sensor data
+       |
+       |------> continue if can't find "Thresholds"
+       |
+       |------> ignore arg 'match label'
+       |
+       |------> ignore arg 'sensorr index'
+       |
+       |------> find "Hysteresis", "Direction", "Severity", "Value" and parse
+       |
+       +------> append to arg 'thresholdVector'                                                                                    
+```
+
+```
 +----------------------+                                          
 | ADCSensor::setupRead | : alloc buffer and handle response       
 +-----|----------------+                                          
@@ -250,6 +193,57 @@
                || ADCSensor::setupRead | alloc buffer and handle response |
                |+----------------------+                                  |
                +----------------------------------------------------------+
+```
+
+```
++------------------------+
+| GetSensorConfiguration |
+|  --------------------  |
+|    getPath()           |
+|    getConfiguration()  |
+|    dbusConnection      |
+|    callback            |
+|    respData            |
++------------------------+
+```
+
+```
++------------------------------------------+
+| GetSensorConfiguration::getConfiguration | : get configuration path if it with matches any of the interfaces
++----------|-------------------------------+
+           |
+           |--> for each type, add to interface
+           |
+           |    +-----------------------------------+
+           +--> | dbusConnection->async_method_call |
+                +------------------------------------------+
+                | for each (path, dict) in ret             |
+                |                                          |
+                |     for each interface in dict           |
+                |                                          |
+                |         find something in interface      |
+                |                                          |
+                |         continue if not found            |
+                |                                          |
+                |         +---------------+                |
+                |         | self->getPath | get what path? |
+                |         +---------------+                |
+                +------------------------------------------+                                                     
+```
+
+```
++---------------------------------+                     
+| GetSensorConfiguration::getPath | : get what path?    
++--------|------------------------+                     
+         |                                              
+         +--> ->async_method_call                       
+                 +-----------------------------------+  
+                 |->respData[path][iface] = arg data |  
+                 +-----------------------------------+  
+                 srv = owner                            
+                 obj = path                             
+                 ifc = "org.freedesktop.DBus.Properties"
+                 mth = "GetAll"                         
 ```
 
 ### cpusensor
@@ -441,6 +435,50 @@
   |        +----------------+                                   
   +------> | detectCpuAsync | recursive call                    
            +----------------+                                   
+```
+
+```
++-----------------------------+                                                          
+| setupManufacturingModeMatch | : prepare handlers for manufacturing mode match          
++-------|---------------------+                                                          
+        |                                                                                
+        |--> special mode intf = "xyz.openbmc_project.Security.SpecialMode"              
+        |                                                                                
+        |--> prepare handler for special mode intf add                                   
+        |    +------------------------------------------------------------------------+  
+        |    | +--------+                                                             |  
+        |    | | m.read | read msg into path and interfaces                           |  
+        |    | +--------+                                                             |  
+        |    | +---------------------+                                                |  
+        |    | | interfaceAdded.find | find special mode intf from interfaces         |  
+        |    | +---------------------+                                                |  
+        |    | +-------------------+                                                  |  
+        |    | | propertyList.find | find "SpecialMode" from property of interface    |  
+        |    | +-------------------+                                                  |  
+        |    | +-------------------------+                                            |  
+        |    | | handleSpecialModeChange | determine 'manufacturingMode' (global var) |  
+        |    | +-------------------------+                                            |  
+        |    +------------------------------------------------------------------------+  
+        |                                                                                
+        |-->  prepare handler for mode change                                            
+        |     +-------------------------------------------------------------------------+
+        |     |+--------+                                                               |
+        |     || m.read | read msg into interface and property                          |
+        |     |+--------+                                                               |
+        |     |+------------------------+                                               |
+        |     || propertiesChanged.find | find "SpecialMode" from property of interface |
+        |     |+------------------------+                                               |
+        |     |+-------------------------+                                              |
+        |     || handleSpecialModeChange | determine 'manufacturingMode' (global var)   |
+        |     |+-------------------------+                                              |
+        |     +-------------------------------------------------------------------------+
+        |                                                                                
+        +--> prepare handler for manufacturing mode                                      
+             +-----------------------------------------------------------------------+   
+             |+-------------------------+                                            |   
+             || handleSpecialModeChange | determine 'manufacturingMode' (global var) |   
+             |+-------------------------+                                            |   
+             +-----------------------------------------------------------------------+   
 ```
 
 ### exitairtempsensor
@@ -1730,6 +1768,18 @@ src/IpmbSensor.cpp
               +-----------------------+                                         
 ```
 
+```
++-------------------------------+                                                   
+| setupPropertiesChangedMatches | : for each types: prepare match and add to matches
++-------|-----------------------+                                                   
+        |                                                                           
+        |--> for each type in arg 'types'                                           
+        |                                                                           
+        |------> prepare match = (bus, string, handler)                             
+        |                                                                           
+        +------> add to the end of arg 'matches'                                    
+```
+
 ### psusensor
 
 ```
@@ -1874,3 +1924,9 @@ src/PSUSensorMain.cpp
   |                                                                   
   +------> save sensor path in 'pwmSensors'                           
 ```
+
+## <a name="cheat-sheet"></a> Cheat Sheet
+
+## <a name="reference"></a> Reference
+
+[dbus-sensors](https://github.com/openbmc/dbus-sensors)
