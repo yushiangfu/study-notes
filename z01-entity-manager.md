@@ -996,6 +996,50 @@ entity_manager.cpp
 busctl tree xyz.openbmc_project.FruDevice
 ```
   
+- Check FRU inventory area information.
+  
+```
+E.g.,  
+  
+                       +--> fru dev id
+                       |
+                       +---
+ipmitool raw 0x0a 0x10 0x00
+ ff 00 00
+ +- +- +-
+ |  |  |
+ |  |  +--> access type
+ |  +-----> size_h
+ +--------> size_l                 
+```
+  
+- Read FRU data.
+  
+```
+E.g.,
+  
+ipmitool raw 0x0a 0x11 0x00 0x00 0x00 0xff           
+                       |--- |--- |--- |---           
+                       |    |    |    |              
+                       |    |    |    +--> count     
+                       |    |    +-------> offset_h  
+                       |    +------------> offset_l  
+                       +-----------------> fru dev id
+```
+  
+- Write FRU data.
+  
+```
+
+ipmitool raw 0x0a 0x12 0x00 0x00 0x00 0x01 0x01 0x02 0x04 0x08 0x00 0x00 0xf0
+                       |--- |--- |--- |--------------------------------------
+                       |    |    |    |
+                       |    |    |    +--> data
+                       |    |    +-------> offset_h
+                       |    +------------> offset_l
+                       +-----------------> fru dev id
+```
+  
 - Check matched exposes.
   
 ```
@@ -1004,4 +1048,5 @@ busctl tree xyz.openbmc_project.EntityManager
   
 ## <a name="reference"></a> Reference
 
-[Entity Manager](https://github.com/openbmc/entity-manager)
+- [Entity Manager](https://github.com/openbmc/entity-manager)
+- [[IPMI] FRU Inventory Device Commands](https://computercheese.blogspot.com/2013/05/ipmi-fru-commands.html)
