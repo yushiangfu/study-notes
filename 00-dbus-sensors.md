@@ -1939,6 +1939,24 @@ src/PSUSensorMain.cpp
 ```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
+  
+- Get ADC subtree from object mapper.
+  
+```
+busctl call xyz.openbmc_project.ObjectMapper \
+            /xyz/openbmc_project/object_mapper \
+            xyz.openbmc_project.ObjectMapper \
+            GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.ADC
+```
+  
+- Get CPU subtree from object mapper.
+  
+```
+busctl call xyz.openbmc_project.ObjectMapper \
+            /xyz/openbmc_project/object_mapper \
+            xyz.openbmc_project.ObjectMapper \
+            GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.XeonCPU
+```
 
 ## <a name="reference"></a> Reference
 
