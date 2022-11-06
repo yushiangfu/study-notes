@@ -1047,6 +1047,15 @@ ipmitool raw 0x0a 0x12 0x00 0x00 0x00 0x01 0x01 0x02 0x04 0x08 0x00 0x00 0xf0
 busctl tree xyz.openbmc_project.EntityManager
 ```
   
+- Get managed objects.
+  
+```
+busctl call xyz.openbmc_project.EntityManager \
+            / \
+            org.freedesktop.DBus.ObjectManager \
+            GetManagedObjects
+```
+  
 ## <a name="reference"></a> Reference
 
 - [Entity Manager](https://github.com/openbmc/entity-manager)
