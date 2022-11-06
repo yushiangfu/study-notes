@@ -261,6 +261,63 @@ from dbus perspective
 
 ### cpusensor
 
+<details><summary> More Details </summary>  
+  
+```
+from dbus perspective                                                                                                            
+                                                                                                                                  
++------+                                                                                                                          
+| main |                                                                                                                          
++-|----+                                                                                                                          
+  |                                                                                                                               
+  |--> request service: "xyz.openbmc_project.CPUSensor"                                                                           
+  |                                                                                                                               
+  |    +--------------+                                                                                                           
+  |--> | getCpuConfig |                                                                                                           
+  |    +-|------------+                                                                                                           
+  |      |    +------------------------+                                                                                          
+  |      +--> | getSensorConfiguration | arg = "XeonCPU"                                                                          
+  |           +-|----------------------+                                                                                          
+  |             |                                                                                                                 
+  |             +--> call service: "xyz.openbmc_project.EntityManager"                                                            
+  |                       object: "/"                                                                                             
+  |                       interface: "org.freedesktop.DBus.ObjectManager"                                                         
+  |                       method: "GetManagedObjects"                                                                             
+  |    +-----------------+                             +-------------------+                                                      
+  +--> | detectCpuAsync  |                             |+--------------+   | <--main                                              
+       +-|---------------+                             || getCpuConfig |   | <--property change ("/xyz/openbmc_project/inventory")
+         |    +-----------+                            |+--------------+   |                                                      
+         +--> | detectCpu |                            |+-----------------+|                                                      
+              +-|---------+                            || detectCpuAsync  ||                                                      
+                |                                      |+-----------------+|                                                      
+                |--> for each cpu_config               +-------------------+                                                      
+                |                                                                                                                 
+                |------> try get info from /dev/peci-*                                                                            
+                |                                                                                                                 
+                |------> if cpu is 'on' or 'ready'                                                                                
+                |                                                                                                                 
+                |            +---------------+                                                                                    
+                |----------> | createSensors |---+                                                                                
+                |            +---------------+   |                                                                                
+                |                                |                                                                                
+                |------> else (keep pinging)     |-->for each cpu_config                                                          
+                |                                |                                                                                
+                |            +----------------+  |------> object: "/xyz/openbmc_project/inventory/system/chassis/motherboard"+name 
+                +----------> | detectCpuAsync |  |                                                                                
+                             +----------------+  |-->for each file (/sys/bus/peci/devices/peci-*/*-*/peci-*/hwmon/hwmon*/name)    
+                                                 |                                                                                
+                                                 |------>for each (temp|power|energy)*_(input|average|cap) files                  
+                                                 |                                                                                
+                                                 +---------->prepare CPUSensor                                                    
+                                                             +---------------------+                                              
+                                                             | CPUSensor::CPUSensor|                                              
+                                                             +-|-------------------+                                              
+                                                               |                                                                  
+                                                               +--> object: "/xyz/openbmc_project/sensors/power/" + name   
+                                                                         or "/xyz/openbmc_project/sensors/energy/" + name   
+                                                                         or "/xyz/openbmc_project/sensors/temperature/" + name   
+```
+  
 ```
 +------+
 | main | : create cpu sensors
@@ -494,6 +551,8 @@ from dbus perspective
              +-----------------------------------------------------------------------+   
 ```
 
+</details>
+  
 ### exitairtempsensor
 
 ```
