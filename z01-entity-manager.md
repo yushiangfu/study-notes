@@ -19,7 +19,7 @@ For each I2C file, `fru-device` communicates to almost every potential slave dev
 After performing FRU format parsing, the valid devices are further published to D-Bus, as shown below.
 
 ```
-# example from repo 'entity-manager'
+# example from reference 'Entity Manager'
 
 root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
 `-/xyz
@@ -457,7 +457,7 @@ The intent is to check if we can find a supported entity; if found, the `entity-
 It's sufficed to regard the `Exposes` as attributes of an entity, e.g., name, type, controller bus, and address.
 
 ```
-# example from repo 'entity-manager'
+# example from reference 'Entity Manager'
 
 root@romulus:~# busctl tree xyz.openbmc_project.EntityManager
 `-/xyz
@@ -999,7 +999,7 @@ busctl tree xyz.openbmc_project.FruDevice
 - Check FRU inventory area information.
   
 ```
-E.g.,  
+# example from reference '[IPMI] FRU Inventory Device Commands'
   
                        +--> fru dev id
                        |
@@ -1016,10 +1016,10 @@ ipmitool raw 0x0a 0x10 0x00
 - Read FRU data.
   
 ```
-E.g.,
+# example from reference '[IPMI] FRU Inventory Device Commands'
   
 ipmitool raw 0x0a 0x11 0x00 0x00 0x00 0xff           
-                       |--- |--- |--- |---           
+                       +--- +--- +--- +---           
                        |    |    |    |              
                        |    |    |    +--> count     
                        |    |    +-------> offset_h  
@@ -1030,9 +1030,10 @@ ipmitool raw 0x0a 0x11 0x00 0x00 0x00 0xff
 - Write FRU data.
   
 ```
-
+# example from reference '[IPMI] FRU Inventory Device Commands'
+  
 ipmitool raw 0x0a 0x12 0x00 0x00 0x00 0x01 0x01 0x02 0x04 0x08 0x00 0x00 0xf0
-                       |--- |--- |--- |--------------------------------------
+                       +--- +--- +--- +--------------------------------------
                        |    |    |    |
                        |    |    |    +--> data
                        |    |    +-------> offset_h
