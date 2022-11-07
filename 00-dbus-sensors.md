@@ -18,7 +18,7 @@ The ADC sensor task is a daemon running in the background firmly and following t
 
 - requests the service `xyz.openbmc_project.ADCSensor`
 - obtains ADC descriptors from `xyz.openbmc_project.ObjectMapper`
-- finds existing ADC hardware under `/sys/class/hwmon`
+- finds existing ADC hardware under `/sys/class/hwmon/`
 - sets up an ADC sensor for each matched pair of (descriptor, component)
 - sensors read values and update to DBus periodically
 
@@ -261,6 +261,15 @@ from dbus perspective
 
 ### cpusensor
 
+The CPU sensor task is responsible for reading and updating properties like temperature, power, and energy of the CPU and DIMM.
+It follows the below steps:
+
+- requests the service `xyz.openbmc_project.CPUSensor`
+- obtains ADC descriptors from `xyz.openbmc_project.EntityManager`
+- finds existing ADC hardware under `/sys/bus/peci/devices/`
+- sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM
+- sensors read values and update to DBus periodically
+  
 <details><summary> More Details </summary>  
   
 ```
@@ -555,6 +564,10 @@ from dbus perspective
   
 ### exitairtempsensor
 
+(TBD)
+  
+<details><summary> More Details </summary>  
+  
 ```
 ExitAirTempSensor.cpp                                                              
 +------+                                                                            
@@ -849,9 +862,15 @@ ExitAirTempSensor.cpp
           +---------------------------------+ 
           get "Class"                         
 ```
+  
+</details>
 
 ### externalsensor
 
+(TBD)
+  
+<details><summary> More Details </summary>  
+  
 ```
 ExternalSensorMain.cpp
 +------+
@@ -905,6 +924,8 @@ ExternalSensorMain.cpp
   +--> | GetSensorConfiguration::getConfiguration | get configuration path if it with matches any of the interfaces
        +------------------------------------------+                                                                
 ```
+  
+</details>
 
 ### fansensor
 
