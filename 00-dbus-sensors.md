@@ -1107,6 +1107,53 @@ FanMain.cpp
   
 ### hwmontempsensor
 
+- requests the service `xyz.openbmc_project.HwmonTempSensor`
+- obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
+- finds existing components under `/sys/bus/iio/devices` and `/sys/class/hwmon/`
+- sets up a HwmonTemp sensor for each matched pair of (descriptor, component)
+- sensors read values and update to DBus periodically
+  
+<details><summary> More Details </summary>  
+  
+```
+from dbus perspective                                                                                       
++------+                                                                                                     
+| main |                                                                                                     
++-|----+                                                                                                     
+  |                                                                                                          
+  |--> request service: "xyz.openbmc_project.HwmonTempSensor"                                                
+  |                                                                                                          
+  |    +---------------+                                                                                     
+  +--> | createSensors |                                                                                     
+       +-|-------------+                                                                                     
+         |    +------------------------------------------+                                                   
+         |--> | GetSensorConfiguration::getConfiguration | arg = "xyz.openbmc_project.Configuration.EMC1412" 
+         |    +-|----------------------------------------+       "xyz.openbmc_project.Configuration.MAX31725"
+         |      |                                                ...                                         
+         |      +--> call interface: "xyz.openbmc_project.ObjectMapper"                                      
+         |                object: "/xyz/openbmc_project/object_mapper"                                       
+         |                interface: "xyz.openbmc_project.ObjectMapper"                                      
+         |                method: "GetSubTree"                                                               
+         |                                                                                                   
+         |    +-------------------------------------------------+                                            
+         +--> | GetSensorConfiguration::~GetSensorConfiguration |                                            
+              +-|-----------------------------------------------+                                            
+                |                                                                                            
+                |--> for each candidate in "/sys/bus/iio/devices" and "/sys/class/hwmon"                     
+                |                                                                                            
+                +------> prepare HwmonTempSensor                                                             
+                         +----------------------------------+                                                
+                         | HwmonTempSensor::HwmonTempSensor |                                                
+                         +-|--------------------------------+                                                
+                           |                                                                                 
+                           +--> set up object: "/xyz/openbmc_project/sensors/" + type + "/" + name           
+                                                                                                             
+                                                                                                             
++----------------+                                                                                           
+| createSensors  |  <----  main                                                                              
++----------------+  <----  property change ("/xyz/openbmc_project/inventory")                                
+```
+  
 ```
 HwmonTempMain.cpp                                                                  
 +------+                                                                            
@@ -1212,6 +1259,8 @@ HwmonTempMain.cpp
      +------> erase sensor                          
 ```
 
+</details>
+  
 ### intrusionsensor
 
 ```
