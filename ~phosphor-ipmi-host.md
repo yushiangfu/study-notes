@@ -1,4 +1,140 @@
 ```
+ipmid-new.cpp                                                                                                               
++------+                                                                                                                     
+| main | : load handlers and filters, prepare callback for executing ipmi commands                                           
++-|----+                                                                                                                     
+  |                                                                                                                          
+  |--> determine 'user' or 'system' bus                                                                                      
+  |                                                                                                                          
+  |    +---------------------+                                                                                               
+  |--> | ipmi::loadProviders | : find all *.so under arg path and dlopen them, which gives them a chance registering handlers
+  |    +---------------------+                                                                                               
+  |                                                                                                                          
+  |--> prepare callback to support deprecated api                                                                            
+  |    +-------------------------+                                                                                           
+  |    | handleLegacyIpmiCommand | (skip)                                                                                    
+  |    +-------------------------+                                                                                           
+  |                                                                                                                          
+  |--> prepare callback for bus name watching                                                                                
+  |    +-------------------------+                                                                                           
+  |    | ipmi::nameChangeHandler | uniqueNameToChannelNumber[newOwner] = new channel                                         
+  |    +-------------------------+                                                                                           
+  |                                                                                                                          
+  |--> request service: "xyz.openbmc_project.Ipmi.Host"                                                                      
+  |                                                                                                                          
+  |--> set up object: "/xyz/openbmc_project/Ipmi"                                                                            
+  |                                                                                                                          
+  +--> prepare callback for method 'execute'                                                                                 
+       +----------------------+                                                                                              
+       | ipmi::executionEntry | handle channel, prepare context, exccute ipmi command, prepare response for return           
+       +----------------------+                                                                                              
+```
+
+```
++---------------------+                                                                                               
+| ipmi::loadProviders | : find all *.so under arg path and dlopen them, which gives them a chance registering handlers
++-|-------------------+                                                                                               
+  |                                                                                                                   
+  |--> for each lib under arg path                                                                                    
+  |                                                                                                                   
+  |------> continue if it' a link                                                                                     
+  |                                                                                                                   
+  |------> if it has the extension '.so'                                                                              
+  |                                                                                                                   
+  |----------> add to local 'libs'                                                                                    
+  |                                                                                                                   
+  |--> prepare empty list of'IpmiProvider'                                                                            
+  |                                                                                                                   
+  |--> for each found lib                                                                                             
+  |                                                                                                                   
+  +------> add lib path to the 'IpmiProvider' list                                                                    
+           +----------------------------+                                                                             
+           | IpmiProvider::IpmiProvider | dlopen, which triggers the feature of __attribute__((constructor))          
+           +----------------------------+ (lib uses this feature to register its handlers)                            
+```
+
+```
++----------------------+                                                                                     
+| ipmi::executionEntry | : handle channel, prepare context, exccute ipmi command, prepare response for return
++-|--------------------+                                                                                     
+  |    +--------------------+                                                                                
+  |--> | channelFromMessage | get channel from msg                                                           
+  |    +--------------------+                                                                                
+  |                                                                                                          
+  |--> if it's session-based channel (user_id, priviledge, session_id are required)                          
+  |                                                                                                          
+  |------> get user_id, priviledge, and session_id from arg                                                  
+  |                                                                                                          
+  |--> else                                                                                                  
+  |                                                                                                          
+  |------> set priviledge to admin (max)                                                                     
+  |                                                                                                          
+  |        +----------------+                                                                                
+  |------> | getChannelInfo | get info from channel                                                          
+  |        +----------------+                                                                                
+  |                                                                                                          
+  |------> if medium_type is 'ipmb'                                                                          
+  |                                                                                                          
+  |----------> get "rqSA" & "hostId" info                                                                    
+  |                                                                                                          
+  |--> prepare ipmi_context                                                                                  
+  |                                                                                                          
+  |--> prepare request based on arg data                                                                     
+  |                                                                                                          
+  |    +--------------------------+                                                                          
+  |--> | ipmi::executeIpmiCommand | execute ipmi command                                                     
+  |    +--------------------------+                                                                          
+  |                                                                                                          
+  +--> prepare response and return                                                                           
+```
+
+```
++--------------------------+                                                                     
+| ipmi::executeIpmiCommand | : execute ipmi command                                              
++-|------------------------+                                                                     
+  |                                                                                              
+  |--> get net_fn from arg request                                                               
+  |                                                                                              
+  |--> if it's net_fn_group (0x2c)                                                               
+  |                                                                                              
+  |               +--------------------------------+                                             
+  |------> return |  ipmi::executeIpmiGroupCommand | (skip)                                      
+  |               +--------------------------------+                                             
+  |                                                                                              
+  |--> elif it's net_fn_oem (0x2e)                                                               
+  |                                                                                              
+  |               +-----------------------------+                                                
+  |------> return | ipmi::executeIpmiOemCommand | (skip)                                         
+  |               +-----------------------------+                                                
+  |    +--------------------------------+                                                        
+  +--> | ipmi::executeIpmiCommandCommon | prepare key and find target from arg 'handlers' to call
+       +--------------------------------+                                                        
+```
+
+```
++--------------------------------+
+| ipmi::executeIpmiCommandCommon | : prepare key and find target from arg 'handlers' to call
++-|------------------------------+
+  |    +-------------------------+
+  |--> | ipmi::filterIpmiCommand | check if the request is blocked for some reasson
+  |    +-------------------------+
+  |    +------------------+
+  |--> | ipmi::makeCmdKey |
+  |    +------------------+
+  |
+  |--> if we can find the key in arg handlers
+  |
+  |------> to handle request, run ->call(), e.g.,
+  |        +-------------------------+
+  |        | ipmiStorageWriteFruData | (I think the c++ unpack plays trick here, otherwise the arguments mismatch)
+  |        +-------------------------+
+  |
+  |--> else
+  |
+  +------> try again with wildcard cmd
+```
+
+```
 +--------------------------+                                                                                   
 | registerStorageFunctions | : create timer, set up fru map, register handlers for a few (net_fn, cmd) pairs   
 +-|------------------------+                                                                                   
