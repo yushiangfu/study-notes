@@ -2083,19 +2083,21 @@ src/PSUSensorMain.cpp
 - Get ADC subtree from object mapper.
   
 ```
-busctl call xyz.openbmc_project.ObjectMapper \
-            /xyz/openbmc_project/object_mapper \
-            xyz.openbmc_project.ObjectMapper \
-            GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.ADC
+busctl call --verbose \
+  xyz.openbmc_project.ObjectMapper \
+  /xyz/openbmc_project/object_mapper \
+  xyz.openbmc_project.ObjectMapper \
+  GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.ADC
 ```
   
 - Get CPU subtree from object mapper.
   
 ```
-busctl call xyz.openbmc_project.ObjectMapper \
-            /xyz/openbmc_project/object_mapper \
-            xyz.openbmc_project.ObjectMapper \
-            GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.XeonCPU
+busctl call --verbose \
+  xyz.openbmc_project.ObjectMapper \
+  /xyz/openbmc_project/object_mapper \
+  xyz.openbmc_project.ObjectMapper \
+  GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.XeonCPU
 ```
 
 ## <a name="reference"></a> Reference
