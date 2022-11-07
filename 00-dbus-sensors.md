@@ -11,7 +11,7 @@
 
 ## <a name="sensor-daemons"></a> Sensor Daemons
 
-### adcsensor
+## adcsensor
 
 An analog-to-digital converter (ADC) is a component that transfers analog signals, such as voltage or sound, into a digital value. 
 The ADC sensor task is a daemon running in the background firmly and following the below steps:
@@ -259,7 +259,7 @@ from dbus perspective
                     
 </details>
 
-### cpusensor
+## cpusensor
 
 The CPU sensor task is responsible for reading and updating properties like temperature, power, and energy of the CPU and DIMM.
 It follows the below steps:
@@ -562,7 +562,7 @@ from dbus perspective
 
 </details>
   
-### exitairtempsensor
+## exitairtempsensor
 
 (TBD)
   
@@ -865,7 +865,7 @@ ExitAirTempSensor.cpp
   
 </details>
 
-### externalsensor
+## externalsensor
 
 (TBD)
   
@@ -927,7 +927,7 @@ ExternalSensorMain.cpp
   
 </details>
 
-### fansensor
+## fansensor
 
 The fan sensor the below steps to prepare both PWM and TACH sensors:
 
@@ -1105,7 +1105,7 @@ FanMain.cpp
 
 </details>
   
-### hwmontempsensor
+## hwmontempsensor
 
 - requests the service `xyz.openbmc_project.HwmonTempSensor`
 - obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
@@ -1261,8 +1261,12 @@ HwmonTempMain.cpp
 
 </details>
   
-### intrusionsensor
+## intrusionsensor
 
+(TBD)
+  
+<details><summary> More Details </summary>  
+  
 ```
 src/IntrusionSensorMain.cpp                                                                          
 +------+                                                                                              
@@ -1474,9 +1478,55 @@ src/IntrusionSensorMain.cpp
   |                                                                         
   +------> lanStatusMap[ethNum] = newLanConnected                           
 ```
+  
+</details>
 
-### ipmbsensor
+## ipmbsensor
 
+- requests the service `xyz.openbmc_project.IpmbSensor`
+- obtains fan descriptors from `xyz.openbmc_project.EntityManager`
+- sets up an Ipmb sensor
+- sensors read values and update to DBus periodically
+  
+<details><summary> More Details </summary>  
+  
+```
+from dbus perspective                                                                              
++------+                                                                                            
+| main |                                                                                            
++-|----+                                                                                            
+  |                                                                                                 
+  |--> request service: "xyz.openbmc_project.IpmbSensor"                                            
+  |                                                                                                 
+  |    +---------------+                                                                            
+  +--> | createSensors |                                                                            
+       +-|-------------+                                                                            
+         |                                                                                          
+         |--> call service: "xyz.openbmc_project.EntityManager"                                     
+         |         object: "/"                                                                      
+         |         interface: "org.freedesktop.DBus.ObjectManager"                                  
+         |         method: "GetManagedObjects"                                                      
+         |                                                                                          
+         |--> for each matched entry (config_iface = "xyz.openbmc_project.Configuration.IpmbSensor")
+         |                                                                                          
+         +------> prepare IpmbSensor                                                                
+                  +------------------------+                                                        
+                  | IpmbSensor::IpmbSensor |                                                        
+                  +-|----------------------+                                                        
+                    |                                                                               
+                    +--> set up object: "/xyz/openbmc_project/sensors/" + type + "/" + name         
+                                                                                                    
+                                                                                                    
++----------------+                                                                                  
+| createSensors  |  <----  main                                                                     
++----------------+  <----  property change ("/xyz/openbmc_project/inventory")                       
+                                                                                                    
+                                                                                                    
++---------------+                                                                                   
+| reinitSensors |   <----  ???                                                                      
++---------------+                                                                                   
+```
+  
 ```
 src/IpmbSensor.cpp                                                                   
 +------+                                                                              
@@ -1570,6 +1620,8 @@ src/IpmbSensor.cpp
               "sendRequest"                           
 ```
 
+</details>
+  
 ### mcutempsensor
 
 ```
@@ -2143,10 +2195,10 @@ busctl call --verbose \
   
 ```
 busctl call --verbose \
-  xyz.openbmc_project.ObjectMapper \
-  /xyz/openbmc_project/object_mapper \
-  xyz.openbmc_project.ObjectMapper \
-  GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.XeonCPU
+  xyz.openbmc_project.EntityManager \
+  / \
+  org.freedesktop.DBus.ObjectManager \
+  GetManagedObjects
 ```
 
 ## <a name="reference"></a> Reference
