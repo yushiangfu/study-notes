@@ -929,6 +929,64 @@ ExternalSensorMain.cpp
 
 ### fansensor
 
+The fan sensor the below steps to prepare both PWM and TACH sensors:
+
+- requests the service `xyz.openbmc_project.FanSensor`
+- obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
+- finds existing PWM and TACH components under `/sys/class/hwmon/` like the ADC sensor task does
+- sets up a PWM or TACH sensor for each matched pair of (descriptor, component)
+- sensors read values and update to DBus periodically
+  
+<details><summary> More Details </summary>  
+  
+```
+from dbus perspective                                                                                         
++------+                                                                                                       
+| main |                                                                                                       
++-|----+                                                                                                       
+  |                                                                                                            
+  |--> request service: "xyz.openbmc_project.FanSensor"                                                        
+  |                                                                                                            
+  |    +---------------+                                                                                       
+  +--> | createSensors |                                                                                       
+       +-|-------------+                                                                                       
+         |    +------------------------------------------+                                                     
+         |--> | GetSensorConfiguration::getConfiguration | arg = "xyz.openbmc_project.Configuration.AspeedFan" 
+         |    +-|----------------------------------------+       "xyz.openbmc_project.Configuration.I2CFan"    
+         |      |                                                "xyz.openbmc_project.Configuration.NuvotonFan"
+         |      +--> call interface: "xyz.openbmc_project.ObjectMapper"                                        
+         |                object: "/xyz/openbmc_project/object_mapper"                                         
+         |                interface: "xyz.openbmc_project.ObjectMapper"                                        
+         |                method: "GetSubTree"                                                                 
+         |                                                                                                     
+         |    +-------------------------------------------------+                                              
+         +--> | GetSensorConfiguration::~GetSensorConfiguration |                                              
+              +-|-----------------------------------------------+                                              
+                |                                                                                              
+                |--> for each candidate ("/sys/class/hwmon/hwmon*/fan*_input")                                 
+                |                                                                                              
+                |------> prepare TachSensor                                                                    
+                |        +------------------------+                                                            
+                |        | TachSensor::TachSensor |                                                            
+                |        +-|----------------------+                                                            
+                |          |                                                                                   
+                |          +--> set up object: "/xyz/openbmc_project/sensors/fan_tach/" + name                 
+                |                                                                                              
+                +------> prepare TachSensor                                                                    
+                         +----------------------+                                                              
+                         | PwmSensor::PwmSensor |                                                              
+                         +-|--------------------+                                                              
+                           |                                                                                   
+                           |--> set up object: "/xyz/openbmc_project/sensors/fan_pwm/" + name                  
+                           |                                                                                   
+                           +--> set up object: "/xyz/openbmc_project/control/fanpwm/" + name                   
+                                                                                                               
+                                                                                                               
++----------------+                                                                                             
+| createSensors  |  <----  main                                                                                
++----------------+  <----  property change ("/xyz/openbmc_project/inventory")                                  
+```
+  
 ```
 FanMain.cpp                                                    
 +------+                                                        
@@ -1045,6 +1103,8 @@ FanMain.cpp
           "GetManagedObjects"                                  
 ```
 
+</details>
+  
 ### hwmontempsensor
 
 ```
