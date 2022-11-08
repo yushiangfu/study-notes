@@ -2081,8 +2081,51 @@ src/IpmbSensor.cpp
 </details>
 
 ## psusensor
+  
+- requests the service `xyz.openbmc_project.PSUSensor`
+- obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
+- finds existing hardware under `/sys/class/hwmon/`
+- sets up a PSU sensor for each matched pair of (descriptor, component)
+- sensors read values and update to DBus periodically
 
 <details><summary> More Details </summary>  
+  
+```
+from dbus perspective
++------+
+| main |
++-|----+
+  |
+  |--> request service: "xyz.openbmc_project.PSUSensor"
+  |
+  |    +---------------+
+  +--> | createSensors |
+       +-|-------------+
+         |    +------------------------------------------+
+         |--> | GetSensorConfiguration::getConfiguration | arg = "xyz.openbmc_project.Configuration.ADM1266"
+         |    +-|----------------------------------------+       "xyz.openbmc_project.Configuration.pmbus"
+         |      |                                                ...
+         |      +--> call interface: "xyz.openbmc_project.ObjectMapper"
+         |                object: "/xyz/openbmc_project/object_mapper"
+         |                interface: "xyz.openbmc_project.ObjectMapper"
+         |                method: "GetSubTree"
+         |
+         |    +-------------------------------------------------+
+         +--> | GetSensorConfiguration::~GetSensorConfiguration |
+              +-|-----------------------------------------------+
+                |    +-----------------------+
+                +--> | createSensorsCallback |
+                     +-|---------------------+
+                       |
+                       |--> for each candidate in ("/sys/class/hwmon/")
+                       |
+                       +------> prepare PSUSensor
+                                +----------------------+
+                                | PSUSensor::PSUSensor |
+                                +-|--------------------+
+                                  |
+                                  +--> set up object: "/xyz/openbmc_project/sensors/" + unitPath + "/" + name
+```
   
 ```
 src/PSUSensorMain.cpp
@@ -2241,7 +2284,7 @@ busctl call --verbose \
   GetSubTree sias / 0 1 xyz.openbmc_project.Configuration.ADC
 ```
   
-- Get CPU subtree from object mapper.
+- Get managed objects from the object mapper.
   
 ```
 busctl call --verbose \
