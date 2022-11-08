@@ -1263,9 +1263,43 @@ HwmonTempMain.cpp
   
 ## intrusionsensor
 
-(TBD)
+- requests the service `xyz.openbmc_project.IntrusionSensor`
+- sets up a Intrusion sensor
+- obtains fan descriptors from `xyz.openbmc_project.EntityManager`
+- sensor reads values and updates to DBus periodically
   
 <details><summary> More Details </summary>  
+  
+```
+from dbus perspective                                                                                               
++------+                                                                                                             
+| main |                                                                                                             
++-|----+                                                                                                             
+  |                                                                                                                  
+  |--> request service: "xyz.openbmc_project.IntrusionSensor"                                                        
+  |                                                                                                                  
+  |--> set up object: "/xyz/openbmc_project/Intrusion/Chassis_Intrusion"                                             
+  |                                                                                                                  
+  |    +--------------------------+                                                                                  
+  +--> | getIntrusionSensorConfig |                                                                                  
+       +-|------------------------+                                                                                  
+         |    +------------------------+                                                                             
+         |--> | getSensorConfiguration |                                                                             
+         |    +-|----------------------+                                                                             
+         |      |                                                                                                    
+         |      |--> call service: "xyz.openbmc_project.EntityManager"                                               
+         |      |         object: "/"                                                                                
+         |      |         interface: "org.freedesktop.DBus.ObjectManager"                                            
+         |      |         method: "GetManagedObjects"                                                                
+         |      |                                                                                                    
+         |      +--> collect entries with specified type ("xyz.openbmc_project.Configuration.ChassisIntrusionSensor")
+         |                                                                                                           
+         |--> if found                                                                                               
+         |                                                                                                           
+         |        +-------------------------------+                                                                  
+         +------->| ChassisIntrusionSensor::start |                                                                  
+                  +-------------------------------+                                                                  
+```
   
 ```
 src/IntrusionSensorMain.cpp                                                                          
