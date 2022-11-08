@@ -22,6 +22,8 @@ The ADC sensor task is a daemon running in the background firmly and following t
 - sets up an ADC sensor for each matched pair of (descriptor, component)
 - sensors read values and update to DBus periodically
 
+<p align="center"><img src="images/openbmc/dbus-sensors.png" /></p>
+
 <details><summary> More Details </summary>
 
 ```
