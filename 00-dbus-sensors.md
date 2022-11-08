@@ -1656,8 +1656,12 @@ src/IpmbSensor.cpp
 
 </details>
   
-### mcutempsensor
+## mcutempsensor
 
+(TBD)
+  
+<details><summary> More Details </summary>  
+  
 ```
 +------+                                                                            
 | main |                                                                            
@@ -1846,9 +1850,15 @@ src/IpmbSensor.cpp
           |+---------------------+                                                                   |
           +------------------------------------------------------------------------------------------+
 ```
+  
+</details>
 
-### nvmesensor
+## nvmesensor
 
+(TBD)
+  
+<details><summary> More Details </summary>  
+  
 ```
 +---------------------------------------------------+                                            
 |                      Sensor                       |                                            
@@ -2067,9 +2077,13 @@ src/IpmbSensor.cpp
         |                                                                           
         +------> add to the end of arg 'matches'                                    
 ```
+  
+</details>
 
-### psusensor
+## psusensor
 
+<details><summary> More Details </summary>  
+  
 ```
 src/PSUSensorMain.cpp
 +------+                                                                              
@@ -2212,6 +2226,8 @@ src/PSUSensorMain.cpp
   |                                                                   
   +------> save sensor path in 'pwmSensors'                           
 ```
+  
+</details>
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
   
