@@ -96,6 +96,159 @@ struct usb_bus {
     int bandwidth_isoc_reqs;
 ```
 
+```
++-------------------+                                         
+| usb_ep_autoconfig | : get an available ep and set up        
++-|-----------------+                                         
+  |    +----------------------+                               
+  +--> | usb_ep_autoconfig_ss | get an available ep and set up
+       +----------------------+                               
+```
+
+```
++----------------------+                                                                  
+| usb_ep_autoconfig_ss | : get an available ep and set up                                 
++-|--------------------+                                                                  
+  |                                                                                       
+  |--> if gadget has ->match_ep                                                           
+  |                                                                                       
+  +------> call ->match_ep(), e.g.,                                                       
+  |        +-----------------------+                                                      
+  |        | ast_vhub_udc_match_ep | ensure we have a ep (find a matched one and alloc it)
+  |        +-----------------------+                                                      
+  |                                                                                       
+  |------> go to 'found_ep' if found                                                      
+  |                                                                                       
+  |--> for each ep on list of gadget                                                      
+  |                                                                                       
+  |        +--------------------------+                                                   
+  |------> | usb_gadget_ep_match_desc | check if endpoint and descriptor match each other 
+  |        +--------------------------+                                                   
+  |                                                                                       
+  |------> go to 'found_ep' if found                                                      
+  |found_ep                                                                               
+  |--> determine addr and save in descriptor                                              
+  |                                                                                       
+  +--> set up ep                                                                          
+```
+
+```
++-----------------------+                                                                                          
+| ast_vhub_udc_match_ep | : ensure we have a ep (find a matched one and alloc it)                                  
++-|---------------------+                                                                                          
+  |                                                                                                                
+  |--> for each ep on gadget                                                                                       
+  |                                                                                                                
+  |        +--------------------------+                                                                            
+  |------> | usb_gadget_ep_match_desc | check if endpoint and descriptor match each other                          
+  |        +--------------------------+                                                                            
+  |                                                                                                                
+  |------> return ep if match is found                                                                             
+  |                                                                                                                
+  |--> determine max speed based on type (control, isochronous, bulk, interrupt)                                   
+  |                                                                                                                
+  |--> traverse vhub to find an used endpoint                                                                      
+  |                                                                                                                
+  |    +--------------------+                                                                                      
+  +--> | ast_vhub_alloc_epn | get an unused ep from vhub, set up (install ops, alloc buffer), add to list of gadget
+       +--------------------+                                                                                      
+```
+
+```
++--------------------+                                                                                        
+| ast_vhub_alloc_epn | : get an unused ep from vhub, set up (install ops, alloc buffer), add to list of gadget
++-|------------------+                                                                                        
+  |                                                                                                           
+  |--> get an unused endpoint from vhub                                                                       
+  |                                                                                                           
+  |--> set up endpoint                                                                                        
+  |                                                                                                           
+  |--> install ep ops 'ast_vhub_epn_ops'                                                                      
+  |                                                                                                           
+  |    +--------------------+                                                                                 
+  |--> | dma_alloc_coherent |                                                                                 
+  |    +--------------------+                                                                                 
+  |    +---------------+                                                                                      
+  +--> | list_add_tail | add ep to list of gadget                                                             
+       +---------------+                                                                                      
+```
+
+```
++--------------------------+                                                    
+| usb_gadget_ep_match_desc | : check if endpoint and descriptor match each other
++-|------------------------+                                                    
+  |                                                                             
+  |--> get type and max_packet of descriptor                                    
+  |                                                                             
+  |--> check direction, packet limit, and speed                                 
+  |                                                                             
+  +--> chec type (control, isochronous, bulk, interrupt)                        
+```
+
+```
++-----------------------+                                                                       
+| composite_dev_prepare | : prepare req for composite, assign composite to gadget ep0 as private
++-|---------------------+                                                                       
+  |    +----------------------+                                                                 
+  |--> | usb_ep_alloc_request | alloc request                                                   
+  |    +----------------------+                                                                 
+  |                                                                                             
+  |--> assign req to composite dev                                                              
+  |                                                                                             
+  |--> alloc buffer for req                                                                     
+  |                                                                                             
+  |    +--------------------+                                                                   
+  |--> | device_create_file | create files under /sys/                                          
+  |    +--------------------+                                                                   
+  |                                                                                             
+  |--> gadget ep0 private = composite                                                           
+  |                                                                                             
+  |    +-------------------------+                                                              
+  +--> | usb_ep_autoconfig_reset | reset ep state                                               
+       +-------------------------+                                                              
+```
+
+```
++----------------------+                   
+| usb_ep_alloc_request | : alloc request   
++-|--------------------+                   
+  |                                        
+  +--> call ->alloc_request, e.g.,         
+       +------------------------+          
+       | ast_vhub_alloc_request | alloc req
+       +------------------------+          
+```
+
+```
++---------------------+                                            
+| usb_gstrings_attach | : duplicate strings and attach to composite
++|--------------------+                                            
+ |    +---------------------+                                      
+ |--> | copy_gadget_strings | alloc buffer and copy strings to it  
+ |    +---------------------+                                      
+ |    +---------------+                                            
+ +--> | list_add_tail | append copied strings to list in composite 
+      +---------------+                                            
+```
+
+```
++------------------------+                                                    
+| gether_register_netdev | : set mac to net_dev and register it, clear carrier
++-|----------------------+                                                    
+  |    +-----------------+                                                    
+  |--> | eth_hw_addr_set | assign mac from dev to net_dev                     
+  |    +-----------------+                                                    
+  |    +-----------------+                                                    
+  |--> | register_netdev | register net_dev                                   
+  |    +-----------------+                                                    
+  |                                                                           
+  |--> print host and dev mac?                                                
+  |                                                                           
+  |    +-------------------+                                                  
+  +--> | netif_carrier_off | clear carrier                                    
+       +-------------------+                                                  
+```
+
 ## <a name="virtual-hub"></a> Virtual Hub
 
 ```
