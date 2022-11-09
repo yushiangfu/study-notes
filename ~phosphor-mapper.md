@@ -1,4 +1,56 @@
 ```
++------+                                                                               
+| main |                                                                               
++-|----+                                                                               
+  |                                                                                    
+  |--> prepare signal handlers for SIGINT, SIGTERM                                     
+  |                                                                                    
+  |--> prepare handler and match rule for name change                                  
+  |    +------------+                                                                  
+  |    | anon func1 | update 'name_owners', introspect target and update associaion map
+  |    +------------+                                                                  
+  |                                                                                    
+  |--> prepare handler and match rule for added iface                                  
+  |    +------------+                                                                  
+  |    | anon func2 |                                                                  
+  |    +------------+                                                                  
+  |                                                                                    
+  |--> prepare handler and match rule for removed iface                                
+  |    +------------+                                                                  
+  |    | anon func3 |                                                                  
+  |    +------------+                                                                  
+  |                                                                                    
+  |--> prepare handler and match rule for changed assoc                                
+  |    +--------------------+                                                          
+  |    | associationChanged | update association map                                   
+  |    +--------------------+                                                          
+  |                                                                                    
+  |--> set up object: "/xyz/openbmc_project/object_mapper"                             
+  |                                                                                    
+  |--> prepare callback for method "GetAncestors"                                      
+  |        +--------------+                                                            
+  |        | getAncestors | get ancestors of req_path                                  
+  |        +--------------+                                                            
+  |                                                                                    
+  |--> prepare callback for method "GetObject"                                         
+  |        +-----------+                                                               
+  |        | getObject | given path & iface_map, get object(s)                         
+  |        +-----------+                                                               
+  |                                                                                    
+  |--> prepare callback for method "GetSubTree"                                        
+  |        +------------+                                                              
+  |        | getSubTree | get sub tree                                                 
+  |        +------------+                                                              
+  |                                                                                    
+  |--> prepare callback for method "GetSubTreePaths"                                   
+  |        +-----------------+                                                         
+  |        | getSubTreePaths | get sub tree paths                                      
+  |        +-----------------+                                                         
+  |                                                                                    
+  +--> request service: "xyz.openbmc_project.ObjectMapper"                             
+```
+
+```
 +------------+                                                                      
 | anon func1 | : update 'name_owners', introspect target and update associaion map  
 +-|----------+                                                                      
@@ -153,4 +205,218 @@
   |------> add interface "xyz.openbmc_project.Association" for arg assocPath                         
   |                                                                                                  
   +------> register_property("endpoints") with endpoints                                             
+```
+
+```
++------------+                                                                 
+| anon func2 |                                                                 
++--|---------+                                                                 
+   |                                                                           
+   |--> read msg                                                               
+   |                                                                           
+   |    +------------------+                                                   
+   |--> | needToIntrospect | check if it's in whitelist only (not in blacklist)
+   |    +------------------+                                                   
+   |    +-----------------------+                                              
+   +--> | processInterfaceAdded | handle added interface                       
+        +-----------------------+                                              
+```
+
+```
++-----------------------+
+| processInterfaceAdded | : handle added interface
++-|---------------------+
+  |
+  |--> for each added_iface
+  |    -
+  |    +--> if the iface == "xyz.openbmc_project.Association.Definitions"
+  |         |
+  |         |--> for each iface (property?)
+  |         |    -
+  |         |    +--> if it's "Associations"
+  |         |         -
+  |         |         +--> svae it in variantAssociations
+  |         |
+  |         |    +--------------------+
+  |         +--> | associationChanged | update association map
+  |              +--------------------+
+  |
+  |--> while we haven't reached root obj yet
+  |    |
+  |    |--> prepare default iface for current parent
+  |    |
+  |    +--> continue for higher parent
+  |
+  |    +---------------------------+
+  +--> | checkIfPendingAssociation |
+       +---------------------------+
+```
+
+```
++------------+                                                           
+| anon func3 |                                                           
++-|----------+                                                           
+  |    +--------------+                                                  
+  |--> | getWellKnown | check if the owner is 'well-known'               
+  |    +--------------+                                                  
+  |                                                                      
+  |--> return if not                                                     
+  |                                                                      
+  |--> for each removed iface                                            
+  |    |                                                                 
+  |    |--> continue if the sender isn't in connection_map               
+  |    |                                                                 
+  |    |--> if the iface is "xyz.openbmc_project.Association.Definitions"
+  |    |    |                                                            
+  |    |    |    +-------------------+                                   
+  |    |    +--> | removeAssociation | remove association                
+  |    |         +-------------------+                                   
+  |    |                                                                 
+  |    +--> erase iface from interface_set                               
+  |                                                                      
+  |         if interface_set becomes empty                               
+  |         -                                                            
+  |         +--> erase interface_set from connection_map                 
+  |                                                                      
+  |--> if connection_map becomes empty                                   
+  |    -                                                                 
+  |    +--> remove connection_map from interface_map                     
+  |                                                                      
+  |    +-----------------------+                                         
+  +--> | removeUnneededParents | remove unneeded parents                 
+       +-----------------------+                                         
+```
+
+```
++-------------------+                                                                                         
+| removeAssociation | : remove association                                                                    
++-|-----------------+                                                                                         
+  |                                                                                                           
+  +--> find services (owners) that have the object (path)                                                     
+  |                                                                                                           
+  |--> find assoccs of the arg owner                                                                          
+  |                                                                                                           
+  |--> for each (assoc_path, ep_to_remove)                                                                    
+  |    |                                                                                                      
+  |    |    +----------------------------+                                                                    
+  |    +--> | removeAssociationEndpoints | remove endpoints from iface, and further remove iface if it's empty
+  |         +----------------------------+                                                                    
+  |                                                                                                           
+  |--> erase assoc from owners                                                                                
+  |                                                                                                           
+  |--> if 'owners' becomes empty                                                                              
+  |    -                                                                                                      
+  |    +--> erase it from assocMaps                                                                           
+  |                                                                                                           
+  |    +-------------------------------+                                                                      
+  +--> | removeFromPendingAssociations | (skip)                                                               
+       +-------------------------------+                                                                      
+```
+
+```
++----------------------------+                                                                      
+| removeAssociationEndpoints | : remove endpoints from iface, and further remove iface if it's empty
++-|--------------------------+                                                                      
+  |                                                                                                 
+  |--> get 'endpointsInDBus' from assoc                                                             
+  |                                                                                                 
+  |--> for each ep_to_remove                                                                        
+  |    -                                                                                            
+  |    +--> if the ep is in 'endpointsInDBus', erase it                                             
+  |                                                                                                 
+  |--> if endpointsInDBus becomes empty afterwards                                                  
+  |    -                                                                                            
+  |    +--> remove iface as well                                                                    
+  |                                                                                                 
+  +--> else                                                                                         
+       -                                                                                            
+       +--> set_property("endpoints", endpointsInDBus)                                              
+```
+
+```
++-----------------------+                               
+| removeUnneededParents | : remove unneeded parents     
++-|---------------------+                               
+  |                                                     
+  +--> endless loop                                     
+       |                                                
+       |--> break if an object has more than three iface
+       |                                                
+       |--> remove object from interface_map            
+       |                                                
+       +--> continue to check upper level               
+```
+
+```
++--------------+                                         
+| getAncestors | : get ancestors of req_path             
++-|------------+                                         
+  |                                                      
+  |--> ensure there's no tailing '/' of req_path         
+  |                                                      
+  +--> for each obj_path in iface_map                    
+       -                                                 
+       +--> add to 'ret' if it's the ancestor of req_path
+```
+
+```
++------------+                                                                                               
+| getSubTree | : get sub tree                                                                                
++-|----------+                                                                                               
+  |                                                                                                          
+  |--> sort interfaces for later intersect() to work                                                         
+  |                                                                                                          
+  |--> ensure there's no tailing '/' of req_path                                                             
+  |                                                                                                          
+  +--> for each obj_path in iface_map                                                                        
+       |                                                                                                     
+       |--> calculate this_depth                                                                             
+       |                                                                                                     
+       +--> if the this_depth is valid (less than the specified one)                                         
+            -                                                                                                
+            +--> for each iface_map in obj_path (???)                                                        
+                 |                                                                                           
+                 |    +--------------------+                                                                 
+                 +--> | addObjectMapResult | ensure there's an entry in 'objectmap' contains the interfaceMap
+                      +--------------------+                                                                 
+```
+
+```
++--------------------+                                                                   
+| addObjectMapResult | : ensure there's an entry in 'objectmap' contains the interfaceMap
++-|------------------+                                                                   
+  |                                                                                      
+  |--> check if entry is already in 'objectMap'                                          
+  |                                                                                      
+  |--> if found                                                                          
+  |    -                                                                                 
+  |    +--> add 'interfaceMap' to it                                                     
+  |                                                                                      
+  +--> else                                                                              
+       |                                                                                 
+       |--> prepare entry first                                                          
+       |                                                                                 
+       |--> add 'interfaceMap' to it                                                     
+       |                                                                                 
+       +--> add entry to 'objectMap'                                                     
+```
+
+```
++-----------------+                                          
+| getSubTreePaths | : get sub tree paths                     
++-|---------------+                                          
+  |                                                          
+  |--> sort interfaces for later intersect() to work         
+  |                                                          
+  |--> ensure there's no tailing '/' of req_path             
+  |                                                          
+  +--> for each obj_path in iface_map                        
+       |                                                     
+       |--> calculate depth and check if it's valid          
+       |                                                     
+       |--> for each iface_map in obj_path                   
+       |    -                                                
+       |    +--> break if intersect() returns true           
+       |                                                     
+       +--> add this_path to ret if intersect() returned true
 ```
