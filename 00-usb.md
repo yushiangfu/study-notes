@@ -97,6 +97,53 @@ struct usb_bus {
 ```
 
 ```
++---------------------------+
+| gadget_dev_desc_UDC_store | : determine udc and bind to driver (ready gadget and composite), start udc
++-|-------------------------+
+  |
+  |--> prepare name, and set udc_name = name
+  |
+  |    +-------------------------+
+  +--> | usb_gadget_probe_driver | determine udc and bind to driver (ready gadget and composite), start udc
+       +-------------------------+
+
+
+                    CONFIGFS_ATTR(gadget_dev_desc_, UDC);
+
+
+                    #define CONFIGFS_ATTR(_pfx, _name)          \
+                    static struct configfs_attribute gadget_dev_desc_attr_UDC = { \
+                        .ca_name    = __stringify(UDC),       \
+                        .ca_mode    = S_IRUGO | S_IWUSR,        \
+                        .ca_owner   = THIS_MODULE,          \
+                        .show       = gadget_dev_desc_UDC_show,       \
+                        .store      = gadget_dev_desc_UDC_store,      \
+                    }                                                                           
+```
+
+```
++-------------------------+                                                                               
+| usb_gadget_probe_driver | : determine udc and bind to driver (ready gadget and composite), start udc    
++-|-----------------------+                                                                               
+  |                                                                                                       
+  |--> if driver udc_name is set                                                                          
+  |                                                                                                       
+  |------> for each udc on list                                                                           
+  |                                                                                                       
+  |----------> compare name, break if found                                                               
+  |                                                                                                       
+  |--> else                                                                                               
+  |                                                                                                       
+  |------> find the 1st available one                                                                     
+  |                                                                                                       
+  |--> return error if not found                                                                          
+  |                                                                                                       
+  |    +--------------------+                                                                             
+  +--> | udc_bind_to_driver | relate udc/driver, set gadget speed, bind composite to gadget, and start udc
+       +--------------------+                                                                             
+```
+
+```
 +-------------------+                                         
 | usb_ep_autoconfig | : get an available ep and set up        
 +-|-----------------+                                         
