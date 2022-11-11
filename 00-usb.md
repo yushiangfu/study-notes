@@ -97,6 +97,94 @@ struct usb_bus {
 ```
 
 ```
++-----------------+                                      
+| rh_queue_status | : add urb to ep, poll root hub status
++-|---------------+                                      
+  |    +------------------------+                        
+  |--> | usb_hcd_link_urb_to_ep | add urb to ep          
+  |    +------------------------+                        
+  |                                                      
+  |--> relate urb and hcd                                
+  |                                                      
+  +--> modify timer                                      
+       +---------------+                                 
+       | rh_timer_func | poll root hub status            
+       +---------------+                                 
+```
+
+```
++---------------+                                     
+| rh_timer_func | : poll root hub status              
++-|-------------+                                     
+  |                                                   
+  |--> get hcd from timer                             
+  |                                                   
+  |    +------------------------+                     
+  +--> | usb_hcd_poll_rh_status | poll root hub status
+       +------------------------+                     
+```
+
+```
++------------------------+                                                    
+| usb_hcd_poll_rh_status | : poll root hub status                             
++-|----------------------+                                                    
+  |                                                                           
+  |--> call ->hub_status_data(), e.g.,                                        
+  |    +----------------------+                                               
+  |    | ehci_hub_status_data | build 'status change' packet                  
+  |    +----------------------+                                               
+  |                                                                           
+  |--> if packet size is non-zero                                             
+  |    |                                                                      
+  |    |--> get urb from hcd                                                  
+  |    |                                                                      
+  |    +--> if urb exists                                                     
+  |         |                                                                 
+  |         |--> clear 'pending' of hcd                                       
+  |         |                                                                 
+  |         |--> copy packet to urb                                           
+  |         |                                                                 
+  |         |    +----------------------------+                               
+  |         |--> | usb_hcd_unlink_urb_from_ep | remove urb from endpoint      
+  |         |    +----------------------------+                               
+  |         |    +----------------------+                                     
+  |         +--> | usb_hcd_giveback_urb | return urb from hcd to device driver
+  |              +----------------------+                                     
+  |    +-----------+                                                          
+  +--> | mod_timer | modify timer to poll status                              
+       +-----------+                                                          
+```
+
+```
++----------------------+                                        
+| usb_hcd_giveback_urb | :  return urb from hcd to device driver
++-|--------------------+                                        
+  |                                                             
+  |--> save status in urb                                       
+  |                                                             
+  |    +------------------------+                               
+  +--> | __usb_hcd_giveback_urb | unanchor urb, complete it     
+       +------------------------+                               
+```
+
+```
++------------------------+                                     
+| __usb_hcd_giveback_urb | : unanchor urb, complete it         
++-|----------------------+                                     
+  |    +-------------------+                                   
+  |--> | unmap_urb_for_dma |                                   
+  |    +-------------------+                                   
+  |    +---------------------+                                 
+  |--> | usbmon_urb_complete | do nothing bc of disabled config
+  |    +---------------------+                                 
+  |    +------------------+                                    
+  |--> | usb_unanchor_urb | remove urb from anchor list        
+  |    +------------------+                                    
+  |                                                            
+  +--> call ->complete()                                       
+```
+
+```
 +---------------------------+
 | gadget_dev_desc_UDC_store | : determine udc and bind to driver (ready gadget and composite), start udc
 +-|-------------------------+
