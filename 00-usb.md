@@ -97,6 +97,163 @@ struct usb_bus {
 ```
 
 ```
++--------------------+                                              
+| get_hub_descriptor | : prepare msg (get hub desc) and submit it   
++-|------------------+                                              
+  |                                                                 
+  |--> determine type and size                                      
+  |                                                                 
+  +--> for 0, 1, 2                                                  
+       |                                                            
+       |    +-----------------+                                     
+       +--> | usb_control_msg | set up a ctrl req, submit urb for it
+            +-----------------+                                     
+```
+
+```
++-----------------+                                                                         
+| usb_control_msg | : set up a ctrl req, submit urb for it                                  
++-|---------------+                                                                         
+  |                                                                                         
+  |--> alloc ctrl_req                                                                       
+  |                                                                                         
+  |--> set up type, req, value, index, and size                                             
+  |                                                                                         
+  |    +--------------------------+                                                         
+  +--> | usb_internal_control_msg | prepare a 'control' urb, get an endpoint, submit the urb
+       +--------------------------+                                                         
+```
+
+```
++--------------------------+                                                           
+| usb_internal_control_msg | : prepare a 'control' urb, get an endpoint, submit the urb
++-|------------------------+                                                           
+  |    +---------------+                                                               
+  |--> | usb_alloc_urb | prepare urb                                                   
+  |    +---------------+                                                               
+  |    +----------------------+                                                        
+  |--> | usb_fill_control_urb | set up a control urb                                   
+  |    +----------------------+                                                        
+  |    +--------------------+                                                          
+  +--> | usb_start_wait_urb | get endpoint, submit urb for processing                  
+       +--------------------+                                                          
+```
+
+```
++--------------------+                                           
+| usb_start_wait_urb | : get endpoint, submit urb for processing 
++-|------------------+                                           
+  |    +----------------+                                        
+  |--> | usb_submit_urb | get endpoint, submit urb for processing
+  |    +----------------+                                        
+  |                                                              
+  |--> return actual buf len through arg                         
+  |                                                              
+  |    +--------------+                                          
+  +--> | usb_free_urb |                                          
+       +--------------+                                          
+```
+
+```
++----------------+                                             
+| usb_submit_urb | : get endpoint, submit urb for processing   
++-|--------------+                                             
+  |    +-------------------+                                   
+  |--> | usb_pipe_endpoint | get an in or out endpoint from dev
+  |    +-------------------+                                   
+  |                                                            
+  |--> set up urb                                              
+  |                                                            
+  |    +-------------------+                                   
+  |--> | usb_endpoint_type | get endpoint type                 
+  |    +-------------------+                                   
+  |                                                            
+  |--> determine if 'is_out'                                   
+  |                                                            
+  |--> adjust max speed based on type                          
+  |                                                            
+  |    +--------------------+                                  
+  +--> | usb_hcd_submit_urb | submit urb for processing        
+       +--------------------+                                  
+```
+
+```
++--------------------+                                       
+| usb_hcd_submit_urb | : submit urb for processing           
++-|------------------+                                       
+  |    +-------------------+                                 
+  |--> | usbmon_urb_submit | do nothing bc of disabled config
+  |    +-------------------+                                 
+  |                                                          
+  |--> if it's root hub                                      
+  |    |                                                     
+  |    |    +----------------+                               
+  |    +--> | rh_urb_enqueue | handle urb                    
+  |         +----------------+                               
+  |                                                          
+  +--> else                                                  
+       -                                                     
+       +--> call ->urb_enqueue, e.g.,                        
+            +------------------+                             
+            | ehci_urb_enqueue | submit urb to somewhere?    
+            +------------------+                             
+```
+
+```
++----------------+                                                             
+| rh_urb_enqueue | : handle urb                                                
++---|------------+                                                             
+    |                                                                          
+    |--> if the ep has interrupt-type transfer                                 
+    |    |                                                                     
+    |    |    +-----------------+                                              
+    |    +--> | rh_queue_status | add urb to ep, poll root hub status          
+    |         +-----------------+                                              
+    |                                                                          
+    +--> if the ep has control-type transfer                                   
+         |                                                                     
+         |    +-----------------+                                              
+         +--> | rh_call_control | get type from urb cmd, handle req accordingly
+              +-----------------+                                              
+```
+
+```
++-----------------+                                                 
+| rh_call_control | : get type from urb cmd, handle req accordingly 
++-|---------------+                                                 
+  |    +-----------------------+                                    
+  |--> | usb_hcd_link_urb_to_ep| add urb to ep                      
+  |    +-----------------------+                                    
+  |                                                                 
+  |--> get type/value/index/length from urb cmd                     
+  |                                                                 
+  |--> alloc buffer                                                 
+  |                                                                 
+  |--> switch (request) type                                        
+  |                                                                 
+  |--> case 'device requests'                                       
+  |    -                                                            
+  |    +--> blabla                                                  
+  |                                                                 
+  |--> case 'endpoint requests'                                     
+  |    -                                                            
+  |    +--> blabla                                                  
+  |                                                                 
+  |--> case 'class requests'                                        
+  |    -                                                            
+  |    +--> call ->hub_control()                                    
+  |         +------------------+                                    
+  |         | ehci_hub_control |                                    
+  |         +------------------+                                    
+  |    +----------------------------+                               
+  |--> | usb_hcd_unlink_urb_from_ep | remove urb from ep            
+  |    +----------------------------+                               
+  |    +----------------------+                                     
+  +--> | usb_hcd_giveback_urb | return urb from hcd to device driver
+       +----------------------+                                     
+```
+
+```
 +-----------------+                                      
 | rh_queue_status | : add urb to ep, poll root hub status
 +-|---------------+                                      
