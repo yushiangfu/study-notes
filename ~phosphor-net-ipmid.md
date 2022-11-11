@@ -200,3 +200,130 @@
   +------> | NetIpmidEntry::executeCommand | call functor                               
            +-------------------------------+                                            
 ```
+
+```
++--------------------------+                                                                               
+| command::activatePayload | : update sol params in manager, set channel in session, ready payload instance
++-|------------------------+                                                                               
+  |                                                                                                        
+  |--> return error if payload type != sol                                                                 
+  |                                                                                                        
+  |    +-----------------------------+                                                                     
+  |--> | Manager::updateSOLParameter | get properties from target obj to update the sol parameters         
+  |    +-----------------------------+                                                                     
+  |                                                                                                        
+  |--> return if it's disabled                                                                             
+  |                                                                                                        
+  |--> get session                                                                                         
+  |                                                                                                        
+  |    +--------------------------+                                                                        
+  |--> | ipmi::ipmiUserGetUserId  | get user id (where's the definition)                                   
+  |    +--------------------------+                                                                        
+  |    +------------------------------+                                                                    
+  |--> | Handler::setChannelInSession | save channel in session                                            
+  |    +------------------------------+                                                                    
+  |    +-------------------------------+                                                                   
+  |--> | Manager::startPayloadInstance | ensure that's a console_socket ready, add context to map          
+  |    +-------------------------------+                                                                   
+  |                                                                                                        
+  +--> set up size, port_num in response                                                                   
+```
+
+```
++-------------------------------+                                                                                                    
+| Manager::startPayloadInstance | : ensure that's a console_socket ready, add context to map                                         
++-|-----------------------------+                                                                                                    
+  |                                                                                                                                  
+  |--> if payload_map is empty                                                                                                       
+  |                                                                                                                                  
+  |        +---------------------------+                                                                                             
+  |------> | Manager::startHostConsole | set up console_socket, register callback for payload_instance, wait to read data from socket
+  |        +---------------------------+                                                                                             
+  |                                                                                                                                  
+  +--> prepare context of payload and add to map                                                                                     
+```
+
+```
++---------------------------+                                                                                               
+| Manager::startHostConsole | : set up console_socket, register callback for payload_instance, wait to read data from socket
++-|-------------------------+                                                                                               
+  |                                                                                                                         
+  |--> if console_socket isn't ready                                                                                        
+  |    |                                                                                                                    
+  |    |    +----------------------------+                                                                                  
+  |    +--> | Manager::initConsoleSocket | set up console_socket and connect                                                
+  |         +----------------------------+                                                                                  
+  |                                                                                                                         
+  |--> if callback hasn't registeired yet                                                                                   
+  |    |                                                                                                                    
+  |    |    +----------------------------------+                                                                            
+  |    +--> | registerSOLServiceChangeCallback | stop all payload instances if property 'Enable' is set to false            
+  |         +----------------------------------+                                                                            
+  |                                                                                                                         
+  +--> ->async_wait                                                                                                         
+          +-------------------------------------------------------------------------------+                                 
+          |+------------------------------+                                               |                                 
+          || Manager::consoleInputHandler | read data from host_console_socket to manager |                                 
+          |+------------------------------+                                               |                                 
+          |+---------------------------+                                                  |                                 
+          || Manager::startHostConsole | (recursive)                                      |                                 
+          |+---------------------------+                                                  |                                 
+          +-------------------------------------------------------------------------------+                                 
+```
+
+```
++------------------------------+                                                
+| Manager::consoleInputHandler | : read data from host_console_socket to manager
++-|----------------------------+                                                
+  |                                                                             
+  |--> get read_size from cmd                                                   
+  |                                                                             
+  |--> prepare buffer                                                           
+  |                                                                             
+  |--> read data from host_console_socket to buffer                             
+  |                                                                             
+  +--> save buffer in manager (?)                                               
+```
+
+```
++----------------------------------+                                                                         
+| registerSOLServiceChangeCallback | : stop all payload instances if property 'Enable' is set to false       
++-|--------------------------------+                                                                         
+  |    +-----------------------------+                                                                       
+  |--> | ipmid_get_sd_bus_connection | get system dbus                                                       
+  |    +-----------------------------+                                                                       
+  |                                                                                                          
+  |--> given (obj, iface), get service (which is xyz.openbmc_project.Control.Service.Manager)                
+  |                                                                                                          
+  +--> prepare match rule and callback                                                                       
+          +-------------------------------------------------------------------------------------------------+
+          |get property 'Enabled'                                                                           |
+          |                                                                                                 |
+          |if it's set to 'false'                                                                           |
+          ||                                                                                                |
+          ||    +---------------------------------+                                                         |
+          |+--> | Manager::stopAllPayloadInstance | erase all payload instances from map, stop host console |
+          |     +---------------------------------+                                                         |
+          +-------------------------------------------------------------------------------------------------+
+```
+
+```
++-----------------------------+                                                              
+| Manager::updateSOLParameter | : get properties from target obj to update the sol parameters
++-|---------------------------+                                                              
+  |                                                                                          
+  |--> iface = "xyz.openbmc_project.Ipmi.SOL"                                                
+  |                                                                                          
+  |--> object: "/xyz/openbmc_project/ipmi/sol/" + ethdevice                                  
+  |                                                                                          
+  |--> if sol_service isn't set yet                                                          
+  |    |                                                                                     
+  |    |                  +------------------+                                               
+  |    +--> sol_service = | ipmi::getService | get service that contains the arg object      
+  |                       +------------------+                                               
+  |    +----------------------------+                                                        
+  |--> | ipmi::getAllDbusProperties | get properties of iface(xyz.openbmc_project.Ipmi.SOL)  
+  |    +----------------------------+                                                        
+  |                                                                                          
+  +--> update sol::Manager member variables by these properties                              
+```
