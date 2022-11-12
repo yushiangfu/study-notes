@@ -113,6 +113,28 @@ struct usb_bus {
 ```
 
 ```
++------------------+                                                          
+| usb_register_dev | : save driver fops in usb_minors, create device for iface
++-|----------------+                                                          
+  |                                                                           
+  |--> get minor_base from arg class_driver                                   
+  |                                                                           
+  |--> reset minor_base bc of enabled config                                  
+  |                                                                           
+  |    +----------------+                                                     
+  |--> | init_usb_class | prepare usb_class with class 'usbmisc'              
+  |    +----------------+                                                     
+  |                                                                           
+  |--> usb_minors[minor] = driver_class fops                                  
+  |                                                                           
+  |--> save minor in iface                                                    
+  |                                                                           
+  |    +---------------+                                                      
+  +--> | device_create | create device for iface                              
+       +---------------+                                                      
+```
+
+```
 +-----------+                                                                    
 | hub_probe | : prepare hub, get descriptor, prepare ports, activate hub         
 +-|---------+                                                                    
@@ -260,7 +282,7 @@ struct usb_bus {
   |--> | announce_device | print kernel msgs                                     
   |    +-----------------+                                                       
   |    +------------+                                                            
-  |--> | device_add |                                                            
+  |--> | device_add | (trigger driver match & probe)
   |    +------------+                                                            
   |                                                                              
   |--> create sys files between usb port dev and child dev                       
@@ -1728,7 +1750,7 @@ hid_init                : init quirks, register 'hid_driver'
 | usb_register_device_driver | : register usb device driver and probe devices                  
 +-|--------------------------+                                                                 
   |                                                                                            
-  |--> set up arg new_udriver                                                                  
+  |--> set up arg new_udriver (.probe = usb_probe_device)                                                               
   |                                                                                            
   |    +-----------------+                                                                     
   |--> | driver_register |                                                                     
