@@ -97,6 +97,124 @@ struct usb_bus {
 ```
 
 ```
++---------------+                              
+| usb_alloc_dev | : prepare usb_dev, enable ep0
++-|-------------+                              
+  |                                            
+  |--> alloc usb_dev                           
+  |                                            
+  |--> set bus and type of dev                 
+  |                                            
+  |    +---------------------+                 
+  |--> | usb_enable_endpoint | enable endpoint 
+  |    +---------------------+                 
+  |                                            
+  |--> set path string and route# of dev       
+  |                                            
+  |--> if dev inserts in root hub              
+  |    |                                       
+  |    |    +------------------------------+   
+  |    +--> | usb_hcd_find_raw_port_number |   
+  |         +------------------------------+   
+  |                                            
+  +--> set parent/bus/port# of dev             
+```
+
+```
++---------------------+                              
+| usb_enable_endpoint | : enable endpoint            
++-|-------------------+                              
+  |                                                  
+  |--> if arg reset_ep is specified                  
+  |    |                                             
+  |    |    +------------------------+               
+  |    +--> | usb_hcd_reset_endpoint | reset endpoint
+  |         +------------------------+               
+  |                                                  
+  |--> save ep in dev                                
+  |                                                  
+  +--> label 'enabled' on ep                         
+```
+
+```
++-----------------+                                                                 
+| get_port_status | : send control req to get port_status and port_change           
++-|---------------+                                                                 
+  |    +---------------------+                                                      
+  +--> | hub_ext_port_status | : send control req to get port_status and port_change
+       +-|-------------------+                                                      
+         |    +-----------------+                                                   
+         |--> | get_port_status | send control req to get port status               
+         |    +-----------------+                                                   
+         |                                                                          
+         +--> get port_status and port_change                                       
+```
+
+```
++----------------------------+                                                      
+| usb_hub_create_port_device | : prepare port_dev, register it, find and link a peer
++-|--------------------------+                                                      
+  |                                                                                 
+  |--> alloc port_dev                                                               
+  |                                                                                 
+  |--> alloc req for port_dev                                                       
+  |                                                                                 
+  |--> assign port_dev to hub                                                       
+  |                                                                                 
+  |--> set type and driver for port_dev                                             
+  |                                                                                 
+  |    +-----------------+                                                          
+  |--> | device_register |                                                          
+  |    +-----------------+                                                          
+  |    +--------------------+                                                       
+  +--> | find_and_link_peer | find peer and relate it with arg port_dev             
+       +--------------------+                                                       
+```
+
+```
++--------------------+                                                         
+| find_and_link_peer | : find peer and relate it with arg port_dev             
++-|------------------+                                                         
+  |                                                                            
+  |--> if port_dev has specified location                                      
+  |    |                                                                       
+  |    |--> for each dev on 'usb' bus                                          
+  |    |    |                                                                  
+  |    |    |    +----------------+                                            
+  |    |    +--> | match_location | find peer, relate it with port_dev if found
+  |    |         +----------------+                                            
+  |    +--> return                                                             
+  |                                                                            
+  |--> elif hdev has no parent                                                 
+  |    -                                                                       
+  |    +--> set peer_hdev = root_hub                                           
+  |                                                                            
+  |--> else                                                                    
+  |    -                                                                       
+  |    +--> set peer_hdev = upstream->peer->child                              
+  |                                                                            
+  |--> determine peer from peer_hdev                                           
+  |                                                                            
+  |    +-------------------+                                                   
+  +--> | link_peers_report | relate peer and port_dev                          
+       +-------------------+                                                   
+```
+
+```
++----------------+                                              
+| match_location | : find peer, relate it with port_dev if found
++-|--------------+                                              
+  |                                                             
+  +--> for each of peer_hdev                                    
+       -                                                        
+       +--> if that peer and arg port_dev have the same location
+            |                                                   
+            |    +-------------------+                          
+            +--> | link_peers_report | relate them              
+                 +-------------------+                          
+```
+
+```
 +--------------------+                                              
 | get_hub_descriptor | : prepare msg (get hub desc) and submit it   
 +-|------------------+                                              
