@@ -114,6 +114,98 @@ struct usb_bus {
 ```
 
 ```
++-----------------+                                                                
+| usb_device_read | : for each usb bus: traverse usb hierarchy and dump descriptors
++-|---------------+                                                                
+  |                                                                                
+  +--> for each usb bus                                                            
+       |                                                                           
+       |    +-----------------+                                                    
+       +--> | usb_device_dump | traverse usb hierarchy and dump descriptors        
+            +-----------------+                                                    
+```
+
+```
++-----------------+                                                                   
+| usb_device_dump | : traverse usb hierarchy and dump descriptors                     
++-|---------------+                                                                   
+  |                                                                                   
+  |--> alloc 2 pages                                                                  
+  |                                                                                   
+  |--> prepare topology info                                                          
+  |                                                                                   
+  |--> if this is root hub (level is 0)                                               
+  |    -                                                                              
+  |    +--> prepare bandwidth info                                                    
+  |                                                                                   
+  |    +---------------+                                                              
+  |--> | usb_dump_desc | prepare info of devoce, product, config, iad, iface, endpoint
+  |    +---------------+                                                              
+  |                                                                                   
+  +--> for each child dev                                                             
+       |                                                                              
+       |    +-----------------+                                                       
+       +--> | usb_device_dump | (recursive)                                           
+            +-----------------+                                                       
+```
+
+```
++---------------+                                                                
+| usb_dump_desc | ： prepare info of devoce, product, config, iad, iface, endpoint
++-|-------------+                                                                
+  |    +----------------------------+                                            
+  |--> | usb_dump_device_descriptor | prepare device info                        
+  |    +----------------------------+                                            
+  |    +-------------------------+                                               
+  |--> | usb_dump_device_strings | prepare manufacturer/product/serial info      
+  |    +-------------------------+                                               
+  |                                                                              
+  +--> for each config in descriptor                                             
+       |                                                                         
+       |    +-----------------+                                                  
+       +--> | usb_dump_config | prepare info of config, iad, iface, endpoint     
+            +-----------------+                                                  
+```
+
+```
++-----------------+                                                    
+| usb_dump_config | : prepare info of config, iad, iface, endpoint     
++-|---------------+                                                    
+  |    +----------------------------+                                  
+  |--> | usb_dump_config_descriptor | prepare config info              
+  |    +----------------------------+                                  
+  |                                                                    
+  |--> for each iface association descriptor (iad)                     
+  |    |                                                               
+  |    |    +-------------------------+                                
+  |    +--> | usb_dump_iad_descriptor | prepare iad info               
+  |         +-------------------------+                                
+  |                                                                    
+  +--> for each iface in config                                        
+       -                                                               
+       +--> for each alternate setting                                 
+            |                                                          
+            |    +--------------------+                                
+            +--> | usb_dump_interface | prepare info of iface, endpoint
+                 +--------------------+                                
+```
+
+```
++--------------------+                                            
+| usb_dump_interface | : prepare info of iface, endpoint          
++-|------------------+                                            
+  |    +-------------------------------+                          
+  |--> | usb_dump_interface_descriptor | prepare iface info       
+  |    +-------------------------------+                          
+  |                                                               
+  +--> for each endpoint                                          
+       |                                                          
+       |    +------------------------------+                      
+       +--> | usb_dump_endpoint_descriptor | prepare endpoint info
+            +------------------------------+                      
+```
+
+```
 +---------------------+                                       
 | usb_probe_interface | : match id, call iface_driver->probe()
 +-|-------------------+                                       
@@ -2955,3 +3047,5 @@ cat /sys/kernel/debug/usb/devices
 - [M. Porter, Kernel USB Gadget Configfs Interface](https://elinux.org/images/e/ef/USB_Gadget_Configfs_API_0.pdf)
 - [USB overview](https://wiki.st.com/stm32mpu/wiki/USB_overview)
 - [M. Nazarewicz, The USB composite framework](https://lwn.net/Articles/395712/)
+- [Yannik, Linux USB Driver](https://yannik520.github.io/usb/usb.html)
+- [S. Venkateswaran, Essential Linux Device Drivers](http://www.embeddedlinux.org.cn/essentiallinuxdevicedrivers/final/ch11lev1sec1.html)
