@@ -113,6 +113,112 @@ struct usb_bus {
 ```
 
 ```
++---------------------+                                                                                          
+| ehci_platform_probe | : map io, register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
++-|-------------------+                                                                                          
+  |    +------------------+                                                                                      
+  |--> | platform_get_irq | get irq parsed from dtb earlier                                                      
+  |    +------------------+                                                                                      
+  |    +----------------+                                                                                        
+  |--> | usb_create_hcd | prepare hcd                                                                            
+  |    +----------------+                                                                                        
+  |                                                                                                              
+  |--> set hcd params from default or dtb                                                                        
+  |                                                                                                              
+  |    +------------------------+                                                                                
+  |--> | reset_control_deassert | (skip)                                                                         
+  |    +------------------------+                                                                                
+  |    +-----------------------+                                                                                 
+  |--> | platform_get_resource | get reg base parsed from dtb earlier                                            
+  |    +-----------------------+                                                                                 
+  |    +-----------------------+                                                                                 
+  |--> | devm_ioremap_resource | map io                                                                          
+  |    +-----------------------+                                                                                 
+  |    +-------------+                                                                                           
+  +--> | usb_add_hcd | register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub           
+       +-------------+                                                                                           
+```
+
+```
++-------------+                                                                                  
+| usb_add_hcd | : register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
++-|-----------+                                                                                  
+  |                                                                                              
+  |--> print "EHCI Host Controller"                                                              
+  |                                                                                              
+  |    +-------------------+                                                                     
+  |--> | hcd_buffer_create | prepare buffer pools                                                
+  |    +-------------------+                                                                     
+  |    +------------------+                                                                      
+  |--> | usb_register_bus | notify the event of bus addition                                     
+  |    +------------------+                                                                      
+  |    +---------------+                                                                         
+  |--> | usb_alloc_dev | prepare usb_dev, enable ep0                                             
+  |    +---------------+                                                                         
+  |    +---------------------------+                                                             
+  |--> | usb_phy_roothub_calibrate | do nothing bc of disabled config                            
+  |    +---------------------------+                                                             
+  |    +----------------------+              +-------------+      +----------+                   
+  |--> | usb_hcd_request_irqs | register isr | usb_hcd_irq | ---> | ehci_irq |                   
+  |    +----------------------+              +-------------+      +----------+                   
+  |                                                                                              
+  |--> call ->start(), e.g.,                                                                     
+  |    +----------+                                                                              
+  |    | ehci_run | write hw regs to init, create sys files                                      
+  |    +----------+                                                                              
+  |                                                                                              
+  |    +-------------------+                                                                     
+  +--> | register_root_hub | get descriptor, ready configs, register usb_Dev and ep_dev          
+       +-------------------+                                                                     
+```
+
+```
++------------------+                                                 
+| usb_register_bus | : notify the event of bus addition              
++-|----------------+                                                 
+  |                                                                  
+  |--> get an unique# and assign to bus                              
+  |                                                                  
+  |    +--------------------+                                        
+  |--> | usb_notify_add_bus | call notifier chain of the bus addition
+  |    +--------------------+                                        
+  |                                                                  
+  +--> print "new USB bus registered, assigned bus number %d\n"      
+```
+
+```
++----------------------+                                        
+| usb_hcd_request_irqs | : register isr                         
++-|--------------------+                                        
+  |                                                             
+  +--> if irq# found                                            
+       |                                                        
+       |    +-------------+ +-------------+                     
+       |--> | request_irq | | usb_hcd_irq | call ->driver->irq()
+       |    +-------------+ +-------------+                     
+       |                                                        
+       +--> print "irq %d, %s 0x%08llx\n"                       
+```
+
+```
++-------------------+                                                                 
+| register_root_hub | : get descriptor, ready configs, register usb_Dev and ep_dev    
++-|-----------------+                                                                 
+  |    +---------------------------+                                                  
+  |--> | usb_get_device_descriptor | get device descriptor                            
+  |    +---------------------------+                                                  
+  |                                                                                   
+  |--> if bcd# >= 0x0201                                                              
+  |    |                                                                              
+  |    |    +------------------------+                                                
+  |    +--> | usb_get_bos_descriptor | get bos descriptor                             
+  |         +------------------------+                                                
+  |    +----------------+                                                             
+  +--> | usb_new_device | ready usb configs, prepare dev#, register usb_dev and ep_dev
+       +----------------+                                                             
+```
+
+```
 +------------------+                                                          
 | usb_register_dev | : save driver fops in usb_minors, create device for iface
 +-|----------------+                                                          
