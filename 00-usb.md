@@ -3,16 +3,17 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Framework](#framework)
-- [Virtual Hub](#virtual-hub)
+- [Host](#host)
+- [Device](#device)
 - [System Startup](#system-startup)
+- [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
 (TBD)
 
-## <a name="framework"></a> Framework
+## <a name="host"></a> Host
 
 ```
 struct usb_driver {
@@ -110,6 +111,21 @@ struct usb_bus {
      .id_table = hub_id_table,          
      .supports_autosuspend = 1,         
  };                                     
+```
+
+```
++---------------------+                                       
+| usb_probe_interface | : match id, call iface_driver->probe()
++-|-------------------+                                       
+  |                                                           
+  |--> get outer usb driver                                   
+  |                                                           
+  |--> match id                                               
+  |                                                           
+  +--> call usb_driver->probe(), e.g.,                        
+       +--------------+                                       
+       | usbhid_probe |                                       
+       +--------------+                                       
 ```
 
 ```
@@ -1196,7 +1212,7 @@ struct usb_bus {
        +-------------------+                                                  
 ```
 
-## <a name="virtual-hub"></a> Virtual Hub
+## <a name="device"></a> Device
 
 ```
 +--------------+
@@ -2925,6 +2941,12 @@ usbhid/hid-core.c
   |--> if not match (new node)                                                          
   |                                                                                     
   +------> append quirk_new to the end of 'dquirks_list'                                
+```
+  
+## <a name="cheat-sheet"></a> Cheat Sheet
+
+```
+cat /sys/kernel/debug/usb/devices
 ```
   
 ## <a name="reference"></a> Reference
