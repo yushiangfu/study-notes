@@ -314,9 +314,9 @@ struct usb_bus {
 ```
 
 ```
-+------------+                                                                                           
-| queue_work | : handle port event if there's any                                                        
-+-|----------+                                                                                           
++-----------+                                                                                           
+| hub_event | : handle port event if there's any                                                        
++-|---------+                                                                                           
   |                                                                                                      
   +--> for each port of hub_dev                                                                          
        -                                                                                                 
@@ -883,20 +883,23 @@ struct usb_bus {
 ```
 
 ```
-+------------------------+                                     
-| __usb_hcd_giveback_urb | : unanchor urb, complete it         
-+-|----------------------+                                     
-  |    +-------------------+                                   
-  |--> | unmap_urb_for_dma |                                   
-  |    +-------------------+                                   
-  |    +---------------------+                                 
++------------------------+
+| __usb_hcd_giveback_urb | : unanchor urb, complete it
++-|----------------------+
+  |    +-------------------+
+  |--> | unmap_urb_for_dma |
+  |    +-------------------+
+  |    +---------------------+
   |--> | usbmon_urb_complete | do nothing bc of disabled config
-  |    +---------------------+                                 
-  |    +------------------+                                    
-  |--> | usb_unanchor_urb | remove urb from anchor list        
-  |    +------------------+                                    
-  |                                                            
-  +--> call ->complete()                                       
+  |    +---------------------+
+  |    +------------------+
+  |--> | usb_unanchor_urb | remove urb from anchor list
+  |    +------------------+
+  |
+  +--> call ->complete(), e.g.,
+       +---------+
+       | hub_irq | handle hub event, resubmit hub urb
+       +---------+                                   
 ```
 
 ```
@@ -1809,7 +1812,7 @@ hid_init                : init quirks, register 'hid_driver'
   +--> | usb_register_driver | : register usb interface driver  
        +-|-------------------+                                  
          |                                                      
-         |--> set up arg driver                                 
+         |--> set up arg driver (.probe = usb_probe_interface)
          |                                                      
          |    +-----------------+                               
          |--> | driver_register |                               
@@ -2834,3 +2837,5 @@ usbhid/hid-core.c
 
 - [T. Petazzoni, Using USB gadget drivers](https://bootlin.com/doc/legacy/usb-gadget/usb_gadget_drivers.pdf)
 - [M. Porter, Kernel USB Gadget Configfs Interface](https://elinux.org/images/e/ef/USB_Gadget_Configfs_API_0.pdf)
+- [USB overview](https://wiki.st.com/stm32mpu/wiki/USB_overview)
+- [M. Nazarewicz, The USB composite framework](https://lwn.net/Articles/395712/)
