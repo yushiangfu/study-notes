@@ -113,6 +113,100 @@ struct usb_bus {
 ```
 
 ```
++------------------+                                                                 
+| usb_probe_device | : choose best config and set to it, ready endpoints             
++-|----------------+                                                                 
+  |                                                                                  
+  |--> get outer udriver                                                             
+  |                                                                                  
+  +--> call ->probe(), e.g.,                                                         
+       +--------------------------+                                                  
+       | usb_generic_driver_probe | choose best config and set to it, ready endpoints
+       +--------------------------+                                                  
+```
+
+```
++--------------------------+                                                                         
+| usb_generic_driver_probe | : choose best config and set to it, ready endpoints                     
++-|------------------------+                                                                         
+  |    +--------------------------+                                                                  
+  |--> | usb_choose_configuration | choose the best config to start with                             
+  |    +--------------------------+                                                                  
+  |    +-----------------------+                                                                     
+  |--> | usb_set_configuration | enable related endpoints, send msg (set config), register all ep_dev
+  |    +-----------------------+                                                                     
+  |    +-----------------------+                                                                     
+  +--> | usb_notify_add_device | call notifier chain of udev addition                                
+       +-----------------------+                                                                     
+```
+
+```
++-----------------------+                                                                       
+| usb_set_configuration | : enable related endpoints, send msg (set config), register all ep_dev
++-|---------------------+                                                                       
+  |                                                                                             
+  |--> alloc ptr array for that many interfaces specified by the config                         
+  |                                                                                             
+  |--> for each ptr                                                                             
+  |    -                                                                                        
+  |    +--> alloc usb_iface                                                                     
+  |                                                                                             
+  |    +-------------------------+                                                              
+  |--> | cancel_async_set_config | cancel any pending 'set config' req bc we are changing it    
+  |    +-------------------------+                                                              
+  |                                                                                             
+  |--> for each iface                                                                           
+  |    |                                                                                        
+  |    |    +----------------------+                                                            
+  |    |--> | usb_enable_interface | enable all endpoints of iface                              
+  |    |    +----------------------+                                                            
+  |    |                                                                                        
+  |    |--> set up iface_dev                                                                    
+  |    |                                                                                        
+  |    |    +--------------+                                                                    
+  |    +--> | dev_set_name | "%d-%s:%d.%d" = (bus_num, dev_path, config, iface_num)             
+  |         +--------------+                                                                    
+  |    +----------------------+                                                                 
+  |--> | usb_control_msg_send | send msg to 'set config'                                        
+  |    +----------------------+                                                                 
+  |                                                                                             
+  |--> save config in dev                                                                       
+  |                                                                                             
+  |--> for each iface                                                                           
+  |    |                                                                                        
+  |    |    +------------+                                                                      
+  |    +--> | device_add | register dev to trigger driver binding                               
+  |         +------------+                                                                      
+  |    +---------------------+                                                                  
+  +--> | create_intf_ep_devs | for each ep of iface, prepare ep_dev and register it             
+       +---------------------+                                                                  
+```
+
+```
++----------------------+                                
+| usb_enable_interface | : enable all endpoints of iface
++-|--------------------+                                
+  |                                                     
+  +--> for each endpoint of the iface                   
+       |                                                
+       |    +---------------------+                     
+       +--> | usb_enable_endpoint | enable endpoint     
+            +---------------------+                     
+```
+
+```
++---------------------+                                                            
+| create_intf_ep_devs | : for each ep of iface, prepare ep_dev and register it     
++-|-------------------+                                                            
+  |                                                                                
+  +--> for each ep of iface                                                        
+       |                                                                           
+       |    +--------------------+                                                 
+       +--> | usb_create_ep_devs | prepare ep_dev, register it and save in endpoint
+            +--------------------+                                                 
+```
+
+```
 +---------------------+                                                                                          
 | ehci_platform_probe | : map io, register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
 +-|-------------------+                                                                                          
