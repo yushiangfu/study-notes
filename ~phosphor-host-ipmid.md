@@ -356,3 +356,44 @@ ipmid-new.cpp
   |                                                              
   +--> udpate 'lastDevId'                                        
 ```
+
+| net_fn + cmd | callback |
+| ---          | ---      |
+| 0x00 0x00    | ipmiGetChassisCap |
+| 0x00 0x01    | ipmiGetChassisStatus |
+| 0x00 0x02    | ipmiChassisControl |
+| 0x00 0x04    | ipmiChassisIdentify |
+| 0x00 0x05    | ipmiSetChassisCap |
+| 0x00 0x06    | ipmiChassisSetPowerRestorePolicy |
+| 0x00 0x07    | ipmiGetSystemRestartCause |
+| 0x00 0x08    | ipmiChassisSetSysBootOptions |
+| 0x00 0x09    | ipmiChassisGetSysBootOptions |
+| 0x00 0x0A    | ipmiSetFrontPanelButtonEnables |
+| 0x00 0x0F    | ipmiGetPOHCounter |
+| 0x06 0x01    | ipmiAppGetDeviceId |
+| 0x06 0x04    | ipmiAppGetSelfTestResults |
+| 0x06 0x06    | ipmiSetAcpiPowerState |
+| 0x06 0x07    | ipmiGetAcpiPowerState |
+| 0x06 0x08    | ipmiAppGetDeviceGuid |
+| 0x06 0x0F    | ipmiGetPOHCounter |
+| 0x06 0x22    | ipmiAppResetWatchdogTimer |
+| 0x06 0x24    | ipmiSetWatchdogTimer |
+| 0x06 0x25    | ipmiGetWatchdogTimer |
+| 0x06 0x36    | ipmiAppGetBtCapabilities |
+| 0x06 0x37    | ipmiAppGetSystemGuid |
+| 0x06 0x3C    | ipmiAppCloseSession |
+| 0x06 0x3D    | ipmiAppGetSessionInfo |
+| 0x06 0x52    | ipmiMasterWriteRead |
+| 0x06 0x54    | getChannelCipherSuites |
+| 0x06 0x58    | ipmiAppSetSystemInfo |
+| 0x06 0x59    | ipmiAppGetSystemInfo |
+| 0x0A 0x10    | ipmiStorageGetFruInvAreaInfo |
+| 0x0A 0x11    | ipmiStorageReadFruData |
+| 0x0A 0x12    | ipmiStorageWriteFruData |
+| 0x0A 0x40    | ipmiStorageGetSELInfo |
+| 0x0A 0x43    | ipmiStorageGetSELEntry |
+| 0x0A 0x44    | ipmiStorageAddSELEntry |
+| 0x0A 0x47    | ipmiStorageClearSEL |
+| 0x0A 0x48    | ipmiStorageGetSELTime |
+| 0x0A 0x49    | ipmiStorageSetSELTime |
+
