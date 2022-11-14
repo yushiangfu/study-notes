@@ -15,6 +15,28 @@
 
 ## <a name="host"></a> Host
 
+The universal serial bus (USB) is a typical master-slave framework in that the USB controller initiates a request, and the target device responds. 
+The controller comes with a root hub; every port can further connects to a USB device or adapts to another hub, and so on. 
+Following the significant USB standards, a few host controller drivers (HCD) have been adequately implemented and stuffed into the kernel.
+
+- UHCI
+    - the universal host controller interface
+    - supports USB 1.x
+    - proprietary interface from Intel
+- OHCI
+    - the open host controller interface
+    - supports USB 1.x with improved interface
+- EHCI
+    - the enhanced host controller interface
+    - supports USB 2.x
+- xHCI
+    - the extensible host controller interface
+    - supports USB 3.x
+
+Please refer to the below image for the general view of the USB topology obtained from my laptop (Vostro 5402):
+
+<p align="center"><img src="images/usb/topology.png" /></p>
+
 ```
 struct usb_driver {
     const char *name;                                   // driver name (must be unique)
