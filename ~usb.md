@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Host](#host)
 - [Device](#device)
+- [Hub](#hub)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -36,6 +37,27 @@ Following the significant USB standards, a few host controller drivers (HCD) hav
 Please refer to the below image for the general view of the USB topology obtained from my laptop (Vostro 5402):
 
 <p align="center"><img src="images/usb/topology.png" /></p>
+
+<details><summary> More Details </summary>
+  
+```
+$ lsusb --tree
+/:  Bus 04.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/4p, 10000M
+/:  Bus 03.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/12p, 480M
+    |__ Port 1: Dev 6, If 0, Class=Human Interface Device, Driver=usbhid, 12M
+    |__ Port 1: Dev 6, If 1, Class=Human Interface Device, Driver=usbhid, 12M
+    |__ Port 5: Dev 3, If 0, Class=Vendor Specific Class, Driver=, 12M
+    |__ Port 6: Dev 4, If 0, Class=Video, Driver=uvcvideo, 480M
+    |__ Port 6: Dev 4, If 1, Class=Video, Driver=uvcvideo, 480M
+    |__ Port 10: Dev 5, If 0, Class=Wireless, Driver=btusb, 12M
+    |__ Port 10: Dev 5, If 1, Class=Wireless, Driver=btusb, 12M
+/:  Bus 02.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/4p, 10000M
+/:  Bus 01.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/1p, 480M
+```
+    
+</details>
+
+## <a name="device"></a> Device
 
 ```
 struct usb_driver {
@@ -1326,8 +1348,6 @@ struct usb_bus {
        +-------------------+                                                  
 ```
 
-## <a name="device"></a> Device
-
 ```
 +--------------+
 | ast_vhub_irq | : handle vhub irq
@@ -1955,6 +1975,8 @@ struct usb_bus {
   |                                                                
   +--> save its usb config in composite dev                        
 ```
+
+## <a name="hub"></a> Hub
 
 ## <a name="system-startup"></a> System Startup
 
