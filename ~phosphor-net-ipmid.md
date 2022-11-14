@@ -327,3 +327,10 @@
   |                                                                                          
   +--> update sol::Manager member variables by these properties                              
 ```
+
+| net_fn + cmd | callback |
+| ---          | ---      |
+| 0x06 0x48    | activatePayload |
+| 0x06 0x49    | deactivatePayload |
+| 0x06 0x4A    | getPayloadStatus |
+| 0x06 0x4B    | getPayloadInfo |
