@@ -59,6 +59,34 @@ $ lsusb --tree
 
 ## <a name="device"></a> Device
 
+Because of the excellent design and simple usage, users can easily plug and unplug the components; thus, many USB products have come out to the market. 
+The device types are arguably numerous, including but not limited to storage, video, audio, and human interface devices such as keyboards and mice. 
+Each device must clearly prepare the below descriptors for the host controller to query the details and assign addresses:
+
+- device descriptor
+    - itself basically is nothing but a container of the configuration descriptors
+    - attribute: number of configurations
+    - attribute: device class, subclass, and protocol
+- configuration descriptor
+    - combination of interfaces and power requirements, e.g., one config for bus-powered and one for self-powered
+    - attribute: number of interfaces
+    - attribute: max power
+- interface descriptor
+    - it means the primary functionality, e.g., keyboard or mouse
+    - attribute: number of endpoints
+    - attribute: interface class, subclass, and protocol
+- endpoint descriptor
+    - data pipe
+    - attribute: transfer direction
+
+<p align="center"><img src="images/usb/device.png" /></p>
+
+<details><summary> More Details </summary>
+    
+</details>
+
+## <a name="hub"></a> Hub
+
 ```
 struct usb_driver {
     const char *name;                                   // driver name (must be unique)
@@ -1975,8 +2003,6 @@ struct usb_bus {
   |                                                                
   +--> save its usb config in composite dev                        
 ```
-
-## <a name="hub"></a> Hub
 
 ## <a name="system-startup"></a> System Startup
 
