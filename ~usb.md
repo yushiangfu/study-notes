@@ -1137,7 +1137,7 @@ struct usb_bus {
   |         |--> | usb_hcd_unlink_urb_from_ep | remove urb from endpoint      
   |         |    +----------------------------+                               
   |         |    +----------------------+                                     
-  |         +--> | usb_hcd_giveback_urb | return urb from hcd to device driver
+  |         +--> | usb_hcd_giveback_urb | call urb's complete() and return it from hcd to device driver
   |              +----------------------+                                     
   |    +-----------+                                                          
   +--> | mod_timer | modify timer to poll status                              
@@ -1146,7 +1146,7 @@ struct usb_bus {
 
 ```
 +----------------------+                                        
-| usb_hcd_giveback_urb | :  return urb from hcd to device driver
+| usb_hcd_giveback_urb | : call urb's complete() and return it from hcd to device driver
 +-|--------------------+                                        
   |                                                             
   |--> save status in urb                                       
@@ -1158,7 +1158,7 @@ struct usb_bus {
 
 ```
 +------------------------+
-| __usb_hcd_giveback_urb | : unanchor urb, complete it
+| __usb_hcd_giveback_urb | : unanchor urb, call its complete()
 +-|----------------------+
   |    +-------------------+
   |--> | unmap_urb_for_dma |
@@ -3119,3 +3119,4 @@ cat /sys/kernel/debug/usb/devices
 - [M. Nazarewicz, The USB composite framework](https://lwn.net/Articles/395712/)
 - [Yannik, Linux USB Driver](https://yannik520.github.io/usb/usb.html)
 - [S. Venkateswaran, Essential Linux Device Drivers](http://www.embeddedlinux.org.cn/essentiallinuxdevicedrivers/final/ch11lev1sec1.html)
+- [I. Wienand, What actually happens when you plug in a USB device?](https://www.technovelty.org/linux/what-actually-happens-when-you-plug-in-a-usb-device.html)
