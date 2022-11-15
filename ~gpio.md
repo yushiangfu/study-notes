@@ -791,7 +791,14 @@ The below **create_pinctrl** looks into the device tree for the pinctrl properti
 
 ## <a name="to-do-list"></a> To-Do List
 
-(TBD)
+```
+cd /sys/class/gpio
+echo 123 > export
+cd gpio123
+cat direction # check current direction
+echo out > direction
+cat value
+```
 
 ## <a name="reference"></a> Reference
 
