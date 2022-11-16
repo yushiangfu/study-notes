@@ -54,98 +54,6 @@ $ lsusb --tree
 /:  Bus 01.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/1p, 480M
 ```
     
-</details>
-
-## <a name="device"></a> Device
-
-Because of the excellent design and simple usage, users can easily plug and unplug the components; thus, many USB products have come out to the market. 
-The device types are arguably numerous, including but not limited to storage, video, audio, and human interface devices such as keyboards and mice. 
-Each device must clearly prepare the below descriptors for the host controller to query the details and assign addresses:
-
-- device descriptor
-    - itself basically is nothing but a container of the configuration descriptors
-    - attribute: number of configurations
-    - attribute: device class, subclass, and protocol
-- configuration descriptor
-    - combination of interfaces and power requirements, e.g., one config for bus-powered and one for self-powered
-    - attribute: number of interfaces
-    - attribute: max power
-- interface descriptor
-    - it means the primary functionality, e.g., keyboard or mouse
-    - attribute: number of endpoints
-    - attribute: interface class, subclass, and protocol
-- endpoint descriptor
-    - data pipe
-    - attribute: transfer direction
-
-<p align="center"><img src="images/usb/device.png" /></p>
-
-<details><summary> More Details </summary>
-    
-</details>
-
-### Hub
-
-Hub is a unique USB device equipped with ports, which is meant to connect to other USB devices or another hub, and so on. 
-With no exception, it also contains those constructive descriptors and attributes like other devices for HCD to query and set up. 
-The host controller implements the root hub; after initialization by the hub driver, a USB request block (URB) is submitted to the HCD structure. 
-When a device plugs in, e.g., my wireless receiver of keyboard and mice, the USB interrupt raises, and the story reasonably starts:
-
-1. The interrupt service routine (ISR) addresses the signal and completes the anchored URB attached by the hub driver.
-2. Gets port status and finds out the event of port connection change.
-3. Prepares device structure and sequentially accesses the device, config, and interface descriptors.
-4. Registers the device and thus reaches the generic device framework for the device driver matching and probing to behave.
-
-Usually, we finish right here, but this time we still need to take care of the multiple functionalities of the device. 
-Because of the descriptor hierarchy design in a USB device, the detection procedure progressively reads them and operates accordingly.
-
-5. Chooses the proper config descriptor to apply, but commonly there's also only one possibility around.
-6. Readies device structures for entire interfaces (keyboard and mouse functions in our case) within the selected config.
-7. Registers the devices, and the device framework takes over for another match attempt, but this time it traverses interface drivers instead.
-8. Lastly, the URB is placed back in the HCD structure for the next hub event.
-
-```
-struct usb_driver {
-    const char *name;                                   // driver name (must be unique)
-    int (*probe) (struct usb_interface *intf,
-              const struct usb_device_id *id);          // check if (device, driver) match
-    void (*disconnect) (struct usb_interface *intf);    // work with usb interface
-    struct usbdrv_wrap drvwrap;                         // usb driver wrapper
-};
-```
-
-```
-struct usbdrv_wrap {
-    struct device_driver driver;    // driver
-    int for_devices;                // 0: interface driver, else: device driver
-};
-```
-
-```
-struct usb_device_id {
-    __u16       match_flags;    // specifies which fields to compare
-};
-```
-
-```
-struct usb_device {
-    int     devnum; // unique device number
-    char        devpath[16];        // dev position in usb tree topology
-    enum usb_device_state   state;  // e.g., attached, configured, ...
-    enum usb_device_speed   speed;  // e.g., low, full, high, ...
-    struct usb_device *parent;      // points to usb huuub
-    struct usb_bus *bus;            // point to usb_bus
-    struct device dev;              // generic device model
-    struct usb_device_descriptor descriptor;    // more detailed dev data
-    struct usb_host_config *config;             // list of possible configs
-    struct usb_host_config *actconfig;          // poitns current working config
-    char *product;      // hw info
-    char *manufacturer; // hw info
-    char *serial;       // hw info
-    int maxchild;       // if self is a usb hub, this specifies how many ports it has
-};
-```
-
 ```
 struct usb_bus {
     struct device *controller;  // points to controller
@@ -185,7 +93,103 @@ struct usb_bus {
     int bandwidth_int_reqs;     /* number of Interrupt requests */
     int bandwidth_isoc_reqs;
 ```
+    
+</details>
 
+## <a name="device"></a> Device
+
+Because of the excellent design and simple usage, users can easily plug and unplug the components; thus, many USB products have come out to the market. 
+The device types are arguably numerous, including but not limited to storage, video, audio, and human interface devices such as keyboards and mice. 
+Each device must clearly prepare the below descriptors for the host controller to query the details and assign addresses:
+
+- device descriptor
+    - itself basically is nothing but a container of the configuration descriptors
+    - attribute: number of configurations
+    - attribute: device class, subclass, and protocol
+- configuration descriptor
+    - combination of interfaces and power requirements, e.g., one config for bus-powered and one for self-powered
+    - attribute: number of interfaces
+    - attribute: max power
+- interface descriptor
+    - it means the primary functionality, e.g., keyboard or mouse
+    - attribute: number of endpoints
+    - attribute: interface class, subclass, and protocol
+- endpoint descriptor
+    - data pipe
+    - attribute: transfer direction
+
+<p align="center"><img src="images/usb/device.png" /></p>
+
+<details><summary> More Details </summary>
+    
+```
+struct usb_device {
+    int     devnum; // unique device number
+    char        devpath[16];        // dev position in usb tree topology
+    enum usb_device_state   state;  // e.g., attached, configured, ...
+    enum usb_device_speed   speed;  // e.g., low, full, high, ...
+    struct usb_device *parent;      // points to usb huuub
+    struct usb_bus *bus;            // point to usb_bus
+    struct device dev;              // generic device model
+    struct usb_device_descriptor descriptor;    // more detailed dev data
+    struct usb_host_config *config;             // list of possible configs
+    struct usb_host_config *actconfig;          // poitns current working config
+    char *product;      // hw info
+    char *manufacturer; // hw info
+    char *serial;       // hw info
+    int maxchild;       // if self is a usb hub, this specifies how many ports it has
+};
+```
+    
+</details>
+
+### Hub
+
+Hub is a unique USB device equipped with ports, which is meant to connect to other USB devices or another hub, and so on. 
+With no exception, it also contains those constructive descriptors and attributes like other devices for HCD to query and set up. 
+The host controller implements the root hub; after initialization by the hub driver, a USB request block (URB) is submitted to the HCD structure. 
+When a device plugs in, e.g., my wireless receiver of keyboard and mice, the USB interrupt raises, and the story reasonably starts:
+
+1. The interrupt service routine (ISR) addresses the signal and completes the anchored URB attached by the hub driver.
+2. Gets port status and finds out the event of port connection change.
+3. Prepares device structure and sequentially accesses the device, config, and interface descriptors.
+4. Registers the device and thus reaches the generic device framework for the device driver matching and probing to behave.
+
+Usually, we finish right here, but this time we still need to take care of the multiple functionalities of the device. 
+Because of the descriptor hierarchy design in a USB device, the detection procedure progressively reads them and operates accordingly.
+
+5. Chooses the proper config descriptor to apply, but commonly there's also only one possibility around.
+6. Readies device structures for entire interfaces (keyboard and mouse functions in our case) within the selected config.
+7. Registers the devices, and the device framework takes over for another match attempt, but this time it traverses interface drivers instead.
+8. Lastly, the URB is placed back in the HCD structure for the next hub event.
+
+<p align="center"><img src="images/usb/hub.png" /></p>
+
+<details><summary> More Details </summary>
+    
+```
+struct usb_device_id {
+    __u16       match_flags;    // specifies which fields to compare
+};
+```
+    
+```
+struct usb_driver {
+    const char *name;                                   // driver name (must be unique)
+    int (*probe) (struct usb_interface *intf,
+              const struct usb_device_id *id);          // check if (device, driver) match
+    void (*disconnect) (struct usb_interface *intf);    // work with usb interface
+    struct usbdrv_wrap drvwrap;                         // usb driver wrapper
+};
+```
+
+```
+struct usbdrv_wrap {
+    struct device_driver driver;    // driver
+    int for_devices;                // 0: interface driver, else: device driver
+};
+```
+    
 ```
  static struct usb_driver hub_driver = {
      .name =     "hub",                 
@@ -201,114 +205,7 @@ struct usb_bus {
      .supports_autosuspend = 1,         
  };                                     
 ```
-
-```
-+-----------------+                                                                
-| usb_device_read | : for each usb bus: traverse usb hierarchy and dump descriptors
-+-|---------------+                                                                
-  |                                                                                
-  +--> for each usb bus                                                            
-       |                                                                           
-       |    +-----------------+                                                    
-       +--> | usb_device_dump | traverse usb hierarchy and dump descriptors        
-            +-----------------+                                                    
-```
-
-```
-+-----------------+                                                                   
-| usb_device_dump | : traverse usb hierarchy and dump descriptors                     
-+-|---------------+                                                                   
-  |                                                                                   
-  |--> alloc 2 pages                                                                  
-  |                                                                                   
-  |--> prepare topology info                                                          
-  |                                                                                   
-  |--> if this is root hub (level is 0)                                               
-  |    -                                                                              
-  |    +--> prepare bandwidth info                                                    
-  |                                                                                   
-  |    +---------------+                                                              
-  |--> | usb_dump_desc | prepare info of devoce, product, config, iad, iface, endpoint
-  |    +---------------+                                                              
-  |                                                                                   
-  +--> for each child dev                                                             
-       |                                                                              
-       |    +-----------------+                                                       
-       +--> | usb_device_dump | (recursive)                                           
-            +-----------------+                                                       
-```
-
-```
-+---------------+                                                                
-| usb_dump_desc | ： prepare info of devoce, product, config, iad, iface, endpoint
-+-|-------------+                                                                
-  |    +----------------------------+                                            
-  |--> | usb_dump_device_descriptor | prepare device info                        
-  |    +----------------------------+                                            
-  |    +-------------------------+                                               
-  |--> | usb_dump_device_strings | prepare manufacturer/product/serial info      
-  |    +-------------------------+                                               
-  |                                                                              
-  +--> for each config in descriptor                                             
-       |                                                                         
-       |    +-----------------+                                                  
-       +--> | usb_dump_config | prepare info of config, iad, iface, endpoint     
-            +-----------------+                                                  
-```
-
-```
-+-----------------+                                                    
-| usb_dump_config | : prepare info of config, iad, iface, endpoint     
-+-|---------------+                                                    
-  |    +----------------------------+                                  
-  |--> | usb_dump_config_descriptor | prepare config info              
-  |    +----------------------------+                                  
-  |                                                                    
-  |--> for each iface association descriptor (iad)                     
-  |    |                                                               
-  |    |    +-------------------------+                                
-  |    +--> | usb_dump_iad_descriptor | prepare iad info               
-  |         +-------------------------+                                
-  |                                                                    
-  +--> for each iface in config                                        
-       -                                                               
-       +--> for each alternate setting                                 
-            |                                                          
-            |    +--------------------+                                
-            +--> | usb_dump_interface | prepare info of iface, endpoint
-                 +--------------------+                                
-```
-
-```
-+--------------------+                                            
-| usb_dump_interface | : prepare info of iface, endpoint          
-+-|------------------+                                            
-  |    +-------------------------------+                          
-  |--> | usb_dump_interface_descriptor | prepare iface info       
-  |    +-------------------------------+                          
-  |                                                               
-  +--> for each endpoint                                          
-       |                                                          
-       |    +------------------------------+                      
-       +--> | usb_dump_endpoint_descriptor | prepare endpoint info
-            +------------------------------+                      
-```
-
-```
-+---------------------+                                       
-| usb_probe_interface | : match id, call iface_driver->probe()
-+-|-------------------+                                       
-  |                                                           
-  |--> get outer usb driver                                   
-  |                                                           
-  |--> match id                                               
-  |                                                           
-  +--> call usb_driver->probe(), e.g.,                        
-       +--------------+                                       
-       | usbhid_probe |                                       
-       +--------------+                                       
-```
-
+    
 ```
 +------------------+                                                                 
 | usb_probe_device | : choose best config and set to it, ready endpoints             
@@ -402,6 +299,10 @@ struct usb_bus {
        +--> | usb_create_ep_devs | prepare ep_dev, register it and save in endpoint
             +--------------------+                                                 
 ```
+    
+</details>
+
+### Aspeed Virtual Hub
 
 ```
 +---------------------+                                                                                          
@@ -2114,6 +2015,21 @@ hid_init                : init quirks, register 'hid_driver'
 ```
 
 ```
++---------------------+                                       
+| usb_probe_interface | : match id, call iface_driver->probe()
++-|-------------------+                                       
+  |                                                           
+  |--> get outer usb driver                                   
+  |                                                           
+  |--> match id                                               
+  |                                                           
+  +--> call usb_driver->probe(), e.g.,                        
+       +--------------+                                       
+       | usbhid_probe |                                       
+       +--------------+                                       
+```
+
+```
 +----------------+                                             
 | usb_devio_init | : init usb dev io                           
 +-|--------------+                                             
@@ -3127,6 +3043,102 @@ usbhid/hid-core.c
 ```
 cat /sys/kernel/debug/usb/devices
 ```
+
+<details><summary> More Details </summary>
+    
+```
++-----------------+                                                                
+| usb_device_read | : for each usb bus: traverse usb hierarchy and dump descriptors
++-|---------------+                                                                
+  |                                                                                
+  +--> for each usb bus                                                            
+       |                                                                           
+       |    +-----------------+                                                    
+       +--> | usb_device_dump | traverse usb hierarchy and dump descriptors        
+            +-----------------+                                                    
+```
+
+```
++-----------------+                                                                   
+| usb_device_dump | : traverse usb hierarchy and dump descriptors                     
++-|---------------+                                                                   
+  |                                                                                   
+  |--> alloc 2 pages                                                                  
+  |                                                                                   
+  |--> prepare topology info                                                          
+  |                                                                                   
+  |--> if this is root hub (level is 0)                                               
+  |    -                                                                              
+  |    +--> prepare bandwidth info                                                    
+  |                                                                                   
+  |    +---------------+                                                              
+  |--> | usb_dump_desc | prepare info of devoce, product, config, iad, iface, endpoint
+  |    +---------------+                                                              
+  |                                                                                   
+  +--> for each child dev                                                             
+       |                                                                              
+       |    +-----------------+                                                       
+       +--> | usb_device_dump | (recursive)                                           
+            +-----------------+                                                       
+```
+
+```
++---------------+                                                                
+| usb_dump_desc | ： prepare info of devoce, product, config, iad, iface, endpoint
++-|-------------+                                                                
+  |    +----------------------------+                                            
+  |--> | usb_dump_device_descriptor | prepare device info                        
+  |    +----------------------------+                                            
+  |    +-------------------------+                                               
+  |--> | usb_dump_device_strings | prepare manufacturer/product/serial info      
+  |    +-------------------------+                                               
+  |                                                                              
+  +--> for each config in descriptor                                             
+       |                                                                         
+       |    +-----------------+                                                  
+       +--> | usb_dump_config | prepare info of config, iad, iface, endpoint     
+            +-----------------+                                                  
+```
+
+```
++-----------------+                                                    
+| usb_dump_config | : prepare info of config, iad, iface, endpoint     
++-|---------------+                                                    
+  |    +----------------------------+                                  
+  |--> | usb_dump_config_descriptor | prepare config info              
+  |    +----------------------------+                                  
+  |                                                                    
+  |--> for each iface association descriptor (iad)                     
+  |    |                                                               
+  |    |    +-------------------------+                                
+  |    +--> | usb_dump_iad_descriptor | prepare iad info               
+  |         +-------------------------+                                
+  |                                                                    
+  +--> for each iface in config                                        
+       -                                                               
+       +--> for each alternate setting                                 
+            |                                                          
+            |    +--------------------+                                
+            +--> | usb_dump_interface | prepare info of iface, endpoint
+                 +--------------------+                                
+```
+
+```
++--------------------+                                            
+| usb_dump_interface | : prepare info of iface, endpoint          
++-|------------------+                                            
+  |    +-------------------------------+                          
+  |--> | usb_dump_interface_descriptor | prepare iface info       
+  |    +-------------------------------+                          
+  |                                                               
+  +--> for each endpoint                                          
+       |                                                          
+       |    +------------------------------+                      
+       +--> | usb_dump_endpoint_descriptor | prepare endpoint info
+            +------------------------------+                      
+```
+    
+</details>
   
 ## <a name="reference"></a> Reference
 
