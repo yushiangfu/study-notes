@@ -141,6 +141,29 @@ struct usb_device {
 };
 ```
     
+```
+(nowhere calls this function in my study case...)
++------------------+                                                          
+| usb_register_dev | : save driver fops in usb_minors, create device for iface
++-|----------------+                                                          
+  |                                                                           
+  |--> get minor_base from arg class_driver                                   
+  |                                                                           
+  |--> reset minor_base bc of enabled config                                  
+  |                                                                           
+  |    +----------------+                                                     
+  |--> | init_usb_class | prepare usb_class with class 'usbmisc'              
+  |    +----------------+                                                     
+  |                                                                           
+  |--> usb_minors[minor] = driver_class fops                                  
+  |                                                                           
+  |--> save minor in iface                                                    
+  |                                                                           
+  |    +---------------+                                                      
+  +--> | device_create | create device for iface                              
+       +---------------+                                                      
+```
+    
 </details>
 
 ### Hub
@@ -204,6 +227,287 @@ struct usbdrv_wrap {
      .id_table = hub_id_table,          
      .supports_autosuspend = 1,         
  };                                     
+```
+    
+```
++---------+                                                                
+| hub_irq | : handle hub event, resubmit hub urb                           
++-|-------+                                                                
+  |                                                                        
+  +--> prepare event bitmap                                                
+  |                                                                        
+  |    +-------------+                                                     
+  +--> | kick_hub_wq |                                                     
+  |    +-|-----------+                                                     
+  |      |    +------------+ +-----------+                                 
+  |      +--> | queue_work | | hub_event | handle port event if there's any
+  |           +------------+ +-----------+                                 
+  |    +----------------------+                                            
+  +--> | hub_resubmit_irq_urb | submit urb                                 
+       +----------------------+                                            
+```
+
+```
++-----------+                                                                                           
+| hub_event | : handle port event if there's any                                                        
++-|---------+                                                                                           
+  |                                                                                                      
+  +--> for each port of hub_dev                                                                          
+       -                                                                                                 
+       +--> if event bit is set                                                                          
+            |                                                                                            
+            |    +------------+                                                                          
+            +--> | port_event | get port status and handle connection change (ready usb_dev and endpoint)
+                 +------------+                                                                          
+```
+
+```
++------------+                                                                                    
+| port_event | : get port status and handle connection change (ready usb_dev and endpoint)        
++-|----------+                                                                                    
+  |    +-----------------+                                                                        
+  |--> | get_port_status | send control req to get port_status and port_change                    
+  |    +-----------------+                                                                        
+  |                                                                                               
+  |--> handle port_status and port_change                                                         
+  |                                                                                               
+  |--> determine if connect_change                                                                
+  |                                                                                               
+  +--> if connect_change                                                                          
+       |                                                                                          
+       |    +-------------------------+                                                           
+       +--> | hub_port_connect_change | ready usb_dev and endpoint, get usb descriptor and configs
+            +-------------------------+                                                           
+```
+
+```
++-------------------------+                                                                       
+| hub_port_connect_change | : ready usb_dev and endpoint, get usb descriptor and configs          
++-|-----------------------+                                                                       
+  |    +------------------+                                                                       
+  +--> | hub_port_connect | : ready usb_dev and endpoint, get usb descriptor and configs          
+       +-|----------------+                                                                       
+         |                                                                                        
+         |--> ensure there's no connected usb dev                                                 
+         |                                                                                        
+         +--> for each attempt (4)                                                                
+              |                                                                                   
+              |    +---------------+                                                              
+              |--> | usb_alloc_dev | prepare usb_dev, enable ep0                                  
+              |    +---------------+                                                              
+              |    +---------------+                                                              
+              |--> | choose_devnum | choose dev num which is used as file name in usbfs           
+              |    +---------------+                                                              
+              |    +---------------+                                                              
+              |--> | hub_port_init | reset device, get descriptor                                 
+              |    +---------------+                                                              
+              |    +----------------+                                                             
+              |--> | usb_new_device | ready usb configs, prepare dev#, register usb_dev and ep_dev
+              |    +----------------+                                                             
+              |                                                                                   
+              +--> return if everything is fine                                                   
+```
+    
+```
++---------------+                              
+| usb_alloc_dev | : prepare usb_dev, enable ep0
++-|-------------+                              
+  |                                            
+  |--> alloc usb_dev                           
+  |                                            
+  |--> set bus and type of dev                 
+  |                                            
+  |    +---------------------+                 
+  |--> | usb_enable_endpoint | enable endpoint 
+  |    +---------------------+                 
+  |                                            
+  |--> set path string and route# of dev       
+  |                                            
+  |--> if dev inserts in root hub              
+  |    |                                       
+  |    |    +------------------------------+   
+  |    +--> | usb_hcd_find_raw_port_number |   
+  |         +------------------------------+   
+  |                                            
+  +--> set parent/bus/port# of dev             
+```
+
+```
++---------------------+                              
+| usb_enable_endpoint | : enable endpoint            
++-|-------------------+                              
+  |                                                  
+  |--> if arg reset_ep is specified                  
+  |    |                                             
+  |    |    +------------------------+               
+  |    +--> | usb_hcd_reset_endpoint | reset endpoint
+  |         +------------------------+               
+  |                                                  
+  |--> save ep in dev                                
+  |                                                  
+  +--> label 'enabled' on ep                         
+```
+    
+```
++---------------+                                                           
+| hub_port_init | : reset device, get descriptor                            
++-|-------------+                                                           
+  |    +----------------+                                                   
+  |--> | hub_port_reset | reset the device                                  
+  |    +----------------+                                                   
+  |                                                                         
+  |--> given speed, determine max packet size                               
+  |                                                                         
+  |--> get driver_name from controller or sysdev                            
+  |                                                                         
+  |--> for each retry (2)                                                   
+  |    |                                                                    
+  |    |--> if new scheme                                                   
+  |    |    |                                                               
+  |    |    |    +-------------------+                                      
+  |    |    |--> | hub_enable_device | enable device                        
+  |    |    |    +-------------------+                                      
+  |    |    |                                                               
+  |    |    |--> for each operation                                         
+  |    |    |    |                                                          
+  |    |    |    |    +-----------------+                                   
+  |    |    |    +--> | usb_control_msg | send control msg to get descriptor
+  |    |    |         +-----------------+                                   
+  |    |    |    +----------------+                                         
+  |    |    +--> | hub_port_reset | reset the device                        
+  |    |         +----------------+                                         
+  |    |                                                                    
+  |    |--> if usb_dev isn't a wusb                                         
+  |    |    |                                                               
+  |    |    |    +-----------------+                                        
+  |    |    |--> | hub_set_address | set addr and reinit ep0                
+  |    |    |    +-----------------+                                        
+  |    |    |                                                               
+  |    |    +--> break if new scheme                                        
+  |    |                                                                    
+  |    |    +---------------------------+                                   
+  |    |--> | usb_get_device_descriptor |                                   
+  |    |    +---------------------------+                                   
+  |    |                                                                    
+  |    +--> break                                                           
+  |                                                                         
+  |    +---------------------------+                                        
+  |--> | usb_get_device_descriptor |                                        
+  |    +---------------------------+                                        
+  |                                                                         
+  +--> if bcd# >= 0x0201                                                    
+       |                                                                    
+       |    +------------------------+                                      
+       +--> | usb_get_bos_descriptor |                                      
+            +------------------------+                                      
+```
+    
+```
++----------------+                                                               
+| usb_new_device | : ready usb configs, prepare dev#, register usb_dev and ep_dev
++-|--------------+                                                               
+  |    +----------------------+                                                  
+  |--> | usb_enumerate_device | ensure we have read the configs                  
+  |    +----------------------+                                                  
+  |                                                                              
+  +--> prepare dev# for usb_dev                                                  
+  |                                                                              
+  |    +-----------------+                                                       
+  |--> | announce_device | print kernel msgs                                     
+  |    +-----------------+                                                       
+  |    +------------+                                                            
+  |--> | device_add | (trigger driver match & probe)
+  |    +------------+                                                            
+  |                                                                              
+  |--> create sys files between usb port dev and child dev                       
+  |                                                                              
+  |    +--------------------+                                                    
+  +--> | usb_create_ep_devs | prepare ep_dev, register it and save in endpoint   
+       +--------------------+                                                    
+```
+
+```
++----------------------+                                                        
+| usb_enumerate_device | : ensure we have read the configs                      
++-|--------------------+                                                        
+  |                                                                             
+  |--> if we don't have config yet                                              
+  |    |                                                                        
+  |    |    +-----------------------+                                           
+  |    +--> | usb_get_configuration | for each config: get descriptors and parse
+  |         +-----------------------+                                           
+  |                                                                             
+  |--> prepare string cache for product/manufacturer/serial                     
+  |                                                                             
+  |    +--------------------------+                                             
+  +--> | usb_enumerate_device_otg | do nothing bc of disabled config            
+       +--------------------------+                                             
+```
+
+```
++-----------------------+                                                     
+| usb_get_configuration | : for each config: get descriptors and parse        
++-|---------------------+                                                     
+  |                                                                          
+  |--> alloc config for dev                                                  
+  |                                                                          
+  |--> alloc raw_descriptors for dev                                         
+  |                                                                          
+  |--> alloc config_desc                                                     
+  |                                                                          
+  +--> for each config                                                       
+       |                                                                     
+       |    +--------------------+                                           
+       |--> | usb_get_descriptor | get the 1st desc to know the config length
+       |    +--------------------+                                           
+       |                                                                     
+       |--> alloc big_buffer                                                 
+       |                                                                     
+       |    +--------------------+                                           
+       |--> | usb_get_descriptor | get them all                              
+       |    +--------------------+                                           
+       |                                                                     
+       |--> save big_buffer in dev                                           
+       |                                                                     
+       |    +-------------------------+                                      
+       +--> | usb_parse_configuration | parse config                         
+            +-------------------------+                                      
+```
+
+```
++-----------------+                                                                     
+| announce_device | : print kernel msgs                                                 
++-|---------------+                                                                     
+  |                                                                                     
+  |--> print "New USB device found, idVendor=%04x, idProduct=%04x, bcdDevice=%2x.%02x\n"
+  |                                                                                     
+  |--> print "New USB device strings: Mfr=%d, Product=%d, SerialNumber=%d\n"            
+  |                                                                                     
+  |    +-------------+                                                                  
+  |--> | show_string | 'Product'                                                        
+  |    +-------------+                                                                  
+  |    +-------------+                                                                  
+  |--> | show_string | 'Manufacturer'                                                   
+  |    +-------------+                                                                  
+  |    +-------------+                                                                  
+  +--> | show_string | 'SerialNumber'                                                   
+       +-------------+                                                                  
+```
+
+```
++--------------------+                                                   
+| usb_create_ep_devs | : prepare ep_dev, register it and save in endpoint
++-|------------------+                                                   
+  |                                                                      
+  |--> alloc ep_dev                                                      
+  |                                                                      
+  |--> set dev type = usb_ep_device_type                                 
+  |                                                                      
+  |    +-----------------+                                               
+  |--> | device_register |                                               
+  |    +-----------------+                                               
+  |                                                                      
+  +--> save ep_dev in endpoint                                           
 ```
     
 ```
@@ -303,470 +607,6 @@ struct usbdrv_wrap {
 </details>
 
 ### Aspeed Virtual Hub
-
-```
-+---------------------+                                                                                          
-| ehci_platform_probe | : map io, register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
-+-|-------------------+                                                                                          
-  |    +------------------+                                                                                      
-  |--> | platform_get_irq | get irq parsed from dtb earlier                                                      
-  |    +------------------+                                                                                      
-  |    +----------------+                                                                                        
-  |--> | usb_create_hcd | prepare hcd                                                                            
-  |    +----------------+                                                                                        
-  |                                                                                                              
-  |--> set hcd params from default or dtb                                                                        
-  |                                                                                                              
-  |    +------------------------+                                                                                
-  |--> | reset_control_deassert | (skip)                                                                         
-  |    +------------------------+                                                                                
-  |    +-----------------------+                                                                                 
-  |--> | platform_get_resource | get reg base parsed from dtb earlier                                            
-  |    +-----------------------+                                                                                 
-  |    +-----------------------+                                                                                 
-  |--> | devm_ioremap_resource | map io                                                                          
-  |    +-----------------------+                                                                                 
-  |    +-------------+                                                                                           
-  +--> | usb_add_hcd | register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub           
-       +-------------+                                                                                           
-```
-
-```
-+-------------+                                                                                  
-| usb_add_hcd | : register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
-+-|-----------+                                                                                  
-  |                                                                                              
-  |--> print "EHCI Host Controller"                                                              
-  |                                                                                              
-  |    +-------------------+                                                                     
-  |--> | hcd_buffer_create | prepare buffer pools                                                
-  |    +-------------------+                                                                     
-  |    +------------------+                                                                      
-  |--> | usb_register_bus | notify the event of bus addition                                     
-  |    +------------------+                                                                      
-  |    +---------------+                                                                         
-  |--> | usb_alloc_dev | prepare usb_dev, enable ep0                                             
-  |    +---------------+                                                                         
-  |    +---------------------------+                                                             
-  |--> | usb_phy_roothub_calibrate | do nothing bc of disabled config                            
-  |    +---------------------------+                                                             
-  |    +----------------------+              +-------------+      +----------+                   
-  |--> | usb_hcd_request_irqs | register isr | usb_hcd_irq | ---> | ehci_irq |                   
-  |    +----------------------+              +-------------+      +----------+                   
-  |                                                                                              
-  |--> call ->start(), e.g.,                                                                     
-  |    +----------+                                                                              
-  |    | ehci_run | write hw regs to init, create sys files                                      
-  |    +----------+                                                                              
-  |                                                                                              
-  |    +-------------------+                                                                     
-  +--> | register_root_hub | get descriptor, ready configs, register usb_Dev and ep_dev          
-       +-------------------+                                                                     
-```
-
-```
-+------------------+                                                 
-| usb_register_bus | : notify the event of bus addition              
-+-|----------------+                                                 
-  |                                                                  
-  |--> get an unique# and assign to bus                              
-  |                                                                  
-  |    +--------------------+                                        
-  |--> | usb_notify_add_bus | call notifier chain of the bus addition
-  |    +--------------------+                                        
-  |                                                                  
-  +--> print "new USB bus registered, assigned bus number %d\n"      
-```
-
-```
-+----------------------+                                        
-| usb_hcd_request_irqs | : register isr                         
-+-|--------------------+                                        
-  |                                                             
-  +--> if irq# found                                            
-       |                                                        
-       |    +-------------+ +-------------+                     
-       |--> | request_irq | | usb_hcd_irq | call ->driver->irq()
-       |    +-------------+ +-------------+                     
-       |                                                        
-       +--> print "irq %d, %s 0x%08llx\n"                       
-```
-
-```
-+-------------------+                                                                 
-| register_root_hub | : get descriptor, ready configs, register usb_Dev and ep_dev    
-+-|-----------------+                                                                 
-  |    +---------------------------+                                                  
-  |--> | usb_get_device_descriptor | get device descriptor                            
-  |    +---------------------------+                                                  
-  |                                                                                   
-  |--> if bcd# >= 0x0201                                                              
-  |    |                                                                              
-  |    |    +------------------------+                                                
-  |    +--> | usb_get_bos_descriptor | get bos descriptor                             
-  |         +------------------------+                                                
-  |    +----------------+                                                             
-  +--> | usb_new_device | ready usb configs, prepare dev#, register usb_dev and ep_dev
-       +----------------+                                                             
-```
-
-```
-+------------------+                                                          
-| usb_register_dev | : save driver fops in usb_minors, create device for iface
-+-|----------------+                                                          
-  |                                                                           
-  |--> get minor_base from arg class_driver                                   
-  |                                                                           
-  |--> reset minor_base bc of enabled config                                  
-  |                                                                           
-  |    +----------------+                                                     
-  |--> | init_usb_class | prepare usb_class with class 'usbmisc'              
-  |    +----------------+                                                     
-  |                                                                           
-  |--> usb_minors[minor] = driver_class fops                                  
-  |                                                                           
-  |--> save minor in iface                                                    
-  |                                                                           
-  |    +---------------+                                                      
-  +--> | device_create | create device for iface                              
-       +---------------+                                                      
-```
-
-```
-+-----------+                                                                    
-| hub_probe | : prepare hub, get descriptor, prepare ports, activate hub         
-+-|---------+                                                                    
-  |                                                                              
-  |--> print "USB hub found\n"                                                   
-  |                                                                              
-  |--> alloc hub                                                                 
-  |                                                                              
-  |    +-------------+ +-------------------+                                     
-  |--> | timer_setup | | hub_retry_irq_urb |                                     
-  |    +-------------+ +-------------------+                                     
-  |    +------------------+                                                      
-  |--> | usb_set_intfdata | save hub in intf                                     
-  |    +------------------+                                                      
-  |    +---------------+                                                         
-  +--> | hub_configure | prepare hub, get descriptor, prepare ports, activate hub
-       +---------------+                                                         
-```
-
-```
-+---------------+                                                                            
-| hub_configure | : prepare hub, get descriptor, prepare ports, activate hub                 
-+-|-------------+                                                                            
-  |                                                                                          
-  |--> alloc buffer, status, and descriptor for hub                                          
-  |                                                                                          
-  |    +--------------------+                                                                
-  |--> | get_hub_descriptor | prepare msg (get hub desc) and submit it                       
-  |    +--------------------+                                                                
-  |                                                                                          
-  |--> print "%d port%s detected\n"                                                          
-  |                                                                                          
-  |--> alloc ports for hub                                                                   
-  |                                                                                          
-  |    +-----------+ +-------------+                                                         
-  |--> | INIT_WORK | | hub_tt_work |                                                         
-  |    +-----------+ +-------------+                                                         
-  |    +---------------+                                                                     
-  |--> | usb_alloc_urb | alloc urb for hub                                                   
-  |    +---------------+                                                                     
-  |    +------------------+                       +---------+                                
-  |--> | usb_fill_int_urb | init an interrupt urb | hub_irq |                                
-  |    +------------------+                       +---------+                                
-  |                                               handle hub event, resubmit hub urb         
-  |--> for each port                                                                         
-  |                                                                                          
-  |        +----------------------------+                                                    
-  |------> | usb_hub_create_port_device | prepare port_dev, register it, find and link a peer
-  |        +----------------------------+                                                    
-  |    +--------------+                                                                      
-  +--> | hub_activate | power up and submit hub urb                                          
-       +--------------+                                                                      
-```
-
-```
-+---------+                                                                
-| hub_irq | : handle hub event, resubmit hub urb                           
-+-|-------+                                                                
-  |                                                                        
-  +--> prepare event bitmap                                                
-  |                                                                        
-  |    +-------------+                                                     
-  +--> | kick_hub_wq |                                                     
-  |    +-|-----------+                                                     
-  |      |    +------------+ +-----------+                                 
-  |      +--> | queue_work | | hub_event | handle port event if there's any
-  |           +------------+ +-----------+                                 
-  |    +----------------------+                                            
-  +--> | hub_resubmit_irq_urb | submit urb                                 
-       +----------------------+                                            
-```
-
-```
-+-----------+                                                                                           
-| hub_event | : handle port event if there's any                                                        
-+-|---------+                                                                                           
-  |                                                                                                      
-  +--> for each port of hub_dev                                                                          
-       -                                                                                                 
-       +--> if event bit is set                                                                          
-            |                                                                                            
-            |    +------------+                                                                          
-            +--> | port_event | get port status and handle connection change (ready usb_dev and endpoint)
-                 +------------+                                                                          
-```
-
-```
-+------------+                                                                                    
-| port_event | : get port status and handle connection change (ready usb_dev and endpoint)        
-+-|----------+                                                                                    
-  |    +-----------------+                                                                        
-  |--> | get_port_status | send control req to get port_status and port_change                    
-  |    +-----------------+                                                                        
-  |                                                                                               
-  |--> handle port_status and port_change                                                         
-  |                                                                                               
-  |--> determine if connect_change                                                                
-  |                                                                                               
-  +--> if connect_change                                                                          
-       |                                                                                          
-       |    +-------------------------+                                                           
-       +--> | hub_port_connect_change | ready usb_dev and endpoint, get usb descriptor and configs
-            +-------------------------+                                                           
-```
-
-```
-+-------------------------+                                                                       
-| hub_port_connect_change | : ready usb_dev and endpoint, get usb descriptor and configs          
-+-|-----------------------+                                                                       
-  |    +------------------+                                                                       
-  +--> | hub_port_connect | : ready usb_dev and endpoint, get usb descriptor and configs          
-       +-|----------------+                                                                       
-         |                                                                                        
-         |--> ensure there's no connected usb dev                                                 
-         |                                                                                        
-         +--> for each attempt (4)                                                                
-              |                                                                                   
-              |    +---------------+                                                              
-              |--> | usb_alloc_dev | prepare usb_dev, enable ep0                                  
-              |    +---------------+                                                              
-              |    +---------------+                                                              
-              |--> | choose_devnum | choose dev num which is used as file name in usbfs           
-              |    +---------------+                                                              
-              |    +---------------+                                                              
-              |--> | hub_port_init | reset device, get descriptor                                 
-              |    +---------------+                                                              
-              |    +----------------+                                                             
-              |--> | usb_new_device | ready usb configs, prepare dev#, register usb_dev and ep_dev
-              |    +----------------+                                                             
-              |                                                                                   
-              +--> return if everything is fine                                                   
-```
-
-```
-+----------------+                                                               
-| usb_new_device | : ready usb configs, prepare dev#, register usb_dev and ep_dev
-+-|--------------+                                                               
-  |    +----------------------+                                                  
-  |--> | usb_enumerate_device | ensure we have read the configs                  
-  |    +----------------------+                                                  
-  |                                                                              
-  +--> prepare dev# for usb_dev                                                  
-  |                                                                              
-  |    +-----------------+                                                       
-  |--> | announce_device | print kernel msgs                                     
-  |    +-----------------+                                                       
-  |    +------------+                                                            
-  |--> | device_add | (trigger driver match & probe)
-  |    +------------+                                                            
-  |                                                                              
-  |--> create sys files between usb port dev and child dev                       
-  |                                                                              
-  |    +--------------------+                                                    
-  +--> | usb_create_ep_devs | prepare ep_dev, register it and save in endpoint   
-       +--------------------+                                                    
-```
-
-```
-+--------------------+                                                   
-| usb_create_ep_devs | : prepare ep_dev, register it and save in endpoint
-+-|------------------+                                                   
-  |                                                                      
-  |--> alloc ep_dev                                                      
-  |                                                                      
-  |--> set dev type = usb_ep_device_type                                 
-  |                                                                      
-  |    +-----------------+                                               
-  |--> | device_register |                                               
-  |    +-----------------+                                               
-  |                                                                      
-  +--> save ep_dev in endpoint                                           
-```
-
-```
-+-----------------+                                                                     
-| announce_device | : print kernel msgs                                                 
-+-|---------------+                                                                     
-  |                                                                                     
-  |--> print "New USB device found, idVendor=%04x, idProduct=%04x, bcdDevice=%2x.%02x\n"
-  |                                                                                     
-  |--> print "New USB device strings: Mfr=%d, Product=%d, SerialNumber=%d\n"            
-  |                                                                                     
-  |    +-------------+                                                                  
-  |--> | show_string | 'Product'                                                        
-  |    +-------------+                                                                  
-  |    +-------------+                                                                  
-  |--> | show_string | 'Manufacturer'                                                   
-  |    +-------------+                                                                  
-  |    +-------------+                                                                  
-  +--> | show_string | 'SerialNumber'                                                   
-       +-------------+                                                                  
-```
-
-```
-+----------------------+                                                        
-| usb_enumerate_device | : ensure we have read the configs                      
-+-|--------------------+                                                        
-  |                                                                             
-  |--> if we don't have config yet                                              
-  |    |                                                                        
-  |    |    +-----------------------+                                           
-  |    +--> | usb_get_configuration | for each config: get descriptors and parse
-  |         +-----------------------+                                           
-  |                                                                             
-  |--> prepare string cache for product/manufacturer/serial                     
-  |                                                                             
-  |    +--------------------------+                                             
-  +--> | usb_enumerate_device_otg | do nothing bc of disabled config            
-       +--------------------------+                                             
-```
-
-```
-+-----------------------+                                                     
-| usb_get_configuration | : for each config: get descriptors and parse        
-+-|---------------------+                                                     
-  |                                                                          
-  |--> alloc config for dev                                                  
-  |                                                                          
-  |--> alloc raw_descriptors for dev                                         
-  |                                                                          
-  |--> alloc config_desc                                                     
-  |                                                                          
-  +--> for each config                                                       
-       |                                                                     
-       |    +--------------------+                                           
-       |--> | usb_get_descriptor | get the 1st desc to know the config length
-       |    +--------------------+                                           
-       |                                                                     
-       |--> alloc big_buffer                                                 
-       |                                                                     
-       |    +--------------------+                                           
-       |--> | usb_get_descriptor | get them all                              
-       |    +--------------------+                                           
-       |                                                                     
-       |--> save big_buffer in dev                                           
-       |                                                                     
-       |    +-------------------------+                                      
-       +--> | usb_parse_configuration | parse config                         
-            +-------------------------+                                      
-```
-
-```
-+---------------+                                                           
-| hub_port_init | : reset device, get descriptor                            
-+-|-------------+                                                           
-  |    +----------------+                                                   
-  |--> | hub_port_reset | reset the device                                  
-  |    +----------------+                                                   
-  |                                                                         
-  |--> given speed, determine max packet size                               
-  |                                                                         
-  |--> get driver_name from controller or sysdev                            
-  |                                                                         
-  |--> for each retry (2)                                                   
-  |    |                                                                    
-  |    |--> if new scheme                                                   
-  |    |    |                                                               
-  |    |    |    +-------------------+                                      
-  |    |    |--> | hub_enable_device | enable device                        
-  |    |    |    +-------------------+                                      
-  |    |    |                                                               
-  |    |    |--> for each operation                                         
-  |    |    |    |                                                          
-  |    |    |    |    +-----------------+                                   
-  |    |    |    +--> | usb_control_msg | send control msg to get descriptor
-  |    |    |         +-----------------+                                   
-  |    |    |    +----------------+                                         
-  |    |    +--> | hub_port_reset | reset the device                        
-  |    |         +----------------+                                         
-  |    |                                                                    
-  |    |--> if usb_dev isn't a wusb                                         
-  |    |    |                                                               
-  |    |    |    +-----------------+                                        
-  |    |    |--> | hub_set_address | set addr and reinit ep0                
-  |    |    |    +-----------------+                                        
-  |    |    |                                                               
-  |    |    +--> break if new scheme                                        
-  |    |                                                                    
-  |    |    +---------------------------+                                   
-  |    |--> | usb_get_device_descriptor |                                   
-  |    |    +---------------------------+                                   
-  |    |                                                                    
-  |    +--> break                                                           
-  |                                                                         
-  |    +---------------------------+                                        
-  |--> | usb_get_device_descriptor |                                        
-  |    +---------------------------+                                        
-  |                                                                         
-  +--> if bcd# >= 0x0201                                                    
-       |                                                                    
-       |    +------------------------+                                      
-       +--> | usb_get_bos_descriptor |                                      
-            +------------------------+                                      
-```
-
-```
-+---------------+                              
-| usb_alloc_dev | : prepare usb_dev, enable ep0
-+-|-------------+                              
-  |                                            
-  |--> alloc usb_dev                           
-  |                                            
-  |--> set bus and type of dev                 
-  |                                            
-  |    +---------------------+                 
-  |--> | usb_enable_endpoint | enable endpoint 
-  |    +---------------------+                 
-  |                                            
-  |--> set path string and route# of dev       
-  |                                            
-  |--> if dev inserts in root hub              
-  |    |                                       
-  |    |    +------------------------------+   
-  |    +--> | usb_hcd_find_raw_port_number |   
-  |         +------------------------------+   
-  |                                            
-  +--> set parent/bus/port# of dev             
-```
-
-```
-+---------------------+                              
-| usb_enable_endpoint | : enable endpoint            
-+-|-------------------+                              
-  |                                                  
-  |--> if arg reset_ep is specified                  
-  |    |                                             
-  |    |    +------------------------+               
-  |    +--> | usb_hcd_reset_endpoint | reset endpoint
-  |         +------------------------+               
-  |                                                  
-  |--> save ep in dev                                
-  |                                                  
-  +--> label 'enabled' on ep                         
-```
 
 ```
 +-----------------+                                                                 
@@ -2136,6 +1976,167 @@ ehci-platform.c
   |--> have global 'ehci_platform_hc_driver' point to 'ehci_hc_driver'                  
   |                                                                                     
   +--> apply 'platform_overrides' to overwrite some attributes                          
+```
+
+```
++---------------------+                                                                                          
+| ehci_platform_probe | : map io, register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
++-|-------------------+                                                                                          
+  |    +------------------+                                                                                      
+  |--> | platform_get_irq | get irq parsed from dtb earlier                                                      
+  |    +------------------+                                                                                      
+  |    +----------------+                                                                                        
+  |--> | usb_create_hcd | prepare hcd                                                                            
+  |    +----------------+                                                                                        
+  |                                                                                                              
+  |--> set hcd params from default or dtb                                                                        
+  |                                                                                                              
+  |    +------------------------+                                                                                
+  |--> | reset_control_deassert | (skip)                                                                         
+  |    +------------------------+                                                                                
+  |    +-----------------------+                                                                                 
+  |--> | platform_get_resource | get reg base parsed from dtb earlier                                            
+  |    +-----------------------+                                                                                 
+  |    +-----------------------+                                                                                 
+  |--> | devm_ioremap_resource | map io                                                                          
+  |    +-----------------------+                                                                                 
+  |    +-------------+                                                                                           
+  +--> | usb_add_hcd | register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub           
+       +-------------+                                                                                           
+```
+
+```
++-------------+                                                                                  
+| usb_add_hcd | : register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
++-|-----------+                                                                                  
+  |                                                                                              
+  |--> print "EHCI Host Controller"                                                              
+  |                                                                                              
+  |    +-------------------+                                                                     
+  |--> | hcd_buffer_create | prepare buffer pools                                                
+  |    +-------------------+                                                                     
+  |    +------------------+                                                                      
+  |--> | usb_register_bus | notify the event of bus addition                                     
+  |    +------------------+                                                                      
+  |    +---------------+                                                                         
+  |--> | usb_alloc_dev | prepare usb_dev, enable ep0                                             
+  |    +---------------+                                                                         
+  |    +---------------------------+                                                             
+  |--> | usb_phy_roothub_calibrate | do nothing bc of disabled config                            
+  |    +---------------------------+                                                             
+  |    +----------------------+              +-------------+      +----------+                   
+  |--> | usb_hcd_request_irqs | register isr | usb_hcd_irq | ---> | ehci_irq |                   
+  |    +----------------------+              +-------------+      +----------+                   
+  |                                                                                              
+  |--> call ->start(), e.g.,                                                                     
+  |    +----------+                                                                              
+  |    | ehci_run | write hw regs to init, create sys files                                      
+  |    +----------+                                                                              
+  |                                                                                              
+  |    +-------------------+                                                                     
+  +--> | register_root_hub | get descriptor, ready configs, register usb_Dev and ep_dev          
+       +-------------------+                                                                     
+```
+
+```
++------------------+                                                 
+| usb_register_bus | : notify the event of bus addition              
++-|----------------+                                                 
+  |                                                                  
+  |--> get an unique# and assign to bus                              
+  |                                                                  
+  |    +--------------------+                                        
+  |--> | usb_notify_add_bus | call notifier chain of the bus addition
+  |    +--------------------+                                        
+  |                                                                  
+  +--> print "new USB bus registered, assigned bus number %d\n"      
+```
+
+```
++----------------------+                                        
+| usb_hcd_request_irqs | : register isr                         
++-|--------------------+                                        
+  |                                                             
+  +--> if irq# found                                            
+       |                                                        
+       |    +-------------+ +-------------+                     
+       |--> | request_irq | | usb_hcd_irq | call ->driver->irq()
+       |    +-------------+ +-------------+                     
+       |                                                        
+       +--> print "irq %d, %s 0x%08llx\n"                       
+```
+
+```
++-------------------+                                                                 
+| register_root_hub | : get descriptor, ready configs, register usb_Dev and ep_dev    
++-|-----------------+                                                                 
+  |    +---------------------------+                                                  
+  |--> | usb_get_device_descriptor | get device descriptor                            
+  |    +---------------------------+                                                  
+  |                                                                                   
+  |--> if bcd# >= 0x0201                                                              
+  |    |                                                                              
+  |    |    +------------------------+                                                
+  |    +--> | usb_get_bos_descriptor | get bos descriptor                             
+  |         +------------------------+                                                
+  |    +----------------+                                                             
+  +--> | usb_new_device | ready usb configs, prepare dev#, register usb_dev and ep_dev
+       +----------------+                                                             
+```
+
+```
++-----------+                                                                    
+| hub_probe | : prepare hub, get descriptor, prepare ports, activate hub         
++-|---------+                                                                    
+  |                                                                              
+  |--> print "USB hub found\n"                                                   
+  |                                                                              
+  |--> alloc hub                                                                 
+  |                                                                              
+  |    +-------------+ +-------------------+                                     
+  |--> | timer_setup | | hub_retry_irq_urb |                                     
+  |    +-------------+ +-------------------+                                     
+  |    +------------------+                                                      
+  |--> | usb_set_intfdata | save hub in intf                                     
+  |    +------------------+                                                      
+  |    +---------------+                                                         
+  +--> | hub_configure | prepare hub, get descriptor, prepare ports, activate hub
+       +---------------+                                                         
+```
+
+```
++---------------+                                                                            
+| hub_configure | : prepare hub, get descriptor, prepare ports, activate hub                 
++-|-------------+                                                                            
+  |                                                                                          
+  |--> alloc buffer, status, and descriptor for hub                                          
+  |                                                                                          
+  |    +--------------------+                                                                
+  |--> | get_hub_descriptor | prepare msg (get hub desc) and submit it                       
+  |    +--------------------+                                                                
+  |                                                                                          
+  |--> print "%d port%s detected\n"                                                          
+  |                                                                                          
+  |--> alloc ports for hub                                                                   
+  |                                                                                          
+  |    +-----------+ +-------------+                                                         
+  |--> | INIT_WORK | | hub_tt_work |                                                         
+  |    +-----------+ +-------------+                                                         
+  |    +---------------+                                                                     
+  |--> | usb_alloc_urb | alloc urb for hub                                                   
+  |    +---------------+                                                                     
+  |    +------------------+                       +---------+                                
+  |--> | usb_fill_int_urb | init an interrupt urb | hub_irq |                                
+  |    +------------------+                       +---------+                                
+  |                                               handle hub event, resubmit hub urb         
+  |--> for each port                                                                         
+  |                                                                                          
+  |        +----------------------------+                                                    
+  |------> | usb_hub_create_port_device | prepare port_dev, register it, find and link a peer
+  |        +----------------------------+                                                    
+  |    +--------------+                                                                      
+  +--> | hub_activate | power up and submit hub urb                                          
+       +--------------+                                                                      
 ```
 
 ```
