@@ -266,7 +266,7 @@ struct usbdrv_wrap {
 | port_event | : get port status and handle connection change (ready usb_dev and endpoint)        
 +-|----------+                                                                                    
   |    +-----------------+                                                                        
-  |--> | get_port_status | send control req to get port_status and port_change                    
+  |--> | hub_port_status | send control req to get port_status and port_change                    
   |    +-----------------+                                                                        
   |                                                                                               
   |--> handle port_status and port_change                                                         
@@ -278,6 +278,20 @@ struct usbdrv_wrap {
        |    +-------------------------+                                                           
        +--> | hub_port_connect_change | ready usb_dev and endpoint, get usb descriptor and configs
             +-------------------------+                                                           
+```
+    
+```
++-----------------+                                                                 
+| hub_port_status | : send control req to get port_status and port_change           
++-|---------------+                                                                 
+  |    +---------------------+                                                      
+  +--> | hub_ext_port_status | : send control req to get port_status and port_change
+       +-|-------------------+                                                      
+         |    +-----------------+                                                   
+         |--> | get_port_status | send control req to get port status               
+         |    +-----------------+                                                   
+         |                                                                          
+         +--> get port_status and port_change                                       
 ```
 
 ```
@@ -607,332 +621,6 @@ struct usbdrv_wrap {
 </details>
 
 ### Aspeed Virtual Hub
-
-```
-+-----------------+                                                                 
-| get_port_status | : send control req to get port_status and port_change           
-+-|---------------+                                                                 
-  |    +---------------------+                                                      
-  +--> | hub_ext_port_status | : send control req to get port_status and port_change
-       +-|-------------------+                                                      
-         |    +-----------------+                                                   
-         |--> | get_port_status | send control req to get port status               
-         |    +-----------------+                                                   
-         |                                                                          
-         +--> get port_status and port_change                                       
-```
-
-```
-+----------------------------+                                                      
-| usb_hub_create_port_device | : prepare port_dev, register it, find and link a peer
-+-|--------------------------+                                                      
-  |                                                                                 
-  |--> alloc port_dev                                                               
-  |                                                                                 
-  |--> alloc req for port_dev                                                       
-  |                                                                                 
-  |--> assign port_dev to hub                                                       
-  |                                                                                 
-  |--> set type and driver for port_dev                                             
-  |                                                                                 
-  |    +-----------------+                                                          
-  |--> | device_register |                                                          
-  |    +-----------------+                                                          
-  |    +--------------------+                                                       
-  +--> | find_and_link_peer | find peer and relate it with arg port_dev             
-       +--------------------+                                                       
-```
-
-```
-+--------------------+                                                         
-| find_and_link_peer | : find peer and relate it with arg port_dev             
-+-|------------------+                                                         
-  |                                                                            
-  |--> if port_dev has specified location                                      
-  |    |                                                                       
-  |    |--> for each dev on 'usb' bus                                          
-  |    |    |                                                                  
-  |    |    |    +----------------+                                            
-  |    |    +--> | match_location | find peer, relate it with port_dev if found
-  |    |         +----------------+                                            
-  |    +--> return                                                             
-  |                                                                            
-  |--> elif hdev has no parent                                                 
-  |    -                                                                       
-  |    +--> set peer_hdev = root_hub                                           
-  |                                                                            
-  |--> else                                                                    
-  |    -                                                                       
-  |    +--> set peer_hdev = upstream->peer->child                              
-  |                                                                            
-  |--> determine peer from peer_hdev                                           
-  |                                                                            
-  |    +-------------------+                                                   
-  +--> | link_peers_report | relate peer and port_dev                          
-       +-------------------+                                                   
-```
-
-```
-+----------------+                                              
-| match_location | : find peer, relate it with port_dev if found
-+-|--------------+                                              
-  |                                                             
-  +--> for each of peer_hdev                                    
-       -                                                        
-       +--> if that peer and arg port_dev have the same location
-            |                                                   
-            |    +-------------------+                          
-            +--> | link_peers_report | relate them              
-                 +-------------------+                          
-```
-
-```
-+--------------------+                                              
-| get_hub_descriptor | : prepare msg (get hub desc) and submit it   
-+-|------------------+                                              
-  |                                                                 
-  |--> determine type and size                                      
-  |                                                                 
-  +--> for 0, 1, 2                                                  
-       |                                                            
-       |    +-----------------+                                     
-       +--> | usb_control_msg | set up a ctrl req, submit urb for it
-            +-----------------+                                     
-```
-
-```
-+-----------------+                                                                         
-| usb_control_msg | : set up a ctrl req, submit urb for it                                  
-+-|---------------+                                                                         
-  |                                                                                         
-  |--> alloc ctrl_req                                                                       
-  |                                                                                         
-  |--> set up type, req, value, index, and size                                             
-  |                                                                                         
-  |    +--------------------------+                                                         
-  +--> | usb_internal_control_msg | prepare a 'control' urb, get an endpoint, submit the urb
-       +--------------------------+                                                         
-```
-
-```
-+--------------------------+                                                           
-| usb_internal_control_msg | : prepare a 'control' urb, get an endpoint, submit the urb
-+-|------------------------+                                                           
-  |    +---------------+                                                               
-  |--> | usb_alloc_urb | prepare urb                                                   
-  |    +---------------+                                                               
-  |    +----------------------+                                                        
-  |--> | usb_fill_control_urb | set up a control urb                                   
-  |    +----------------------+                                                        
-  |    +--------------------+                                                          
-  +--> | usb_start_wait_urb | get endpoint, submit urb for processing                  
-       +--------------------+                                                          
-```
-
-```
-+--------------------+                                           
-| usb_start_wait_urb | : get endpoint, submit urb for processing 
-+-|------------------+                                           
-  |    +----------------+                                        
-  |--> | usb_submit_urb | get endpoint, submit urb for processing
-  |    +----------------+                                        
-  |                                                              
-  |--> return actual buf len through arg                         
-  |                                                              
-  |    +--------------+                                          
-  +--> | usb_free_urb |                                          
-       +--------------+                                          
-```
-
-```
-+----------------+                                             
-| usb_submit_urb | : get endpoint, submit urb for processing   
-+-|--------------+                                             
-  |    +-------------------+                                   
-  |--> | usb_pipe_endpoint | get an in or out endpoint from dev
-  |    +-------------------+                                   
-  |                                                            
-  |--> set up urb                                              
-  |                                                            
-  |    +-------------------+                                   
-  |--> | usb_endpoint_type | get endpoint type                 
-  |    +-------------------+                                   
-  |                                                            
-  |--> determine if 'is_out'                                   
-  |                                                            
-  |--> adjust max speed based on type                          
-  |                                                            
-  |    +--------------------+                                  
-  +--> | usb_hcd_submit_urb | submit urb for processing        
-       +--------------------+                                  
-```
-
-```
-+--------------------+                                       
-| usb_hcd_submit_urb | : submit urb for processing           
-+-|------------------+                                       
-  |    +-------------------+                                 
-  |--> | usbmon_urb_submit | do nothing bc of disabled config
-  |    +-------------------+                                 
-  |                                                          
-  |--> if it's root hub                                      
-  |    |                                                     
-  |    |    +----------------+                               
-  |    +--> | rh_urb_enqueue | handle urb                    
-  |         +----------------+                               
-  |                                                          
-  +--> else                                                  
-       -                                                     
-       +--> call ->urb_enqueue, e.g.,                        
-            +------------------+                             
-            | ehci_urb_enqueue | submit urb to somewhere?    
-            +------------------+                             
-```
-
-```
-+----------------+                                                             
-| rh_urb_enqueue | : handle urb                                                
-+---|------------+                                                             
-    |                                                                          
-    |--> if the ep has interrupt-type transfer                                 
-    |    |                                                                     
-    |    |    +-----------------+                                              
-    |    +--> | rh_queue_status | add urb to ep, poll root hub status          
-    |         +-----------------+                                              
-    |                                                                          
-    +--> if the ep has control-type transfer                                   
-         |                                                                     
-         |    +-----------------+                                              
-         +--> | rh_call_control | get type from urb cmd, handle req accordingly
-              +-----------------+                                              
-```
-
-```
-+-----------------+                                                 
-| rh_call_control | : get type from urb cmd, handle req accordingly 
-+-|---------------+                                                 
-  |    +-----------------------+                                    
-  |--> | usb_hcd_link_urb_to_ep| add urb to ep                      
-  |    +-----------------------+                                    
-  |                                                                 
-  |--> get type/value/index/length from urb cmd                     
-  |                                                                 
-  |--> alloc buffer                                                 
-  |                                                                 
-  |--> switch (request) type                                        
-  |                                                                 
-  |--> case 'device requests'                                       
-  |    -                                                            
-  |    +--> blabla                                                  
-  |                                                                 
-  |--> case 'endpoint requests'                                     
-  |    -                                                            
-  |    +--> blabla                                                  
-  |                                                                 
-  |--> case 'class requests'                                        
-  |    -                                                            
-  |    +--> call ->hub_control()                                    
-  |         +------------------+                                    
-  |         | ehci_hub_control |                                    
-  |         +------------------+                                    
-  |    +----------------------------+                               
-  |--> | usb_hcd_unlink_urb_from_ep | remove urb from ep            
-  |    +----------------------------+                               
-  |    +----------------------+                                     
-  +--> | usb_hcd_giveback_urb | return urb from hcd to device driver
-       +----------------------+                                     
-```
-
-```
-+-----------------+                                      
-| rh_queue_status | : add urb to ep, poll root hub status
-+-|---------------+                                      
-  |    +------------------------+                        
-  |--> | usb_hcd_link_urb_to_ep | add urb to ep          
-  |    +------------------------+                        
-  |                                                      
-  |--> relate urb and hcd                                
-  |                                                      
-  +--> modify timer                                      
-       +---------------+                                 
-       | rh_timer_func | poll root hub status            
-       +---------------+                                 
-```
-
-```
-+---------------+                                     
-| rh_timer_func | : poll root hub status              
-+-|-------------+                                     
-  |                                                   
-  |--> get hcd from timer                             
-  |                                                   
-  |    +------------------------+                     
-  +--> | usb_hcd_poll_rh_status | poll root hub status
-       +------------------------+                     
-```
-
-```
-+------------------------+                                                    
-| usb_hcd_poll_rh_status | : poll root hub status                             
-+-|----------------------+                                                    
-  |                                                                           
-  |--> call ->hub_status_data(), e.g.,                                        
-  |    +----------------------+                                               
-  |    | ehci_hub_status_data | build 'status change' packet                  
-  |    +----------------------+                                               
-  |                                                                           
-  |--> if packet size is non-zero                                             
-  |    |                                                                      
-  |    |--> get urb from hcd                                                  
-  |    |                                                                      
-  |    +--> if urb exists                                                     
-  |         |                                                                 
-  |         |--> clear 'pending' of hcd                                       
-  |         |                                                                 
-  |         |--> copy packet to urb                                           
-  |         |                                                                 
-  |         |    +----------------------------+                               
-  |         |--> | usb_hcd_unlink_urb_from_ep | remove urb from endpoint      
-  |         |    +----------------------------+                               
-  |         |    +----------------------+                                     
-  |         +--> | usb_hcd_giveback_urb | call urb's complete() and return it from hcd to device driver
-  |              +----------------------+                                     
-  |    +-----------+                                                          
-  +--> | mod_timer | modify timer to poll status                              
-       +-----------+                                                          
-```
-
-```
-+----------------------+                                        
-| usb_hcd_giveback_urb | : call urb's complete() and return it from hcd to device driver
-+-|--------------------+                                        
-  |                                                             
-  |--> save status in urb                                       
-  |                                                             
-  |    +------------------------+                               
-  +--> | __usb_hcd_giveback_urb | unanchor urb, complete it     
-       +------------------------+                               
-```
-
-```
-+------------------------+
-| __usb_hcd_giveback_urb | : unanchor urb, call its complete()
-+-|----------------------+
-  |    +-------------------+
-  |--> | unmap_urb_for_dma |
-  |    +-------------------+
-  |    +---------------------+
-  |--> | usbmon_urb_complete | do nothing bc of disabled config
-  |    +---------------------+
-  |    +------------------+
-  |--> | usb_unanchor_urb | remove urb from anchor list
-  |    +------------------+
-  |
-  +--> call ->complete(), e.g.,
-       +---------+
-       | hub_irq | handle hub event, resubmit hub urb
-       +---------+                                   
-```
 
 ```
 +---------------------------+
@@ -1764,6 +1452,8 @@ struct usbdrv_wrap {
 
 ## <a name="system-startup"></a> System Startup
 
+<details><summary> More Details </summary>
+
 ```
 usb_common_init         : create /sys/kernel/debug/usb
 usb_init                : register bus, notifier, intf driver 'usbfs_driver' & 'hub_driver', dev driver 'usb_generic_driver'
@@ -2137,6 +1827,318 @@ ehci-platform.c
   |    +--------------+                                                                      
   +--> | hub_activate | power up and submit hub urb                                          
        +--------------+                                                                      
+```
+
+```
++--------------------+                                              
+| get_hub_descriptor | : prepare msg (get hub desc) and submit it   
++-|------------------+                                              
+  |                                                                 
+  |--> determine type and size                                      
+  |                                                                 
+  +--> for 0, 1, 2                                                  
+       |                                                            
+       |    +-----------------+                                     
+       +--> | usb_control_msg | set up a ctrl req, submit urb for it
+            +-----------------+                                     
+```
+
+```
++-----------------+                                                                         
+| usb_control_msg | : set up a ctrl req, submit urb for it                                  
++-|---------------+                                                                         
+  |                                                                                         
+  |--> alloc ctrl_req                                                                       
+  |                                                                                         
+  |--> set up type, req, value, index, and size                                             
+  |                                                                                         
+  |    +--------------------------+                                                         
+  +--> | usb_internal_control_msg | prepare a 'control' urb, get an endpoint, submit the urb
+       +--------------------------+                                                         
+```
+
+```
++--------------------------+                                                           
+| usb_internal_control_msg | : prepare a 'control' urb, get an endpoint, submit the urb
++-|------------------------+                                                           
+  |    +---------------+                                                               
+  |--> | usb_alloc_urb | prepare urb                                                   
+  |    +---------------+                                                               
+  |    +----------------------+                                                        
+  |--> | usb_fill_control_urb | set up a control urb                                   
+  |    +----------------------+                                                        
+  |    +--------------------+                                                          
+  +--> | usb_start_wait_urb | get endpoint, submit urb for processing                  
+       +--------------------+                                                          
+```
+
+```
++--------------------+                                           
+| usb_start_wait_urb | : get endpoint, submit urb for processing 
++-|------------------+                                           
+  |    +----------------+                                        
+  |--> | usb_submit_urb | get endpoint, submit urb for processing
+  |    +----------------+                                        
+  |                                                              
+  |--> return actual buf len through arg                         
+  |                                                              
+  |    +--------------+                                          
+  +--> | usb_free_urb |                                          
+       +--------------+                                          
+```
+
+```
++----------------+                                             
+| usb_submit_urb | : get endpoint, submit urb for processing   
++-|--------------+                                             
+  |    +-------------------+                                   
+  |--> | usb_pipe_endpoint | get an in or out endpoint from dev
+  |    +-------------------+                                   
+  |                                                            
+  |--> set up urb                                              
+  |                                                            
+  |    +-------------------+                                   
+  |--> | usb_endpoint_type | get endpoint type                 
+  |    +-------------------+                                   
+  |                                                            
+  |--> determine if 'is_out'                                   
+  |                                                            
+  |--> adjust max speed based on type                          
+  |                                                            
+  |    +--------------------+                                  
+  +--> | usb_hcd_submit_urb | submit urb for processing        
+       +--------------------+                                  
+```
+
+```
++--------------------+                                       
+| usb_hcd_submit_urb | : submit urb for processing           
++-|------------------+                                       
+  |    +-------------------+                                 
+  |--> | usbmon_urb_submit | do nothing bc of disabled config
+  |    +-------------------+                                 
+  |                                                          
+  |--> if it's root hub                                      
+  |    |                                                     
+  |    |    +----------------+                               
+  |    +--> | rh_urb_enqueue | handle urb                    
+  |         +----------------+                               
+  |                                                          
+  +--> else                                                  
+       -                                                     
+       +--> call ->urb_enqueue, e.g.,                        
+            +------------------+                             
+            | ehci_urb_enqueue | submit urb to somewhere?    
+            +------------------+                             
+```
+
+```
++----------------+                                                             
+| rh_urb_enqueue | : handle urb                                                
++---|------------+                                                             
+    |                                                                          
+    |--> if the ep has interrupt-type transfer                                 
+    |    |                                                                     
+    |    |    +-----------------+                                              
+    |    +--> | rh_queue_status | add urb to ep, poll root hub status          
+    |         +-----------------+                                              
+    |                                                                          
+    +--> if the ep has control-type transfer                                   
+         |                                                                     
+         |    +-----------------+                                              
+         +--> | rh_call_control | get type from urb cmd, handle req accordingly
+              +-----------------+                                              
+```
+
+```
++-----------------+                                      
+| rh_queue_status | : add urb to ep, poll root hub status
++-|---------------+                                      
+  |    +------------------------+                        
+  |--> | usb_hcd_link_urb_to_ep | add urb to ep          
+  |    +------------------------+                        
+  |                                                      
+  |--> relate urb and hcd                                
+  |                                                      
+  +--> modify timer                                      
+       +---------------+                                 
+       | rh_timer_func | poll root hub status            
+       +---------------+                                 
+```
+
+```
++---------------+                                     
+| rh_timer_func | : poll root hub status              
++-|-------------+                                     
+  |                                                   
+  |--> get hcd from timer                             
+  |                                                   
+  |    +------------------------+                     
+  +--> | usb_hcd_poll_rh_status | poll root hub status
+       +------------------------+                     
+```
+
+```
++------------------------+                                                    
+| usb_hcd_poll_rh_status | : poll root hub status                             
++-|----------------------+                                                    
+  |                                                                           
+  |--> call ->hub_status_data(), e.g.,                                        
+  |    +----------------------+                                               
+  |    | ehci_hub_status_data | build 'status change' packet                  
+  |    +----------------------+                                               
+  |                                                                           
+  |--> if packet size is non-zero                                             
+  |    |                                                                      
+  |    |--> get urb from hcd                                                  
+  |    |                                                                      
+  |    +--> if urb exists                                                     
+  |         |                                                                 
+  |         |--> clear 'pending' of hcd                                       
+  |         |                                                                 
+  |         |--> copy packet to urb                                           
+  |         |                                                                 
+  |         |    +----------------------------+                               
+  |         |--> | usb_hcd_unlink_urb_from_ep | remove urb from endpoint      
+  |         |    +----------------------------+                               
+  |         |    +----------------------+                                     
+  |         +--> | usb_hcd_giveback_urb | call urb's complete() and return it from hcd to device driver
+  |              +----------------------+                                     
+  |    +-----------+                                                          
+  +--> | mod_timer | modify timer to poll status                              
+       +-----------+                                                          
+```
+
+```
++----------------------+                                        
+| usb_hcd_giveback_urb | : call urb's complete() and return it from hcd to device driver
++-|--------------------+                                        
+  |                                                             
+  |--> save status in urb                                       
+  |                                                             
+  |    +------------------------+                               
+  +--> | __usb_hcd_giveback_urb | unanchor urb, complete it     
+       +------------------------+                               
+```
+
+```
++------------------------+
+| __usb_hcd_giveback_urb | : unanchor urb, call its complete()
++-|----------------------+
+  |    +-------------------+
+  |--> | unmap_urb_for_dma |
+  |    +-------------------+
+  |    +---------------------+
+  |--> | usbmon_urb_complete | do nothing bc of disabled config
+  |    +---------------------+
+  |    +------------------+
+  |--> | usb_unanchor_urb | remove urb from anchor list
+  |    +------------------+
+  |
+  +--> call ->complete(), e.g.,
+       +---------+
+       | hub_irq | handle hub event, resubmit hub urb
+       +---------+                                   
+```
+
+```
++-----------------+                                                 
+| rh_call_control | : get type from urb cmd, handle req accordingly 
++-|---------------+                                                 
+  |    +-----------------------+                                    
+  |--> | usb_hcd_link_urb_to_ep| add urb to ep                      
+  |    +-----------------------+                                    
+  |                                                                 
+  |--> get type/value/index/length from urb cmd                     
+  |                                                                 
+  |--> alloc buffer                                                 
+  |                                                                 
+  |--> switch (request) type                                        
+  |                                                                 
+  |--> case 'device requests'                                       
+  |    -                                                            
+  |    +--> blabla                                                  
+  |                                                                 
+  |--> case 'endpoint requests'                                     
+  |    -                                                            
+  |    +--> blabla                                                  
+  |                                                                 
+  |--> case 'class requests'                                        
+  |    -                                                            
+  |    +--> call ->hub_control()                                    
+  |         +------------------+                                    
+  |         | ehci_hub_control |                                    
+  |         +------------------+                                    
+  |    +----------------------------+                               
+  |--> | usb_hcd_unlink_urb_from_ep | remove urb from ep            
+  |    +----------------------------+                               
+  |    +----------------------+                                     
+  +--> | usb_hcd_giveback_urb | return urb from hcd to device driver
+       +----------------------+                                     
+```
+
+```
++----------------------------+                                                      
+| usb_hub_create_port_device | : prepare port_dev, register it, find and link a peer
++-|--------------------------+                                                      
+  |                                                                                 
+  |--> alloc port_dev                                                               
+  |                                                                                 
+  |--> alloc req for port_dev                                                       
+  |                                                                                 
+  |--> assign port_dev to hub                                                       
+  |                                                                                 
+  |--> set type and driver for port_dev                                             
+  |                                                                                 
+  |    +-----------------+                                                          
+  |--> | device_register |                                                          
+  |    +-----------------+                                                          
+  |    +--------------------+                                                       
+  +--> | find_and_link_peer | find peer and relate it with arg port_dev             
+       +--------------------+                                                       
+```
+
+```
++--------------------+                                                         
+| find_and_link_peer | : find peer and relate it with arg port_dev             
++-|------------------+                                                         
+  |                                                                            
+  |--> if port_dev has specified location                                      
+  |    |                                                                       
+  |    |--> for each dev on 'usb' bus                                          
+  |    |    |                                                                  
+  |    |    |    +----------------+                                            
+  |    |    +--> | match_location | find peer, relate it with port_dev if found
+  |    |         +----------------+                                            
+  |    +--> return                                                             
+  |                                                                            
+  |--> elif hdev has no parent                                                 
+  |    -                                                                       
+  |    +--> set peer_hdev = root_hub                                           
+  |                                                                            
+  |--> else                                                                    
+  |    -                                                                       
+  |    +--> set peer_hdev = upstream->peer->child                              
+  |                                                                            
+  |--> determine peer from peer_hdev                                           
+  |                                                                            
+  |    +-------------------+                                                   
+  +--> | link_peers_report | relate peer and port_dev                          
+       +-------------------+                                                   
+```
+
+```
++----------------+                                              
+| match_location | : find peer, relate it with port_dev if found
++-|--------------+                                              
+  |                                                             
+  +--> for each of peer_hdev                                    
+       -                                                        
+       +--> if that peer and arg port_dev have the same location
+            |                                                   
+            |    +-------------------+                          
+            +--> | link_peers_report | relate them              
+                 +-------------------+                          
 ```
 
 ```
@@ -3038,6 +3040,8 @@ usbhid/hid-core.c
   |                                                                                     
   +------> append quirk_new to the end of 'dquirks_list'                                
 ```
+    
+</details>
   
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
