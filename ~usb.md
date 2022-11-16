@@ -5,7 +5,7 @@
 - [Introduction](#introduction)
 - [Host](#host)
 - [Device](#device)
-- [Hub](#hub)
+- [Gadget](#gadget)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -17,8 +17,7 @@
 ## <a name="host"></a> Host
 
 The universal serial bus (USB) is a typical master-slave framework in that the USB controller initiates a request, and the target device responds. 
-The controller comes with a root hub; every port can further connects to a USB device or adapts to another hub, and so on. 
-Following the significant USB standards, a few host controller drivers (HCD) have been adequately implemented and stuffed into the kernel.
+So far, a few standards have come out, and thus that many types of controllers exist along with the host controller drivers (HCD).
 
 - UHCI
     - the universal host controller interface
@@ -85,7 +84,25 @@ Each device must clearly prepare the below descriptors for the host controller t
     
 </details>
 
-## <a name="hub"></a> Hub
+### Hub
+
+Hub is a unique USB device equipped with ports, which is meant to connect to other USB devices or another hub, and so on. 
+With no exception, it also contains those constructive descriptors and attributes like other devices for HCD to query and set up. 
+The host controller implements the root hub; after initialization by the hub driver, a USB request block (URB) is submitted to the HCD structure. 
+When a device plugs in, e.g., my wireless receiver of keyboard and mice, the USB interrupt raises, and the story reasonably starts:
+
+1. The interrupt service routine (ISR) addresses the signal and completes the anchored URB attached by the hub driver.
+2. Gets port status and finds out the event of port connection change.
+3. Prepares device structure and sequentially accesses the device, config, and interface descriptors.
+4. Registers the device and thus reaches the generic device framework for the device driver matching and probing to behave.
+
+Usually, we finish right here, but this time we still need to take care of the multiple functionalities of the device. 
+Because of the descriptor hierarchy design in a USB device, the detection procedure progressively reads them and operates accordingly.
+
+5. Chooses the proper config descriptor to apply, but commonly there's also only one possibility around.
+6. Readies device structures for entire interfaces (keyboard and mouse functions in our case) within the selected config.
+7. Registers the devices, and the device framework takes over for another match attempt, but this time it traverses interface drivers instead.
+8. Lastly, the URB is placed back in the HCD structure for the next hub event.
 
 ```
 struct usb_driver {
@@ -727,9 +744,9 @@ struct usb_bus {
 ```
 
 ```
-+----------------------+                                                     
-| usb_enumerate_device | : for each config: get descriptors and parse        
-+-|--------------------+                                                     
++-----------------------+                                                     
+| usb_get_configuration | : for each config: get descriptors and parse        
++-|---------------------+                                                     
   |                                                                          
   |--> alloc config for dev                                                  
   |                                                                          
