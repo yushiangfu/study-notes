@@ -366,7 +366,7 @@ It doesn't matter whether a device or driver registers first because the framewo
     ```
     (functions exist but print no log)
     ```
-- [log] device_initcall  
+- [log] device_initcall (and module_init in some cases)
     ```
     [    0.303449] Unpacking initramfs...
     [    0.324379] workingset: timestamp_bits=30 max_order=17 bucket_order=0
