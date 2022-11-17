@@ -166,3 +166,9 @@ dump_manager_main.cpp
 ```
 core_manager_main.cpp
 ```
+
+## Cheat Sheet
+
+```
+/var/lib/phosphor-debug-collector/dumps/
+```
