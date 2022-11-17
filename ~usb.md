@@ -1362,6 +1362,285 @@ struct usbdrv_wrap {
   +--> save its usb config in composite dev                        
 ```
 
+### Configfs
+
+<details><summary> More Details </summary>
+
+```
++-------------------------+                                                                                       
+| configfs_composite_bind | : bind composite to gadget (ready configs and functions)                              
++-|-----------------------+                                                                                       
+  |                                                                                                               
+  |--> relate gadget and composite_dev                                                                            
+  |                                                                                                               
+  |    +-----------------------+                                                                                  
+  |--> | composite_dev_prepare | prepare req for composite, assign composite to gadget ep0 as private             
+  |    +-----------------------+                                                                                  
+  |                                                                                                               
+  |--> return error if no config for composite                                                                    
+  |                                                                                                               
+  |--> check if each config has at least one function                                                             
+  |                                                                                                               
+  |--> if 'string' list isn't empty                                                                               
+  |    |                                                                                                          
+  |    |    +---------------------+                                                                               
+  |    +--> | usb_gstrings_attach | duplicate strings from gadget_info and attach to composite                    
+  |         +---------------------+                                                                               
+  |    +---------------+                                                                                          
+  |--> | gadget_is_otg | check if it's a on-the-go adapter (ignore the related code)                              
+  |    +---------------+                                                                                          
+  |                                                                                                               
+  |--> for each config                                                                                            
+  |    |                                                                                                          
+  |    |    +---------------------+                                                                               
+  |    |--> | usb_gstrings_attach | duplicate strings from config and attach to composite                         
+  |    |    +---------------------+                                                                               
+  |    |                                                                                                          
+  |    |--> for each func in config                                                                               
+  |    |    |                                                                                                     
+  |    |    |--> remove func from list                                                                            
+  |    |    |                                                                                                     
+  |    |    |    +------------------+                                                                             
+  |    |    +--> | usb_add_function | add functions to config, get endpoints, alloc req, install ops to, e.g., ecm
+  |    |         +------------------+                                                                             
+  |    |    +-------------------------+                                                                           
+  |    |--> | usb_gadget_check_config | call ->check_config if it exists (not our case)                           
+  |    |    +-------------------------+                                                                           
+  |    |    +-------------------------+                                                                           
+  |    +--> | usb_ep_autoconfig_reset | reset endpoints and gadget                                                
+  |         +-------------------------+                                                                           
+  |                                                                                                               
+  +--> if 'use_os_string' is set                                                                                  
+       |                                                                                                          
+       |    +-------------------------------+                                                                     
+       +--> | composite_os_desc_req_prepare | prepare req (and its buffer), relate it and composite_dev           
+            +-------------------------------+                                                                     
+```
+    
+```
++-----------------------+                                                                       
+| composite_dev_prepare | : prepare req for composite, assign composite to gadget ep0 as private
++-|---------------------+                                                                       
+  |    +----------------------+                                                                 
+  |--> | usb_ep_alloc_request | alloc request                                                   
+  |    +----------------------+                                                                 
+  |                                                                                             
+  |--> assign req to composite dev                                                              
+  |                                                                                             
+  |--> alloc buffer for req                                                                     
+  |                                                                                             
+  |    +--------------------+                                                                   
+  |--> | device_create_file | create files under /sys/                                          
+  |    +--------------------+                                                                   
+  |                                                                                             
+  |--> gadget ep0 private = composite                                                           
+  |                                                                                             
+  |    +-------------------------+                                                              
+  +--> | usb_ep_autoconfig_reset | reset ep state                                               
+       +-------------------------+                                                              
+```
+
+```
++----------------------+                   
+| usb_ep_alloc_request | : alloc request   
++-|--------------------+                   
+  |                                        
+  +--> call ->alloc_request, e.g.,         
+       +------------------------+          
+       | ast_vhub_alloc_request | alloc req
+       +------------------------+          
+```
+    
+```
++---------------------+                                            
+| usb_gstrings_attach | : duplicate strings and attach to composite
++|--------------------+                                            
+ |    +---------------------+                                      
+ |--> | copy_gadget_strings | alloc buffer and copy strings to it  
+ |    +---------------------+                                      
+ |    +---------------+                                            
+ +--> | list_add_tail | append copied strings to list in composite 
+      +---------------+                                            
+```
+
+```
++------------------+                                                                               
+| usb_add_function | : add functions to config, get endpoints, alloc req, install ops to, e.g., ecm
++-|----------------+                                                                               
+  |                                                                                                
+  |--> relate function and config                                                                  
+  |                                                                                                
+  |--> if ->bind exists                                                                            
+  |                                                                                                
+  +------> call ->bind, e.g.,                                                                      
+           +----------+                                                                            
+           | ecm_bind | add functions to config, get endpoints, alloc req, install ops to ecm      
+           +----------+                                                                            
+```
+
+```
++----------+                                                                           
+| ecm_bind | : add functions to config, get endpoints, alloc req, install ops to ecm   
++-|--------+                                                                           
+  |                                                                                    
+  |--> get opts from 'function'                                                        
+  |                                                                                    
+  |--> if opts isn't bound yet                                                         
+  |                                                                                    
+  |        +-------------------+                                                       
+  |------> | gether_set_gadget | relate net_dev and gadget                             
+  |        +-------------------+                                                       
+  |        +------------------------+                                                  
+  |------> | gether_register_netdev | set mac to net_dev and register it, clear carrier
+  |        +------------------------+                                                  
+  |    +---------------------+                                                         
+  |--> | usb_gstrings_attach | attach strings from ecm to composite                    
+  |    +---------------------+                                                         
+  |    +------------------+                                                            
+  |--> | usb_interface_id | config->interface[id] = function, id++                     
+  |    +------------------+                                                            
+  |    +------------------+                                                            
+  |--> | usb_interface_id | one for 'in', and one for 'out'?                           
+  |    +------------------+                                                            
+  |    +-------------------+                                                           
+  |--> | usb_ep_autoconfig | get an available ep and set up (for 'in')                 
+  |    +-------------------+                                                           
+  |    +-------------------+                                                           
+  |--> | usb_ep_autoconfig | for 'out'                                                 
+  |    +-------------------+                                                           
+  |    +-------------------+                                                           
+  |--> | usb_ep_autoconfig | for 'notify'                                              
+  |    +-------------------+                                                           
+  |    +----------------------+                                                        
+  +--> | usb_ep_alloc_request | alloc request for ecm                                  
+  |    +----------------------+                                                        
+  |                                                                                    
+  |--> set up high-speed and super-speed from full-speed setting                       
+  |                                                                                    
+  |    +------------------------+                                                      
+  |--> | usb_assign_descriptors | set up 'function' speed descriptors: ssp, ss, hs, fs 
+  |    +------------------------+                                                      
+  |                                                                                    
+  +--> install ops to ecm port                                                         
+       +----------+                                                                    
+       | ecm_open | notify endpoint of the 'open'                                      
+       +-----------+                                                                   
+       | ecm_close | notify endpoint of the 'close'                                    
+       +-----------+                                                                   
+```
+    
+```
++-------------------+                                         
+| usb_ep_autoconfig | : get an available ep and set up        
++-|-----------------+                                         
+  |    +----------------------+                               
+  +--> | usb_ep_autoconfig_ss | get an available ep and set up
+       +----------------------+                               
+```
+
+```
++----------------------+                                                                  
+| usb_ep_autoconfig_ss | : get an available ep and set up                                 
++-|--------------------+                                                                  
+  |                                                                                       
+  |--> if gadget has ->match_ep                                                           
+  |                                                                                       
+  +------> call ->match_ep(), e.g.,                                                       
+  |        +-----------------------+                                                      
+  |        | ast_vhub_udc_match_ep | ensure we have a ep (find a matched one and alloc it)
+  |        +-----------------------+                                                      
+  |                                                                                       
+  |------> go to 'found_ep' if found                                                      
+  |                                                                                       
+  |--> for each ep on list of gadget                                                      
+  |                                                                                       
+  |        +--------------------------+                                                   
+  |------> | usb_gadget_ep_match_desc | check if endpoint and descriptor match each other 
+  |        +--------------------------+                                                   
+  |                                                                                       
+  |------> go to 'found_ep' if found                                                      
+  |found_ep                                                                               
+  |--> determine addr and save in descriptor                                              
+  |                                                                                       
+  +--> set up ep                                                                          
+```
+
+```
++--------------------------+                                                    
+| usb_gadget_ep_match_desc | : check if endpoint and descriptor match each other
++-|------------------------+                                                    
+  |                                                                             
+  |--> get type and max_packet of descriptor                                    
+  |                                                                             
+  |--> check direction, packet limit, and speed                                 
+  |                                                                             
+  +--> chec type (control, isochronous, bulk, interrupt)                        
+```
+
+```
++----------+                                                     
+| ecm_open | : notify endpoint of the 'open'                     
++-|--------+                                                     
+  |                                                              
+  |--> is_open = true                                            
+  |                                                              
+  |--> state = CONNECT                                           
+  |                                                              
+  |    +---------------+                                         
+  +--> | ecm_do_notify | set up req, add to ep_queue for handling
+       +---------------+                                         
+```
+
+```
++---------------+                                               
+| ecm_do_notify | : set up req, add to ep_queue for handling    
++-|-------------+                                               
+  |                                                             
+  |--> switch state                                             
+  |                                                             
+  |--> case connect                                             
+  |                                                             
+  |------> set up event                                         
+  |                                                             
+  |------> state = 'speed'                                      
+  |                                                             
+  |--> case speed                                               
+  |                                                             
+  |------> set up event and data                                
+  |                                                             
+  |------> state = 'none'                                       
+  |                                                             
+  |    +--------------+                                         
+  +--> | usb_ep_queue | set up req, add to ep_queue for handling
+       +--------------+                                         
+```
+
+```
++--------------+                                                      
+| usb_ep_queue | : set up req, add to ep_queue for handling           
++-|------------+                                                      
+  |                                                                   
+  +--> call ->queue, e.g.,                                            
+       +--------------------+                                         
+       | ast_vhub_epn_queue | set up req, add to ep_queue for handling
+       +--------------------+                                         
+```
+    
+```
++-------------------------------+                                                            
+| composite_os_desc_req_prepare | : prepare req (and its buffer), relate it and composite_dev
++-|-----------------------------+                                                            
+  |    +----------------------+                                                              
+  |--> | usb_ep_alloc_request | alloc request                                                
+  |    +----------------------+                                                              
+  |                                                                                          
+  |--> alloc buffer for req                                                                  
+  |                                                                                          
+  +--> relate composite_dev and req                                                          
+```
+
+</details>
+
 ## <a name="system-startup"></a> System Startup
 
 <details><summary> More Details </summary>
@@ -2313,279 +2592,6 @@ serial/pl2303.c
   |    +-------------------------+
   +--> | usb_udc_connect_control | let gadget connect to host if 'udc vbus' exists, otherwise disconnect
        +-------------------------+
-```
-
-```
-+-------------------------+                                                                                       
-| configfs_composite_bind | : bind composite to gadget (ready configs and functions)                              
-+-|-----------------------+                                                                                       
-  |                                                                                                               
-  |--> relate gadget and composite_dev                                                                            
-  |                                                                                                               
-  |    +-----------------------+                                                                                  
-  |--> | composite_dev_prepare | prepare req for composite, assign composite to gadget ep0 as private             
-  |    +-----------------------+                                                                                  
-  |                                                                                                               
-  |--> return error if no config for composite                                                                    
-  |                                                                                                               
-  |--> check if each config has at least one function                                                             
-  |                                                                                                               
-  |--> if 'string' list isn't empty                                                                               
-  |    |                                                                                                          
-  |    |    +---------------------+                                                                               
-  |    +--> | usb_gstrings_attach | duplicate strings from gadget_info and attach to composite                    
-  |         +---------------------+                                                                               
-  |    +---------------+                                                                                          
-  |--> | gadget_is_otg | check if it's a on-the-go adapter (ignore the related code)                              
-  |    +---------------+                                                                                          
-  |                                                                                                               
-  |--> for each config                                                                                            
-  |    |                                                                                                          
-  |    |    +---------------------+                                                                               
-  |    |--> | usb_gstrings_attach | duplicate strings from config and attach to composite                         
-  |    |    +---------------------+                                                                               
-  |    |                                                                                                          
-  |    |--> for each func in config                                                                               
-  |    |    |                                                                                                     
-  |    |    |--> remove func from list                                                                            
-  |    |    |                                                                                                     
-  |    |    |    +------------------+                                                                             
-  |    |    +--> | usb_add_function | add functions to config, get endpoints, alloc req, install ops to, e.g., ecm
-  |    |         +------------------+                                                                             
-  |    |    +-------------------------+                                                                           
-  |    |--> | usb_gadget_check_config | call ->check_config if it exists (not our case)                           
-  |    |    +-------------------------+                                                                           
-  |    |    +-------------------------+                                                                           
-  |    +--> | usb_ep_autoconfig_reset | reset endpoints and gadget                                                
-  |         +-------------------------+                                                                           
-  |                                                                                                               
-  +--> if 'use_os_string' is set                                                                                  
-       |                                                                                                          
-       |    +-------------------------------+                                                                     
-       +--> | composite_os_desc_req_prepare | prepare req (and its buffer), relate it and composite_dev           
-            +-------------------------------+                                                                     
-```
-    
-```
-+---------------------+                                            
-| usb_gstrings_attach | : duplicate strings and attach to composite
-+|--------------------+                                            
- |    +---------------------+                                      
- |--> | copy_gadget_strings | alloc buffer and copy strings to it  
- |    +---------------------+                                      
- |    +---------------+                                            
- +--> | list_add_tail | append copied strings to list in composite 
-      +---------------+                                            
-```
-    
-```
-+-----------------------+                                                                       
-| composite_dev_prepare | : prepare req for composite, assign composite to gadget ep0 as private
-+-|---------------------+                                                                       
-  |    +----------------------+                                                                 
-  |--> | usb_ep_alloc_request | alloc request                                                   
-  |    +----------------------+                                                                 
-  |                                                                                             
-  |--> assign req to composite dev                                                              
-  |                                                                                             
-  |--> alloc buffer for req                                                                     
-  |                                                                                             
-  |    +--------------------+                                                                   
-  |--> | device_create_file | create files under /sys/                                          
-  |    +--------------------+                                                                   
-  |                                                                                             
-  |--> gadget ep0 private = composite                                                           
-  |                                                                                             
-  |    +-------------------------+                                                              
-  +--> | usb_ep_autoconfig_reset | reset ep state                                               
-       +-------------------------+                                                              
-```
-
-```
-+----------------------+                   
-| usb_ep_alloc_request | : alloc request   
-+-|--------------------+                   
-  |                                        
-  +--> call ->alloc_request, e.g.,         
-       +------------------------+          
-       | ast_vhub_alloc_request | alloc req
-       +------------------------+          
-```
-
-```
-+-------------------------------+                                                            
-| composite_os_desc_req_prepare | : prepare req (and its buffer), relate it and composite_dev
-+-|-----------------------------+                                                            
-  |    +----------------------+                                                              
-  |--> | usb_ep_alloc_request | alloc request                                                
-  |    +----------------------+                                                              
-  |                                                                                          
-  |--> alloc buffer for req                                                                  
-  |                                                                                          
-  +--> relate composite_dev and req                                                          
-```
-
-```
-+------------------+                                                                               
-| usb_add_function | : add functions to config, get endpoints, alloc req, install ops to, e.g., ecm
-+-|----------------+                                                                               
-  |                                                                                                
-  |--> relate function and config                                                                  
-  |                                                                                                
-  |--> if ->bind exists                                                                            
-  |                                                                                                
-  +------> call ->bind, e.g.,                                                                      
-           +----------+                                                                            
-           | ecm_bind | add functions to config, get endpoints, alloc req, install ops to ecm      
-           +----------+                                                                            
-```
-
-```
-+----------+                                                                           
-| ecm_bind | : add functions to config, get endpoints, alloc req, install ops to ecm   
-+-|--------+                                                                           
-  |                                                                                    
-  |--> get opts from 'function'                                                        
-  |                                                                                    
-  |--> if opts isn't bound yet                                                         
-  |                                                                                    
-  |        +-------------------+                                                       
-  |------> | gether_set_gadget | relate net_dev and gadget                             
-  |        +-------------------+                                                       
-  |        +------------------------+                                                  
-  |------> | gether_register_netdev | set mac to net_dev and register it, clear carrier
-  |        +------------------------+                                                  
-  |    +---------------------+                                                         
-  |--> | usb_gstrings_attach | attach strings from ecm to composite                    
-  |    +---------------------+                                                         
-  |    +------------------+                                                            
-  |--> | usb_interface_id | config->interface[id] = function, id++                     
-  |    +------------------+                                                            
-  |    +------------------+                                                            
-  |--> | usb_interface_id | one for 'in', and one for 'out'?                           
-  |    +------------------+                                                            
-  |    +-------------------+                                                           
-  |--> | usb_ep_autoconfig | get an available ep and set up (for 'in')                 
-  |    +-------------------+                                                           
-  |    +-------------------+                                                           
-  |--> | usb_ep_autoconfig | for 'out'                                                 
-  |    +-------------------+                                                           
-  |    +-------------------+                                                           
-  |--> | usb_ep_autoconfig | for 'notify'                                              
-  |    +-------------------+                                                           
-  |    +----------------------+                                                        
-  +--> | usb_ep_alloc_request | alloc request for ecm                                  
-  |    +----------------------+                                                        
-  |                                                                                    
-  |--> set up high-speed and super-speed from full-speed setting                       
-  |                                                                                    
-  |    +------------------------+                                                      
-  |--> | usb_assign_descriptors | set up 'function' speed descriptors: ssp, ss, hs, fs 
-  |    +------------------------+                                                      
-  |                                                                                    
-  +--> install ops to ecm port                                                         
-       +----------+                                                                    
-       | ecm_open | notify endpoint of the 'open'                                      
-       +-----------+                                                                   
-       | ecm_close | notify endpoint of the 'close'                                    
-       +-----------+                                                                   
-```
-    
-```
-+-------------------+                                         
-| usb_ep_autoconfig | : get an available ep and set up        
-+-|-----------------+                                         
-  |    +----------------------+                               
-  +--> | usb_ep_autoconfig_ss | get an available ep and set up
-       +----------------------+                               
-```
-
-```
-+----------------------+                                                                  
-| usb_ep_autoconfig_ss | : get an available ep and set up                                 
-+-|--------------------+                                                                  
-  |                                                                                       
-  |--> if gadget has ->match_ep                                                           
-  |                                                                                       
-  +------> call ->match_ep(), e.g.,                                                       
-  |        +-----------------------+                                                      
-  |        | ast_vhub_udc_match_ep | ensure we have a ep (find a matched one and alloc it)
-  |        +-----------------------+                                                      
-  |                                                                                       
-  |------> go to 'found_ep' if found                                                      
-  |                                                                                       
-  |--> for each ep on list of gadget                                                      
-  |                                                                                       
-  |        +--------------------------+                                                   
-  |------> | usb_gadget_ep_match_desc | check if endpoint and descriptor match each other 
-  |        +--------------------------+                                                   
-  |                                                                                       
-  |------> go to 'found_ep' if found                                                      
-  |found_ep                                                                               
-  |--> determine addr and save in descriptor                                              
-  |                                                                                       
-  +--> set up ep                                                                          
-```
-
-```
-+--------------------------+                                                    
-| usb_gadget_ep_match_desc | : check if endpoint and descriptor match each other
-+-|------------------------+                                                    
-  |                                                                             
-  |--> get type and max_packet of descriptor                                    
-  |                                                                             
-  |--> check direction, packet limit, and speed                                 
-  |                                                                             
-  +--> chec type (control, isochronous, bulk, interrupt)                        
-```
-
-```
-+----------+                                                     
-| ecm_open | : notify endpoint of the 'open'                     
-+-|--------+                                                     
-  |                                                              
-  |--> is_open = true                                            
-  |                                                              
-  |--> state = CONNECT                                           
-  |                                                              
-  |    +---------------+                                         
-  +--> | ecm_do_notify | set up req, add to ep_queue for handling
-       +---------------+                                         
-```
-
-```
-+---------------+                                               
-| ecm_do_notify | : set up req, add to ep_queue for handling    
-+-|-------------+                                               
-  |                                                             
-  |--> switch state                                             
-  |                                                             
-  |--> case connect                                             
-  |                                                             
-  |------> set up event                                         
-  |                                                             
-  |------> state = 'speed'                                      
-  |                                                             
-  |--> case speed                                               
-  |                                                             
-  |------> set up event and data                                
-  |                                                             
-  |------> state = 'none'                                       
-  |                                                             
-  |    +--------------+                                         
-  +--> | usb_ep_queue | set up req, add to ep_queue for handling
-       +--------------+                                         
-```
-
-```
-+--------------+                                                      
-| usb_ep_queue | : set up req, add to ep_queue for handling           
-+-|------------+                                                      
-  |                                                                   
-  +--> call ->queue, e.g.,                                            
-       +--------------------+                                         
-       | ast_vhub_epn_queue | set up req, add to ep_queue for handling
-       +--------------------+                                         
 ```
 
 ```
