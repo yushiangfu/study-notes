@@ -376,8 +376,6 @@ ipmid-new.cpp
 | 0x04 0x22    | ipmiSensorReserveSdr |
 | 0x04 0x26    | ipmiSenSetSensorThresholds |
 | 0x04 0x27    | ipmiSensorGetSensorThresholds |
-| 0x04 0x29    | ipmiSenGetSensorEventEnable |
-| 0x04 0x2B    | ipmiSenGetSensorEventStatus |
 | 0x04 0x2D    | ipmiSensorGetSensorReading |
 | 0x04 0x2F    | ipmiGetSensorType |
 | 0x04 0x30    | ipmiSetSensorReading |
@@ -387,7 +385,6 @@ ipmid-new.cpp
 | 0x06 0x06    | ipmiSetAcpiPowerState |
 | 0x06 0x07    | ipmiGetAcpiPowerState |
 | 0x06 0x08    | ipmiAppGetDeviceGuid |
-| 0x06 0x0F    | ipmiGetPOHCounter |
 | 0x06 0x22    | ipmiAppResetWatchdogTimer |
 | 0x06 0x24    | ipmiSetWatchdogTimer |
 | 0x06 0x25    | ipmiGetWatchdogTimer |
@@ -418,9 +415,7 @@ ipmid-new.cpp
 | 0x06 0x59    | ipmiAppGetSystemInfo |
 | 0x0A 0x10    | ipmiStorageGetFruInvAreaInfo |
 | 0x0A 0x11    | ipmiStorageReadFruData |
-| 0x0A 0x12    | ipmiStorageWriteFruData |
 | 0x0A 0x20    | ipmiGetRepositoryInfo |
-| 0x0A 0x21    | ipmiStorageGetSDRAllocationInfo |
 | 0x0A 0x22    | ipmiSensorReserveSdr |
 | 0x0A 0x23    | ipmi_sen_get_sdr |
 | 0x0A 0x40    | ipmiStorageGetSelInfo |
@@ -435,7 +430,6 @@ ipmid-new.cpp
 | 0x0C 0x02    | getLan |
 | 0x0C 0x21    | setSolConfParams |
 | 0x0C 0x22    | getSolConfParams |
-| 0x2C 0x00    | ipmi_groupext |
 | 0x2C 0x01    | getDCMICapabilities |
 | 0x2C 0x02    | getPowerReading |
 | 0x2C 0x03    | getPowerLimit |
@@ -445,9 +439,7 @@ ipmid-new.cpp
 | 0x2C 0x07    | getSensorInfo |
 | 0x2C 0x08    | setAssetTag |
 | 0x2C 0x09    | getMgmntCtrlIdStr |
+| 0x2C 0x0A    | setMgmntCtrlIdStr |
 | 0x2C 0x10    | getTempReadings |
 | 0x2C 0x12    | setDCMIConfParams |
 | 0x2C 0x13    | getDCMIConfParams |
-| 0x2C 0x0A    | setMgmntCtrlIdStr |
-| 0xDC 0x07    | getSensorInfo |
-
