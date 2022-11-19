@@ -40,6 +40,7 @@ Please refer to the below image for the general view of the USB topology obtaine
 <details><summary> More Details </summary>
   
 ```
+# example from my laptop
 $ lsusb --tree
 /:  Bus 04.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/4p, 10000M
 /:  Bus 03.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/12p, 480M
@@ -430,7 +431,7 @@ struct usbdrv_wrap {
   |--> | announce_device | print kernel msgs                                     
   |    +-----------------+                                                       
   |    +------------+                                                            
-  |--> | device_add | (trigger driver match & probe)
+  |--> | device_add | (trigger usb_probe_device)
   |    +------------+                                                            
   |                                                                              
   |--> create sys files between usb port dev and child dev                       
@@ -509,22 +510,6 @@ struct usbdrv_wrap {
 ```
 
 ```
-+--------------------+                                                   
-| usb_create_ep_devs | : prepare ep_dev, register it and save in endpoint
-+-|------------------+                                                   
-  |                                                                      
-  |--> alloc ep_dev                                                      
-  |                                                                      
-  |--> set dev type = usb_ep_device_type                                 
-  |                                                                      
-  |    +-----------------+                                               
-  |--> | device_register |                                               
-  |    +-----------------+                                               
-  |                                                                      
-  +--> save ep_dev in endpoint                                           
-```
-    
-```
 +------------------+                                                                 
 | usb_probe_device | : choose best config and set to it, ready endpoints             
 +-|----------------+                                                                 
@@ -587,7 +572,7 @@ struct usbdrv_wrap {
   |--> for each iface                                                                           
   |    |                                                                                        
   |    |    +------------+                                                                      
-  |    +--> | device_add | register dev to trigger driver binding                               
+  |    +--> | device_add | this triggers usb_probe_interface
   |         +------------+                                                                      
   |    +---------------------+                                                                  
   +--> | create_intf_ep_devs | for each ep of iface, prepare ep_dev and register it             
@@ -605,6 +590,21 @@ struct usbdrv_wrap {
        +--> | usb_enable_endpoint | enable endpoint     
             +---------------------+                     
 ```
+    
+```
++---------------------+                                       
+| usb_probe_interface | : match id, call iface_driver->probe()
++-|-------------------+                                       
+  |                                                           
+  |--> get outer usb driver                                   
+  |                                                           
+  |--> match id                                               
+  |                                                           
+  +--> call usb_driver->probe(), e.g.,                        
+       +--------------+                                       
+       | usbhid_probe |                                       
+       +--------------+                                       
+```
 
 ```
 +---------------------+                                                            
@@ -616,6 +616,22 @@ struct usbdrv_wrap {
        |    +--------------------+                                                 
        +--> | usb_create_ep_devs | prepare ep_dev, register it and save in endpoint
             +--------------------+                                                 
+```
+    
+```
++--------------------+                                                   
+| usb_create_ep_devs | : prepare ep_dev, register it and save in endpoint
++-|------------------+                                                   
+  |                                                                      
+  |--> alloc ep_dev                                                      
+  |                                                                      
+  |--> set dev type = usb_ep_device_type                                 
+  |                                                                      
+  |    +-----------------+                                               
+  |--> | device_register |                                                
+  |    +-----------------+                                               
+  |                                                                      
+  +--> save ep_dev in endpoint                                           
 ```
     
 </details>
@@ -1681,6 +1697,30 @@ ln -s functions/ecm.0/ configs/my-config.1/
   +--> | list_add_tail | add ep to list of gadget                                                             
        +---------------+                                                                                      
 ```
+    
+```
++--------------------+                                                                                       
+| ast_vhub_epn_queue | : set up req, add to ep_queue for handling                                            
++-|------------------+                                                                                       
+  |                                                                                                          
+  |--> set up req                                                                                            
+  |                                                                                                          
+  |--> append req to ep_queue                                                                                
+  |                                                                                                          
+  |--> if the queue was empty                                                                                
+  |                                                                                                          
+  |------> if it's desc_mode                                                                                 
+  |                                                                                                          
+  |            +------------------------+                                                                    
+  +----------> | ast_vhub_epn_kick_desc | given req, set up descripters, kick hardware to process            
+  |            +------------------------+                                                                    
+  |                                                                                                          
+  |------> else                                                                                              
+  |                                                                                                          
+  |            +-------------------+                                                                         
+  +----------> | ast_vhub_epn_kick | prepare buf, save addr to hw reg, label 'active' on req, and kick and hw
+               +-------------------+                                                                         
+```
 
 </details>
 
@@ -1690,10 +1730,10 @@ ln -s functions/ecm.0/ configs/my-config.1/
 
 ```
 usb_common_init         : create /sys/kernel/debug/usb
-usb_init                : register bus, notifier, intf driver 'usbfs_driver' & 'hub_driver', dev driver 'usb_generic_driver'
+usb_init                : register bus, notifier, intf drv 'usbfs_driver' & 'hub_driver', dev drv 'usb_generic_driver'
 usb_udc_init            : register 'udc' class
-ehci_hcd_init           : create /sys/kernel/debug/usb/ehci
-ehci_platform_init      : determine 'ehci_platform_hc_driver', and register 'ehci_platform_driver'
+ehci_hcd_init           : create /sys/kernel/debug/usb/ehci (CONFIG_USB_EHCI_HCD)
+ehci_platform_init      : determine 'ehci_platform_hc_driver' and register 'ehci_platform_driver' (CONFIG_USB_EHCI_HCD)
 usb_storage_driver_init : init template and register 'usb_storage_driver'
 usb_serial_init         : prepare tty driver, register bus 'usb-serial'
 usb_serial_module_init  : register usb intf driver, register arg drivers to bus 'usb-serial'
@@ -1776,21 +1816,6 @@ hid_init                : init quirks, register 'hid_driver'
          |    +------------------------+                        
          |                                                      
          +--> print "%s: registered new interface driver %s\n"  
-```
-
-```
-+---------------------+                                       
-| usb_probe_interface | : match id, call iface_driver->probe()
-+-|-------------------+                                       
-  |                                                           
-  |--> get outer usb driver                                   
-  |                                                           
-  |--> match id                                               
-  |                                                           
-  +--> call usb_driver->probe(), e.g.,                        
-       +--------------+                                       
-       | usbhid_probe |                                       
-       +--------------+                                       
 ```
 
 ```
@@ -1889,7 +1914,7 @@ ehci-platform.c
   |    +------------------+                                                                      
   |    +--------------------------+                                                              
   +--> | platform_driver_register | register platform driver 'ehci_platform_driver'              
-       +--------------------------+                                                              
+       +--------------------------+ (this triggers ehci_platform_probe)
 ```
 
 ```
@@ -2005,7 +2030,7 @@ ehci-platform.c
   |         +------------------------+                                                
   |    +----------------+                                                             
   +--> | usb_new_device | ready usb configs, prepare dev#, register usb_dev and ep_dev
-       +----------------+                                                             
+       +----------------+ (this triggers hub_probe)                                                            
 ```
 
 ```
@@ -2458,15 +2483,15 @@ serial/pl2303.c
 ```
 
 ```
- +-----------------+                                                                                        
- | gadget_cfs_init | : init gadget_subsys and prepare config_fs for it                                      
- +-|---------------+                                                                                        
-   |    +-------------------+                                                                               
-   |--> | config_group_init |                                                                               
-   |    +-------------------+                                                                               
-   |    +-----------------------------+                                                                     
-   +--> | configfs_register_subsystem | prepare sb of config_fs, alloc a folder and publish it to user space
-        +-----------------------------+                                                                     
++-----------------+
+| gadget_cfs_init | : init gadget_subsys and prepare config_fs for it
++-|---------------+
+  |    +-------------------+
+  |--> | config_group_init |
+  |    +-------------------+
+  |    +-----------------------------+
+  +--> | configfs_register_subsystem | prepare sb of config_fs, alloc a folder and publish it to user space
+       +-----------------------------+                                                               
 ```
 
 ```
@@ -2635,30 +2660,6 @@ serial/pl2303.c
   |    +-------------------------+
   +--> | usb_udc_connect_control | let gadget connect to host if 'udc vbus' exists, otherwise disconnect
        +-------------------------+
-```
-
-```
-+--------------------+                                                                                       
-| ast_vhub_epn_queue | : set up req, add to ep_queue for handling                                            
-+-|------------------+                                                                                       
-  |                                                                                                          
-  |--> set up req                                                                                            
-  |                                                                                                          
-  |--> append req to ep_queue                                                                                
-  |                                                                                                          
-  |--> if the queue was empty                                                                                
-  |                                                                                                          
-  |------> if it's desc_mode                                                                                 
-  |                                                                                                          
-  |            +------------------------+                                                                    
-  +----------> | ast_vhub_epn_kick_desc | given req, set up descripters, kick hardware to process            
-  |            +------------------------+                                                                    
-  |                                                                                                          
-  |------> else                                                                                              
-  |                                                                                                          
-  |            +-------------------+                                                                         
-  +----------> | ast_vhub_epn_kick | prepare buf, save addr to hw reg, label 'active' on req, and kick and hw
-               +-------------------+                                                                         
 ```
 
 ```
@@ -3210,3 +3211,4 @@ CONFIG_USB_MON
 - [Yannik, Linux USB Driver](https://yannik520.github.io/usb/usb.html)
 - [S. Venkateswaran, Essential Linux Device Drivers](http://www.embeddedlinux.org.cn/essentiallinuxdevicedrivers/final/ch11lev1sec1.html)
 - [I. Wienand, What actually happens when you plug in a USB device?](https://www.technovelty.org/linux/what-actually-happens-when-you-plug-in-a-usb-device.html)
+- [A. Pietrasiewicz, Modern USB gadget on Linux & how to integrate it with systemd (Part 1)](https://www.collabora.com/news-and-blog/blog/2019/02/18/modern-usb-gadget-on-linux-and-how-to-integrate-it-with-systemd-part-1/)
