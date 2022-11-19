@@ -622,6 +622,20 @@ struct usbdrv_wrap {
 
 ## <a name="gadget"></a> Gadget
 
+As modern USB devices become more capable and all-encompassing, some can act like hosts handling other USB devices, such as pen drives. 
+It's a feature in need of support from hardware which can be either a USB host controller (UHC) or USB device controller (UDC) at one time. 
+The Linux system that behaves like a USB device is called the gadget, driven by the gadget drivers that fulfill the actual functionality. 
+So far, three types of drivers are in place; one generic and two specific to the USB framework:
+
+- device driver
+    - for a system to match interface drivers to a USB device
+- interface driver
+    - for a system to control a USB device
+- gadget driver.
+    - for a system to be a USB device
+
+<p align="center"><img src="images/usb/gadget.png" /></p>
+
 ```
 +---------------------------+
 | gadget_dev_desc_UDC_store | : determine udc and bind to driver (ready gadget and composite), start udc
