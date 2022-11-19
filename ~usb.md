@@ -862,7 +862,36 @@ So far, three types of drivers are in place; one generic and two specific to the
   +--> save its usb config in composite dev                        
 ```
 
-### Configfs
+### Configfs & Gadget Subsystem
+
+(TBD)
+
+```
+# create a folder for composition
+cd /sys/kernel/config/usb_gadget/
+mkdir my-eth
+cd my-eth
+
+# set IDs for the host to match the interface driver
+echo 0x1d6b > idVendor
+echo 0x104 > idProduct
+
+# prepare string descriptor
+# language code: English
+mkdir strings/0x409
+echo my-company > strings/0x409/manufacturer
+echo my-product > strings/0x409/product
+
+# prepare function descriptor
+# required format: <type>.<index>
+# possible types are: ecm, geth, rndis, mass_storage, ffs, hid
+mkdir functions/ecm.0 # .
+
+# prepare configuration descriptor and select target function(s)
+# required format: <type>.<index>
+mkdir configs/my-config.1 # 
+ln -s functions/ecm.0/ configs/my-config.1/
+```
 
 <details><summary> More Details </summary>
 
