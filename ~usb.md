@@ -681,6 +681,9 @@ mkdir functions/ecm.0 # .
 # required format: <type>.<index>
 mkdir configs/my-config.1 # 
 ln -s functions/ecm.0/ configs/my-config.1/
+
+# bind composite to a udc and 'plug in' host
+echo 1e6a0000.usb-vhub:p1 > UDC
 ```
 
 <details><summary> More Details </summary>
@@ -1210,6 +1213,24 @@ ln -s functions/ecm.0/ configs/my-config.1/
   +--> relate composite_dev and req                                                          
 ```
 
+```
++-------------------------+                                                 
+| usb_udc_connect_control | : plug in gadget to host (and host starts enumeration procedure)
++-|-----------------------+                                                 
+  |                                                                         
+  |--> if udc->vbus is true (set in usb_add_gadget)                         
+  |    |                                                                    
+  |    |    +--------------------+        +---------------------+           
+  |    +--> | usb_gadget_connect |, e.g., | ast_vhub_udc_pullup | 1         
+  |         +--------------------+        +---------------------+           
+  |                                                                         
+  +--> else                                                                 
+       |                                                                    
+       |    +-----------------------+        +---------------------+        
+       +--> | usb_gadget_disconnect |, e.g., | ast_vhub_udc_pullup | 0      
+            +-----------------------+        +---------------------+        
+```
+    
 </details>
 
 ### Aspeed Virtual Hub
