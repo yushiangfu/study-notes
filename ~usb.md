@@ -1929,7 +1929,7 @@ ehci-platform.c
 
 ```
 +---------------------+                                                                                          
-| ehci_platform_probe | : map io, register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub
+| ehci_platform_probe | : map io, register usb bus, prepare usb_dev/ep0, register isr, init hw, register root hub
 +-|-------------------+                                                                                          
   |    +------------------+                                                                                      
   |--> | platform_get_irq | get irq parsed from dtb earlier                                                      
@@ -1950,7 +1950,7 @@ ehci-platform.c
   |--> | devm_ioremap_resource | map io                                                                          
   |    +-----------------------+                                                                                 
   |    +-------------+                                                                                           
-  +--> | usb_add_hcd | register usb bus, prepare usb_dev/ep0, register isr, init hw, regoster root hub           
+  +--> | usb_add_hcd | register usb bus, prepare usb_dev/ep0, register isr, init hw, register root hub           
        +-------------+                                                                                           
 ```
 
@@ -2566,7 +2566,7 @@ serial/pl2303.c
   |--> | device_add |
   |    +------------+
   |
-  +--> set up gadget and install 'ast_vhub_udc_ops' (udc for usb device controller)
+  +--> set up gadget and install 'ast_vhub_udc_ops' (udc is usb device controller)
   |
   |    +--------------------+
   +--> | usb_add_gadget_udc | init gadget, prepare udc, add devices respectively, try binding udc to driver
