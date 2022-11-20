@@ -652,70 +652,38 @@ So far, three types of drivers are in place; one generic and two specific to the
 
 <p align="center"><img src="images/usb/gadget.png" /></p>
 
-```
-+---------------------------+
-| gadget_dev_desc_UDC_store | : determine udc and bind to driver (ready gadget and composite), start udc
-+-|-------------------------+
-  |
-  |--> prepare name, and set udc_name = name
-  |
-  |    +-------------------------+
-  +--> | usb_gadget_probe_driver | determine udc and bind to driver (ready gadget and composite), start udc
-       +-------------------------+
+### Configfs & Gadget Subsystem
 
-
-                    CONFIGFS_ATTR(gadget_dev_desc_, UDC);
-
-
-                    #define CONFIGFS_ATTR(_pfx, _name)          \
-                    static struct configfs_attribute gadget_dev_desc_attr_UDC = { \
-                        .ca_name    = __stringify(UDC),       \
-                        .ca_mode    = S_IRUGO | S_IWUSR,        \
-                        .ca_owner   = THIS_MODULE,          \
-                        .show       = gadget_dev_desc_UDC_show,       \
-                        .store      = gadget_dev_desc_UDC_store,      \
-                    }                                                                           
-```
+(TBD)
 
 ```
-+-------------------------+                                                                               
-| usb_gadget_probe_driver | : determine udc and bind to driver (ready gadget and composite), start udc    
-+-|-----------------------+                                                                               
-  |                                                                                                       
-  |--> if driver udc_name is set                                                                          
-  |                                                                                                       
-  |------> for each udc on list                                                                           
-  |                                                                                                       
-  |----------> compare name, break if found                                                               
-  |                                                                                                       
-  |--> else                                                                                               
-  |                                                                                                       
-  |------> find the 1st available one                                                                     
-  |                                                                                                       
-  |--> return error if not found                                                                          
-  |                                                                                                       
-  |    +--------------------+                                                                             
-  +--> | udc_bind_to_driver | relate udc/driver, set gadget speed, bind composite to gadget, and start udc
-       +--------------------+                                                                             
+# create a folder for composition
+cd /sys/kernel/config/usb_gadget/
+mkdir my-eth
+cd my-eth
+
+# set IDs for the host to match the interface driver
+echo 0x1d6b > idVendor
+echo 0x104 > idProduct
+
+# prepare string descriptor
+# language code: English
+mkdir strings/0x409
+echo my-company > strings/0x409/manufacturer
+echo my-product > strings/0x409/product
+
+# prepare function descriptor
+# required format: <type>.<index>
+# possible types are: ecm, geth, rndis, mass_storage, ffs, hid
+mkdir functions/ecm.0 # .
+
+# prepare configuration descriptor and select target function(s)
+# required format: <type>.<index>
+mkdir configs/my-config.1 # 
+ln -s functions/ecm.0/ configs/my-config.1/
 ```
 
-```
-+------------------------+                                                    
-| gether_register_netdev | : set mac to net_dev and register it, clear carrier
-+-|----------------------+                                                    
-  |    +-----------------+                                                    
-  |--> | eth_hw_addr_set | assign mac from dev to net_dev                     
-  |    +-----------------+                                                    
-  |    +-----------------+                                                    
-  |--> | register_netdev | register net_dev                                   
-  |    +-----------------+                                                    
-  |                                                                           
-  |--> print host and dev mac?                                                
-  |                                                                           
-  |    +-------------------+                                                  
-  +--> | netif_carrier_off | clear carrier                                    
-       +-------------------+                                                  
-```
+<details><summary> More Details </summary>
 
 ```
 +--------------+                                                                                   
@@ -724,7 +692,7 @@ So far, three types of drivers are in place; one generic and two specific to the
   |                                                                                                
   |--> alloc gadget_info                                                                           
   |                                                                                                
-  |    +-----------------------------+                                                             
+  |    +-----------------------------+   ㄎ                                                          
   |--> | config_group_init_type_name | set up root group right under /sys/kernel/config/usb_gadget/
   |    +-----------------------------+                                                             
   |    +-----------------------------+                                         +---------------+   
@@ -877,40 +845,80 @@ So far, three types of drivers are in place; one generic and two specific to the
   |                                                                
   +--> save its usb config in composite dev                        
 ```
-
-### Configfs & Gadget Subsystem
-
-(TBD)
-
+    
 ```
-# create a folder for composition
-cd /sys/kernel/config/usb_gadget/
-mkdir my-eth
-cd my-eth
++---------------------------+
+| gadget_dev_desc_UDC_store | : determine udc and bind to driver (ready gadget and composite), start udc
++-|-------------------------+
+  |
+  |--> prepare name, and set udc_name = name
+  |
+  |    +-------------------------+
+  +--> | usb_gadget_probe_driver | determine udc and bind to driver (ready gadget and composite), start udc
+       +-------------------------+
 
-# set IDs for the host to match the interface driver
-echo 0x1d6b > idVendor
-echo 0x104 > idProduct
 
-# prepare string descriptor
-# language code: English
-mkdir strings/0x409
-echo my-company > strings/0x409/manufacturer
-echo my-product > strings/0x409/product
+                    CONFIGFS_ATTR(gadget_dev_desc_, UDC);
 
-# prepare function descriptor
-# required format: <type>.<index>
-# possible types are: ecm, geth, rndis, mass_storage, ffs, hid
-mkdir functions/ecm.0 # .
 
-# prepare configuration descriptor and select target function(s)
-# required format: <type>.<index>
-mkdir configs/my-config.1 # 
-ln -s functions/ecm.0/ configs/my-config.1/
+                    #define CONFIGFS_ATTR(_pfx, _name)          \
+                    static struct configfs_attribute gadget_dev_desc_attr_UDC = { \
+                        .ca_name    = __stringify(UDC),       \
+                        .ca_mode    = S_IRUGO | S_IWUSR,        \
+                        .ca_owner   = THIS_MODULE,          \
+                        .show       = gadget_dev_desc_UDC_show,       \
+                        .store      = gadget_dev_desc_UDC_store,      \
+                    }                                                                           
 ```
 
-<details><summary> More Details </summary>
+```
++-------------------------+                                                                               
+| usb_gadget_probe_driver | : determine udc and bind to driver (ready gadget and composite), start udc    
++-|-----------------------+                                                                               
+  |                                                                                                       
+  |--> if driver udc_name is set                                                                          
+  |                                                                                                       
+  |------> for each udc on list                                                                           
+  |                                                                                                       
+  |----------> compare name, break if found                                                               
+  |                                                                                                       
+  |--> else                                                                                               
+  |                                                                                                       
+  |------> find the 1st available one                                                                     
+  |                                                                                                       
+  |--> return error if not found                                                                          
+  |                                                                                                       
+  |    +--------------------+                                                                             
+  +--> | udc_bind_to_driver | relate udc/driver, set gadget speed, bind composite to gadget, and start udc
+       +--------------------+                                                                             
+```
 
+```
++--------------------+
+| udc_bind_to_driver | : relate udc/driver, set gadget speed, bind composite to gadget, and start udc
++-|------------------+
+  |
+  |--> save driver info in udc
+  |
+  |    +--------------------------+
+  |--> | usb_gadget_udc_set_speed | call gadget ops to set speed
+  |    +--------------------------+
+  |
+  |--> call driver->bind(), e.g.,
+  |    +-------------------------+
+  |    | configfs_composite_bind | bind composite to gadget (ready configs and functions)
+  |    +-------------------------+
+  |    +----------------------+                                    +--------------------+
+  |--> | usb_gadget_udc_start | call gadget's ->udc_start(), e.g., | ast_vhub_udc_start | save gadget driver in vhub_dev
+  |    +----------------------+                                    +--------------------+
+  |    +-----------------------------------+
+  |--> | usb_gadget_enable_async_callbacks | call gadget's ->udc_async_callbacks() if it exists
+  |    +-----------------------------------+
+  |    +-------------------------+
+  +--> | usb_udc_connect_control | let gadget connect to host if 'udc vbus' exists, otherwise disconnect
+       +-------------------------+
+```
+    
 ```
 +-------------------------+                                                                                       
 | configfs_composite_bind | : bind composite to gadget (ready configs and functions)                              
@@ -1072,6 +1080,24 @@ ln -s functions/ecm.0/ configs/my-config.1/
        +-----------+                                                                   
        | ecm_close | notify endpoint of the 'close'                                    
        +-----------+                                                                   
+```
+    
+```
++------------------------+                                                    
+| gether_register_netdev | : set mac to net_dev and register it, clear carrier
++-|----------------------+                                                    
+  |    +-----------------+                                                    
+  |--> | eth_hw_addr_set | assign mac from dev to net_dev                     
+  |    +-----------------+                                                    
+  |    +-----------------+                                                    
+  |--> | register_netdev | register net_dev                                   
+  |    +-----------------+                                                    
+  |                                                                           
+  |--> print host and dev mac?                                                
+  |                                                                           
+  |    +-------------------+                                                  
+  +--> | netif_carrier_off | clear carrier                                    
+       +-------------------+                                                  
 ```
     
 ```
@@ -2626,7 +2652,7 @@ serial/pl2303.c
   |
   |--> for each driver on 'gadget_driver_pending_list'
   |
-  |------> if match
+  |------> if match (nothing to match during system startup)
   |
   |            +--------------------+
   |----------> | udc_bind_to_driver | relate udc/driver, set gadget speed and start udc
@@ -2634,32 +2660,6 @@ serial/pl2303.c
   |        +---------------+
   +------> | list_del_init | remove driver from the pending list
            +---------------+
-```
-
-```
-+--------------------+
-| udc_bind_to_driver | : relate udc/driver, set gadget speed, bind composite to gadget, and start udc
-+-|------------------+
-  |
-  |--> save driver info in udc
-  |
-  |    +--------------------------+
-  |--> | usb_gadget_udc_set_speed | call gadget ops to set speed
-  |    +--------------------------+
-  |
-  |--> call driver->bind(), e.g.,
-  |    +-------------------------+
-  |    | configfs_composite_bind | bind composite to gadget (ready configs and functions)
-  |    +-------------------------+
-  |    +----------------------+
-  |--> | usb_gadget_udc_start | call gadget's ->udc_start()
-  |    +----------------------+
-  |    +-----------------------------------+
-  |--> | usb_gadget_enable_async_callbacks | call gadget's ->udc_async_callbacks() if it exists
-  |    +-----------------------------------+
-  |    +-------------------------+
-  +--> | usb_udc_connect_control | let gadget connect to host if 'udc vbus' exists, otherwise disconnect
-       +-------------------------+
 ```
 
 ```
