@@ -1138,6 +1138,47 @@ echo 1e6a0000.usb-vhub:p1 > UDC
   |                                                                                       
   +--> set up ep                                                                          
 ```
+    
+```
++-----------------------+                                                                                          
+| ast_vhub_udc_match_ep | : ensure we have a ep (find a matched one and alloc it)                                  
++-|---------------------+                                                                                          
+  |                                                                                                                
+  |--> for each ep on gadget                                                                                       
+  |                                                                                                                
+  |        +--------------------------+                                                                            
+  |------> | usb_gadget_ep_match_desc | check if endpoint and descriptor match each other                          
+  |        +--------------------------+                                                                            
+  |                                                                                                                
+  |------> return ep if match is found                                                                             
+  |                                                                                                                
+  |--> determine max speed based on type (control, isochronous, bulk, interrupt)                                   
+  |                                                                                                                
+  |--> traverse vhub to find an used endpoint                                                                      
+  |                                                                                                                
+  |    +--------------------+                                                                                      
+  +--> | ast_vhub_alloc_epn | get an unused ep from vhub, set up (install ops, alloc buffer), add to list of gadget
+       +--------------------+                                                                                      
+```
+
+```
++--------------------+                                                                                        
+| ast_vhub_alloc_epn | : get an unused ep from vhub, set up (install ops, alloc buffer), add to list of gadget
++-|------------------+                                                                                        
+  |                                                                                                           
+  |--> get an unused endpoint from vhub                                                                       
+  |                                                                                                           
+  |--> set up endpoint                                                                                        
+  |                                                                                                           
+  |--> install ep ops 'ast_vhub_epn_ops'                                                                      
+  |                                                                                                           
+  |    +--------------------+                                                                                 
+  |--> | dma_alloc_coherent |                                                                                 
+  |    +--------------------+                                                                                 
+  |    +---------------+                                                                                      
+  +--> | list_add_tail | add ep to list of gadget                                                             
+       +---------------+                                                                                      
+```
 
 ```
 +--------------------------+                                                    
@@ -1198,6 +1239,30 @@ echo 1e6a0000.usb-vhub:p1 > UDC
        +--------------------+                                         
        | ast_vhub_epn_queue | set up req, add to ep_queue for handling
        +--------------------+                                         
+```
+    
+```
++--------------------+                                                                                       
+| ast_vhub_epn_queue | : set up req, add to ep_queue for handling                                            
++-|------------------+                                                                                       
+  |                                                                                                          
+  |--> set up req                                                                                            
+  |                                                                                                          
+  |--> append req to ep_queue                                                                                
+  |                                                                                                          
+  |--> if the queue was empty                                                                                
+  |                                                                                                          
+  |------> if it's desc_mode                                                                                 
+  |                                                                                                          
+  |            +------------------------+                                                                    
+  +----------> | ast_vhub_epn_kick_desc | given req, set up descripters, kick hardware to process            
+  |            +------------------------+                                                                    
+  |                                                                                                          
+  |------> else                                                                                              
+  |                                                                                                          
+  |            +-------------------+                                                                         
+  +----------> | ast_vhub_epn_kick | prepare buf, save addr to hw reg, label 'active' on req, and kick and hw
+               +-------------------+                                                                         
 ```
     
 ```
@@ -1273,13 +1338,13 @@ echo 1e6a0000.usb-vhub:p1 > UDC
   |
   |--> if there's interrupt for top-level bus events
   |
-  |        +---------------------+
-  |------> | ast_vhub_hub_resume | for each port, call its driver->resume()
-  |        +---------------------+
+  |        +---------------------+                                          +---------------------------+
+  |------> | ast_vhub_hub_resume | for each port, call its driver->resume() | configfs_composite_resume |
+  |        +---------------------+                                          +---------------------------+
   |         or
-  |        +----------------------+
-  |------> | ast_vhub_hub_suspend | for each port, call its driver->suspend()
-  |        +----------------------+
+  |        +----------------------+                                           +----------------------------+
+  |------> | ast_vhub_hub_suspend | for each port, call its driver->suspend() | configfs_composite_suspend |
+  |        +----------------------+                                           +----------------------------+
   |         or
   |        +--------------------+
   +------> | ast_vhub_hub_reset | for each port, call its driver->suspend(), and write hw reg to reset
@@ -1631,7 +1696,9 @@ echo 1e6a0000.usb-vhub:p1 > UDC
   |
   |--> if rc == driver (pass req to drvier)
   |
-  |------> call ->setup()
+  |                       +--------------------------+
+  |------> call ->setup() | configfs_composite_setup |
+  |                       +--------------------------+
   |
   |--> elif rc == stall
   |
@@ -1643,7 +1710,7 @@ echo 1e6a0000.usb-vhub:p1 > UDC
   |
   |        +--------+
   +------> | writel | write 'tx buf ready'
-           +--------+ 
+           +--------+
 ```
 
 ```
@@ -1703,70 +1770,41 @@ echo 1e6a0000.usb-vhub:p1 > UDC
   |
   +--> case 'set/clear feature': blabla
 ```
-
+    
 ```
-+-----------------------+                                                                                          
-| ast_vhub_udc_match_ep | : ensure we have a ep (find a matched one and alloc it)                                  
-+-|---------------------+                                                                                          
-  |                                                                                                                
-  |--> for each ep on gadget                                                                                       
-  |                                                                                                                
-  |        +--------------------------+                                                                            
-  |------> | usb_gadget_ep_match_desc | check if endpoint and descriptor match each other                          
-  |        +--------------------------+                                                                            
-  |                                                                                                                
-  |------> return ep if match is found                                                                             
-  |                                                                                                                
-  |--> determine max speed based on type (control, isochronous, bulk, interrupt)                                   
-  |                                                                                                                
-  |--> traverse vhub to find an used endpoint                                                                      
-  |                                                                                                                
-  |    +--------------------+                                                                                      
-  +--> | ast_vhub_alloc_epn | get an unused ep from vhub, set up (install ops, alloc buffer), add to list of gadget
-       +--------------------+                                                                                      
-```
-
-```
-+--------------------+                                                                                        
-| ast_vhub_alloc_epn | : get an unused ep from vhub, set up (install ops, alloc buffer), add to list of gadget
-+-|------------------+                                                                                        
-  |                                                                                                           
-  |--> get an unused endpoint from vhub                                                                       
-  |                                                                                                           
-  |--> set up endpoint                                                                                        
-  |                                                                                                           
-  |--> install ep ops 'ast_vhub_epn_ops'                                                                      
-  |                                                                                                           
-  |    +--------------------+                                                                                 
-  |--> | dma_alloc_coherent |                                                                                 
-  |    +--------------------+                                                                                 
-  |    +---------------+                                                                                      
-  +--> | list_add_tail | add ep to list of gadget                                                             
-       +---------------+                                                                                      
++--------------------------+                                           
+| configfs_composite_setup | : handle req for ep0, respond if necessary
++-|------------------------+                                           
+  |                                                                    
+  |--> get composite dev from gadget                                   
+  |                                                                    
+  |    +-----------------+                                             
+  +--> | composite_setup | handle req for ep0, respond if necessary    
+       +-----------------+                                             
 ```
     
 ```
-+--------------------+                                                                                       
-| ast_vhub_epn_queue | : set up req, add to ep_queue for handling                                            
-+-|------------------+                                                                                       
-  |                                                                                                          
-  |--> set up req                                                                                            
-  |                                                                                                          
-  |--> append req to ep_queue                                                                                
-  |                                                                                                          
-  |--> if the queue was empty                                                                                
-  |                                                                                                          
-  |------> if it's desc_mode                                                                                 
-  |                                                                                                          
-  |            +------------------------+                                                                    
-  +----------> | ast_vhub_epn_kick_desc | given req, set up descripters, kick hardware to process            
-  |            +------------------------+                                                                    
-  |                                                                                                          
-  |------> else                                                                                              
-  |                                                                                                          
-  |            +-------------------+                                                                         
-  +----------> | ast_vhub_epn_kick | prepare buf, save addr to hw reg, label 'active' on req, and kick and hw
-               +-------------------+                                                                         
++-----------------+                                                                           
+| composite_setup | : handle req for ep0, respond if necessary                                
++-|---------------+                                                                           
+  |                                                                                           
+  |--> set up 'req'                                                                           
+  |                                                                                           
+  |--> switch type                                                                            
+  |--> case 'get descriptor', blabla                                                          
+  |--> case 'set configuration', blabla                                                       
+  |--> case 'get configuration', blabla                                                       
+  |--> case 'set interface', blabla                                                           
+  |--> case 'get status', blabla                                                              
+  |--> case 'clear feature', blabla                                                           
+  |--> case 'set feature', blabla                                                             
+  |--> default, blabla                                                                        
+  |                                                                                           
+  +--> if need to respond data first                                                          
+       |                                                                                      
+       |    +---------------------+                                                           
+       +--> | composite_ep0_queue | prepare and enqueue req for handling, clear pending status
+            +---------------------+                                                           
 ```
 
 </details>
