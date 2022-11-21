@@ -651,17 +651,22 @@ struct usbdrv_wrap {
 
 ## <a name="gadget"></a> Gadget
 
-As modern USB devices become more capable and all-encompassing, some can act like hosts handling other USB devices, such as pen drives. 
+Laptops and mobiles can work as USB hosts accessing USB devices through a host controller and root hub. 
+However, modern mobiles and pads can also act like USB devices, ready to respond to host-side requests. 
 It's a feature in need of support from hardware which can be either a USB host controller (UHC) or USB device controller (UDC) at one time. 
 The Linux system that behaves like a USB device is called the gadget, driven by the gadget drivers that fulfill the actual functionality. 
-So far, three types of drivers are in place; one generic and two specific to the USB framework:
+So far, a few types of drivers have been mentioned:
 
 - device driver
-    - for a system to match interface drivers to a USB device
+    - to match interface driver(s)
 - interface driver
-    - for a system to control a USB device
-- gadget driver.
-    - for a system to be a USB device
+    - to control a USB device
+- host controller driver
+    - to control a UHC
+- gadget driver
+    - to become a USB device
+- device controller driver
+    - to control a UDC
 
 <p align="center"><img src="images/usb/gadget.png" /></p>
 
@@ -3173,12 +3178,31 @@ usbhid/hid-core.c
   
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
+- Dump descriptors of USB devices.
+
 ```
 cat /sys/kernel/debug/usb/devices
-CONFIG_USB_MON
+```
+
+- Dump data from kernel space.
+
+```
+# enable gadget tracing
+echo 1 > /sys/kernel/debug/tracing/events/gadget/enable
+  
+# add a filter?
+# /sys/kernel/debug/tracing/events/gadget/filter
+  
+# read trace
+cat /sys/kernel/debug/tracing/trace
 ```
 
 <details><summary> More Details </summary>
+
+```
+haven't tried the kernel config yet    
+CONFIG_USB_MON
+```
     
 ```
 +-----------------+                                                                
