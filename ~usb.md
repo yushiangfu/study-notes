@@ -124,6 +124,19 @@ Each device must clearly prepare the below descriptors for the host controller t
 <details><summary> More Details </summary>
     
 ```
+T:  Bus=03 Lev=01 Prnt=01 Port=01 Cnt=01 Dev#= 23 Spd=12   MxCh= 0
+D:  Ver= 2.00 Cls=00(>ifc ) Sub=00 Prot=00 MxPS= 8 #Cfgs=  1
+P:  Vendor=046d ProdID=c534 Rev=29.01
+S:  Manufacturer=Logitech
+S:  Product=USB Receiver
+C:* #Ifs= 2 Cfg#= 1 Atr=a0 MxPwr= 98mA
+I:* If#= 0 Alt= 0 #EPs= 1 Cls=03(HID  ) Sub=01 Prot=01 Driver=usbhid
+E:  Ad=81(I) Atr=03(Int.) MxPS=   8 Ivl=8ms
+I:* If#= 1 Alt= 0 #EPs= 1 Cls=03(HID  ) Sub=01 Prot=02 Driver=usbhid
+E:  Ad=82(I) Atr=03(Int.) MxPS=  20 Ivl=2ms
+```
+    
+```
 struct usb_device {
     int     devnum; // unique device number
     char        devpath[16];        // dev position in usb tree topology
