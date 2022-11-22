@@ -1836,6 +1836,39 @@ Running the above script equates to making an effort to plug our gadget into a p
 
 ## <a name="system-startup"></a> System Startup
 
+During the system startup, some functions work on the initialization of the USB framework, and let's introduce those which display logs:
+
+- `usb_init`
+    - registers 'USB' bus for later encompassing of drivers and devices
+    - registers USB interface drivers (usbfs & hub) and a USB device driver (generic)
+- `ehci_hcd_init`
+    - registers driver for the USB controller
+- `usb_storage_driver_init`
+    - registers USB interface driver (storage)
+- `usb_serial_module_init`
+    - registers USB interface driver (serial)
+- `usb_serial_init`
+    - registers TTY driver
+- `ast_vhub_probe`
+    - `ast_vhub_driver_init` registers Aspeed vhub driver, where the probe function comes from
+- `hid_init`
+    - registers USB interface driver (hid)
+
+```
+ [    0.235546] usbcore: registered new interface driver usbfs                       <---- usb_init               
+ [    0.235910] usbcore: registered new interface driver hub                         <---- usb_init               
+ [    0.236208] usbcore: registered new device driver usb                            <---- usb_init               
+ ...
+ [    2.121077] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver           <---- ehci_hcd_init          
+ [    2.121536] usbcore: registered new interface driver usb-storage                 <---- usb_storage_driver_init
+ [    2.122040] usbcore: registered new interface driver pl2303                      <---- usb_serial_module_init 
+ [    2.122395] usbserial: USB Serial support registered for pl2303                  <---- usb_serial_init        
+ [    2.137860] aspeed_vhub 1e6a0000.usb-vhub: Initialized virtual hub in USB2 mode  <---- ast_vhub_probe       
+ ...
+ [    2.182510] usbcore: registered new interface driver usbhid                      <---- hid_init               
+ [    2.182692] usbhid: USB HID core driver                                          <---- hid_init               
+```
+
 <details><summary> More Details </summary>
 
 ```
