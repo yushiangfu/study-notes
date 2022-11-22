@@ -1318,6 +1318,13 @@ echo 1e6a0000.usb-vhub:p1 > UDC
 
 ### Aspeed Virtual Hub
 
+The last line of the above script attempts to bind our composite component onto a particular USB device controller (UDC). 
+In our study case, the AST2500 provides five UDCs, so we can prepare up to that many USB devices, though it's rarely necessary. 
+From the perspective of a USB host, the AST2500 virtual hub is an effective five-port hub connecting to the root hub. 
+Running the above script equates to making an effort to plug our gadget into a port of the virtual hub, and the host starts the enumeration procedure.
+
+<p align="center"><img src="images/usb/vhub.png" /></p>
+
 <details><summary> More Details </summary>
 
 ```
