@@ -12,12 +12,12 @@
   |                                                                                    
   |--> prepare handler and match rule for added iface                                  
   |    +------------+                                                                  
-  |    | anon func2 |                                                                  
+  |    | anon func2 | handle added interface
   |    +------------+                                                                  
   |                                                                                    
   |--> prepare handler and match rule for removed iface                                
   |    +------------+                                                                  
-  |    | anon func3 |                                                                  
+  |    | anon func3 | handle entry removal
   |    +------------+                                                                  
   |                                                                                    
   |--> prepare handler and match rule for changed assoc                                
@@ -209,7 +209,7 @@
 
 ```
 +------------+                                                                 
-| anon func2 |                                                                 
+| anon func2 | : handle added interface
 +--|---------+                                                                 
    |                                                                           
    |--> read msg                                                               
@@ -254,7 +254,7 @@
 
 ```
 +------------+                                                           
-| anon func3 |                                                           
+| anon func3 | : handle entry removal
 +-|----------+                                                           
   |    +--------------+                                                  
   |--> | getWellKnown | check if the owner is 'well-known'               
