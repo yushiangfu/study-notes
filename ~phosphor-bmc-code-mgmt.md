@@ -140,3 +140,38 @@ item_updater_main.cpp
             iface: org.freedesktop.systemd1.Manager      
             MaskUnitFiles                                
 ```
+
+```
+download_manager_main.cpp                                 
++------+                                                   
+| main | ???                                               
++-|----+                                                   
+  |                                                        
+  |--> request name 'xyz.openbmc_project.Software.Download'
+  |                                                        
+  +--> endless loop                                        
+       -                                                   
+       +--> process (?)                                    
+```
+
+```
++---------------------------+                                  
+| Download::downloadViaTFTP | : download image from tftp server
++-|-------------------------+                                  
+  |                                                            
+  |--> check if folder for upload exists: img-upload-dir       
+  |                                                            
+  |    +------+                                                
+  |--> | fork |                                                
+  |    +------+                                                
+  |                                                            
+  +--> if self is forked child                                 
+       |                                                       
+       |    +------+                                           
+       |--> | fork | (why fork again)                          
+       |    +------+                                           
+       |                                                       
+       +--> if self is forked child                            
+            -                                                  
+            +--> tftp -g -r <file_name> <server_addr>          
+```
