@@ -1,3 +1,210 @@
+### obmc-flash-bmc
+
+```
+obmc-flash-bmc                                                                          
++----------------+                                                                       
+| obmc-flash-bmc |                                                                       
++-|--------------+                                                                       
+  |                                                                                      
+  |--> switch                                                                            
+  |--> case mtduboot                                                                     
+  |    -    +-----------+                                                                
+  |    +--> | mtd_write | flash image (image-u-boot) to target mtd                       
+  |         +-----------+                                                                
+  |--> (skip ubi related cases, see no ubi device in my study case)                      
+  |    -    +-----------------+                                                          
+  |    +--> | backup_env_vars | copy kernelname/ubiblock/root from env_var to config_file
+  |         +-----------------+                                                          
+  |--> case updateubootvars                                                              
+  |    -    +-----------------+                                                          
+  |    +--> | update_env_vars |                                                          
+  |         +-----------------+                                                          
+  |--> case rebootguardenable                                                            
+  |    -    +-------------------+                                                        
+  |    +--> | rebootguardenable | enable reboot-guard                                    
+  |         +-------------------+                                                        
+  |--> case rebootguarddisable                                                           
+  |    -    +--------------------+                                                       
+  |    +--> | rebootguarddisable |                                                       
+  |         +--------------------+                                                       
+  |--> case mirroruboot                                                                  
+  |    -    +-------------+                                                              
+  |    +--> | mirroruboot | mirror uboot to alt                                          
+  |         +-------------+                                                              
+  |--> case mmc                                                                          
+  |    -    +------------+                                                               
+  |    +--> | mmc_update | flash bmc image to mmc                                        
+  |         +------------+                                                               
+  |--> case mmc-mount                                                                    
+  |    -    +-----------+                                                                
+  |    +--> | mmc_mount | mount mmc                                                      
+  |         +-----------+                                                                
+  |--> case mmc-remove                                                                   
+  |    -    +------------+                                                               
+  |    +--> | mmc_remove | remove bmc image in mmc                                       
+  |         +------------+                                                               
+  |--> case mmc-setprimary                                                               
+  |    -    +----------------+                                                           
+  |    +--> | mmc_setprimary | set bootside=bootside, and next time it boots from there  
+  |         +----------------+                                                           
+  |--> case static-altfs                                                                 
+  |     -                                                                                
+  |     +--> mount alternative                                                           
+  |                                                                                      
+  +--> case umount-static-altfs                                                          
+        -                                                                                
+        +--> unmount alternative                                                         
+```
+
+```
+obmc-flash-bmc                                                                
++-----------------+                                                            
+| backup_env_vars | : copy kernelname/ubiblock/root from env_var to config_file
++-|---------------+                                                            
+  |    +---------------------+                                                 
+  |--> | copy_env_var_to_alt | copy kernel name from env_var to config_file    
+  |    +---------------------+                                                 
+  |    +----------------------+                                                
+  |--> | copy_ubiblock_to_alt | copy ubiblock from env_var to config_file      
+  |    +----------------------+                                                
+  |    +------------------+                                                    
+  +--> | copy_root_to_alt | copy root from env_var to config_file              
+       +------------------+                                                    
+```
+
+```
+obmc-flash-bmc                                                              
++-------------+                                                               
+| mirroruboot | : mirror uboot to alt                                         
++-|-----------+                                                               
+  |                                                                           
+  |--> determine device file of 'u-boot' and 'alt-u-boot'                     
+  |                                                                           
+  |--> calculate checksum for each of them                                    
+  |                                                                           
+  +--> if the checksums differ                                                
+       |                                                                      
+       |--> determine device file of 'u-boot-env' and 'alt-u-boot-env'        
+       |                                                                      
+       |    +----------+                                                      
+       |--> | mtd_copy | mirror bmc to alt                                    
+       |    +----------+                                                      
+       |    +----------+                                                      
+       |--> | mtd_copy | mirror bmc env to alt                                
+       |    +----------+                                                      
+       |    +----------------------+                                          
+       |--> | copy_ubiblock_to_alt | copy ubiblock from env_var to config_file
+       |    +----------------------+                                          
+       |    +------------------+                                              
+       +--> | copy_root_to_alt | copy root from env_var to config_file        
+            +------------------+                                              
+```
+
+```
+obmc-flash-bmc                                                             
++------------+                                                              
+| mmc_update | : flash bmc image to mmc                                     
++-|----------+                                                              
+  |                                                                         
+  |--> compare uboot@dev and uboot@img                                      
+  |                                                                         
+  |--> if they are different                                                
+  |    -                                                                    
+  |    +--> mirror data from img to dev                                     
+  |                                                                         
+  |    +-------------------------+                                          
+  |--> | mmc_get_secondary_label | get the secondary label (non-running one)
+  |    +-------------------------+                                          
+  |                                                                         
+  |--> extract image-kernel and write to secondary dev                      
+  |                                                                         
+  |--> extract image-rofs and write to secondary dev                        
+  |                                                                         
+  |--> (can't find 'sgdisk' utility on system)                              
+  |                                                                         
+  |    +-----------+                                                        
+  |--> | partprobe | inform system of partition table change                
+  |    +-----------+                                                        
+  |                                                                         
+  |--> if host fw exist (bios?)                                             
+  |    -                                                                    
+  |    +--> copy to somewhere and mount as read-only                        
+  |                                                                         
+  |    +-------------+                                                      
+  +--> | set_flashid | update property xyz.openbmc_project.Common.FilePath  
+       +-------------+                                                      
+```
+
+```
+obmc-flash-bmc                                 
++-----------+                                    
+| mmc_mount | : mount mmc                        
++-|---------+                                    
+  |                                              
+  |--> get primary id and secondary id           
+  |                                              
+  |--> create primary and secondary folders      
+  |                                              
+  +--> mount image@mmc to the folders separately?
+```
+
+```
+obmc-flash-bmc                                                       
++------------+                                                        
+| mmc_remove | : remove bmc image in mmc                              
++-|----------+                                                        
+  |    +-----------------------+                                      
+  |--> | mmc_get_primary_label |                                      
+  |    +-----------------------+                                      
+  |                                                                   
+  |--> return if flash_id == primary_id (don't remove the running one)
+  |                                                                   
+  |--> use dd to destroy 'boot' and 'rofs'                            
+  |                                                                   
+  |--> ensure host_fw_alt isn't mounted                               
+  |                                                                   
+  +--> if host_fw is mounted, remove something in it                  
+```
+
+### phosphor-download-manager
+
+```
+download_manager_main.cpp                                 
++------+                                                   
+| main | ???                                               
++-|----+                                                   
+  |                                                        
+  |--> request name 'xyz.openbmc_project.Software.Download'
+  |                                                        
+  +--> endless loop                                        
+       -                                                   
+       +--> process (?)                                    
+```
+
+```
++---------------------------+                                  
+| Download::downloadViaTFTP | : download image from tftp server
++-|-------------------------+                                  
+  |                                                            
+  |--> check if folder for upload exists: img-upload-dir       
+  |                                                            
+  |    +------+                                                
+  |--> | fork |                                                
+  |    +------+                                                
+  |                                                            
+  +--> if self is forked child                                 
+       |                                                       
+       |    +------+                                           
+       |--> | fork | (why fork again)                          
+       |    +------+                                           
+       |                                                       
+       +--> if self is forked child                            
+            -                                                  
+            +--> tftp -g -r <file_name> <server_addr>          
+```
+
+### phosphor-image-updater
+
 ```
 item_updater_main.cpp                                        
 +------+                                                      
@@ -142,36 +349,5 @@ item_updater_main.cpp
 ```
 
 ```
-download_manager_main.cpp                                 
-+------+                                                   
-| main | ???                                               
-+-|----+                                                   
-  |                                                        
-  |--> request name 'xyz.openbmc_project.Software.Download'
-  |                                                        
-  +--> endless loop                                        
-       -                                                   
-       +--> process (?)                                    
-```
-
-```
-+---------------------------+                                  
-| Download::downloadViaTFTP | : download image from tftp server
-+-|-------------------------+                                  
-  |                                                            
-  |--> check if folder for upload exists: img-upload-dir       
-  |                                                            
-  |    +------+                                                
-  |--> | fork |                                                
-  |    +------+                                                
-  |                                                            
-  +--> if self is forked child                                 
-       |                                                       
-       |    +------+                                           
-       |--> | fork | (why fork again)                          
-       |    +------+                                           
-       |                                                       
-       +--> if self is forked child                            
-            -                                                  
-            +--> tftp -g -r <file_name> <server_addr>          
+https://github.com/openbmc/phosphor-bmc-code-mgmt
 ```
