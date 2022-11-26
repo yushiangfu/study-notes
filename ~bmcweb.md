@@ -1,3 +1,5 @@
+### 
+
 ```
 src/webserver_main.cpp
 +-----+
@@ -403,4 +405,139 @@ src/webserver_main.cpp
   |    +--------------------------------------+                                         
   +--> | hostname_monitor::installCertificate | install certificate to dbus             
        +--------------------------------------+                                         
+```
+
+### redfish
+
+```
+redfish-core/lib/update_service.hpp                                                            
++----------------------------+                                                                  
+| requestRoutesUpdateService | : prepare get/patch/post methods for '/redfish/v1/UpdateService/'
++-|--------------------------+                                                                  
+  |                                                                                             
+  |--> prepare 'get' method for /redfish/v1/UpdateService/                                      
+  |       +-----------------------------+                                                       
+  |       |fill response in json format |                                                       
+  |       +-----------------------------+                                                       
+  |                                                                                             
+  |--> prepare 'patch' method for /redfish/v1/UpdateService/                                    
+  |       +-------------------------------------------------------------------------+           
+  |       |read 'HttpPushUriOptions', 'HttpPushUriApplyTime', 'ApplyTime' from json |           
+  |       |                                                                         |           
+  |       |prepare value based on 'ApplyTime' (Immediate or OnReset)                |           
+  |       |                                                                         |           
+  |       |call service: xyz.openbmc_project.Settings                               |           
+  |       |     object: /xyz/openbmc_project/software/apply_time                    |           
+  |       |     iface: org.freedesktop.DBus.Properties                              |           
+  |       |     method: Set                                                         |           
+  |       +-------------------------------------------------------------------------+           
+  |                                                                                             
+  |--> prepare 'post' method for /redfish/v1/UpdateService/                                     
+  |       +--------------------------------------------------+                                  
+  |       |+-------------------------+                       |                                  
+  |       || handleUpdateServicePost | handle uploaded image |                                  
+  |       |+-------------------------+                       |                                  
+  |       +--------------------------------------------------+                                  
+  |                                                                                             
+  +--> prepare 'post' method for /redfish/v1/UpdateService/update/                              
+          +--------------------------------------------------+                                  
+          |+-------------------------+                       |                                  
+          || handleUpdateServicePost | handle uploaded image |                                  
+          |+-------------------------+                       |                                  
+          +--------------------------------------------------+                                  
+```
+
+```
+redfish-core/lib/update_service.hpp                               
++-------------------------+                                        
+| handleUpdateServicePost | : handle uploaded image                
++-|-----------------------+                                        
+  |    +-----------------------------+                             
+  |--> | monitorForSoftwareAvailable | monitor 'available software'
+  |    +-----------------------------+                             
+  |                                                                
+  +--> save request body to /tmp/images/ as uploaded image         
+```
+
+```
+redfish-core/lib/update_service.hpp                               
++-----------------------------+                                    
+| monitorForSoftwareAvailable | : monitor 'available software'     
++-|---------------------------+                                    
+  |                                                                
+  |--> return if fw_update_in_progress                             
+  |                                                                
+  |--> prepare match rule & callback                               
+  |       +-------------------------------------------------------+
+  |       |+------------------------+                             |
+  |       || softwareInterfaceAdded | activate image through dbus |
+  |       |+------------------------+                             |
+  |       +-------------------------------------------------------+
+  |                                                                
+  +--> prepare match rule & callback                               
+          +----------------------------------------------------+   
+          |for each iface                                      |   
+          |-                                                   |   
+          |+--> if it's xyz.openbmc_project.Logging.Entry      |   
+          |     -                                              |   
+          |     +--> for each value                            |   
+          |          -                                         |   
+          |          +--> set up redfish msg according to type |   
+          +----------------------------------------------------+   
+```
+
+```
+redfish-core/lib/update_service.hpp                                                          
++------------------------+                                                                    
+| softwareInterfaceAdded | : activate image through dbus                                      
++-|----------------------+                                                                    
+  |                                                                                           
+  |--> read iface_properties from msg                                                         
+  |                                                                                           
+  +--> for each ifrace                                                                        
+       -                                                                                      
+       +--> if it's xyz.openbmc_project.Software.Activation                                   
+            |                                                                                 
+            |--> ->async_method_call                                                          
+            |       +------------------------------------------------------------------------+
+            |       |+---------------+                                                       |
+            |       || activateImage | call dbus method to activate image                    |
+            |       |+---------------+                                                       |
+            |       |                                                                        |
+            |       |if async_resp is provided                                               |
+            |       ||                                                                       |
+            |       ||--> prepare task                                                       |
+            |       ||       +--------------------------------------------------------------+|
+            |       ||       |read msg                                                      ||
+            |       ||       |                                                              ||
+            |       ||       |if iface == xyz.openbmc_project.Software.Activation           ||
+            |       ||       |-                                                             ||
+            |       ||       |+--> given state, set up task data                            ||
+            |       ||       |                                                              ||
+            |       ||       |elif iface == xyz.openbmc_project.Software.ActivationProgress ||
+            |       ||       |-                                                             ||
+            |       ||       |+--> set up task data                                         ||
+            |       ||       +--------------------------------------------------------------+|
+            |       ||                                                                       |
+            |       |+--> let task start work                                                |
+            |       +------------------------------------------------------------------------+
+            |       |service: xyz.openbmc_project.ObjectMapper                               |
+            |       |object: /xyz/openbmc_project/object_mapper                              |
+            |       |iface: xyz.openbmc_project.ObjectMapper                                 |
+            |       |method: GetObject                                                       |
+            |       +------------------------------------------------------------------------+
+            |                                                                                 
+            +--> break                                                                        
+```
+
+```
+redfish-core/lib/update_service.hpp                             
++---------------+                                                
+| activateImage | : call dbus method to activate image           
++-|-------------+                                                
+  |                                                              
+  +--> ->async_method_call service: arg 'service'                
+                           object: arg 'objPath'                 
+                           iface: org.freedesktop.DBus.Properties
+                           Set                                   
 ```
