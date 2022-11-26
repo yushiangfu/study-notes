@@ -348,6 +348,54 @@ item_updater_main.cpp
             MaskUnitFiles                                
 ```
 
+### phosphor-version-software-manager
+
+```
+image_manager_main.cpp                                   
++------+                                                  
+| main |                                                  
++-|----+                                                  
+  |                                                       
+  |--> request name "xyz.openbmc_project.Software.Version"
+  |                                                       
+  |                  +-----------------------+            
+  |--> prepare watch | Manager::processImage |            
+  |                  +-----------------------+            
+  |                                                       
+  |    +---------------+                                  
+  +--> | sd_event_loop |                                  
+       +---------------+                                  
+```
+
+```
+image_manager.cpp                                                   
++-----------------------+                                            
+| Manager::processImage |                                            
++-|---------------------+                                            
+  |                                                                  
+  |--> prepare tmp_path                                              
+  |                                                                  
+  |--> untar the tarball to tmp_path                                 
+  |                                                                  
+  |--> check 'version' in MANIFEST (can't be empty)                  
+  |                                                                  
+  |--> get current machine from /etc/os-release                      
+  |                                                                  
+  |--> get machine from MANIFEST                                     
+  |                                                                  
+  |--> these two 'machine' should match                              
+  |                                                                  
+  |--> check 'purpose' in MANIFEST (can't be empty)                  
+  |                                                                  
+  |    +--------------------+                                        
+  |--> | getSoftwareObjects | call obj_mapper to get software objects
+  |    +--------------------+                                        
+  |                                                                  
+  |--> rename tmp_dir to image_dir                                   
+  |                                                                  
+  +--> prepare 'Version' obj and insert to 'versions'                
+```
+
 ```
 https://github.com/openbmc/phosphor-bmc-code-mgmt
 ```
