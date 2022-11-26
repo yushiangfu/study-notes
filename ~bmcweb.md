@@ -1,55 +1,54 @@
 ```
-+------+                                                                                                                                                       
-| main | (src/webserver_main.cpp)                                                                                                                              
-+-|----+                                                                                                                                                       
-  |    +--------------------------+                                                                                                                            
-  |--> | webassets::requestRoutes | for each file (html, css, ...) under /usr/share/www/, determine (web_path, callback) and register to rules                 
-  |    +--------------------------+                                                                                                                            
-  |    +-------------------------+                                                                                                                             
-  |--> | obmc_kvm::requestRoutes | configure and prepare ops for "/kvm/0"                                                                                      
-  |    +-------------------------+                                                                                                                             
-  |    +---------------------------------+                                                                                                                     
-  |--> | eventservice_sse::requestRoutes | configure and prepare ops for "/redfish/v1/EventService/Subscriptions/SSE"                                          
-  |    +---------------------------------+                                                                                                                     
-  |    +------------------------+                                                                                                                              
-  |--> | redfish::requestRoutes | configure and prepare ops for "/redfish/"                                                                                    
-  |    +------------------------+                                                                                                                              
-  |    +-----------------------------+                                                                                                                         
-  |--> | dbus_monitor::requestRoutes | configure and prepare ops for "/subscribe"                                                                              
-  |    +-----------------------------+                                                                                                                         
-  |    +-----------------------------+                                                                                                                         
-  |--> | image_upload::requestRoutes | configure and prepare ops for "/upload/image/<str>" and "/upload/image"                                                 
-  |    +-----------------------------+                                                                                                                         
-  |    +-------------------------------+                                                                                                                       
-  |--> | openbmc_mapper::requestRoutes | configure and prepare ops for "/bus/", "/bus/system/", "/list/", "/xyz/<path>"                                        
-  |    +-------------------------------+                               "/org/<path>", "/download/dump/<str>/", "/bus/system/<str>/", "/bus/system/<str>/<path>"
-  |    +-----------------------------+                                                                                                                         
-  |--> | obmc_console::requestRoutes | configure and prepare ops for "/console0"                                                                               
-  |    +-----------------------------+                                                                                                                         
-  |    +------------------------+                                                                                                                              
-  +--> | obmc_vm::requestRoutes | configure and prepare ops for "/vm/0/0"                                                                                      
-  |    +------------------------+                                                                                                                              
-  |                                                                                                                                                            
-  |--> if insecure_disable_xss_prevention                                                                                                                      
-  |    |                                                                                                                                                       
-  |    |    +-------------------------------+                                                                                                                  
-  |    +--> | cors_preflight::requestRoutes | configure and prepare ops for "<str>"                                                                            
-  |         +-------------------------------+                                                                                                                  
-  |    +-----------------------------+                                                                                                                         
-  |--> | login_routes::requestRoutes | configure and prepare ops for "/login"                                                                                  
-  |    +-----------------------------+                                                                                                                         
-  |    +-------------+                                                                                                                                         
-  |--> | setupSocket | get a socket and save in App obj                                                                                                        
-  |    +-------------+                                                                                                                                         
-  |    +--------------------------+                                                                                                                            
-  |--> | nbd_proxy::requestRoutes | configure and prepare ops for "/nbd/<str>"                                                                                 
-  |    +--------------------------+                                                                                                                            
-  |    +-------------------------------------------+                                                                                                           
-  +--> | EventServiceManager::startEventLogMonitor | start event monitors on dir (/var/log) and file (/var/log/redfish)                                        
-  |    +-------------------------------------------+                                                                                                           
-  |    +------------------------------------------+                                                                                                            
-  +--> | hostname_monitor::registerHostnameSignal | register callback to hostname property change                                                              
-       +------------------------------------------+                                                                                                            
+src/webserver_main.cpp
++-----+
+| run | : register lots of uri handlers
++-|---+
+  |    +--------------------------+
+  |--> | webassets::requestRoutes | for each file (html, css, ...) under /usr/share/www/, determine (web_path, callback) and register to rules
+  |    +--------------------------+
+  |    +-------------------------+
+  |--> | obmc_kvm::requestRoutes | configure and prepare ops for "/kvm/0"
+  |    +-------------------------+
+  |    +-------------------------+
+  |--> | redfish::RedfishService | prepare redfish_service
+  |    +-------------------------+
+  |    +-------------------------+
+  |--> | HttpClient::getInstance | get http-client handler
+  |    +-------------------------+
+  |    +----------------------------------+
+  |--> | EventServiceManager::getInstance | get event-service-manager handler
+  |    +----------------------------------+
+  |    +-----------------------------+
+  |--> | dbus_monitor::requestRoutes | configure and prepare ops for "/subscribe"
+  |    +-----------------------------+
+  |    +-----------------------------+
+  |--> | image_upload::requestRoutes | configure and prepare ops for "/upload/image/<str>" and "/upload/image"
+  |    +-----------------------------+
+  |    +-------------------------------+
+  |--> | openbmc_mapper::requestRoutes | configure and prepare ops for "/bus/", "/bus/system/", "/list/", "/xyz/<path>"
+  |    +-------------------------------+                               "/org/<path>", "/download/dump/<str>/",
+  |                                                                    "/bus/system/<str>/", "/bus/system/<str>/<path>"
+  |    +-----------------------------+
+  |--> | obmc_console::requestRoutes | configure and prepare ops for "/console0"
+  |    +-----------------------------+
+  |    +------------------------+
+  +--> | obmc_vm::requestRoutes | configure and prepare ops for "/vm/0/0"
+  |    +------------------------+
+  |    +-----------------------------+
+  |--> | login_routes::requestRoutes | configure and prepare ops for "/login"
+  |    +-----------------------------+
+  |    +-------------+
+  |--> | setupSocket | get a socket and save in App obj
+  |    +-------------+
+  |    +--------------------------+
+  |--> | nbd_proxy::requestRoutes | configure and prepare ops for "/nbd/<str>"
+  |    +--------------------------+
+  |    +-------------------------------------------+
+  +--> | EventServiceManager::startEventLogMonitor | start event monitors on dir (/var/log) and file (/var/log/redfish)
+  |    +-------------------------------------------+
+  |    +------------------------------------------+
+  +--> | hostname_monitor::registerHostnameSignal | register callback to hostname property change
+       +------------------------------------------+
 ```
 
 ```
