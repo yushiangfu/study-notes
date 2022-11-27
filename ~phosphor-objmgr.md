@@ -39,6 +39,22 @@ The valid ancestors include:
 For each object path, the mapper will list all the services that implement it, and obviously, the shorter path involves more services. 
 With the help of the last argument: interface(s), we can limit the output to services that contain the interfaces intersecting our selection.
 
+### GetObject
+
+Given the argument object, we can query the mapper about the service that implements the object path; multiple services in the output list is possible. 
+Like `GetAncestors`, it's optional to provide interfaces as the last argument, but it's rarely necessary for a practical scenario.
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.ObjectMapper \               # service
+  /xyz/openbmc_project/object_mapper \             # object
+  xyz.openbmc_project.ObjectMapper \               # interface
+  GetObject \                                      # method
+  sas \                                            # signature
+  /xyz/openbmc_project/FruDevice \                 # target object
+  0                                                # number of the following interface(s)
+```
+
 <details><summary> More Details </summary>
 
 ```
@@ -489,7 +505,10 @@ busctl call --verbose \
   xyz.openbmc_project.ObjectMapper \
   /xyz/openbmc_project/object_mapper \
   xyz.openbmc_project.ObjectMapper \
-  GetObject sas /xyz/openbmc_project/FruDevice 0
+  GetObject \
+  sas \
+  /xyz/openbmc_project/FruDevice \
+  0
 ```
 
 ## <a name="reference"></a> Reference
