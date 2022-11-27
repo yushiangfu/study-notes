@@ -11,6 +11,34 @@
 
 ## <a name="methods"></a> Methods
 
+### GetAncestors
+
+Instead of a generic description, let's take the below example for introduction, and our target is `/xyz/openbmc_project/software/10e36fd2`.
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \         # service
+   /xyz/openbmc_project/object_mapper \       # object
+   xyz.openbmc_project.ObjectMapper \         # interface
+   GetAncestors \                             # method
+   sas \                                      # signature
+   /xyz/openbmc_project/software/10e36fd2 \   # target object
+   1 \                                        # number of the following interface(s)
+   xyz.openbmc_project.Common.FactoryReset    # interface(s)
+```       
+
+The valid ancestors include:
+
+- `(empty)`
+  - why is this necessary? Let's ignore this one for now.
+- `/`
+- `/xyz`
+- `/xyz/openbmc_project`
+- `/xyz/openbmc_project/software`
+
+For each object path, the mapper will list all the services that implement it, and obviously, the shorter path involves more services. 
+With the help of the last argument: interface(s), we can limit the output to services that contain the interfaces intersecting our selection.
+
 <details><summary> More Details </summary>
 
 ```
@@ -443,6 +471,18 @@
 (TBD)
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \
+   /xyz/openbmc_project/object_mapper \
+   xyz.openbmc_project.ObjectMapper \
+   GetAncestors \
+   sas \
+   /xyz/openbmc_project/software/10e36fd2 \
+   1 \
+   xyz.openbmc_project.Common.FactoryReset
+```
 
 ```
 busctl call --verbose \
