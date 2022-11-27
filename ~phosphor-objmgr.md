@@ -72,6 +72,23 @@ busctl call --verbose \
    xyz.openbmc_project.FruDeviceManager   # interface(s) as constraint
 ```
 
+### GetSubTreePaths
+
+It's pretty much `GetSubTree` in every perspective, except the output is limited to the object path and has no service or interface information.
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \     # service
+   /xyz/openbmc_project/object_mapper \   # object
+   xyz.openbmc_project.ObjectMapper \     # interface
+   GetSubTreePaths \                      # method
+   sias \                                 # signature
+   / \                                    # every object starts with the given path is targeted
+   0 \                                    # valid depth to search (0 means unlimited)
+   1 \                                    # number of the following interface(s)
+   xyz.openbmc_project.FruDeviceManager   # interface(s) as constraint
+```
+
 <details><summary> More Details </summary>
 
 ```
@@ -526,6 +543,32 @@ busctl call --verbose \
   sas \
   /xyz/openbmc_project/FruDevice \
   0
+```
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \
+   /xyz/openbmc_project/object_mapper \
+   xyz.openbmc_project.ObjectMapper \
+   GetSubTree \
+   sias \
+   / \
+   0 \
+   1 \
+   xyz.openbmc_project.FruDeviceManager
+```
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \
+   /xyz/openbmc_project/object_mapper \
+   xyz.openbmc_project.ObjectMapper \
+   GetSubTreePaths \
+   sias \
+   / \
+   0 \
+   1 \
+   xyz.openbmc_project.FruDeviceManager
 ```
 
 ## <a name="reference"></a> Reference
