@@ -1,1 +1,2 @@
 - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
+- [std::pair](https://www.geeksforgeeks.org/pair-in-cpp-stl/)
