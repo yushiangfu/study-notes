@@ -46,13 +46,30 @@ Like `GetAncestors`, it's optional to provide interfaces as the last argument, b
 
 ```
 busctl call --verbose \
-  xyz.openbmc_project.ObjectMapper \               # service
-  /xyz/openbmc_project/object_mapper \             # object
-  xyz.openbmc_project.ObjectMapper \               # interface
-  GetObject \                                      # method
-  sas \                                            # signature
-  /xyz/openbmc_project/FruDevice \                 # target object
-  0                                                # number of the following interface(s)
+  xyz.openbmc_project.ObjectMapper \      # service
+  /xyz/openbmc_project/object_mapper \    # object
+  xyz.openbmc_project.ObjectMapper \      # interface
+  GetObject \                             # method
+  sas \                                   # signature
+  /xyz/openbmc_project/FruDevice \        # target object
+  0                                       # number of the following interface(s)
+```
+
+### GetSubTree
+
+Based on the argument object, e.g., `/`, the method traverses every child object path starting with it and adds to the output.
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \     # service
+   /xyz/openbmc_project/object_mapper \   # object
+   xyz.openbmc_project.ObjectMapper \     # interface
+   GetSubTree \                           # method
+   sias \                                 # signature
+   / \                                    # every object starts with the given path is targeted
+   0 \                                    # valid depth to search (0 means unlimited)
+   1 \                                    # number of the following interface(s)
+   xyz.openbmc_project.FruDeviceManager   # interface(s) as constraint
 ```
 
 <details><summary> More Details </summary>
