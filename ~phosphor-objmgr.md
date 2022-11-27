@@ -1,3 +1,18 @@
+## Index
+
+- [Introduction](#introduction)
+- [Methods](#methods)
+- [Association](#association)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+(TBD)
+
+## <a name="methods"></a> Methods
+
+<details><summary> More Details </summary>
+
 ```
 +------+                                                                               
 | main |                                                                               
@@ -421,6 +436,14 @@
        +--> add this_path to ret if intersect() returned true
 ```
 
+</details>
+
+## <a name="association"></a> Association
+
+(TBD)
+
+## <a name="cheat-sheet"></a> Cheat Sheet
+
 ```
 busctl call --verbose \
   xyz.openbmc_project.ObjectMapper \
@@ -428,3 +451,7 @@ busctl call --verbose \
   xyz.openbmc_project.ObjectMapper \
   GetObject sas /xyz/openbmc_project/FruDevice 0
 ```
+
+## <a name="reference"></a> Reference
+
+- [The Mapper](https://github.com/openbmc/phosphor-objmgr)
