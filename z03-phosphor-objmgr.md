@@ -3,6 +3,7 @@
 - [Introduction](#introduction)
 - [Methods](#methods)
 - [Association](#association)
+- [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
