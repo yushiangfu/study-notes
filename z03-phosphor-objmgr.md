@@ -7,7 +7,27 @@
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+The main components of D-Bus are service, object, and interface; the object mapper helps query much of the lengthy information. 
+Queries rely on the database, a two-level data structure built and maintained by the mapper.
+
+- object-to-services map
+   - Since the service can be used as a namespace, there's no rule preventing multiple services from potentially creating the same object path.
+- service-to-interfaces map
+   - Because of the database design, the way we locate interfaces of a target object is impacted, and service becomes the input instead.
+
+<p align="center"><img src="images/openbmc/phosphor-objmgr.png" /></p>
+
+We use `/xyz/openbmc_project/software` as an example to illustrate and distinguish the coverage of each method implemented by the object mapper.
+
+- GetAncestors
+   - `/`
+   - `/xyz`
+   - `/xyz/openbmc_project`
+- GetObject
+   - `/xyz/openbmc_project/software`
+- GetSubTree & GetSubTreePaths
+   - `/xyz/openbmc_project/software/10e36fd2`
+   - `/xyz/openbmc_project/software/10e36fd2/software_version`
 
 ## <a name="methods"></a> Methods
 
@@ -17,24 +37,15 @@ Instead of a generic description, let's take the below example for introduction,
 
 ```
 busctl call --verbose \
-   xyz.openbmc_project.ObjectMapper \         # service
-   /xyz/openbmc_project/object_mapper \       # object
-   xyz.openbmc_project.ObjectMapper \         # interface
-   GetAncestors \                             # method
-   sas \                                      # signature
-   /xyz/openbmc_project/software/10e36fd2 \   # target object
-   1 \                                        # number of the following interface(s)
-   xyz.openbmc_project.Common.FactoryReset    # interface(s)
+   xyz.openbmc_project.ObjectMapper \        # service
+   /xyz/openbmc_project/object_mapper \      # object
+   xyz.openbmc_project.ObjectMapper \        # interface
+   GetAncestors \                            # method
+   sas \                                     # signature
+   /xyz/openbmc_project/software \           # target object
+   1 \                                       # number of the following interface(s)
+   xyz.openbmc_project.Common.FactoryReset   # interface(s)
 ```       
-
-The valid ancestors include:
-
-- `(empty)`
-  - why is this necessary? Let's ignore this one for now.
-- `/`
-- `/xyz`
-- `/xyz/openbmc_project`
-- `/xyz/openbmc_project/software`
 
 For each object path, the mapper will list all the services that implement it, and obviously, the shorter path involves more services. 
 With the help of the last argument: interface(s), we can limit the output to services that contain the interfaces intersecting our selection.
@@ -92,55 +103,58 @@ busctl call --verbose \
 <details><summary> More Details </summary>
 
 ```
-+------+                                                                               
-| main |                                                                               
-+-|----+                                                                               
-  |                                                                                    
-  |--> prepare signal handlers for SIGINT, SIGTERM                                     
-  |                                                                                    
-  |--> prepare handler and match rule for name change                                  
-  |    +------------+                                                                  
++------+
+| main |
++-|----+
+  |
+  |--> prepare signal handlers for SIGINT, SIGTERM
+  |
+  |--> prepare handler and match rule for name change
+  |    +------------+
   |    | anon func1 | update 'name_owners', introspect target and update associaion map
-  |    +------------+                                                                  
-  |                                                                                    
-  |--> prepare handler and match rule for added iface                                  
-  |    +------------+                                                                  
+  |    +------------+
+  |
+  |--> prepare handler and match rule for added iface
+  |    +------------+
   |    | anon func2 | handle added interface
-  |    +------------+                                                                  
-  |                                                                                    
-  |--> prepare handler and match rule for removed iface                                
-  |    +------------+                                                                  
+  |    +------------+
+  |
+  |--> prepare handler and match rule for removed iface
+  |    +------------+
   |    | anon func3 | handle entry removal
-  |    +------------+                                                                  
-  |                                                                                    
-  |--> prepare handler and match rule for changed assoc                                
-  |    +--------------------+                                                          
-  |    | associationChanged | update association map                                   
-  |    +--------------------+                                                          
-  |                                                                                    
-  |--> set up object: "/xyz/openbmc_project/object_mapper"                             
-  |                                                                                    
-  |--> prepare callback for method "GetAncestors"                                      
-  |        +--------------+                                                            
-  |        | getAncestors | get ancestors of req_path                                  
-  |        +--------------+                                                            
-  |                                                                                    
-  |--> prepare callback for method "GetObject"                                         
-  |        +-----------+                                                               
-  |        | getObject | given path & iface_map, get object(s)                         
-  |        +-----------+                                                               
-  |                                                                                    
-  |--> prepare callback for method "GetSubTree"                                        
-  |        +------------+                                                              
-  |        | getSubTree | get sub tree                                                 
-  |        +------------+                                                              
-  |                                                                                    
-  |--> prepare callback for method "GetSubTreePaths"                                   
-  |        +-----------------+                                                         
-  |        | getSubTreePaths | get sub tree paths                                      
-  |        +-----------------+                                                         
-  |                                                                                    
-  +--> request service: "xyz.openbmc_project.ObjectMapper"                             
+  |    +------------+
+  |
+  |--> prepare handler and match rule for changed assoc
+  |    +--------------------+
+  |    | associationChanged | update association map
+  |    +--------------------+
+  |
+  |--> set up object: "/xyz/openbmc_project/object_mapper"
+  |
+  |--> prepare callback for method "GetAncestors"
+  |        +--------------+
+  |        | getAncestors | get ancestors of req_path
+  |        +--------------+
+  |
+  |--> prepare callback for method "GetObject"
+  |        +-----------+
+  |        | getObject | given path & iface_map, get object(s)
+  |        +-----------+
+  |
+  |--> prepare callback for method "GetSubTree"
+  |        +------------+
+  |        | getSubTree | get sub tree
+  |        +------------+
+  |
+  |--> prepare callback for method "GetSubTreePaths"
+  |        +-----------------+
+  |        | getSubTreePaths | get sub tree paths
+  |        +-----------------+
+  |    +-------------+
+  |--> | doListNames |
+  |    +-------------+
+  |
+  +--> request service: "xyz.openbmc_project.ObjectMapper"
 ```
 
 ```
@@ -513,6 +527,85 @@ busctl call --verbose \
        |                                                     
        +--> add this_path to ret if intersect() returned true
 ```
+   
+```
+src/main.cpp
++-------------+                                                                             
+| doListNames | : add iface to map, update owners                                           
++-|-----------+                                                                             
+  |                                                                                         
+  +--> ->async_method_call                                                                  
+          +--------------------------------------------------------------------------------+
+          |sort process_names                                                              |
+          |                                                                                |
+          |for each process_name                                                           |
+          ||                                                                               |
+          ||    +--------------------+                                                     |
+          ||--> | startNewIntrospect | recursively add iface to map and handle association |
+          ||    +--------------------+                                                     |
+          ||    +--------------+                                                           |
+          |+--> | updateOwners | owners[nameOwner] = newObject                             |
+          |     +--------------+                                                           |
+          +--------------------------------------------------------------------------------+
+          service: org.freedesktop.DBus                                                     
+          object: /org/freedesktop/DBus                                                     
+          iface: org.freedesktop.DBus                                                       
+          method: org.freedesktop.DBus                                                      
+```
+   
+```
+src/main.cpp
++--------------------+                                                          
+| startNewIntrospect | : recursively add iface to map and handle association    
++-|------------------+                                                          
+  |    +--------------+                                                         
+  +--> | doIntrospect | : recursively add iface to map and handle association   
+       +-|------------+                                                         
+         |                                                                      
+         +--> ->async_method_call                                               
+                 +-------------------------------------------------------------+
+                 |parse the input xml                                          |
+                 |                                                             |
+                 |start from element 'interface'                               |
+                 |                                                             |
+                 |while element != null                                        |
+                 ||                                                            |
+                 ||--> get iface from 'name'                                   |
+                 ||                                                            |
+                 ||--> save in 'interfaceMap'                                  |
+                 ||                                                            |
+                 ||--> if iface == xyz.openbmc_project.Association.Definitions |
+                 ||    |                                                       |
+                 ||    |    +----------------+                                 |
+                 ||    +--> | doAssociations | (skip)                          |
+                 ||         +----------------+                                 |
+                 ||                                                            |
+                 |+--> element = next sibling                                  |
+                 |                                                             |
+                 |+---------------------------+                                |
+                 || checkIfPendingAssociation | (skip)                         |
+                 |+---------------------------+                                |
+                 |                                                             |
+                 |start from element 'node'                                    |
+                 |                                                             |
+                 |while element != null                                        |
+                 ||                                                            |
+                 ||--> get child_path from 'name'                              |
+                 ||                                                            |
+                 ||--> if child_path exists                                    |
+                 ||    |                                                       |
+                 ||    |    +--------------+                                   |
+                 ||    +--> | doIntrospect | (recursive)                       |
+                 ||         +--------------+                                   |
+                 ||                                                            |
+                 |+--> element = next sibling                                  |
+                 +-------------------------------------------------------------+
+                 |service: process_name                                        |
+                 |object: path                                                 |
+                 |iface: org.freedesktop.DBus.Introspectable                   |
+                 |method: Introspect                                           |
+                 +-------------------------------------------------------------+
+```
 
 </details>
 
@@ -522,6 +615,8 @@ busctl call --verbose \
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
+- GetAncestors
+
 ```
 busctl call --verbose \
    xyz.openbmc_project.ObjectMapper \
@@ -529,10 +624,12 @@ busctl call --verbose \
    xyz.openbmc_project.ObjectMapper \
    GetAncestors \
    sas \
-   /xyz/openbmc_project/software/10e36fd2 \
+   /xyz/openbmc_project/software \
    1 \
    xyz.openbmc_project.Common.FactoryReset
 ```
+
+- GetObject
 
 ```
 busctl call --verbose \
@@ -544,6 +641,8 @@ busctl call --verbose \
   /xyz/openbmc_project/FruDevice \
   0
 ```
+
+- GetSubTree
 
 ```
 busctl call --verbose \
@@ -557,6 +656,8 @@ busctl call --verbose \
    1 \
    xyz.openbmc_project.FruDeviceManager
 ```
+
+- GetSubTreePaths
 
 ```
 busctl call --verbose \
