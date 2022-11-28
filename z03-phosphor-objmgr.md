@@ -7,8 +7,8 @@
 
 ## <a name="introduction"></a> Introduction
 
-The main components of D-Bus are service, object, and interface; the object mapper helps query much of the lengthy information. 
-Queries rely on the database, a two-level data structure built and maintained by the mapper.
+The main components of D-Bus are service, object, and interface; the object mapper helps collect much of the lengthy information and respond. 
+The query is object-oriented and relies on the database, a two-level data structure built and maintained by the mapper.
 
 - object-to-services map
    - Since the service can be used as a namespace, there's no rule preventing multiple services from potentially creating the same object path.
@@ -19,15 +19,16 @@ Queries rely on the database, a two-level data structure built and maintained by
 
 We use `/xyz/openbmc_project/software` as an example to illustrate and distinguish the coverage of each method implemented by the object mapper.
 
-- GetAncestors
-   - `/`
-   - `/xyz`
-   - `/xyz/openbmc_project`
-- GetObject
-   - `/xyz/openbmc_project/software`
-- GetSubTree & GetSubTreePaths
-   - `/xyz/openbmc_project/software/10e36fd2`
-   - `/xyz/openbmc_project/software/10e36fd2/software_version`
+```
+             "/"                                                       |                  
+             "/xyz"                                                    | GetAncestors()   
+             "/xyz/openbmc_project"                                    |                  
+                                                                                          
+ target -->  "/xyz/openbmc_project/software"                           | GetObject()      
+                                                                                          
+             "/xyz/openbmc_project/software/10e36fd2"                  | GetSubTree() and 
+             "/xyz/openbmc_project/software/10e36fd2/software_version" | GetSubTreePaths()
+```
 
 ## <a name="methods"></a> Methods
 
