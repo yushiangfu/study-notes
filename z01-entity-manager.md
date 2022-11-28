@@ -1041,6 +1041,21 @@ ipmitool raw 0x0a 0x12 0x00 0x00 0x00 0x01 0x01 0x02 0x04 0x08 0x00 0x00 0xf0
                        +-----------------> fru dev id
 ```
   
+- Query FRU information from the object mapper.
+  
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \
+   /xyz/openbmc_project/object_mapper \
+   xyz.openbmc_project.ObjectMapper \
+   GetSubTree \
+   sias \
+   / \
+   0 \
+   1 \
+   xyz.openbmc_project.FruDevice
+```
+  
 - Check matched exposes.
   
 ```
