@@ -399,3 +399,15 @@ image_manager.cpp
 ```
 https://github.com/openbmc/phosphor-bmc-code-mgmt
 ```
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.ObjectMapper \
+  /xyz/openbmc_project/object_mapper \
+  xyz.openbmc_project.ObjectMapper \
+  GetObject \
+  sas \
+  /xyz/openbmc_project/software \
+  1 \
+  xyz.openbmc_project.Common.FactoryReset
+```
