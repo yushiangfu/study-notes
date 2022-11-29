@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Driver](#driver)
 - [Pin Control](#pin-control)
+- [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
@@ -40,27 +41,6 @@ e.g. aspeed  +--  +--------+
 
 Nothing worths mentioning from the function **gpiolib_dev_init** in our study case. 
 Just note that once **gpiolib_initialized** becomes true, the subsequent GPIO chip driver registration will set up the cdev file operations during initialization.
-
-```
-+------------------+                                                                                 
-| gpiolib_dev_init |                                                                                 
-+----|-------------+                                                                                 
-     |    +--------------+                                                                           
-     |--> | bus_register | register 'gpio_bus_type'                                                  
-     |    +--------------+                                                                           
-     |    +-----------------+                                                                        
-     |--> | driver_register | register 'gpio_stub_drv' (not important in our case)                   
-     |    +-----------------+                                                                        
-     |    +---------------------+                                                                    
-     |--> | alloc_chrdev_region | reserve a range (256) of minor numbers for gpio character devices  
-     |    +---------------------+                                                                    
-     |                                                                                               
-     |--> gpiolib_initialized = true                                                                 
-     |                                                                                               
-     |    +---------------------+                                                                    
-     +--> | gpiochip_setup_devs | register each gpiochip dev in 'gpio_devices' (empty in in our case)
-          +---------------------+                                                                    
-```
 
 After kernel adds GPIO device based on device tree and initializes the GPIO driver, probe function triggers because the property **compatible** matches.
 
@@ -783,8 +763,69 @@ The below **create_pinctrl** looks into the device tree for the pinctrl properti
                e.g., | aspeed_pin_config_group_set | get a group of pins and config them               
                      +-----------------------------+                                                   
 ```
-
+  
 </details>
+
+## <a name="system-startup"></a> System Startup
+
+```
+gpiolib_dev_init: register bus & driver, reserve dev#
+gpiolib_sysfs_init: register 'gpio' class, for each entry@gpio_devices: create device and register to sysfs
+gpiolib_debugfs_init: prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
+aspeed_gpio_driver_init:
+aspeed_sgpio_driver_init:
+gpio_clk_driver_init:
+gpio_keys_polled_driver_init:
+i2c_mux_gpio_driver_init:
+w1_gpio_driver_init:
+gpio_led_driver_init:
+fsi_master_gpio_driver_init:
+gpio_keys_init:
+```
+
+```
++------------------+                                                                                 
+| gpiolib_dev_init | : register bus & driver, reserve dev#
++----|-------------+                                                                                 
+     |    +--------------+                                                                           
+     |--> | bus_register | register 'gpio_bus_type'                                                  
+     |    +--------------+                                                                           
+     |    +-----------------+                                                                        
+     |--> | driver_register | register 'gpio_stub_drv' (not important in our case)                   
+     |    +-----------------+                                                                        
+     |    +---------------------+                                                                    
+     |--> | alloc_chrdev_region | reserve a range (256) of minor numbers for gpio character devices  
+     |    +---------------------+                                                                    
+     |                                                                                               
+     |--> gpiolib_initialized = true                                                                 
+     |                                                                                               
+     |    +---------------------+                                                                    
+     +--> | gpiochip_setup_devs | register each gpiochip dev in 'gpio_devices' (empty in in our case)
+          +---------------------+                                                                    
+```
+
+```                                                                                        
+drivers/gpio/gpiolib-sysfs.c                                                                                   
++--------------------+                                                                                          
+| gpiolib_sysfs_init | : register 'gpio' class, for each entry@gpio_devices: create device and register to sysfs
++-|------------------+                                                                                          
+  |    +----------------+                                                                                       
+  |--> | class_register | register 'gpio' class                                                                 
+  |    +----------------+                                                                                       
+  |                                                                                                             
+  +--> for each entry on 'gpio_devices'                                                                         
+       |                                                                                                        
+       |    +-------------------------+                                                                         
+       +--> | gpiochip_sysfs_register | create device and register to sysfs                                     
+            +-------------------------+                                                                         
+```
+
+```
+drivers/gpio/gpiolib.c                                                           
++----------------------+                                                          
+| gpiolib_debugfs_init | : prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
++----------------------+                                                          
+```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
