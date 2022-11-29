@@ -105,46 +105,6 @@ static const struct of_device_id aspeed_gpio_of_table[] = {
 The probe function allocates vendor-specific structure, installs regular GPIO operations, and sets up the IRQ chip since it's also an interrupt controller. 
 Then it calls **devm_gpiochip_add_data** to connect the generic layer (GPIO Lib) to the specific driver (Aspeed).
 
-```
-+-------------------+                                                                                                    
-| aspeed_gpio_probe |                                                                                                    
-+----|--------------+                                                                                                    
-     |                                                                                                                   
-     |--> set up 'aspeed_gpio' and install gpio chip operations (in, out, get, set, ...)                                 
-     |                                                                                                                   
-     |--> set up 'irq_chip' of 'aspeed_gpio' if device tree specifies the irq#                                           
-     |                                                                                                                   
-     |    +------------------------+                                                                                     
-     +--> | devm_gpiochip_add_data |   <========== connect the generic layer (gpio lib) to specific driver (aspeed)     
-          +-----|------------------+                                                                                     
-                |    +---------------------------------+                                                                 
-                +--> | devm_gpiochip_add_data_with_key |                                                                 
-                     +--------|------------------------+                                                                 
-                              |    +----------------------------+                                                        
-                              +--> | gpiochip_add_data_with_key |                                                        
-                                   +------|---------------------+                                                        
-                                          |                                                                              
-                                          |--> set up 'gpio device'                                                      
-                                          |                                                                              
-                                          |--> allocate 'descriptor' for each GPIO line                                  
-                                          |                                                                              
-                                          |    +---------------------+                                                   
-                                          |--> | gpiodev_add_to_list | add 'gpio device' to the 'gpio_devices' list      
-                                          |    +---------------------+                                                   
-                                          |    +-----------------+                                                       
-                                          |--> | of_gpiochip_add | add pin range and set hog (default gpio behavior)     
-                                          |    +-----------------+                                                       
-                                          |    +----------------------+                                                  
-                                          |--> | gpiochip_add_irqchip | set up target 'irq desc' based on the 'gpio chip'
-                                          |    +----------------------+                                                  
-                                          |                                                                              
-                                          |--> if gpiolib_initialized is set (yes, in gpio lib init)                     
-                                          |                                                                              
-                                          |    +--------------------+                                                    
-                                          +--> | gpiochip_setup_dev | register cdev                                      
-                                               +--------------------+                                                    
-```
-
 At the moment, we have the complete GPIO framework, and userspace utilities can send requests through the char device.
 
 ```
@@ -772,10 +732,10 @@ The below **create_pinctrl** looks into the device tree for the pinctrl properti
 gpiolib_dev_init: register bus & driver, reserve dev#
 gpiolib_sysfs_init: register 'gpio' class, for each entry@gpio_devices: create device and register to sysfs
 gpiolib_debugfs_init: prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
-aspeed_gpio_driver_init:
-aspeed_sgpio_driver_init:
-gpio_clk_driver_init:
-gpio_keys_polled_driver_init:
+aspeed_gpio_probe: set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
+aspeed_sgpio_driver_init: (skip, no matched device)
+gpio_clk_driver_init: (skip, no matched device)
+gpio_keys_polled_driver_init: 
 i2c_mux_gpio_driver_init:
 w1_gpio_driver_init:
 gpio_led_driver_init:
@@ -825,6 +785,65 @@ drivers/gpio/gpiolib.c
 +----------------------+                                                          
 | gpiolib_debugfs_init | : prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
 +----------------------+                                                          
+```
+
+
+```
+drivers/gpio/gpio-aspeed.c
++-------------------+                                                                                                    
+| aspeed_gpio_probe | : set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
++----|--------------+                                                                                                    
+     |                                                                                                                   
+     |--> set up 'aspeed_gpio' and install gpio chip operations (in, out, get, set, ...)                                 
+     |                                                                                                                   
+     |--> set up 'irq_chip' of 'aspeed_gpio' if device tree specifies the irq#                                           
+     |                                                                                                                   
+     |    +------------------------+                                                                                     
+     +--> | devm_gpiochip_add_data | prepare desc for each gpio line, set up irq desc, register gpio chip 
+          +------------------------+ (connect the generic layer (gpio lib) to specific driver (aspeed))
+```
+
+```
+include/linux/gpio/driver.h
++------------------------+
+| devm_gpiochip_add_data | : prepare desc for each gpio line, set up irq desc, register gpio chip
++-----|------------------+
+      |    +---------------------------------+
+      +--> | devm_gpiochip_add_data_with_key | : prepare desc for each gpio line, set up irq desc, register gpio chip
+           +--------|------------------------+
+                    |    +----------------------------+
+                    +--> | gpiochip_add_data_with_key | prepare desc for each gpio line, set up irq desc, register gpio chip
+                    |    +----------------------------+
+                    |    +--------------------------+
+                    +--> | devm_add_action_or_reset | add action 'devm_gpio_chip_release' as device resource
+                         +--------------------------+
+```
+
+```
+drivers/gpio/gpiolib.c
++----------------------------+
+| gpiochip_add_data_with_key | : prepare desc for each gpio line, set up irq desc, register gpio chip
++------|---------------------+
+       |
+       |--> set up 'gpio device'
+       |
+       |--> allocate 'descriptor' for each GPIO line
+       |
+       |    +---------------------+
+       |--> | gpiodev_add_to_list | add 'gpio device' to the 'gpio_devices' list
+       |    +---------------------+
+       |    +-----------------+
+       |--> | of_gpiochip_add | add pin range and set hog (default gpio behavior)
+       |    +-----------------+
+       |    +----------------------+
+       |--> | gpiochip_add_irqchip | set up target 'irq desc' based on the 'gpio chip'
+       |    +----------------------+
+       |
+       +--> if gpiolib_initialized is set (yes, in gpio lib init)
+            |
+            |    +--------------------+
+            +--> | gpiochip_setup_dev | register cdev
+                 +--------------------+
 ```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
