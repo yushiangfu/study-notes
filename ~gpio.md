@@ -3,10 +3,9 @@
 ## Index
 
 - [Introduction](#introduction)
-- [GPIO Lib](#gpio-lib)
-- [GPIO Chip Driver](#gpio-chip-driver)
-- [GPIO Pin Control](#gpio-pin-control)
-- [To-Do List](#to-do-list)
+- [Driver](#driver)
+- [Pin Control](#pin-control)
+- [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -15,7 +14,7 @@ Generic purpose input-output (GPIO) can work as output to control target device 
 In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
 Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
 
-## <a name="gpio-lib"></a> GPIO Lib
+## <a name="driver"></a> Driver
 
 The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
 
@@ -62,8 +61,6 @@ Just note that once **gpiolib_initialized** becomes true, the subsequent GPIO ch
      +--> | gpiochip_setup_devs | register each gpiochip dev in 'gpio_devices' (empty in in our case)
           +---------------------+                                                                    
 ```
-
-## <a name="gpio-chip-driver"></a> GPIO Chip Driver
 
 After kernel adds GPIO device based on device tree and initializes the GPIO driver, probe function triggers because the property **compatible** matches.
 
@@ -217,7 +214,7 @@ Here's the example of a flow chart showing how the code switches from generic la
                                             |                                   
 ```
 
-## <a name="gpio-pin-control"></a> GPIO Pin Control
+## <a name="pin-control"></a> Pin Control
 
 Some GPIO pins are multi-functional; they can have one or two extra functionality through proper settings. 
 For kernel to ensure these functions work as expected, it introduces the pin control (pinctrl) mechanism to set the required registers beforehand automatically. 
@@ -789,7 +786,7 @@ The below **create_pinctrl** looks into the device tree for the pinctrl properti
 
 </details>
 
-## <a name="to-do-list"></a> To-Do List
+## <a name="cheat-sheet"></a> Cheat Sheet
 
 ```
 cd /sys/class/gpio
