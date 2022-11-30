@@ -222,21 +222,81 @@ item_updater_main.cpp
 ```
 
 ```
-+--------------------------+                                                                               
-| ItemUpdater::ItemUpdater | : prepare an item updater                                                     
-+-|------------------------+                                                                               
-  |    +----------------+                                                                                  
-  |--> | getRunningSlot | get running slot from "/run/media/slot"                                          
-  |    +----------------+                                                                                  
-  |    +----------------------------------+                                                                
++--------------------------+
+| ItemUpdater::ItemUpdater | : prepare an item updater
++-|------------------------+
+  |
+  |--> prepare match rule and callback on "/xyz/openbmc_project/software"
+  |    +-------------------------------+
+  |    | ItemUpdater::createActivation |
+  |    +-------------------------------+
+  |
+  |    +----------------+
+  |--> | getRunningSlot | get running slot from "/run/media/slot"
+  |    +----------------+
+  |    +----------------------------------+
   |--> | ItemUpdater::setBMCInventoryPath | get bmc_inventory_path from obj_mapper, save in member variable
-  |    +----------------------------------+                                                                
-  |    +------------------------------+                                                                    
-  |--> | ItemUpdater::processBMCImage | create a few associations and a activation instance                
-  |    +------------------------------+                                                                    
-  |    +-------------------------------------+                                                             
-  +--> | ItemUpdater::restoreFieldModeStatus | read uboot env, enable field mode if necessary              
-       +-------------------------------------+                                                             
+  |    +----------------------------------+
+  |    +------------------------------+
+  |--> | ItemUpdater::processBMCImage | create a few associations and a activation instance
+  |    +------------------------------+
+  |    +-------------------------------------+
+  +--> | ItemUpdater::restoreFieldModeStatus | read uboot env, enable field mode if necessary
+       +-------------------------------------+
+```
+
+```
+item_updater.cpp                                                                                                      
++-------------------------------+                                                                                       
+| ItemUpdater::createActivation |: parse info from msg, prepare objects, add to 'versions' and 'activationis' separately
++-|-----------------------------+                                                                                       
+  |                                                                                                                     
+  |--> read msg into 'interfaces'                                                                                       
+  |                                                                                                                     
+  |--> given interfaces, save info of property 'Purpose', 'Version', 'Path', 'ExtendedVersion', 'Names'                 
+  |                                                                                                                     
+  |--> get version_id from last entry of file path                                                                      
+  |                                                                                                                     
+  +--> if version_id isn't in 'activations' yet                                                                         
+       |                                                                                                                
+       |--> if purpose is 'bmc' or 'system'                                                                             
+       |    |                                                                                                           
+       |    |             +------------------------------------+                                                        
+       |    +--> result = | ItemUpdater::validateSquashFSImage | check if files in image_update_list are good           
+       |                  +------------------------------------+                                                        
+       |                                                                                                                
+       |--> else (host?), result = ready                                                                                
+       |                                                                                                                
+       |    if result is ready                                                                                          
+       |    -                                                                                                           
+       |    +--> make tuple (inventory, activation, bmcInventoryPath(?))                                                
+       |                                                                                                                
+       |--> prepare version_class                                                                                       
+       |                                                                                                                
+       |--> add to 'versions'                                                                                           
+       |                                                                                                                
+       +--> add tuple (association) to 'activations'                                                                    
+```
+
+```
+item_updater.cpp                                                                              
++------------------------------------+                                                         
+| ItemUpdater::validateSquashFSImage | : check if files in image_update_list are good          
++-|----------------------------------+                                                         
+  |                                                                                            
+  |--> add "image-bmc" to image_update_list                                                    
+  |                                                                                            
+  |    +-------------------------+                                                             
+  |--> | ItemUpdater::checkImage | check if file in image_update_list is good                  
+  |    +-------------------------+                                                             
+  |                                                                                            
+  +--> if not good                                                                             
+       |                                                                                       
+       |--> add "image-kernel", "image-rofs", "image-rwfs", "image-u-boot" to image_update_list
+       |                                                                                       
+       |    +-------------------------+                                                        
+       +--> | ItemUpdater::checkImage | check if files in image_update_list are good           
+            +-------------------------+                                                        
 ```
 
 ```
