@@ -153,7 +153,7 @@ busctl call --verbose \
   |        | getSubTreePaths | get sub tree paths
   |        +-----------------+
   |    +-------------+
-  |--> | doListNames |
+  |--> | doListNames | add iface to map, update owners  
   |    +-------------+
   |
   +--> request service: "xyz.openbmc_project.ObjectMapper"
@@ -182,15 +182,16 @@ busctl call --verbose \
   |                                                                                 
   |----------> name_owners[new_owner] = name                                        
   |                                                                                 
-  |            +----------------------+                                             
-  +----------> | start_new_introspect | introspect target and update association map
-               +----------------------+                                             
+  |            +--------------------+                                             
+  +----------> | startNewIntrospect | introspect target and update association map
+               +--------------------+                                             
 ```
 
 ```
-+----------------------+                                                                             
-| start_new_introspect | : introspect target and update association map                              
-+-|--------------------+                                                                             
+src/main.cpp
++--------------------+                                                                             
+| startNewIntrospect | : introspect target and update association map                              
++-|------------------+                                                                             
   |    +------------------+                                                                          
   |--> | needToIntrospect | check if it's in whitelist only (not in blacklist)                       
   |    +------------------+                                                                          
@@ -201,44 +202,63 @@ busctl call --verbose \
   +------> | do_introspect | introspect target, for each node: for each iface: update association map
            +---------------+                                                                         
 ```
+   
+```
+src/main.cpp
++--------------+
+| doIntrospect | : recursively add iface to map and handle association
++-|------------+
+  |
+  +--> ->async_method_call
+          +------------------------------------------------------------------------+
+          |parse the input xml                                                     |
+          |                                                                        |
+          |start from element 'interface'                                          |
+          |                                                                        |
+          |while element != null                                                   |
+          ||                                                                       |
+          ||--> get iface from 'name'                                              |
+          ||                                                                       |
+          ||--> save in 'interfaceMap'                                             |
+          ||                                                                       |
+          ||--> if iface == xyz.openbmc_project.Association.Definitions            |
+          ||    |                                                                  |
+          ||    |    +----------------+                                            |
+          ||    +--> | doAssociations | get target info and update association map |
+          ||         +----------------+                                            |
+          ||                                                                       |
+          |+--> element = next sibling                                             |
+          |                                                                        |
+          |+---------------------------+                                           |
+          || checkIfPendingAssociation | (skip)                                    |
+          |+---------------------------+                                           |
+          |                                                                        |
+          |start from element 'node'                                               |
+          |                                                                        |
+          |while element != null                                                   |
+          ||                                                                       |
+          ||--> get child_path from 'name'                                         |
+          ||                                                                       |
+          ||--> if child_path exists                                               |
+          ||    |                                                                  |
+          ||    |    +--------------+                                              |
+          ||    +--> | doIntrospect | (recursive)                                  |
+          ||         +--------------+                                              |
+          ||                                                                       |
+          |+--> element = next sibling                                             |
+          +------------------------------------------------------------------------+
+          |service: process_name                                                   |
+          |object: path                                                            |
+          |iface: org.freedesktop.DBus.Introspectable                              |
+          |method: Introspect                                                      |
+          +------------------------------------------------------------------------+
+```   
 
 ```
-+---------------+                                                                           
-| do_introspect | : introspect target, for each node: for each iface: update association map
-+-|-------------+                                                                           
-  |                                                                                         
-  |--> prepare callback for method call                                                     
-  |       +-----------------------------------------------------------------------+         
-  |       |for each 'interface' node of root node                                 |         
-  |       |                                                                       |         
-  |       |    add iface_name to thisPathMap[process_name]                        |         
-  |       |                                                                       |         
-  |       |    if iface_name == "xyz.openbmc_project.Association.Definitions"     |         
-  |       |                                                                       |         
-  |       |        +-----------------+                                            |         
-  |       |        | do_associations | get target info and update association map |         
-  |       |        +-----------------+                                            |         
-  |       |+---------------------------+                                          |         
-  |       || checkIfPendingAssociation | (skip)                                   |         
-  |       |+---------------------------+                                          |         
-  |       |                                                                       |         
-  |       |for each 'node' of root node                                           |         
-  |       |                                                                       |         
-  |       |    +---------------+                                                  |         
-  |       |    | do_introspect | (recursive)                                      |         
-  |       |    +---------------+                                                  |         
-  |       +-----------------------------------------------------------------------+         
-  |                                                                                         
-  +--> call esrvice: process_name                                                           
-            object: path                                                                    
-            iface: "org.freedesktop.DBus.Introspectable"                                    
-            method: "Introspect"                                                            
-```
-
-```
-+-----------------+                                             
-| do_associations | : get target info and update association map
-+-|---------------+                                             
+src/main.cpp   
++----------------+                                             
+| doAssociations | : get target info and update association map
++-|--------------+                                             
   |                                                             
   |--> prepare callback for method call                         
   |       +----------------------------------------------+      
@@ -254,6 +274,7 @@ busctl call --verbose \
 ```
 
 ```
+src/associations.cpp
 +--------------------+                                                                                        
 | associationChanged | : update association map                                                               
 +-|------------------+                                                                                        
@@ -553,60 +574,6 @@ src/main.cpp
           object: /org/freedesktop/DBus                                                     
           iface: org.freedesktop.DBus                                                       
           method: org.freedesktop.DBus                                                      
-```
-   
-```
-src/main.cpp
-+--------------------+                                                          
-| startNewIntrospect | : recursively add iface to map and handle association    
-+-|------------------+                                                          
-  |    +--------------+                                                         
-  +--> | doIntrospect | : recursively add iface to map and handle association   
-       +-|------------+                                                         
-         |                                                                      
-         +--> ->async_method_call                                               
-                 +-------------------------------------------------------------+
-                 |parse the input xml                                          |
-                 |                                                             |
-                 |start from element 'interface'                               |
-                 |                                                             |
-                 |while element != null                                        |
-                 ||                                                            |
-                 ||--> get iface from 'name'                                   |
-                 ||                                                            |
-                 ||--> save in 'interfaceMap'                                  |
-                 ||                                                            |
-                 ||--> if iface == xyz.openbmc_project.Association.Definitions |
-                 ||    |                                                       |
-                 ||    |    +----------------+                                 |
-                 ||    +--> | doAssociations | (skip)                          |
-                 ||         +----------------+                                 |
-                 ||                                                            |
-                 |+--> element = next sibling                                  |
-                 |                                                             |
-                 |+---------------------------+                                |
-                 || checkIfPendingAssociation | (skip)                         |
-                 |+---------------------------+                                |
-                 |                                                             |
-                 |start from element 'node'                                    |
-                 |                                                             |
-                 |while element != null                                        |
-                 ||                                                            |
-                 ||--> get child_path from 'name'                              |
-                 ||                                                            |
-                 ||--> if child_path exists                                    |
-                 ||    |                                                       |
-                 ||    |    +--------------+                                   |
-                 ||    +--> | doIntrospect | (recursive)                       |
-                 ||         +--------------+                                   |
-                 ||                                                            |
-                 |+--> element = next sibling                                  |
-                 +-------------------------------------------------------------+
-                 |service: process_name                                        |
-                 |object: path                                                 |
-                 |iface: org.freedesktop.DBus.Introspectable                   |
-                 |method: Introspect                                           |
-                 +-------------------------------------------------------------+
 ```
 
 </details>
