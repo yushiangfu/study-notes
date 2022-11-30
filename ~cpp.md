@@ -1,5 +1,6 @@
 - [explicit](https://www.geeksforgeeks.org/use-of-explicit-keyword-in-cpp/)
 - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
+- [std::make_tuple](https://www.geeksforgeeks.org/tuples-in-c/)
 - [std::make_unique](https://www.geeksforgeeks.org/auto_ptr-unique_ptr-shared_ptr-weak_ptr-2/)
 - [std::mem_fn](http://zhaoyan.website/xinzhi/cpp/cppsu77.html)
 - [std::pair](https://www.geeksforgeeks.org/pair-in-cpp-stl/)
