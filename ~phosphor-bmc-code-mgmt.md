@@ -370,7 +370,7 @@ image_manager_main.cpp
 ```
 image_manager.cpp                                                   
 +-----------------------+                                            
-| Manager::processImage |                                            
+| Manager::processImage | : untar, check manifest, prepare 'version' obj and insert to 'verions'
 +-|---------------------+                                            
   |                                                                  
   |--> prepare tmp_path                                              
@@ -394,6 +394,49 @@ image_manager.cpp
   |--> rename tmp_dir to image_dir                                   
   |                                                                  
   +--> prepare 'Version' obj and insert to 'versions'                
+```
+
+```
+watch.cpp                                                                                
++--------------+                                                                          
+| Watch::Watch | : monitor 'image upload' folder, register callback to event 'close_write'
++-|------------+                                                                          
+  |                                                                                       
+  |--> .imageCallback = arg imageCallback                                                 
+  |                                                                                       
+  |--> ensure 'IMG_UPLOAD_DIR' folder exists                                              
+  |                                                                                       
+  |    +---------------+                                                                  
+  |--> | inotify_init1 | prepare 'inotify' instance                                       
+  |    +---------------+                                                                  
+  |    +-------------------+                                                              
+  |--> | inotify_add_watch | monitor 'close_write' event happened in IMG_UPLOAD_DIR       
+  |    +-------------------+                                                              
+  |    +-----------------+                                                                
+  +--> | sd_event_add_io | register callback 'Watch::callback' for the event              
+       +-----------------+                                                                
+```
+
+```
+ watch.cpp                                                                                               
++-----------------+                                                                                       
+| Watch::callback | : handle event (e.g., untar uploaded tarball, check manifest, add to 'versions')      
++-|---------------+                                                                                       
+  |                                                                                                       
+  |--> read data from fd of inotify instance                                                              
+  |                                                                                                       
+  +--> while we haven't handled all the data                                                              
+       |                                                                                                  
+       |--> convert data to event                                                                         
+       |                                                                                                  
+       |--> assemble tar ball path                                                                        
+       |                                                                                                  
+       |--> call ->imageCallback(tar_ball_path), e.g.,                                                    
+       |    +-----------------------+                                                                     
+       |    | Manager::processImage | untar, check manifest, prepare 'version' obj and insert to 'verions'
+       |    +-----------------------+                                                                     
+       |                                                                                                  
+       +--> advance offset                                                                                
 ```
 
 ```
