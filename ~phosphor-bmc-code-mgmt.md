@@ -454,3 +454,29 @@ busctl call --verbose \
   1 \
   xyz.openbmc_project.Common.FactoryReset
 ```
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.ObjectMapper \
+  /xyz/openbmc_project/object_mapper \
+  xyz.openbmc_project.ObjectMapper \
+  GetSubTreePaths \
+  sias \
+  /xyz/openbmc_project/software \
+  0 \
+  1 \
+  xyz.openbmc_project.Software.Version
+```
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.ObjectMapper \
+  /xyz/openbmc_project/object_mapper \
+  xyz.openbmc_project.ObjectMapper \
+  GetSubTreePaths \
+  sias \
+  /xyz/openbmc_project/inventory/ \
+  0 \
+  1 \
+  xyz.openbmc_project.Inventory.Item.Bmc
+```
