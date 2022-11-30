@@ -1,3 +1,4 @@
+- [explicit](https://www.geeksforgeeks.org/use-of-explicit-keyword-in-cpp/)
 - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
 - [std::mem_fn](http://zhaoyan.website/xinzhi/cpp/cppsu77.html)
 - [std::pair](https://www.geeksforgeeks.org/pair-in-cpp-stl/)
