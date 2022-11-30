@@ -2,6 +2,7 @@
 - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
 - [std::make_tuple](https://www.geeksforgeeks.org/tuples-in-c/)
 - [std::make_unique](https://www.geeksforgeeks.org/auto_ptr-unique_ptr-shared_ptr-weak_ptr-2/)
+- [std::map](https://www.geeksforgeeks.org/map-associative-containers-the-c-standard-template-library-stl/)
 - [std::mem_fn](http://zhaoyan.website/xinzhi/cpp/cppsu77.html)
 - [std::pair](https://www.geeksforgeeks.org/pair-in-cpp-stl/)
 - [std::placeholders](https://www.geeksforgeeks.org/bind-function-placeholders-c/)
