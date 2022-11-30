@@ -420,7 +420,7 @@ watch.cpp
 ```
  watch.cpp                                                                                               
 +-----------------+                                                                                       
-| Watch::callback | : handle event (e.g., untar uploaded tarball, check manifest, add to 'versions')      
+| Watch::callback | : handle event (e.g., untar uploaded tarball, check manifest, prepare 'version' and add to 'versions')      
 +-|---------------+                                                                                       
   |                                                                                                       
   |--> read data from fd of inotify instance                                                              
