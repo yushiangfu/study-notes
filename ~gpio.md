@@ -735,9 +735,9 @@ gpiolib_debugfs_init: prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
 aspeed_gpio_probe: set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
 aspeed_sgpio_driver_init: (skip, no matched device)
 gpio_clk_driver_init: (skip, no matched device)
-gpio_keys_polled_driver_init: 
-i2c_mux_gpio_driver_init:
-w1_gpio_driver_init:
+gpio_keys_polled_driver_init: (skip, no matched device)
+i2c_mux_gpio_driver_init: (skip, no matched device)
+w1_gpio_driver_init: (skip, no matched device)
 gpio_led_driver_init:
 fsi_master_gpio_driver_init:
 gpio_keys_init:
@@ -855,6 +855,10 @@ cd gpio123
 cat direction # check current direction
 echo out > direction
 cat value
+```
+
+```
+cat /sys/kernel/debug/gpio
 ```
 
 ## <a name="reference"></a> Reference
