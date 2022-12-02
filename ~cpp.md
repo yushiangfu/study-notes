@@ -6,6 +6,7 @@
   - [virtual function](https://www.geeksforgeeks.org/virtual-function-cpp/)
 
 - std
+  - [std::bind](https://www.geeksforgeeks.org/bind-function-placeholders-c/)
   - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
   - [std::make_tuple](https://www.geeksforgeeks.org/tuples-in-c/)
   - [std::make_unique](https://www.geeksforgeeks.org/auto_ptr-unique_ptr-shared_ptr-weak_ptr-2/)
