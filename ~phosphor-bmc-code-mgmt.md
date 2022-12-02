@@ -408,6 +408,236 @@ item_updater.cpp
             MaskUnitFiles                                
 ```
 
+### activation
+
+```
+activation.cpp                                                                                                  
++------------------------+                                                                                        
+| Activation::activation |                                                                                        
++-|----------------------+                                                                                        
+  |                                                                                                               
+  +--> if value == activating                                                                                     
+       |                                                                                                          
+       |    +-----------------------------+                                                                       
+       |--> | Activation::verifySignature | prepare key & hash, verify {manifest, pubkey, image files, full-image)
+       |    +-----------------------------+                                                                       
+       |    +----------------------------+                                                                        
+       |--> | minimum_ship_level::verify |                                                                        
+       |    +----------------------------+                                                                        
+       |                                                                                                          
+       |--> ensure activation_progress exists                                                                     
+       |                                                                                                          
+       |--> if the purpose is 'host'                                                                              
+       |    |                                                                                                     
+       |    |    +---------------------------------------+                                                        
+       |    |--> | Activation::subscribeToSystemdSignals | subscribe systemd signals (?)                          
+       |    |    +---------------------------------------+                                                        
+       |    |                                                                                                     
+       |    |--> set initial progress = 20%                                                                       
+       |    |                                                                                                     
+       |    |    +----------------------------+                                                                   
+       |    |--> | Activation::flashWriteHost | call systemd service to flash host bios                           
+       |    |    +----------------------------+                                                                   
+       |    |                                                                                                     
+       |    +--> return                                                                                           
+       |                                                                                                          
+       |--> set initial progress = 10%                                                                            
+       |                                                                                                          
+       |    +---------------------------------------+                                                             
+       |--> | Activation::subscribeToSystemdSignals | subscribe systemd signals (?)                               
+       |    +---------------------------------------+                                                             
+       |    +------------------------+                                                                            
+       |--> | Activation::flashWrite | copy image to /run/initramfs, and expect it's flashed during reboot        
+       |    +------------------------+                                                                            
+       |    +---------------------------------+                                                                   
+       +--> | Activation::onFlashWriteSuccess |                                                                   
+            +---------------------------------+                                                                   
+```
+
+```
++-----------------------------+                                                                         
+| Activation::verifySignature | : prepare key & hash, verify {manifest, pubkey, image files, full-image)
++-|---------------------------+                                                                         
+  |                                                                                                     
+  |--> prepare object 'signature'                                                                       
+  |    +----------------------+                                                                         
+  |    | Signature::Signature | get key_type, hash_type and purpose from manifest file                  
+  |    +----------------------+                                                                         
+  |                                                                                                     
+  |    +-------------------+                                                                            
+  +--> | Signature::verify | verify manifest, pubkey, image files, full-image                           
+       +-------------------+                                                                            
+```
+
+```
++-------------------+                                                                                                                     
+| Signature::verify | : verify manifest, pubkey, image files, full-image                                                                  
++-|-----------------+                                                                                                                     
+  |    +------------------------------+                                                                                                   
+  |--> | Signature::systemLevelVerify | verify manifest and pubkey files                                                                  
+  |    +------------------------------+                                                                                                   
+  |    +--------------------------------+                                                                                                 
+  |--> | Signature::checkAndVerifyImage | verify each file in given list ("image-bmc")                                                    
+  |    +--------------------------------+                                                                                                 
+  |                                                                                                                                       
+  |--> if failed                                                                                                                          
+  |    |                                                                                                                                  
+  |    |    +--------------------------------+                                                                                            
+  |    +--> | Signature::checkAndVerifyImage | verify each file in given list ("image-kernel", "image-rofs", "image-rwfs", "image-u-boot")
+  |         +--------------------------------+                                                                                            
+  |                                                                                                                                       
+  |--> (skip the verification of optioinal images)                                                                                        
+  |                                                                                                                                       
+  |    +----------------------------+                                                                                                     
+  +--> | Signature::verifyFullImage | merge files into one full image, verify it, remove the merged file                                  
+       +----------------------------+                                                                                                     
+```
+
+```
++------------------------------+                                                                                        
+| Signature::systemLevelVerify | : verify manifest and pubkey files                                                     
++-|----------------------------+                                                                                        
+  |    +-------------------------------------------+                                                                    
+  |--> | Signature::getAvailableKeyTypesFromSystem | search hash_file and key_file, collect their parent path and return
+  |    +-------------------------------------------+                                                                    
+  |                                                                                                                     
+  |--> build pugkey and its signature file name                                                                         
+  |                                                                                                                     
+  |--> build manifest and its signature file name                                                                       
+  |                                                                                                                     
+  +--> for each key_type                                                                                                
+       |                                                                                                                
+       |    +--------------------------------+                                                                          
+       |--> | Signature::getKeyHashFileNames | make pair (hash_path, key_path)                                          
+       |    +--------------------------------+                                                                          
+       |    +-----------------------+                                                                                   
+       |--> | Signature::verifyFile | verify file (manifest signature)                                                  
+       |    +-----------------------+                                                                                   
+       |                                                                                                                
+       +--> if valid                                                                                                    
+            |                                                                                                           
+            |    +-----------------------+                                                                              
+            +--> | Signature::verifyFile | verify file (pubkey signature)                                               
+                 +-----------------------+                                                                              
+```
+
+```
+image_verify.cpp
++-------------------------------------------+
+| Signature::getAvailableKeyTypesFromSystem | : search hash_file and key_file, collect their parent path and return
++-|-----------------------------------------+
+  |
+  |--> check if signed_conf exists (should)
+  |
+  +--> for each file under signed_conf (is it /etc/activationdata/OpenBMC?)
+       -
+       +--> if it's a hash_file or public_key_file
+            -
+            +--> add parent_path to key_types
+```
+
+```
+image_verify.cpp                                                
++-----------------------+                                        
+| Signature::verifyFile | : verify file                          
++-|---------------------+                                        
+  |    +----------------------------+                            
+  |--> | Signature::createPublicRSA | create rsa                 
+  |    +----------------------------+                            
+  |    +--------------+                                          
+  |--> | rsaVerifyCtx | init digest context                      
+  |    +--------------+                                          
+  |    +-------------------------+                               
+  |--> | OpenSSL_add_all_digests | add all algo to internal table
+  |    +-------------------------+                               
+  |    +----------------------+                                  
+  |--> | EVP_get_digestbyname | create hash struct               
+  |    +----------------------+                                  
+  |    +----------------------+                                  
+  |--> | EVP_DigestVerifyInit |                                  
+  |    +----------------------+                                  
+  |    +------------------------+                                
+  |--> | EVP_DigestVerifyUpdate |                                
+  |    +------------------------+                                
+  |    +-----------------------+                                 
+  +--> | EVP_DigestVerifyFinal |                                 
+       +-----------------------+                                 
+```
+
+```
+image_verify.cpp                                                  
++--------------------------------+                                 
+| Signature::checkAndVerifyImage | : verify each file in given list
++-|------------------------------+                                 
+  |                                                                
+  +--> for each bmc_image                                          
+       |                                                           
+       |    +-----------------------+                              
+       +--> | Signature::verifyFile | verify file                  
+            +-----------------------+                              
+```
+
+```
++----------------------------+                                                                     
+| Signature::verifyFullImage | : merge files into one full image, verify it, remove the merged file
++-|--------------------------+                                                                     
+  |                                                                                                
+  |--> return if it's not a bmc fw                                                                 
+  |                                                                                                
+  |--> prepare list of full_images                                                                 
+  |                                                                                                
+  |    +-------------------+                                                                       
+  |--> | utils::mergeFiles | merge files into one                                                  
+  |    +-------------------+                                                                       
+  |    +-----------------------+                                                                   
+  |--> | Signature::verifyFile | verify file                                                       
+  |    +-----------------------+                                                                   
+  |                                                                                                
+  +--> remove the merged file                                                                      
+```
+
+```
++----------------------------+                                          
+| Activation::flashWriteHost | : call systemd service to flash host bios
++-|--------------------------+                                          
+  |                                                                     
+  |--> prepare method call org.freedesktop.systemd1                     
+  |                        /org/freedesktop/systemd1                    
+  |                        org.freedesktop.systemd1.Manager             
+  |                        StartUnit                                    
+  |                                                                     
+  |--> service file = "obmc-flash-host-bios@" + versionId + ".service"  
+  |                   reference: obmc-flash-host-bios@.service.in       
+  |                                                                     
+  +--> call()                                                           
+```
+
+```
+static/flash.cpp                                                                               
++------------------------+                                                                      
+| Activation::flashWrite | : copy image to /run/initramfs, and expect it's flashed during reboot
++-|----------------------+                                                                      
+  |                                                                                             
+  |--> if running_image_slot != 0                                                               
+  |    |                                                                                        
+  |    |--> prepare method call org.freedesktop.systemd1                                        
+  |    |                        /org/freedesktop/systemd1                                       
+  |    |                        org.freedesktop.systemd1.Manager                                
+  |    |                        StartUnit                                                       
+  |    |                                                                                        
+  |    |--> service_file = FLASH_ALT_SERVICE_TMPL + versionId + ".service"                      
+  |    |                   reference: obmc-flash-bmc-alt@.service.in? not found                 
+  |    |                                                                                        
+  |    |--> call()                                                                              
+  |    |                                                                                        
+  |    +--> return                                                                              
+  |                                                                                             
+  +--> for each bmc_image in update_list                                                        
+       -                                                                                        
+       +--> copy to "/run/initramfs"                                                            
+            (we expect the updater script handles it during reboot)                             
+```
+
 ### phosphor-version-software-manager
 
 ```
