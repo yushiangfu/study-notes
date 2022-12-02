@@ -3,6 +3,8 @@
   - [const](https://www.geeksforgeeks.org/const-member-functions-c/)
   - [decltype](https://www.geeksforgeeks.org/type-inference-in-c-auto-and-decltype/)
   - [explicit](https://www.geeksforgeeks.org/use-of-explicit-keyword-in-cpp/)
+  - [virtual function](https://www.geeksforgeeks.org/virtual-function-cpp/)
+
 - std
   - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
   - [std::make_tuple](https://www.geeksforgeeks.org/tuples-in-c/)
