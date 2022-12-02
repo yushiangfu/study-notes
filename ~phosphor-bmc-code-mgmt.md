@@ -450,7 +450,7 @@ activation.cpp
        |--> | Activation::flashWrite | copy image to /run/initramfs, and expect it's flashed during reboot        
        |    +------------------------+                                                                            
        |    +---------------------------------+                                                                   
-       +--> | Activation::onFlashWriteSuccess |                                                                   
+       +--> | Activation::onFlashWriteSuccess | emove object from software manager, reboot if 'apply_time' is immediate
             +---------------------------------+                                                                   
 ```
 
@@ -636,6 +636,63 @@ static/flash.cpp
        -                                                                                        
        +--> copy to "/run/initramfs"                                                            
             (we expect the updater script handles it during reboot)                             
+```
+
+```
+activation.cpp                                                                                                      
++---------------------------------+                                                                                  
+| Activation::onFlashWriteSuccess | : remove object from software manager, reboot if 'apply_time' is immediate       
++-|-------------------------------+                                                                                  
+  |                                                                                                                  
+  |--> set progress to 100%                                                                                          
+  |                                                                                                                  
+  |    +-------------------------------------------+                                                                 
+  |--> | Activation::unsubscribeFromSystemdSignals | unsubscribe systemd signals                                     
+  |    +-------------------------------------------+                                                                 
+  |    +-----------------------+                                                                                     
+  |--> | updater::storePurpose | save 'purpose' to /var/lib/phosphor-bmc-code-mgmt/                                  
+  |    +-----------------------+                                                                                     
+  |    +--------------------------------------+                                                                      
+  |--> | Activation::deleteImageManagerObject | delete 'version' object from software manager                        
+  |    +--------------------------------------+                                                                      
+  |    +--------------------------------------+                                                                      
+  |--> | ItemUpdater::createActiveAssociation | associate (active, software_version)                                 
+  |    +--------------------------------------+                                                                      
+  |    +------------------------------------------+                                                                  
+  |--> | ItemUpdater::createUpdateableAssociation | associate (updateable, software_version)                         
+  |    +------------------------------------------+                                                                  
+  |    +-------------------------------------+                                                                       
+  |--> | Activation::checkApplyTimeImmediate | read property 'requested_apply_time' to determine if it is 'immediate'
+  |    +-------------------------------------+                                                                       
+  |                                                                                                                  
+  +--> if it is 'immediate'                                                                                          
+       |                                                                                                             
+       |    +-----------------------+                                                                                
+       +--> | Activation::rebootBmc | call systemd service to reboot bmc                                             
+            +-----------------------+                                                                                
+```
+
+```
++--------------------------------------+                                                
+| Activation::deleteImageManagerObject | : delete 'version' object from software manager
++-|------------------------------------+                                                
+  |                                                                                     
+  |--> query mapper for object of intf xyz.openbmc_project.Software.Version             
+  |                                                                                     
+  +--> delete 'version' object                                                          
+```
+
+```
++-------------------------------------+                                                                         
+| Activation::checkApplyTimeImmediate | : read property 'requested_apply_time' to determine if it is 'immediate'
++-|-----------------------------------+                                                                         
+  |                                                                                                             
+  |--> get service of object: /xyz/openbmc_project/software/apply_time                                          
+  |                   iface: xyz.openbmc_project.Software.ApplyTime                                             
+  |                                                                                                             
+  |--> get property 'RequestedApplyTime'                                                                        
+  |                                                                                                             
+  +--> check if it is 'immediate'                                                                               
 ```
 
 ### phosphor-version-software-manager
