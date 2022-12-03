@@ -536,8 +536,8 @@ redfish-core/lib/update_service.hpp
 | activateImage | : call dbus method to activate image           
 +-|-------------+                                                
   |                                                              
-  +--> ->async_method_call service: arg 'service'                
-                           object: arg 'objPath'                 
+  +--> ->async_method_call service: "xyz.openbmc_project.Software.Activation"
+                           object: "/xyz/openbmc_project/software/<id>"
                            iface: org.freedesktop.DBus.Properties
-                           Set                                   
+                           Set "RequestedActivation" = "xyz.openbmc_project.Software.Activation.RequestedActivations.Active"
 ```
