@@ -698,20 +698,22 @@ activation.cpp
 ### phosphor-version-software-manager
 
 ```
-image_manager_main.cpp                                   
-+------+                                                  
-| main |                                                  
-+-|----+                                                  
-  |                                                       
+image_manager_main.cpp
++------+
+| main |
++-|----+
+  |
   |--> request name "xyz.openbmc_project.Software.Version"
-  |                                                       
-  |                  +-----------------------+            
-  |--> prepare watch | Manager::processImage |            
-  |                  +-----------------------+            
-  |                                                       
-  |    +---------------+                                  
-  +--> | sd_event_loop |                                  
-       +---------------+                                  
+  |
+  |--> prepare watch
+  |    +--------------+
+  |    | Watch::Watch | monitor 'image upload' folder, register callback to event 'close_write'
+  |    +--------------+ +-----------------------+
+  |                     | Manager::processImage | untar, check manifest, prepare 'version' obj and insert to 'verions'
+  |                     +-----------------------+
+  |    +---------------+
+  +--> | sd_event_loop |
+       +---------------+                           
 ```
 
 ```
