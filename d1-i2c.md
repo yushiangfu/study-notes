@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [I2C and SMBus](#i2c-and-smbus)
 - [Mux](#mux)
+- [SMBus System Interface](#smbus-system-interface)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -679,6 +680,289 @@ i2c-5           |slave                                   |slave
   
 </details>
 
+## <a name="smbus-system-interface"></a> SMBus System Interface
+
+(TBD)
+  
+<details><summary> More Details </summary>
+
+```
+drivers/char/ipmi/ssif_bmc_aspeed.c                                                                  
++----------------+                                                                                    
+| ssif_bmc_probe | : alloc ssif_bmc, register misc dev, prepare client for bus, enable slave mode     
++-|--------------+                                                                                    
+  |    +----------------+                                                                             
+  |--> | ssif_bmc_alloc | alloc ssif_bmc, register misc dev, prepare client for bus, enable slave mode
+  |    +----------------+                                                                             
+  |                                                                                                   
+  |--> ssif_bmc.priv = adapter data                                                                   
+  |                                                                                                   
+  +--> install status function = aspeed_set_ssif_bmc_status                                           
+```
+  
+```
++----------------+                                                                                    
+| ssif_bmc_alloc | : alloc ssif_bmc, register misc dev, prepare client for bus, enable slave mode     
++-|--------------+                                                                                    
+  |                                                                                                   
+  |--> alloc 'ssif_bmc'                                                                               
+  |                                                                                                   
+  |--> set up misc dev (minor, name, fops=ssif_bmc_fops)                                              
+  |                                                                                                   
+  |    +---------------+                                                                              
+  |--> | misc_register | determine dev#, add arg 'misc' to list (misc_list)                           
+  |    +---------------+                                                                              
+  |                                                                                                   
+  |--> relate arg 'client' and ssif_bmc                                                               
+  |                                                                                                   
+  |    +--------------------+                                                                         
+  +--> | i2c_slave_register | set up client (callback) and register to bus as slave, enable slave mode
+       +--------------------+ +-------------+                                                         
+                              | ssif_bmc_cb | handle smbus read or write request                      
+                              +-------------+                                                         
+```
+  
+```
+drivers/char/misc.c                                                  
++---------------+                                                     
+| misc_register | : determine dev#, add arg 'misc' to list (misc_list)
++-|-------------+                                                     
+  |                                                                   
+  |--> determine if minor# is dynamic selection                       
+  |                                                                   
+  |--> if is_dynamic                                                  
+  |    |                                                              
+  |    |    +---------------------+                                   
+  |    |--> | find_first_zero_bit | find the first available one      
+  |    |    +---------------------+                                   
+  |    |                                                              
+  |    +--> set bitmap to mark it's used                              
+  |                                                                   
+  |--> else                                                           
+  |    -                                                              
+  |    +--> check if the specified one is available                   
+  |                                                                   
+  |--> make dev# = (10, minor)                                        
+  |                                                                   
+  |    +---------------------------+                                  
+  |--> | device_create_with_groups | create files in in sysfs         
+  |    +---------------------------+                                  
+  |                                                                   
+  +--> add arg 'misc' into list (misc_list)                           
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                                                  
++-------------+                                                                                
+| ssif_bmc_cb | : handle smbus read or write request                                           
++-|-----------+                                                                                
+  |                                                                                            
+  |--> switch event                                                                            
+  |    case read_requested                                                                     
+  |    |                                                                                       
+  |    |--> if is_single_part                                                                  
+  |    |    |                                                                                  
+  |    |    |    +--------------------------------+                                            
+  |    |    +--> | set_singlepart_response_buffer | get value from response                    
+  |    |         +--------------------------------+                                            
+  |    +--> else                                                                               
+  |         -    +-------------------------------+                                             
+  |         +--> | set_multipart_response_buffer | get valuem, set up response buffer          
+  |              +-------------------------------+                                             
+  |                                                                                            
+  |--> case write_requested                                                                    
+  |    -                                                                                       
+  |    +--> ssif_bmc.msg_ids = 0                                                               
+  |                                                                                            
+  |    case read_processed                                                                     
+  |    |                                                                                       
+  |--> |    +-----------------------+                                                          
+  |    +--> | handle_read_processed | get value, complete response                             
+  |         +-----------------------+                                                          
+  |                                                                                            
+  |--> case write_received                                                                     
+  |    |                                                                                       
+  |    |--> if msg_idx is 0                                                                    
+  |    |    |                                                                                  
+  |    |    |    +---------------------+                                                       
+  |    |    +--> | initialize_transfer | smbus_cmd = arg value                                 
+  |    |         +---------------------+                                                       
+  |    +--> else                                                                               
+  |         -    +-----------------------+                                                     
+  |         +--> | handle_write_received | handle write request                                
+  |              +-----------------------+                                                     
+  |--> case stop                                                                               
+  |    -                                                                                       
+  |    +--> if last_event == write_received                                                    
+  |         |                                                                                  
+  |         |     +-------------------------+                                                  
+  |         +-->  | complete_write_received | reset response, wake up task for request handling
+  |               +-------------------------+                                                  
+  |                                                                                            
+  +--> update ssif_bmc.last_event                                                              
+```
+  
+```
+set_multipart_response_buffer                                
++-------------------------------+                             
+| set_multipart_response_buffer | : set up response buffer    
++-|-----------------------------+                             
+  |                                                           
+  |--> switch smbus_cmd                                       
+  |                                                           
+  |--> case read_start                                        
+  |    -                                                      
+  |    +--> set up response buffer (net_fn, cmd, payload, ...)
+  |                                                           
+  |--> case read_middle                                       
+  |    |                                                      
+  |    |--> if it's end (remain_len < 31)                     
+  |    |    -                                                 
+  |    |    +--> label 0xff (end) on response buffer          
+  |    |                                                      
+  |    |--> else (middle)                                     
+  |    |    -                                                 
+  |    |    +--> label block_num on response buffer           
+  |    |                                                      
+  |    +--> copy payload to response buffer                   
+  |                                                           
+  +--> update ssif_bmc.processed_bytes                        
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                                
++-----------------------+                                                    
+| handle_read_processed | : get value, complete response                     
++-|---------------------+                                                    
+  |                                                                          
+  |--> calculate pec on start_read_addr, ssif_cmd, restart_write_addr        
+  |                                                                          
+  |--> if it's single_part_read                                              
+  |    |                                                                     
+  |    |--> determine value (buf, pec, or 0)                                 
+  |    |                                                                     
+  |    |    +-------------------+                                            
+  |    +--> | complete_response | reset ssif_bmc, wake up task if there's any
+  |         +-------------------+                                            
+  |                                                                          
+  +--> else                                                                  
+       |                                                                     
+       |--> get value from pec                                               
+       |                                                                     
+       |    +-------------------+                                            
+       +--> | complete_response | reset ssif_bmc, wake up task if there's any
+            +-------------------+                                            
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                                     
++---------------------+                                                           
+| initialize_transfer | : smbus_cmd = arg value                                   
++-|-------------------+                                                           
+  |                                                                               
+  |--> smbus_cmd = arg value                                                      
+  |                                                                               
+  +--> if host sends a new request bc of timeout on bmc side                      
+       -                                                                          
+       +--> if response is in progress                                            
+            |                                                                     
+            |    +-------------------+                                            
+            +--> | complete_response | reset ssif_bmc, wake up task if there's any
+                 +-------------------+                                            
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                   
++-----------------------+                       
+| handle_write_received | : handle write request
++-|---------------------+                       
+  |                                             
+  |--> get buffer from ssif_bmc.request         
+  |                                             
+  |--> switch smbus_cmd                         
+  |                                             
+  |--> case single_part_write                   
+  |    -                                        
+  |    +--> save value in buf, idx++            
+  |                                             
+  |--> case multi_part_write_start              
+  |--> case multi_part_write_middle             
+  +--> case multi_part_write_end                
+       -                                        
+       +--> get request len, idx++              
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                                   
++-------------------------+                                                     
+| complete_write_received | : reset response, wake up task for request handling 
++-|-----------------------+                                                     
+  |    +--------------+                                                         
+  |--> | validate_pec | validate checksum                                       
+  |    +--------------+                                                         
+  |                                                                             
+  +--> if cmd == single_part_write || cmd == multi_part_write                   
+       |                                                                        
+       |    +----------------+                                                  
+       +--> | handle_request | reset response, wake up task for request handling
+            +----------------+                                                  
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                            
++----------------+                                                       
+| handle_request | : reset response, wake up task for request handling   
++-|--------------+                                                       
+  |                                                                      
+  |--> if ->set_ssif_bmc_status exists                                   
+  |    -                                                                 
+  |    +--> call it, e.g.,                                               
+  |         +----------------------------+                               
+  |         | aspeed_set_ssif_bmc_status | write hw reg to set bmc status
+  |         +----------------------------+                               
+  |                                                                      
+  |--> label 'request_available' on ssif_bmc                             
+  |                                                                      
+  |--> reset response                                                    
+  |                                                                      
+  |    +-------------+                                                   
+  +--> | wake_up_all | wake up waiting task if there's any               
+       +-------------+                                                   
+```
+  
+```
+drivers/i2c/i2c-core-slave.c                                                                       
++--------------------+                                                                              
+| i2c_slave_register | : set up client (callback) and register to bus as slave, enable slave mode   
++-|------------------+                                                                              
+  |                                                                                                 
+  |--> return error if i2c adapter doesn't support being a slave                                    
+  |                                                                                                 
+  |--> save callback in client                                                                      
+  |                                                                                                 
+  +--> call ->reg_slave(), e.g.,                                                                    
+       +----------------------+                                                                     
+       | aspeed_i2c_reg_slave | bus.slave = client, set it slave_addr into hw reg, enable slave mode
+       +----------------------+                                                                     
+```
+  
+```
+drivers/i2c/busses/i2c-aspeed.c                                                               
++----------------------+                                                                       
+| aspeed_i2c_reg_slave | : bus.slave = client, set it slave_addr into hw reg, enable slave mode
++-|--------------------+                                                                       
+  |                                                                                            
+  |--> get bus from adapter                                                                    
+  |                                                                                            
+  |--> bus.slave = arg client                                                                  
+  |                                                                                            
+  |    +------------------------+                                                              
+  +--> | __aspeed_i2c_reg_slave | save its slave_addr into hw reg, enable slave mode           
+       +------------------------+                                                              
+```
+  
+</details>
+  
 ## <a name="system-startup"></a> System Startup
   
 During the kernel startup, a few functions build the I2C framework and let's introduce the log a little bit.
