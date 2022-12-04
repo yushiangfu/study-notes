@@ -738,7 +738,8 @@ gpio_clk_driver_init: (skip, no matched device)
 gpio_keys_polled_driver_init: (skip, no matched device)
 i2c_mux_gpio_driver_init: (skip, no matched device)
 w1_gpio_driver_init: (skip, no matched device)
-gpio_led_driver_init:
+gpio_led_driver_init: register 'gpio_led_driver' to bus 'platform'
+  gpio_led_probe: for each led, prepare gpio_desc and led_struct                         
 fsi_master_gpio_driver_init:
 gpio_keys_init:
 ```
@@ -844,6 +845,552 @@ drivers/gpio/gpiolib.c
             |    +--------------------+
             +--> | gpiochip_setup_dev | register cdev
                  +--------------------+
+```
+
+```
+drivers/leds/leds-gpio.c                                                                   
++----------------+                                                                          
+| gpio_led_probe | : for each led, prepare gpio_desc and led_struct                         
++-|--------------+                                                                          
+  |                                                                                         
+  |--> if led# > 0                                                                          
+  |    |                                                                                    
+  |    |    +--------------+                                                                
+  |    |--> | devm_kzalloc | alloc private                                                  
+  |    |    +--------------+                                                                
+  |    |                                                                                    
+  |    +--> for each led                                                                    
+  |         |                                                                               
+  |         |    +--------------------+                                                     
+  |         |--> | gpio_led_get_gpiod | get gpio desc, add to device as resource            
+  |         |    +--------------------+                                                     
+  |         |    +-----------------+                                                        
+  |         +--> | create_gpio_led | install ops, set gpio direction out, prepare led struct
+  |              +-----------------+                                                        
+  |                                                                                         
+  +--> else                                                                                 
+       |                                                                                    
+       |    +------------------+                                                            
+       +--> | gpio_leds_create | for each child, prepare gpio_desc and led_struct           
+            +------------------+                                                            
+```
+
+```
+drivers/leds/leds-gpio.c                                               
++--------------------+                                                  
+| gpio_led_get_gpiod | : get gpio desc, add to device as resource       
++-|------------------+                                                  
+  |    +----------------------+                                         
+  +--> | devm_gpiod_get_index | get gpio desc, add to device as resource
+       +----------------------+                                         
+```
+
+```
+drivers/gpio/gpiolib-devres.c                                                 
++----------------------+                                                       
+| devm_gpiod_get_index | : get gpio desc, add to device as resource            
++-|--------------------+                                                       
+  |    +-----------------+                                                     
+  |--> | gpiod_get_index | get gpio desc, request and set direction accordingly
+  |    +-----------------+                                                     
+  |    +--------------+                                                        
+  |--> | devres_alloc | alloc a ptr                                            
+  |    +--------------+                                                        
+  |                                                                            
+  |--> have the ptr points to gpio desc                                        
+  |                                                                            
+  |    +------------+                                                          
+  +--> | devres_add |                                                          
+       +------------+                                                          
+```
+
+```
+drivers/gpio/gpiolib.c                                                               
++-----------------+                                                                   
+| gpiod_get_index | : get gpio desc, request and set direction accordingly            
++-|---------------+                                                                   
+  |                                                                                   
+  |--> if of node exists (our case)                                                   
+  |    |                                                                              
+  |    |    +--------------+                                                          
+  |    +--> | of_find_gpio |                                                          
+  |         +--------------+                                                          
+  |                                                                                   
+  |--> else                                                                           
+  |    |                                                                              
+  |    |    +----------------+                                                        
+  |    +--> | acpi_find_gpio |                                                        
+  |         +----------------+                                                        
+  |                                                                                   
+  |--> if the desc is still not found                                                 
+  |    |                                                                              
+  |    |    +------------+                                                            
+  |    +--> | gpiod_find |                                                            
+  |         +------------+                                                            
+  |                                                                                   
+  |--> return if no gpio consumer (desc) found                                        
+  |                                                                                   
+  |    +---------------+                                                              
+  |--> | gpiod_request | set label, call ->request() and ->get_direction() if feasible
+  |    +---------------+                                                              
+  |    +-----------------------+                                                      
+  |--> | gpiod_configure_flags | set gpio direction accordingly                       
+  |    +-----------------------+                                                      
+  |                                                                                   
+  +--> call notifier (gpio_line_changed_requested)                                    
+```
+
+```
+drivers/gpio/gpiolib.c                                                                      
++---------------+                                                                            
+| gpiod_request | : set label, call ->request() and ->get_direction() if feasible            
++-|-------------+                                                                            
+  |                                                                                          
+  |--> get gpio_dev from desc                                                                
+  |                                                                                          
+  |    +----------------------+                                                              
+  +--> | gpiod_request_commit | set label, call ->request() and ->get_direction() if feasible
+       +----------------------+                                                              
+```
+
+```
+drivers/gpio/gpiolib.c                                                                 
++----------------------+                                                                
+| gpiod_request_commit | : set label, call ->request() and ->get_direction() if feasible
++-|--------------------+                                                                
+  |    +----------------+                                                               
+  |--> | desc_set_label |                                                               
+  |    +----------------+                                                               
+  |                                                                                     
+  |--> if gpio_chip->request() exists                                                   
+  |    |                                                                                
+  |    |    +------------------+                                                        
+  |    |--> | gpio_chip_hwgpio | get desc offset                                        
+  |    |    +------------------+                                                        
+  |    |                                                                                
+  |    +--> if the offset is valid                                                      
+  |         -                                                                           
+  |         +--> call ->request()                                                       
+  |                                                                                     
+  +--> if gpio_chip->request() exists                                                   
+       |                                                                                
+       |    +---------------------+                                                     
+       +--> | gpiod_get_direction | call ->get_direction() and save result in desc flags
+            +---------------------+                                                     
+```
+
+```
+drivers/gpio/gpiolib.c                                                       
++---------------------+                                                       
+| gpiod_get_direction | : call ->get_direction() and save result in desc flags
++-|-------------------+                                                       
+  |                                                                           
+  |--> get gpio_chip from desc                                                
+  |                                                                           
+  |    +------------------+                                                   
+  |--> | gpio_chip_hwgpio | get desc offset                                   
+  |    +------------------+                                                   
+  |                                                                           
+  |--> call ->get_direction()                                                 
+  |                                                                           
+  +--> save direction in desc flags                                           
+```
+
+```
+drivers/gpio/gpiolib.c                                                     
++-----------------------+                                                   
+| gpiod_configure_flags | : set gpio direction accordingly                  
++-|---------------------+                                                   
+  |                                                                         
+  |--> given lflags, set bits in desc flags                                 
+  |                                                                         
+  |    +----------------------+                                             
+  |--> | gpiod_set_transitory | label 'transitory' in desc, set config      
+  |    +----------------------+                                             
+  |                                                                         
+  |--> return if dflag has no direction set                                 
+  |                                                                         
+  |--> if direction is out                                                  
+  |    |                                                                    
+  |    |    +------------------------+                                      
+  |    +--> | gpiod_direction_output | write hw reg to set direction = 'out'
+  |         +------------------------+                                      
+  |                                                                         
+  +--> else                                                                 
+       |                                                                    
+       |    +-----------------------+                                       
+       +--> | gpiod_direction_input | write hw reg to set direction = 'in'  
+            +-----------------------+                                       
+```
+
+```
++----------------------+                                                                          
+| gpiod_set_transitory | : label 'transitory' in desc, set config                                 
++-|--------------------+                                                                          
+  |                                                                                               
+  |--> set 'transitory' bit in desc flags                                                         
+  |                                                                                               
+  |    +----------------------------------------+                                                 
+  +--> | gpio_set_config_with_argument_optional | prepare config, call ->set_config() if it exists
+       +----------------------------------------+                                                 
+```
+
+```
++----------------------------------------+                                                   
+| gpio_set_config_with_argument_optional | : prepare config, call ->set_config() if it exists
++-|--------------------------------------+                                                   
+  |    +------------------+                                                                  
+  |--> | gpio_chip_hwgpio | get gpio (offset) from desc                                      
+  |    +------------------+                                                                  
+  |    +-------------------------------+                                                     
+  +--> | gpio_set_config_with_argument | prepare config, call ->set_config() if it exists    
+       +-------------------------------+                                                     
+```
+
+```
+drivers/gpio/gpiolib.c                                                             
++-------------------------------+                                                   
+| gpio_set_config_with_argument | : prepare config, call ->set_config() if it exists
++-|-----------------------------+                                                   
+  |                                                                                 
+  |--> get gpio_dev from desc                                                       
+  |                                                                                 
+  |    +--------------------------+                                                 
+  |--> | pinconf_to_config_packed | config = make pair (mode, argument)             
+  |    +--------------------------+                                                 
+  |    +--------------------+                                                       
+  +--> | gpio_do_set_config | call ->set_config() if it exists                      
+       +--------------------+                                                       
+```
+
+```
+drivers/gpio/gpiolib.c                                                           
++------------------------+                                                        
+| gpiod_direction_output | : write hw reg to set direction = 'out'                
++-|----------------------+                                                        
+  |                                                                               
+  |--> adjust value                                                               
+  |                                                                               
+  |--> if open_drain is set in flags                                              
+  |    |                                                                          
+  |    |    +-----------------+                                                   
+  |    +--> | gpio_set_config | set config 'open_drain'                           
+  |         +-----------------+                                                   
+  |                                                                               
+  |--> elif open_source is set in flags                                           
+  |    |                                                                          
+  |    |    +-----------------+                                                   
+  |    +--> | gpio_set_config | set config 'open_source'                          
+  |         +-----------------+                                                   
+  |--> else                                                                       
+  |    |                                                                          
+  |    |    +-----------------+                                                   
+  |    +--> | gpio_set_config | set config 'push_pull'                            
+  |         +-----------------+                                                   
+  |    +---------------+                                                          
+  |--> | gpio_set_bias | based on desc.flags, determine bias and set config       
+  |    +---------------+                                                          
+  |    +-----------------------------------+                                      
+  +--> | gpiod_direction_output_raw_commit | write hw reg to set direction = 'out'
+       +-----------------------------------+                                      
+```
+
+```
+drivers/gpio/gpiolib.c                                                                           
++---------------+                                                                                 
+| gpio_set_bias | : based on desc.flags, determine bias and set config                            
++-|-------------+                                                                                 
+  |                                                                                               
+  |--> determine bias_bit and arg based on desc.flags                                             
+  |                                                                                               
+  |    +----------------------------------------+                                                 
+  +--> | gpio_set_config_with_argument_optional | prepare config, call ->set_config() if it exists
+       +----------------------------------------+                                                 
+```
+
+```
+drivers/gpio/gpiolib.c                                                      
++-----------------------------------+                                        
+| gpiod_direction_output_raw_commit | : write hw reg to set direction = 'out'
++-|---------------------------------+                                        
+  |                                                                          
+  |--> if gpio_chip has ->direction_output                                   
+  |    -                                                                     
+  |    +--> call it, e.g.,                                                   
+  |         +---------------------+                                          
+  |         | aspeed_gpio_dir_out | write hw reg to set direction = 'out'    
+  |         +---------------------+                                          
+  |                                                                          
+  |--> else                                                                  
+  |    -                                                                     
+  |    +--> (ignore)                                                         
+  |                                                                          
+  +--> label 'out' on desc.flags                                             
+```
+
+```
+drivers/gpio/gpio-aspeed.c                                    
++---------------------+                                        
+| aspeed_gpio_dir_out | : write hw reg to set direction = 'out'
++-|-------------------+                                        
+  |                                                            
+  |--> read hw reg and set target bit                          
+  |                                                            
+  |    +---------------------------+                           
+  |--> | aspeed_gpio_copro_request | request the access (?)    
+  |    +---------------------------+                           
+  |    +-------------------+                                   
+  |--> | __aspeed_gpio_set | set or clear bit, write to hw reg 
+  |    +-------------------+                                   
+  |                                                            
+  |--> write to hw reg (different from the above?)             
+  |                                                            
+  +--> if co-processor is involved (?)                         
+       |                                                       
+       |    +---------------------------+                      
+       +--> | aspeed_gpio_copro_release | (skip)               
+            +---------------------------+                      
+```
+
+```
+drivers/gpio/gpio-aspeed.c                                                       
++---------------------------+                                                     
+| aspeed_gpio_copro_request | : request the access (?)                            
++-|-------------------------+                                                     
+  |                                                                               
+  |--> return if no co-processor involved?                                        
+  |                                                                               
+  |--> call ->request_access(), e.g.,                                             
+  |    +-----------------------------+                                            
+  |    | fsi_master_acf_gpio_request | write hw reg to request the access         
+  |    +-----------------------------+                                            
+  |                                                                               
+  |    +-------------------------------+                                          
+  |--> | aspeed_gpio_change_cmd_source | write hw reg to change source back to arm
+  |    +-------------------------------+                                          
+  |                                                                               
+  +--> update gpio cache                                                          
+```
+
+```
+drivers/gpio/gpio-aspeed.c                              
++-------------------+                                    
+| __aspeed_gpio_set | : set or clear bit, write to hw reg
++-|-----------------+                                    
+  |                                                      
+  |--> given offset, get cached reg value                
+  |                                                      
+  |--> set or clear bit                                  
+  |                                                      
+  |--> update cache                                      
+  |                                                      
+  +--> write back to hw reg                              
+```
+
+```
+drivers/leds/leds-gpio.c                                                                   
++-----------------+                                                                         
+| create_gpio_led | : install ops, set gpio direction out, prepare led struct               
++-|---------------+                                                                         
+  |                                                                                         
+  |--> install func for ->brightness_set()                                                  
+  |                                                                                         
+  |--> install func for ->blink_set()                                                       
+  |                                                                                         
+  |--> given template, set flags                                                            
+  |                                                                                         
+  |    +------------------------+                                                           
+  |--> | gpiod_direction_output | write hw reg to set direction = 'out'                     
+  |    +------------------------+                                                           
+  |                                                                                         
+  |--> if template has 'name' set                                                           
+  |    |                                                                                    
+  |    |--> save name in led_dat                                                            
+  |    |                                                                                    
+  |    |    +----------------------------+                                                  
+  |    +--> | devm_led_classdev_register | prepare led struct, add to device as resource    
+  |         +----------------------------+                                                  
+  |                                                                                         
+  +--> else                                                                                 
+       |                                                                                    
+       |    +--------------------------------+                                              
+       +--> | devm_led_classdev_register_ext | prepare led struct, add to device as resource
+            +--------------------------------+                                              
+```
+
+```
+include/linux/leds.h                                                                                      
++----------------------------+                                                                             
+| devm_led_classdev_register | : prepare led struct, add to device as resource                             
++-|--------------------------+                                                                             
+  |    drivers/leds/led-class.c                                                                            
+  |    +--------------------------------+                                                                  
+  +--> | devm_led_classdev_register_ext | : prepare led struct, add to device as resource                  
+       +-|------------------------------+                                                                  
+         |    +--------------+                                                                             
+         |--> | devres_alloc | alloc a ptr                                                                 
+         |    +--------------+                                                                             
+         |    +---------------------------+                                                                
+         |--> | led_classdev_register_ext | determine name, init led work & timer, find the matched trigger
+         |    +---------------------------+                                                                
+         |                                                                                                 
+         |--> have the ptr point to led_cdev                                                               
+         |                                                                                                 
+         |    +------------+                                                                               
+         +--> | devres_add |                                                                               
+              +------------+                                                                               
+```
+
+```
+drivers/leds/led-class.c                                                                      
++---------------------------+                                                                  
+| led_classdev_register_ext | : determine name, init led work & timer, find the matched trigger
++-|-------------------------+                                                                  
+  |                                                                                            
+  |--> determine name                                                                          
+  |                                                                                            
+  |    +------------------------+                                                              
+  |--> | led_classdev_next_name | ensure it's unique                                           
+  |    +------------------------+                                                              
+  |    +---------------------------+                                                           
+  |--> | device_create_with_groups | create files in sysfs                                     
+  |    +---------------------------+                                                           
+  |                                                                                            
+  |--> add led_cdev to list (leds_list)                                                        
+  |                                                                                            
+  |    +-----------------------+                                                               
+  |--> | led_update_brightness | get brightness value and save in struct                       
+  |    +-----------------------+                                                               
+  |    +---------------+                                                                       
+  |--> | led_init_core | init led work and timer                                               
+  |    +---------------+                                                                       
+  |    +-------------------------+                                                             
+  +--> | led_trigger_set_default | find matched trigger from list, save in led_cdev            
+       +-------------------------+                                                             
+```
+
+```
+drivers/leds/led-core.c                                                    
++---------------+                                                           
+| led_init_core | : init led work and timer                                 
++-|-------------+                                                           
+  |    +-----------+ +------------------------+                             
+  |--> | INIT_WORK | | set_brightness_delayed | set brightness              
+  |    +-----------+ +------------------------+                             
+  |    +-------------+ +--------------------+                               
+  +--> | timer_setup | | led_timer_function | set brightness, add timer back
+       +-------------+ +--------------------+                               
+```
+
+```
+drivers/leds/led-core.c                                     
++------------------------+                                   
+| set_brightness_delayed | : set brightness                  
++-|----------------------+                                   
+  |                                                          
+  |--> if 'disable' is set, clear it                         
+  |    |                                                     
+  |    |    +-------------------------+                      
+  |    +--> | led_stop_software_blink | delete blinking timer
+  |         +-------------------------+                      
+  |    +----------------------+                              
+  +--> | __led_set_brightness | set brightness               
+       +----------------------+                              
+```
+
+```
+drivers/leds/led-core.c                                      
++--------------------+                                         
+| led_timer_function | : set brightness, add timer back        
++-|------------------+                                         
+  |    +--------------------+                                  
+  |--> | led_get_brightness |                                  
+  |    +--------------------+                                  
+  |                                                            
+  |--> if it off now                                           
+  |    -                                                       
+  |    +--> get brightness and delay for switch-on preparation 
+  |                                                            
+  |--> else (on)                                               
+  |    -                                                       
+  |    +--> get brightness and delay for switch-off preparation
+  |                                                            
+  |    +----------------------------+                          
+  |--> | led_set_brightness_nosleep |                          
+  |    +----------------------------+                          
+  |    +-----------+                                           
+  +--> | mod_timer | add timer back to framework               
+       +-----------+                                           
+```
+
+```
+drivers/leds/led-triggers.c                                                  
++-------------------------+                                                   
+| led_trigger_set_default | : find matched trigger from list, save in led_cdev
++-|-----------------------+                                                   
+  |                                                                           
+  +--> for each trigger on list (trigger_list)                                
+       -                                                                      
+       +--> if matched trigger found                                          
+            |                                                                 
+            |    +-----------------+                                          
+            |--> | led_trigger_set | save trigger in led_cdev                 
+            |    +-----------------+                                          
+            |                                                                 
+            +--> break                                                        
+```
+
+```
+drivers/leds/led-triggers.c                              
++-----------------+                                       
+| led_trigger_set | : save trigger in led_cdev            
++-|---------------+                                       
+  |                                                       
+  |--> if led_cdev has an existing trigger                
+  |    |                                                  
+  |    |--> remove led_cdev from where it is              
+  |    |                                                  
+  |    |    +------------------+                          
+  |    |--> | cancel_work_sync | cancel led work          
+  |    |    +------------------+                          
+  |    |    +-------------------------+                   
+  |    |--> | led_stop_software_blink | delete blink timer
+  |    |    +-------------------------+                   
+  |    |                                                  
+  |    |--> if trigger->deactivate() exists, call it      
+  |    |                                                  
+  |    +--> reset led_cdev                                
+  |                                                       
+  +--> if arg trigger is provided                         
+       |                                                  
+       |--> add led_cdev to list (trigger)                
+       |                                                  
+       +--> if trigger->activate() exists, call it        
+```
+
+```
+drivers/leds/leds-gpio.c                                                              
++------------------+                                                                   
+| gpio_leds_create | : for each child, prepare gpio_desc and led_struct                
++-|----------------+                                                                   
+  |    +-----------------------------+                                                 
+  |--> | device_get_child_node_count | count number of child node                      
+  |    +-----------------------------+                                                 
+  |                                                                                    
+  +--> for each child                                                                  
+       |                                                                               
+       |    +----------------------------------+                                       
+       |--> | devm_fwnode_get_gpiod_from_child | get gpio desc from fw node            
+       |    +----------------------------------+                                       
+       |    +----------------------------+                                             
+       |--> | led_init_default_state_get | determine led default state                 
+       |    +----------------------------+                                             
+       |    +-----------------+                                                        
+       |--> | create_gpio_led | install ops, set gpio direction out, prepare led struct
+       |    +-----------------+                                                        
+       |    +-------------------------+                                                
+       +--> | gpiod_set_consumer_name | set consumer name on gpio_desc                 
+            +-------------------------+                                                
 ```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
