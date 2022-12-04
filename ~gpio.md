@@ -154,6 +154,348 @@ Here's the example of a flow chart showing how the code switches from generic la
                                             |                                   
 ```
 
+```
+drivers/gpio/gpiolib-cdev.c
+
+static const struct file_operations gpio_fileops = {
+    .release = gpio_chrdev_release,
+    .open = gpio_chrdev_open,
+    .poll = lineinfo_watch_poll,
+    .read = lineinfo_watch_read,
+    .owner = THIS_MODULE,
+    .llseek = no_llseek,
+    .unlocked_ioctl = gpio_ioctl,
+#ifdef CONFIG_COMPAT
+    .compat_ioctl = gpio_ioctl_compat,
+#endif
+};
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                             
++------------------+                                                                     
+| gpio_chrdev_open | : prepare notifier & register to chain, set up file priv & open_mode
++-|----------------+                                                                     
+  |                                                                                      
+  |--> alloc bitmap to represent all gpio lines                                          
+  |                                                                                      
+  |                     +-------------------------+                                      
+  |--> prepare callback | lineinfo_changed_notify | set up chg_info, wake up waiting task
+  |                     +-------------------------+                                      
+  |    +----------------------------------+                                              
+  |--> | blocking_notifier_chain_register | register to notifier chain of gpio_dev       
+  |    +----------------------------------+                                              
+  |                                                                                      
+  |--> save private data in file                                                         
+  |                                                                                      
+  |    +------------------+                                                              
+  +--> | nonseekable_open | set file open_mode                                           
+       +------------------+                                                              
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                       
++-------------------------+                                        
+| lineinfo_changed_notify | : set up chg_info, wake up waiting task
++-|-----------------------+                                        
+  |                                                                
+  |--> return if the gpio_desc isn't one of our targets            
+  |                                                                
+  |--> set up chg_info                                             
+  |                                                                
+  |    +-----------------------+                                   
+  |--> | gpio_desc_to_lineinfo | set up info based on gpip_desc    
+  |    +-----------------------+                                   
+  |    +--------------+                                            
+  +--> | wake_up_poll |                                            
+       +--------------+                                            
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                               
++-----------------------+                                                  
+| gpio_desc_to_lineinfo | : set up info based on gpip_desc                 
++-|---------------------+                                                  
+  |    +---------------------------+                                       
+  |--> | pinctrl_gpio_can_use_line | check if gpio pin is available for use
+  |    +---------------------------+                                       
+  |                                                                        
+  |--> set up info .name and .consumer (label)                             
+  |                                                                        
+  +--> set up info.flags based on desc.flags                               
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                   
++---------------------+                                        
+| lineinfo_watch_read | : read data from kfifo and copy to user
++-|-------------------+                                        
+  |                                                            
+  +--> while we still have something to read                   
+       |                                                       
+       |--> if kfifo is empty                                  
+       |    -                                                  
+       |    +--> determine to return or wait event             
+       |                                                       
+       |--> determine event_size                               
+       |                                                       
+       |    +-----------+                                      
+       |--> | kfifo_out | get data from fifo                   
+       |    +-----------+                                      
+       |    +--------------+                                   
+       |--> | copy_to_user |                                   
+       |    +--------------+                                   
+       |                                                       
+       +--> bytes_read += event_size                           
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                                                                     
++------------+                                                                                                                   
+| gpio_ioctl | : ioctl for gpio operation                                                                                        
++-|----------+                                                                                                                   
+  |                                                                                                                              
+  |--> switch cmd                                                                                                                
+  |--> case get_chip_info                                                                                                        
+  |    -    +--------------+                                                                                                     
+  |    +--> | chipinfo_get | prepare chip_info and copy to user                                                                  
+  |         +--------------+                                                                                                     
+  |--> case get_line_handle                                                                                                      
+  |    -    +-------------------+                                                                                                
+  |    +--> | linehandle_create | create line handle, prepare fd/file with private = line_handle, coyp fd info to user           
+  |         +-------------------+                                                                                                
+  |--> case get_line_event                                                                                                       
+  |    -    +------------------+                                                                                                 
+  |    +--> | lineevent_create | create line event, set gpio input, request threaded irq, prepare fd/file for le, copy fd to user
+  |         +------------------+                                                                                                 
+  |--> case get_line_info || get_line_info_watch                                                                                 
+  |    -    +-----------------+                                                                                                  
+  |    +--> | lineinfo_get_v1 | fill line_info based on gpip_desc, copy line_info to user                                        
+  |         +-----------------+                                                                                                  
+  |--> case v2_get_line_info || v2_get_line_info_watch                                                                           
+  |    -    +--------------+                                                                                                     
+  |    +--> | lineinfo_get | fill line_info based on gpip_desc, copy line_info to user                                           
+  |         +--------------+                                                                                                     
+  |--> case get_line                                                                                                             
+  |    -    +----------------+                                                                                                   
+  |    +--> | linereq_create | for each line: request gpio and set direction, prepare fd/file, copy fd to user                   
+  |         +----------------+                                                                                                   
+  +--> case get_line_info_unwatch                                                                                                
+       -    +------------------+                                                                                                 
+       +--> | lineinfo_unwatch | copy data from user, clear target bit from bitmap                                               
+            +------------------+                                                                                                 
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                                                
++-------------------+                                                                                       
+| linehandle_create | : create line handle, prepare fd/file with private = line_handle, coyp fd info to user
++-|-----------------+                                                                                       
+  |    +----------------+                                                                                   
+  |--> | copy_from_user | copy handle_request from user                                                     
+  |    +----------------+                                                                                   
+  |    +---------------------------+                                                                        
+  |--> | linehandle_validate_flags | validate flags                                                         
+  |    +---------------------------+                                                                        
+  |                                                                                                         
+  |--> alloc line_handle, and set up from handle_request                                                    
+  |                                                                                                         
+  |--> for each line                                                                                        
+  |    |                                                                                                    
+  |    |    +-------------------+                                                                           
+  |    |--> | gpiochip_get_desc | get gpio_desc                                                             
+  |    |    +-------------------+                                                                           
+  |    |    +--------------------+                                                                          
+  |    |--> | gpiod_request_user | set label, call ->request() and ->get_direction() if feasible            
+  |    |    +--------------------+                                                                          
+  |    |                                                                                                    
+  |    |--> save gpio_desc in line_handle                                                                   
+  |    |                                                                                                    
+  |    |    +--------------------------------+                                                              
+  |    |--> | linehandle_flags_to_desc_flags | given handle_request, set gpio_desc.flags                    
+  |    |    +--------------------------------+                                                              
+  |    |    +----------------------+                                                                        
+  |    |--> | gpiod_set_transitory | label 'transitory' in desc, set config                                 
+  |    |    +----------------------+                                                                        
+  |    |                                                                                                    
+  |    |--> set gpio direction accordingly                                                                  
+  |    |                                                                                                    
+  |    |    +------------------------------+                                                                
+  |    +--> | blocking_notifier_call_chain | call notifier for 'line_changed_requested'                     
+  |         +------------------------------+                                                                
+  |    +---------------------+                                                                              
+  |--> | get_unused_fd_flags | get an available fd                                                          
+  |    +---------------------+                                                                              
+  |    +--------------------+                                                                               
+  |--> | anon_inode_getfile | prepare a file (name = gpio-linehandle, fops = linehandle_fileops)            
+  |    +--------------------+                                                                               
+  |                                                                                                         
+  |--> save fd in handle_request                                                                            
+  |                                                                                                         
+  |    +--------------+                                                                                     
+  |--> | copy_to_user | copy handle_request back to user                                                    
+  |    +--------------+                                                                                     
+  |    +------------+                                                                                       
+  +--> | fd_install | table[fd] = fill                                                                      
+       +------------+                                                                                       
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                                                           
++------------------+                                                                                                   
+| lineevent_create | : create line event, set gpio input, request threaded irq, prepare fd/file for le, copy fd to user
++-|----------------+                                                                                                   
+  |    +----------------+                                                                                              
+  |--> | copy_from_user | copy event_req from user                                                                     
+  |    +----------------+                                                                                              
+  |    +-------------------+                                                                                           
+  |--> | gpiochip_get_desc | get gpio_desc                                                                             
+  |    +-------------------+                                                                                           
+  |                                                                                                                    
+  |--> alloc line_event                                                                                                
+  |                                                                                                                    
+  |    +--------------------+                                                                                          
+  |--> | gpiod_request_user | set label, call ->request() and ->get_direction() if feasible                            
+  |    +--------------------+                                                                                          
+  |                                                                                                                    
+  |--> save gpio_desc in line_event                                                                                    
+  |                                                                                                                    
+  |    +--------------------------------+                                                                              
+  |--> | linehandle_flags_to_desc_flags | given handle_request, set gpio_desc.flags                                    
+  |    +--------------------------------+                                                                              
+  |    +-----------------------+                                                                                       
+  |--> | gpiod_direction_input | set direction input                                                                   
+  |    +-----------------------+                                                                                       
+  |                                                                                                                    
+  |--> get irq from gpio_desc, save in line_event                                                                      
+  |                                                                                                                    
+  |    +----------------------+                                                                                        
+  |--> | request_threaded_irq | request a thread to read the events                                                    
+  |    +----------------------+                                                                                        
+  |    +---------------------+                                                                                         
+  |--> | get_unused_fd_flags | get an available fd                                                                     
+  |    +---------------------+                                                                                         
+  |    +--------------------+                                                                                          
+  |--> | anon_inode_getfile | prepare a file (name = gpio-event, fops = lineevent_fileops)                             
+  |    +--------------------+                                                                                          
+  |                                                                                                                    
+  |--> save fd in event_req                                                                                            
+  |                                                                                                                    
+  |    +--------------+                                                                                                
+  |--> | copy_to_user | copy event_req back to user                                                                    
+  |    +--------------+                                                                                                
+  |    +------------+                                                                                                  
+  +--> | fd_install |                                                                                                  
+       +------------+                                                                                                  
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                   
++-----------------+                                                            
+| lineinfo_get_v1 | : fill line_info based on gpip_desc, copy line_info to user
++-|---------------+                                                            
+  |    +----------------+                                                      
+  |--> | copy_from_user | copy line info from user                             
+  |    +----------------+                                                      
+  |    +-------------------+                                                   
+  |--> | gpiochip_get_desc |                                                   
+  |    +-------------------+                                                   
+  |                                                                            
+  |--> get gpio_desc accordingly                                               
+  |                                                                            
+  |--> if arg 'watch' is set                                                   
+  |    -                                                                       
+  |    +--> return error if that gpio line is already watched                  
+  |                                                                            
+  |    +-----------------------+                                               
+  |--> | gpio_desc_to_lineinfo | set up line_info_v2 based on gpio_desc        
+  |    +-----------------------+                                               
+  |    +-------------------------+                                             
+  |--> | gpio_v2_line_info_to_v1 | set up line_info based on line_info_v2      
+  |    +-------------------------+                                             
+  |    +--------------+                                                        
+  +--> | copy_to_user | coyp line_info to user                                 
+       +--------------+                                                        
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                
++--------------+                                                            
+| lineinfo_get | : fill line_info based on gpip_desc, copy line_info to user
++-|------------+                                                            
+  |    +----------------+                                                   
+  |--> | copy_from_user | copy line info from user                          
+  |    +----------------+                                                   
+  |    +-------------------+                                                
+  |--> | gpiochip_get_desc | get gpio_desc                                  
+  |    +-------------------+                                                
+  |                                                                         
+  |--> if arg 'watch' is set                                                
+  |    -                                                                    
+  |    +--> return error if that gpio line is already watched               
+  |                                                                         
+  |    +-----------------------+                                            
+  |--> | gpio_desc_to_lineinfo | set up line_info_v2 based on gpio_desc     
+  |    +-----------------------+                                            
+  |    +--------------+                                                     
+  +--> | copy_to_user | copy line info to user                              
+       +--------------+                                                     
+```
+
+```
+drivers/gpio/gpiolib-cdev.c                                                                        
++----------------+                                                                                  
+| linereq_create | : for each line: request gpio and set direction, prepare fd/file, copy fd to user
++-|--------------+                                                                                  
+  |    +----------------+                                                                           
+  |--> | copy_from_user | copy user_line_req from user                                              
+  |    +----------------+                                                                           
+  |    +------------------------------+                                                             
+  |--> | gpio_v2_line_config_validate | validate line config                                        
+  |    +------------------------------+                                                             
+  |                                                                                                 
+  |--> alloc line_req                                                                               
+  |                                                                                                 
+  |--> for each line                                                                                
+  |    |                                                                                            
+  |    |    +-------------------+ +--------------------+                                            
+  |    +--> | INIT_DELAYED_WORK | | debounce_work_func |                                            
+  |         +-------------------+ +--------------------+                                            
+  |                                                                                                 
+  |--> determine line_req.buffer_size                                                               
+  |                                                                                                 
+  |--> for each line                                                                                
+  |    |                                                                                            
+  |    |    +-------------------+                                                                   
+  |    |--> | gpiochip_get_desc | get gpio_desc                                                     
+  |    |    +-------------------+                                                                   
+  |    |    +--------------------+                                                                  
+  |    |--> | gpiod_request_user | set label, call ->request() and ->get_direction() if feasible    
+  |    |    +--------------------+                                                                  
+  |    |    +----------------------+                                                                
+  |    |--> | gpiod_set_transitory | label 'transitory' in desc, set config                         
+  |    |    +----------------------+                                                                
+  |    |                                                                                            
+  |    |--> if flag specified 'output'                                                              
+  |    |    |    +----------------------------------+                                               
+  |    |    |--> | gpio_v2_line_config_output_value | get value for output                          
+  |    |    |    +----------------------------------+                                               
+  |    |    |    +------------------------+                                                         
+  |    |    +--> | gpiod_direction_output | set direction 'output'                                  
+  |    |         +------------------------+                                                         
+  |    +--> else                                                                                    
+  |         |    +-----------------------+                                                          
+  |         |--> | gpiod_direction_input | set direction 'input'                                    
+  |         |    +-----------------------+                                                          
+  |         |    +---------------------+                                                            
+  |         +--> | edge_detector_setup | request threaded irq                                       
+  |              +---------------------+                                                            
+  |                                                                                                 
+  |--> prepare fd/file                                                                              
+  |                                                                                                 
+  +--> copy fd to user                                                                              
+```
+
 ## <a name="pin-control"></a> Pin Control
 
 Some GPIO pins are multi-functional; they can have one or two extra functionality through proper settings. 
