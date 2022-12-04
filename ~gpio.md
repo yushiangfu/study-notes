@@ -740,8 +740,9 @@ i2c_mux_gpio_driver_init: (skip, no matched device)
 w1_gpio_driver_init: (skip, no matched device)
 gpio_led_driver_init: register 'gpio_led_driver' to bus 'platform'
   gpio_led_probe: for each led, prepare gpio_desc and led_struct                         
-fsi_master_gpio_driver_init:
-gpio_keys_init:
+fsi_master_gpio_driver_init: (skip, no matched device)
+gpio_keys_init: register 'gpio_keys_device_driver' to bus 'platform'
+  gpio_keys_probe: prepare pdate & input_dev & ddata, for each button: set up key, register input_dev
 ```
 
 ```
@@ -1391,6 +1392,138 @@ drivers/leds/leds-gpio.c
        |    +-------------------------+                                                
        +--> | gpiod_set_consumer_name | set consumer name on gpio_desc                 
             +-------------------------+                                                
+```
+
+```
+drivers/input/keyboard/gpio_keys.c
++-----------------+
+| gpio_keys_probe | : prepare pdate & input_dev & ddata, for each button: set up key, register input_dev
++-|---------------+
+  |            +-----------------------------+
+  |--> pdata = | gpio_keys_get_devtree_pdata | alloc buffer, save property values of child nodes
+  |            +-----------------------------+
+  |
+  |--> alloc ddata (?)
+  |
+  |--> alloc keymap
+  |
+  |            +----------------------------+
+  |--> input = | devm_input_allocate_device | prepare input_dev, add to dev as resource
+  |            +----------------------------+
+  |
+  |--> save pdata and input in ddata
+  |
+  |--> further set up input (name, ops, id, ...)
+  |
+  |--> for each button
+  |    |
+  |    |    +---------------------+
+  |    +--> | gpio_keys_setup_key | get gpio_desc, set capability, request irq
+  |         +---------------------+
+  |    +-----------------------+
+  |--> | input_register_device | set up input_dev, register it
+  |    +-----------------------+
+  |    +--------------------+
+  +--> | device_init_wakeup | (skip)
+       +--------------------+
+```
+
+```
+drivers/input/keyboard/gpio_keys.c                                                
++-----------------------------+                                                    
+| gpio_keys_get_devtree_pdata | : alloc buffer, save property values of child nodes
++-|---------------------------+                                                    
+  |    +-----------------------------+                                             
+  |--> | device_get_child_node_count | count number of child node                  
+  |    +-----------------------------+                                             
+  |                                                                                
+  |--> alloc buffer  = pdata + button * n                                          
+  |                                                                                
+  +--> for each child node                                                         
+       |                                                                           
+       |--> button.code = value of property "linux,code"                           
+       |                                                                           
+       |--> button.desc = value of property "label"                                
+       |                                                                           
+       +--> button.xxx = value of property "ooo"                                   
+```
+
+```
+drivers/input/input.c                                                    
++----------------------------+                                            
+| devm_input_allocate_device | : prepare input_dev, add to dev as resource
++-|--------------------------+                                            
+  |    +--------------+                                                   
+  |--> | devres_alloc | alloc input_dev_resource                          
+  |    +--------------+                                                   
+  |    +-----------------------+                                          
+  |--> | input_allocate_device | alloc input_dev and set it up            
+  |    +-----------------------+                                          
+  |                                                                       
+  |--> save input_dev in resource                                         
+  |                                                                       
+  |    +------------+                                                     
+  +--> | devres_add |                                                     
+       +------------+                                                     
+```
+
+```
+drivers/input/input.c                                  
++-----------------------+                                
+| input_allocate_device | : alloc input_dev and set it up
++-|---------------------+                                
+  |                                                      
+  +--> alloc input_dev                                   
+  |                                                      
+  |--> set up device type & class                        
+  |                                                      
+  |    +-------------+                                   
+  |--> | timer_setup | set up a null timer               
+  |    +-------------+                                   
+  |    +--------------+                                  
+  +--> | dev_set_name | "input%lu"                       
+       +--------------+                                  
+```
+
+```
+drivers/input/keyboard/gpio_keys.c                                                                     
++---------------------+                                                                                 
+| gpio_keys_setup_key | : get gpio_desc, set capability, request irq                                    
++-|-------------------+                                                                                 
+  |                                                                                                     
+  |--> if child is provided                                                                             
+  |    |                                                                                                
+  |    |    +-----------------------+                                                                   
+  |    +--> | devm_fwnode_gpiod_get | get gpio desc                                                     
+  |         +-----------------------+                                                                   
+  |                                                                                                     
+  |--> elif button has valid gpio#                                                                      
+  |    |                                                                                                
+  |    |    +-----------------------+                                                                   
+  |    +--> | devm_gpio_request_one | request a gpio line and add to dev as resource                    
+  |         +-----------------------+                                                                   
+  |                                                                                                     
+  |--> if gpio_desc is preppared                                                                        
+  |    |                                                                                                
+  |    |--> set up button_data                                                                          
+  |    |                  +--------------------+                                                        
+  |    +--> determine isr | gpio_keys_gpio_isr |                                                        
+  |                       +--------------------+                                                        
+  |--> else                                                                                             
+  |    |                                                                                                
+  |    |--> set up button_data                                                                          
+  |    |                  +-------------------+                                                         
+  |    +--> determine isr | gpio_keys_irq_isr |                                                         
+  |                       +-------------------+                                                         
+  |    +----------------------+                                                                         
+  |--> | input_set_capability | label capabilities on input_dev                                         
+  |    +----------------------+                                                                         
+  |    +-----------------+                                                                              
+  |--> | devm_add_action | add action to dev as resource                                                
+  |    +-----------------+                                                                              
+  |    +------------------------------+                                                                 
+  +--> | devm_request_any_context_irq | request irq                                                     
+       +------------------------------+                                                                 
 ```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
