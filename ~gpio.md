@@ -496,6 +496,172 @@ drivers/gpio/gpiolib-cdev.c
   +--> copy fd to user                                                                              
 ```
 
+### libgpiod
+
+```
+bindings/cxx/line.cpp                                                                           
++------------------+                                                                             
+| gpiod::find_line | : find name-matched line                                                    
++-|----------------+                                                                             
+  |                     +-----------------------+                                                
+  +--> for each iter in | gpiod::make_chip_iter |                                                
+       |                +-----------------------+                                                
+       |                prepare a iterator of that many gpio chips, get chip info and fill struct
+       |                                                                                         
+       |    +-----------------+                                                                  
+       +--> | chip::find_line | find name-matched line                                           
+            +-----------------+                                                                  
+```
+
+```
+bindings/cxx/iter.cpp                                                                                  
++-----------------------+                                                                               
+| gpiod::make_chip_iter | : prepare a iterator of that many gpio chips, get chip info and fill struct   
++-|---------------------+                                                                               
+  |    +---------------------+                                                                          
+  |--> | gpiod_chip_iter_new | prepare a iterator of that many gpio chips, get chip info and fill struct
+  |    +---------------------+                                                                          
+  |                                                                                                     
+  +--> convert to chip iterator ?                                                                       
+```
+
+```
+lib/iter.c                                                                                        
++---------------------+                                                                            
+| gpiod_chip_iter_new | : prepare a iterator of that many gpio chips, get chip info and fill struct
++-|-------------------+                                                                            
+  |                                                                                                
+  |--> find /dev/gpiochip*                                                                         
+  |                                                                                                
+  |--> alloc iterator                                                                              
+  |                                                                                                
+  |--> alloc that many chip struct and save in iterator                                            
+  |                                                                                                
+  +--> for each gpio_chip                                                                          
+       |                                                                                           
+       |    +-------------------------+                                                            
+       +--> | gpiod_chip_open_by_name | open file & get chip info, prepare such chip struct        
+            +-------------------------+                                                            
+```
+
+```
++-------------------------+                                                      
+| gpiod_chip_open_by_name | : open file & get chip info, prepare such chip struct
++-|-----------------------+                                                      
+  |                                                                              
+  |--> prepare file name                                                         
+  |                                                                              
+  |    +-----------------+                                                       
+  +--> | gpiod_chip_open | open file & get chip info, prepare such chip struct   
+       +-----------------+                                                       
+```
+
+```
+lib/core.c                                                              
++-----------------+                                                      
+| gpiod_chip_open | : open file & get chip info, prepare such chip struct
++-|---------------+                                                      
+  |    +------+                                                          
+  |--> | open |                                                          
+  |    +------+                                                          
+  |    +------------------+                                              
+  |--> | is_gpiochip_cdev | check if it's valid                          
+  |    +------------------+                                              
+  |                                                                      
+  |--> alloc chip                                                        
+  |                                                                      
+  |    +-------+                                                         
+  |--> | ioctl | opt = get_chip_info                                     
+  |    +-------+                                                         
+  |                                                                      
+  +--> set up chip (fd, lines, name, label)                              
+```
+
+```
+bindings/cxx/chip.cpp                                
++-----------------+                                   
+| chip::find_line | : find name-matched line          
++-|---------------+                                   
+  |    +----------------------+                       
+  +--> | gpiod_chip_find_line | find name-matched line
+       +----------------------+                       
+```
+
+```
+lib/helpers.c                                                              
++----------------------+                                                    
+| gpiod_chip_find_line | : find name-matched line                           
++-|--------------------+                                                    
+  |    +---------------------+                                              
+  |--> | gpiod_line_iter_new | prepare line_iter (have each line info ready)
+  |    +---------------------+                                              
+  |                                                                         
+  +--> for each line                                                        
+       |                                                                    
+       |--> get line name and compare with arg name                         
+       |                                                                    
+       +--> if found                                                        
+            |                                                               
+            |    +----------------------+                                   
+            |--> | gpiod_line_iter_free |                                   
+            |    +----------------------+                                   
+            |                                                               
+            +--> return                                                     
+```
+
+```
+lib/iter.c                                                                  
++---------------------+                                                      
+| gpiod_line_iter_new | : prepare line_iter (have each line info ready)      
++-|-------------------+                                                      
+  |                                                                          
+  |--> alloc line_iter                                                       
+  |                                                                          
+  |--> get line# from chip, alloc that many lines and save in line_iter      
+  |                                                                          
+  +--> for each line                                                         
+       |                                                                     
+       |    +---------------------+                                          
+       +--> | gpiod_chip_get_line | ensure target line exists in chip, get it
+            +---------------------+                                          
+```
+
+```
+lib/core.c                                                        
++---------------------+                                            
+| gpiod_chip_get_line | : ensure target line exists in chip, get it
++-|-------------------+                                            
+  |                                                                
+  |--> ensure chip->lines is allocated                             
+  |                                                                
+  |--> if chip->line[offset] doesn't exist yet                     
+  |    -                                                           
+  |    +--> alloc line and set up, save in chip                    
+  |                                                                
+  |    else                                                        
+  |    -                                                           
+  |    +--> get line from chip                                     
+  |                                                                
+  |    +-------------------+                                       
+  +--> | gpiod_line_update | get line info and fill arg line       
+       +-------------------+                                       
+```
+
+```
+lib/core.c                                            
++-------------------+                                  
+| gpiod_line_update | : get line info and fill arg line
++-|-----------------+                                  
+  |                                                    
+  |--> save offset in line struct                      
+  |                                                    
+  |    +-------+                                       
+  |--> | ioctl | opt = get_line_info                   
+  |    +-------+                                       
+  |                                                    
+  +--> set up line based on the info                   
+```
+
 ## <a name="pin-control"></a> Pin Control
 
 Some GPIO pins are multi-functional; they can have one or two extra functionality through proper settings. 
