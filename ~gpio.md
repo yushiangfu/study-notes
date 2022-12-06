@@ -662,6 +662,122 @@ lib/core.c
   +--> set up line based on the info                   
 ```
 
+```
+bindings/cxx/line.cpp                                    
++---------------+                                         
+| line::request | : prepare bulk, add lines into it       
++-|-------------+                                         
+  |                                                       
+  |--> prepare bulk                                       
+  |                                                       
+  |    +--------------------+                             
+  +--> | line_bulk::request | add all lines to bulk struct
+       +--------------------+                             
+```
+
+```
+bindings/cxx/line_bulk.cpp                                    
++--------------------+                                         
+| line_bulk::request | : add all lines to bulk struct          
++-|------------------+                                         
+  |    +-------------------------+                             
+  +--> | line_bulk::to_line_bulk | add all lines to bulk struct
+       +-------------------------+                             
+```
+
+```
+bindings/cxx/line_bulk.cpp                               
++-------------------------+                               
+| line_bulk::to_line_bulk | : add all lines to bulk struct
++-|-----------------------+                               
+  |    +----------------------+                           
+  |--> | gpiod_line_bulk_init | set line_num = 0          
+  |    +----------------------+                           
+  |                                                       
+  +--> for each line: add to bulk struct                  
+```
+
+```
+bindings/cxx/line.cpp                               
++--------------------+                               
+| line::event_get_fd | : given line, get fd          
++-|------------------+                               
+  |    +-------------------------+                   
+  +--> | gpiod_line_event_get_fd | given line, get fd
+       +-------------------------+                   
+```
+
+```
+lib/core.c                                     
++-------------------------+                     
+| gpiod_line_event_get_fd | : given line, get fd
++-|-----------------------+                     
+  |    +-------------+                          
+  +--> | line_get_fd | given line, get fd       
+       +-------------+                          
+```
+
+```
+bindings/cxx/line.cpp                                                          
++------------------+                                                            
+| line::event_read | : read events from fd                                      
++-|----------------+                                                            
+  |    +-----------------------+                                                
+  |--> | gpiod_line_event_read | read events from fd, so as to set up arg events
+  |    +-----------------------+                                                
+  |    +-----------------------+                                                
+  +--> | line::make_line_event | make line event                                
+       +-----------------------+                                                
+```
+
+```
+lib/core.c                                                                              
++-----------------------+                                                                
+| gpiod_line_event_read | : read events from fd, so as to set up arg events              
++-|---------------------+                                                                
+  |    +--------------------------------+                                                
+  +--> | gpiod_line_event_read_multiple | read events from fd, so as to set up arg events
+       +--------------------------------+                                                
+```
+
+```
+lib/core.c                                                                                 
++--------------------------------+                                                          
+| gpiod_line_event_read_multiple | : read events from fd, so as to set up arg events        
++-|------------------------------+                                                          
+  |    +-------------------------+                                                          
+  |--> | gpiod_line_event_get_fd | get fd                                                   
+  |    +-------------------------+                                                          
+  |    +-----------------------------------+                                                
+  +--> | gpiod_line_event_read_fd_multiple | read events from fd, so as to set up arg events
+       +-----------------------------------+                                                
+```
+
+```
+lib/core.c                                                                            
++-----------------------------------+                                                  
+| gpiod_line_event_read_fd_multiple | : read events from fd, so as to set up arg events
++-|---------------------------------+                                                  
+  |    +------+                                                                        
+  |--> | read | read events                                                            
+  |    +------+                                                                        
+  |                                                                                    
+  +--> for each event                                                                  
+       -                                                                               
+       +--> set up arg event based on read event                                       
+```
+
+```
+bindings/cxx/line.cpp                                
++-----------------------+                             
+| line::make_line_event | : make line event           
++-|---------------------+                             
+  |                                                   
+  |--> set event type to rising or falling accordingly
+  |                                                   
+  +--> save timestamp and source in arg               
+```
+
 ## <a name="pin-control"></a> Pin Control
 
 Some GPIO pins are multi-functional; they can have one or two extra functionality through proper settings. 
