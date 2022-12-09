@@ -676,13 +676,19 @@ bindings/cxx/line.cpp
 ```
 
 ```
-bindings/cxx/line_bulk.cpp                                    
-+--------------------+                                         
-| line_bulk::request | : add all lines to bulk struct          
-+-|------------------+                                         
-  |    +-------------------------+                             
-  +--> | line_bulk::to_line_bulk | add all lines to bulk struct
-       +-------------------------+                             
+ bindings/cxx/line_bulk.cpp                                                 
++--------------------+                                                      
+| line_bulk::request | : given config, get line values or events            
++-|------------------+                                                      
+  |    +-------------------------+                                          
+  |--> | line_bulk::to_line_bulk | add all lines to bulk struct             
+  |    +-------------------------+                                          
+  |                                                                         
+  |--> set up config (consumer, type: direction or event, flags)            
+  |                                                                         
+  |    +-------------------------+                                          
+  +--> | gpiod_line_request_bulk | given req type, get line values or events
+       +-------------------------+                                          
 ```
 
 ```
@@ -695,6 +701,97 @@ bindings/cxx/line_bulk.cpp
   |    +----------------------+                           
   |                                                       
   +--> for each line: add to bulk struct                  
+```
+
+```
+lib/core.c                                                            
++-------------------------+                                            
+| gpiod_line_request_bulk | : given req type, get line values or events
++-|-----------------------+                                            
+  |                                                                    
+  |--> if request type is about direction                              
+  |    |                                                               
+  |    |    +---------------------+                                    
+  |    +--> | line_request_values | get each line info                 
+  |         +---------------------+                                    
+  |                                                                    
+  +--> elif request type is about event                                
+       |                                                               
+       |    +---------------------+                                    
+       +--> | line_request_events | get each line info                 
+            +---------------------+                                    
+```
+
+```
+lib/core.c                                                           
++---------------------+                                               
+| line_request_values | : get each line info                          
++-|-------------------+                                               
+  |                                                                   
+  |--> set up req_handle                                              
+  |                                                                   
+  |--> set direction in flags                                         
+  |                                                                   
+  |--> for each line in bulk                                          
+  |    -                                                              
+  |    +--> set up line_offset and default_value of line in req_handle
+  |                                                                   
+  |--> retrieve fd from bulk                                          
+  |                                                                   
+  |    +-------+                                                      
+  |--> | ioctl | opt = get_line_handle (kernel saves target fd in req)
+  |    +-------+                                                      
+  |    +---------------------+                                        
+  +--> | line_make_fd_handle | prepare line_fd                        
+  |    +---------------------+                                        
+  |                                                                   
+  +--> for each line in bulk                                          
+       |                                                              
+       |--> set up line                                               
+       |                                                              
+       |    +-------------+                                           
+       |--> | line_set_fd | save line_fd in line                      
+       |    +-------------+                                           
+       |    +-------------------+                                     
+       +--> | gpiod_line_update | get line info and fill arg line     
+            +-------------------+                                     
+```
+
+```
+lib/core.c                                                   
++---------------------+                                       
+| line_request_events | : get each line info                  
++-|-------------------+                                       
+  |                                                           
+  +--> for each line                                          
+       |                                                      
+       |    +---------------------------+                     
+       +--> | line_request_event_single | get single line info
+            +---------------------------+                     
+```
+
+```
+lib/core.c                                                 
++---------------------------+                               
+| line_request_event_single | : get single line info        
++-|-------------------------+                               
+  |                                                         
+  |--> set up event_req                                     
+  |                                                         
+  |--> set up flags (rising, falling, both)                 
+  |                                                         
+  |    +-------+                                            
+  |--> | ioctl | opt = get_line_event                       
+  |    +-------+                                            
+  |    +---------------------+                              
+  |--> | line_make_fd_handle | prepare line_fd              
+  |    +---------------------+                              
+  |                                                         
+  |--> set up line                                          
+  |                                                         
+  |    +-------------------+                                
+  +--> | gpiod_line_update | get line info and fill arg line
+       +-------------------+                                
 ```
 
 ```
