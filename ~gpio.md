@@ -665,13 +665,13 @@ lib/core.c
 ```
 bindings/cxx/line.cpp                                    
 +---------------+                                         
-| line::request | : prepare bulk, add lines into it       
+| line::request | : given config, set target lines
 +-|-------------+                                         
   |                                                       
   |--> prepare bulk                                       
   |                                                       
   |    +--------------------+                             
-  +--> | line_bulk::request | add all lines to bulk struct
+  +--> | line_bulk::request | given config, get line values or events
        +--------------------+                             
 ```
 
