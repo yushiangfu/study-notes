@@ -3,7 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Driver](#driver)
+- [Framework](#framework)
 - [Pin Control](#pin-control)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
@@ -15,7 +15,7 @@ Generic purpose input-output (GPIO) can work as output to control target device 
 In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
 Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
 
-## <a name="driver"></a> Driver
+## <a name="framework"></a> Framework
 
 
 
