@@ -17,6 +17,68 @@ Pin control (pinctrl) is the mechanism implemented in the kernel to properly con
 
 ## <a name="driver"></a> Driver
 
+
+
+| GPIO | Line | Name           | Use            | Direction | Note |
+| ---  | ---  | ---            | ---            | ---       | ---  |
+| A4   | 4    |                | kernel         | input     |      |
+| A5   | 5    |                | kernel         | input     |      |
+| C0   | 16   |                | kernel         | input     |      |
+| C1   | 17   |                | kernel         | input     |      |
+| C2   | 18   |                | kernel         | input     |      |
+| C3   | 19   |                | kernel         | input     |      |
+| C4   | 20   |                | kernel         | input     |      |
+| C5   | 21   |                | kernel         | input     |      |
+| C6   | 22   |                | kernel         | input     |      |
+| C7   | 23   |                | kernel         | input     |      |
+| D3   | 27   | nic_func_mode0 | nic_func_mode0 | output    |      |
+| D4   | 28   | nic_func_mode1 | nic_func_mode1 | output    |      |
+| I3   | 67   | power-button   | sysfs          | input     |      |
+| I4   | 68   |                | kernel         | input     |      |
+| I5   | 69   |                | kernel         | input     |      |
+| I6   | 70   |                | kernel         | input     |      |
+| I7   | 71   |                | kernel         | input     |      |
+| J1   | 73   |                | sysfs          | input     |      |
+| J2   | 74   | checkstop      | checkstop      | input     |      |
+| K0   | 80   |                | kernel         | input     |      |
+| K1   | 81   |                | kernel         | input     |      |
+| K2   | 82   |                | kernel         | input     |      |
+| K3   | 83   |                | kernel         | input     |      |
+| K4   | 84   |                | kernel         | input     |      |
+| K5   | 85   |                | kernel         | input     |      |
+| K6   | 86   |                | kernel         | input     |      |
+| K7   | 87   |                | kernel         | input     |      |
+| L0   | 88   |                | kernel         | input     |      |
+| L1   | 89   |                | kernel         | input     |      |
+| L2   | 90   |                | kernel         | input     |      |
+| L3   | 91   |                | kernel         | input     |      |
+| L4   | 92   |                | kernel         | input     |      |
+| L5   | 93   |                | kernel         | input     |      |
+| L6   | 94   |                | kernel         | input     |      |
+| L7   | 95   |                | kernel         | input     |      |
+| N0   | 104  |                | kernel         | input     |      |
+| N1   | 105  |                | kernel         | input     |      |
+| N2   | 106  | led-fault      | fault          | output    |      |
+| N4   | 108  | led-identify   | identify       | output    |      |
+| Q0   | 128  |                | kernel         | input     |      |
+| Q1   | 129  |                | kernel         | input     |      |
+| Q2   | 130  |                | kernel         | input     |      |
+| Q3   | 131  |                | kernel         | input     |      |
+| Q7   | 135  | id-button      | id-button      | input     |      |
+| R3   | 139  |                | phosphor-hwmon | output    |      |
+| R5   | 141  | led-power      | power          | output    |      |
+| S7   | 151  | seq_cont       | seq_cont       | output    |      |
+| T0   | 152  |                | kernel         | input     |      |
+| T1   | 153  |                | kernel         | input     |      |
+| T2   | 154  |                | kernel         | input     |      |
+| T3   | 155  |                | kernel         | input     |      |
+| U4   | 164  |                | kernel         | input     |      |
+| U6   | 166  |                | kernel         | input     |      |
+| U7   | 167  |                | kernel         | input     |      |
+| V0   | 168  |                | kernel         | input     |      |
+| V1   | 169  |                | kernel         | input     |      |
+
+
 The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
 
 ```
