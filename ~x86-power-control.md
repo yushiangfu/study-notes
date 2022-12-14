@@ -659,9 +659,56 @@ src/power_control.cpp
           +-----------------------------------------------------+                  
 ```
 
+### power state handler
 
-
-
+```
+src/power_control.cpp                                                                                                                                   
++----------------------+                                                                                                                                 
+| getPowerStateHandler | : given power state, return state handler                                                                                       
++-|--------------------+                                                                                                                                 
+  |                                                                                                                                                      
+  |--> switch power_state                                                                                                                                
+  |    case on                                                                                                                                           
+  |    -           +--------------+                                                                                                                      
+  |    +--> return | powerStateOn | given event (e.g., graceful_power_off, power_cycle), perform the actions                                             
+  |                +--------------+                                                                                                                      
+  |--> case wait_for_ps_power_ok                                                                                                                         
+  |    -           +----------------------------+                                                                                                        
+  |    +--> return | powerStateWaitForPSPowerOK | handle events (ps_power_assert/ps_power_ok_watchdog_timer_expired/sio_power_good_assert)               
+  |                +----------------------------+                                                                                                        
+  |--> case wait_for_sio_power_good                                                                                                                      
+  |    -           +-------------------------------+                                                                                                     
+  |    +--> return | powerStateWaitForSIOPowerGood | handle events (sio_power_good_assert/sio_power_good_watchdog_timer_expired)                         
+  |                +-------------------------------+                                                                                                     
+  |--> case off                                                                                                                                          
+  |    -           +---------------+                                                                                                                     
+  |    +--> return | powerStateOff | handle events (ps_power_ok, sio_s5, sio_power_good, power_button_pressed, power_on_request)                         
+  |                +---------------+                                                                                                                     
+  |--> case transition_to_off                                                                                                                            
+  |    -           +---------------------------+                                                                                                         
+  |    +--> return | powerStateTransitionToOff | handle event (ps_power_ok_deassert)                                                                     
+  |                +---------------------------+                                                                                                         
+  |--> case graceful_transition_to_off                                                                                                                   
+  |    -           +-----------------------------------+                                                                                                 
+  |    +--> return | powerStateGracefulTransitionToOff | handle events (ps_poewr_ok, graceful_timer_expired, power_off_req, power_cycle_req, reset_req)  
+  |                +-----------------------------------+                                                                                                 
+  |--> case cycle_off                                                                                                                                    
+  |    -           +--------------------+                                                                                                                
+  |    +--> return | powerStateCycleOff | handle events (ps_power_ok, sio_s5_deassert, power_button_pressed, power_cycle_timer_expired)                  
+  |                +--------------------+                                                                                                                
+  |--> case transition_to_cycle_off                                                                                                                      
+  |    -           +--------------------------------+                                                                                                    
+  |    +--> return | powerStateTransitionToCycleOff | handle event (ps_power_ok_deassert)                                                                
+  |                +--------------------------------+                                                                                                    
+  |--> case graceful_transition_to_cycle_off                                                                                                             
+  |    -           +----------------------------------------+                                                                                            
+  |    +--> return | powerStateGracefulTransitionToCycleOff | handle event (ps_power_ok, graceful_power_off_timer_expired, power_off, power_cycle, reset)
+  |                +----------------------------------------+                                                                                            
+  +--> case check_for_warm_reset                                                                                                                         
+       -           +-----------------------------+                                                                                                       
+       +--> return | powerStateCheckForWarmReset | handle events (sio_s5, warm_reset_detected, ps_power_ok)                                              
+                   +-----------------------------+                                                                                                       
+```
 
 ```
 src/power_control.cpp                                                                                                                       
@@ -842,4 +889,291 @@ src/power_control.cpp
          |    +---------------+                                      
          +--> | setGPIOOutput | set gpio output                      
               +---------------+                                      
+```
+
+```
+src/power_control.cpp                                                                                                  
++----------------------------+                                                                                          
+| powerStateWaitForPSPowerOK | : handle event (ps_power_assert/ps_power_ok_watchdog_timer_expired/sio_power_good_assert)
++-|--------------------------+                                                                                          
+  |                                                                                                                     
+  |--> switch event                                                                                                     
+  |--> case ps_power_ok_assert                                                                                          
+  |    |                                                                                                                
+  |    |--> cancel gpio and watchdog timers                                                                             
+  |    |                                                                                                                
+  |    |--> if sio is enabled                                                                                           
+  |    |    |                                                                                                           
+  |    |    |    +--------------------------------+                                                                     
+  |    |    |--> | sioPowerGoodWatchdogTimerStart | set a timer to handle event of sio_power_good_watchdog_timr_expired 
+  |    |    |    +--------------------------------+                                                                     
+  |    |    |    +---------------+                                                                                      
+  |    |    +--> | setPowerState | state = wait_for_sio_power_good                                                      
+  |    |         +---------------+                                                                                      
+  |    |                                                                                                                
+  |    +--> else                                                                                                        
+  |         -    +---------------+                                                                                      
+  |         +--> | setPowerState | state = on                                                                           
+  |              +---------------+                                                                                      
+  |                                                                                                                     
+  |--> case ps_power_ok_watchdog_timer_expired                                                                          
+  |    |                                                                                                                
+  |    |    +---------------+                                                                                           
+  |    |--> | setPowerState | state = off                                                                               
+  |    |    +---------------+                                                                                           
+  |    |    +--------------------+                                                                                      
+  |    +--> | psPowerOKFailedLog | log                                                                                  
+  |         +--------------------+                                                                                      
+  |                                                                                                                     
+  +--> case sio_power_good_assert                                                                                       
+       |                                                                                                                
+       |--> cancel watchdog timer                                                                                       
+       |                                                                                                                
+       |    +---------------+                                                                                           
+       +--> | setPowerState | state = on                                                                                
+            +---------------+                                                                                           
+```
+
+```
+src/power_control.cpp                                                                                         
++-------------------------------+                                                                              
+| powerStateWaitForSIOPowerGood | : handle events (sio_power_good_assert/sio_power_good_watchdog_timer_expired)
++-|-----------------------------+                                                                              
+  |                                                                                                            
+  |--> switch event                                                                                            
+  |--> case sio_power_good_assert                                                                              
+  |    |                                                                                                       
+  |    |--> cancel watchdog timer                                                                              
+  |    |                                                                                                       
+  |    |    +---------------+                                                                                  
+  |    +--> | setPowerState | state = on                                                                       
+  |         +---------------+                                                                                  
+  |                                                                                                            
+  +--> case sio_power_good_watchdog_timer_expired                                                              
+       |                                                                                                       
+       |    +---------------+                                                                                  
+       |--> | setPowerState | state = off                                                                      
+       |    +---------------+                                                                                  
+       |    +--------------------------+                                                                       
+       +--> | systemPowerGoodFailedLog | log                                                                   
+            +--------------------------+                                                                       
+```
+
+```
+src/power_control.cpp                                                                                                 
++---------------+                                                                                                      
+| powerStateOff | : handle events (ps_power_ok, sio_s5, sio_power_good, power_button_pressed, power_on_request)        
++-|-------------+                                                                                                      
+  |                                                                                                                    
+  |--> switch event                                                                                                    
+  |    case ps_power_ok_assert                                                                                         
+  |    |                                                                                                               
+  |    |--> if sio is enabled                                                                                          
+  |    |    -    +--------------------------------+                                                                    
+  |    |    |--> | sioPowerGoodWatchdogTimerStart | set a timer to handle event of sio_power_good_watchdog_timr_expired
+  |    |    |    +--------------------------------+                                                                    
+  |    |    |    +---------------+                                                                                     
+  |    |    +--> | setPowerState | state = wait_for_sio_power_good                                                     
+  |    |         +---------------+                                                                                     
+  |    +--> else                                                                                                       
+  |         -    +---------------+                                                                                     
+  |         +--->| setPowerState | state = off                                                                         
+  |              +---------------+                                                                                     
+  |--> case sio_s5_deassert                                                                                            
+  |    |    +-----------------------------+                                                                            
+  |    |--> | psPowerOKWatchdogTimerStart |  set a timer to handle event (ps_power_ok_watchdog_timer_expired)          
+  |    |    +-----------------------------+                                                                            
+  |    |    +---------------+                                                                                          
+  |    +--->| setPowerState | state = wait_for_ps_power_ok                                                             
+  |         +---------------+                                                                                          
+  |--> case sio_power_good_assert                                                                                      
+  |    -    +---------------+                                                                                          
+  |    +--->| setPowerState | state = on                                                                               
+  |         +---------------+                                                                                          
+  |--> case power_button_pressed                                                                                       
+  |    -                                                                                                               
+  |    +--> (same as case sio_s5_deassert)                                                                             
+  |                                                                                                                    
+  +--> case power_on_request                                                                                           
+       |                                                                                                               
+       |--> (same as case sio_s5_deassert)                                                                             
+       |    +---------+                                                                                                
+       +--> | powerOn | assert gpio to power on                                                                        
+            +---------+
+```
+
+```
+src/power_control.cpp                                                                                                                
++-----------------------------------+                                                                                                 
+| powerStateGracefulTransitionToOff | : handle events (ps_poewr_ok, graceful_timer_expired, power_off_req, power_cycle_req, reset_req)
++-|---------------------------------+                                                                                                 
+  |                                                                                                                                   
+  |--> case ps_power_ok_deassert                                                                                                      
+  |    |                                                                                                                              
+  |    |--> cancel timer                                                                                                              
+  |    |    +---------------+                                                                                                         
+  |    +--> | setPowerState | state = off                                                                                             
+  |         +---------------+                                                                                                         
+  |--> case graceful_power_off_timer_expired                                                                                          
+  |    -    +---------------+                                                                                                         
+  |    +--> | setPowerState | state = on                                                                                              
+  |         +---------------+                                                                                                         
+  |--> case power_off_request                                                                                                         
+  |    |                                                                                                                              
+  |    |--> cancel timer                                                                                                              
+  |    |    +---------------+                                                                                                         
+  |    |--> | setPowerState | state = transition_to_off                                                                               
+  |    |    +---------------+                                                                                                         
+  |    |    +---------------+                                                                                                         
+  |    +--> | forcePowerOff | force power off                                                                                         
+  |         +---------------+                                                                                                         
+  |--> case power_cycle_request                                                                                                       
+  |    |                                                                                                                              
+  |    |--> cancel timer                                                                                                              
+  |    |    +---------------+                                                                                                         
+  |    |--> | setPowerState | state = transition_to_cycle_off                                                                         
+  |    |    +---------------+                                                                                                         
+  |    |    +---------------+                                                                                                         
+  |    +--> | forcePowerOff | force power off                                                                                         
+  |         +---------------+                                                                                                         
+  +--> case reset_request                                                                                                             
+       |                                                                                                                              
+       |--> cancel timer                                                                                                              
+       |    +---------------+                                                                                                         
+       |--> | setPowerState | state = on                                                                                              
+       |    +---------------+                                                                                                         
+       |    +-------+                                                                                                                 
+       +--> | reset | assert gpio to reset                                                                                            
+            +-------+                                                                                                                 
+```
+
+```
+src/power_control.cpp                                                                                                   
++--------------------+                                                                                                   
+| powerStateCycleOff | : handle events (ps_power_ok, sio_s5_deassert, power_button_pressed, power_cycle_timer_expired)   
++-|------------------+                                                                                                   
+  |                                                                                                                      
+  |--> switch event                                                                                                      
+  |--> case ps_power_ok_assert                                                                                           
+  |    |                                                                                                                 
+  |    |--> cancel timer                                                                                                 
+  |    +--> if sio is enabled                                                                                            
+  |    |    -    +--------------------------------+                                                                      
+  |    |    |--> | sioPowerGoodWatchdogTimerStart | prepare timer to handle event (sio_power_good_watchdog_timer_expired)
+  |    |    |    +--------------------------------+                                                                      
+  |    |    |    +---------------+                                                                                       
+  |    |    +--> | setPowerState | state = wait_for_sio_power_good                                                       
+  |    |         +---------------+                                                                                       
+  |    +--> else                                                                                                         
+  |         -    +---------------+                                                                                       
+  |         +--> | setPowerState | state = on                                                                            
+  |              +---------------+                                                                                       
+  |--> case sio_s5_deassert                                                                                              
+  |    |                                                                                                                 
+  |    |--> cancel timer                                                                                                 
+  |    |    +-----------------------------+                                                                              
+  |    |--> | psPowerOKWatchdogTimerStart | set a timer to handle event (ps_power_ok_watchdog_timer_expired)             
+  |    |    +-----------------------------+                                                                              
+  |    |    +---------------+                                                                                            
+  |    +--> | setPowerState | state = wait_for_ps_power_ok                                                               
+  |         +---------------+                                                                                            
+  |--> case power_button_pressed                                                                                         
+  |    |                                                                                                                 
+  |    |--> cancel timer                                                                                                 
+  |    |    +-----------------------------+                                                                              
+  |    |--> | psPowerOKWatchdogTimerStart | set a timer to handle event (ps_power_ok_watchdog_timer_expired)             
+  |    |    +-----------------------------+                                                                              
+  |    |    +---------------+                                                                                            
+  |    +--> | setPowerState | state = wait_for_ps_power_ok                                                               
+  |         +---------------+                                                                                            
+  +--> case power_cycle_timer_expired                                                                                    
+       |    +-----------------------------+                                                                              
+       |--> | psPowerOKWatchdogTimerStart | set a timer to handle event (ps_power_ok_watchdog_timer_expired)             
+       |    +-----------------------------+                                                                              
+       |    +---------------+                                                                                            
+       |--> | setPowerState | state = wait_for_ps_power_ok                                                               
+       |    +---------------+                                                                                            
+       |    +---------+                                                                                                  
+       +--> | powerOn | assert gpio to power on                                                                          
+            +---------+                                                                                                  
+```
+
+```
+src/power_control.cpp                                                                                                                  
++----------------------------------------+                                                                                              
+| powerStateGracefulTransitionToCycleOff | : handle event (ps_power_ok, graceful_power_off_timer_expired, power_off, power_cycle, reset)
++-|--------------------------------------+                                                                                              
+  |                                                                                                                                     
+  |--> switch event                                                                                                                     
+  |--> case ps_power_ok_deassert                                                                                                        
+  |    |                                                                                                                                
+  |    |--> cancel timer                                                                                                                
+  |    |    +---------------+                                                                                                           
+  |    |--> | setPowerState | state = cycle_off                                                                                         
+  |    |    +---------------+                                                                                                           
+  |    |    +----------------------+                                                                                                    
+  |    +--> | powerCycleTimerStart | prepare timer to handle event (power_cycle_timer_expired)                                          
+  |         +----------------------+                                                                                                    
+  |--> case graceful_power_off_timer_expired                                                                                            
+  |    -    +---------------+                                                                                                           
+  |    +--> | setPowerState | state = on                                                                                                
+  |         +---------------+                                                                                                           
+  |--> case power_off_request                                                                                                           
+  |    |                                                                                                                                
+  |    |--> cancel timer                                                                                                                
+  |    |    +---------------+                                                                                                           
+  |    |--> | setPowerState | state = transition_to_off                                                                                 
+  |    |    +---------------+                                                                                                           
+  |    |    +---------------+                                                                                                           
+  |    +--> | forcePowerOff | force power off                                                                                           
+  |         +---------------+                                                                                                           
+  |--> case power_cycle_request                                                                                                         
+  |    |                                                                                                                                
+  |    |--> cancel timer                                                                                                                
+  |    |    +---------------+                                                                                                           
+  |    |--> | setPowerState | state = transition_to_cycle_off                                                                           
+  |    |    +---------------+                                                                                                           
+  |    |    +---------------+                                                                                                           
+  |    +--> | forcePowerOff | force power off                                                                                           
+  |         +---------------+                                                                                                           
+  +--> case reset_request                                                                                                               
+       |                                                                                                                                
+       |--> cancel timer                                                                                                                
+       |    +---------------+                                                                                                           
+       |--> | setPowerState | state = on                                                                                                
+       |    +---------------+                                                                                                           
+       |    +---------------+                                                                                                           
+       |--> | forcePowerOff | force power off                                                                                           
+       |    +---------------+                                                                                                           
+       |    +-------+                                                                                                                   
+       +--> | reset | assert gpio to reset                                                                                              
+            +-------+                                                                                                                   
+```
+
+```
+src/power_control.cpp                                                                    
++-----------------------------+                                                           
+| powerStateCheckForWarmReset | : handle events (sio_s5, warm_reset_detected, ps_power_ok)
++-|---------------------------+                                                           
+  |                                                                                       
+  |--> swtich event                                                                       
+  |--> case sio_s5_assert                                                                 
+  |    |                                                                                  
+  |    |--> cancel timer                                                                  
+  |    |    +---------------+                                                             
+  |    +--> | setPowerState | state = transition_to_off                                   
+  |         +---------------+                                                             
+  |--> case warm_reset_detected                                                           
+  |    -    +---------------+                                                             
+  |    +--> | setPowerState | state = on                                                  
+  |         +---------------+                                                             
+  +--> case ps_power_ok_deassert                                                          
+       |                                                                                  
+       |--> cancel timer                                                                  
+       |    +---------------+                                                             
+       |--> | setPowerState | state = off                                                 
+       |    +---------------+                                                             
+       |    +------+                                                                      
+       +--> | beep | send method call to service "xyz.openbmc_project.BeepCode"           
+            +------+                                                                      
 ```
