@@ -17,6 +17,35 @@ Pin control (pinctrl) is the mechanism implemented in the kernel to properly con
 
 ## <a name="framework"></a> Framework
 
+Generic purpose input-output (GPIO) is the hardware pin through which we can send hardware signals to or receive from an external component. 
+Given that the AST2500 chip provides 29 groups (A, B, ... AB, AC), and each group contains 8 pins, there are 232 GPIO lines that we can control. 
+Hardware designers decide where these lines connect; thus, the same pin might serve different purposes on different products. 
+Information such as offset (index) or name is necessary to find the target line, but note that not all lines are configured with an identifier in DTS.
+
+```
+E.g., arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts
+
+...
+&gpio {
+    gpio-line-names =
+    /*A0-A7*/   "","cfam-reset","","","","","fsi-mux","",
+    /*B0-B7*/   "","","","","","","","",
+    /*C0-C7*/   "","","","","","","","",
+    /*D0-D7*/   "fsi-enable","","","nic_func_mode0","nic_func_mode1","","","",
+....
+```
+
+Once we acquire the line handle, we specify flags later converted to value or event requests by the GPIO library internally. 
+As for the event, a kernel thread is created to monitor and wake up the stalled task in response to the event (rising or falling edge, or both).
+
+- value setting
+  - output high
+  - output low
+  - input
+- event waiting
+  - input + register interrupt handler
+
+
 
 
 | GPIO | Line | Name           | Use            | Direction | Note              |
@@ -104,65 +133,47 @@ e.g. aspeed  +--  +--------+
 Nothing worths mentioning from the function **gpiolib_dev_init** in our study case. 
 Just note that once **gpiolib_initialized** becomes true, the subsequent GPIO chip driver registration will set up the cdev file operations during initialization.
 
-After kernel adds GPIO device based on device tree and initializes the GPIO driver, probe function triggers because the property **compatible** matches.
-
-- Device descriptor in DTS
-
 ```
-gpio@1e780000 {                  
-    #gpio-cells = <0x02>;                  
-    gpio-controller;                  
-    compatible = "aspeed,ast2500-gpio";     <========== match
-    reg = <0x1e780000 0x200>;                  
-    interrupts = <0x14>;                  
-    gpio-ranges = <0x0d 0x00 0x00 0xe8>;    <========== interpret as <pinctrl_phandle gpio_offset pin_offset pin#>
-    clocks = <0x02 0x1a>;                  
-    interrupt-controller;                  
-    #interrupt-cells = <0x02>;                  
-    gpio-line-names = [...
-                       63 66 61 6d 2d 72 65 73 65 74 00 \               <========== GPIO_A0, "cfam-reset"
-                       ... \
-                       66 73 69 2d 6d 75 78 00 \                        <========== GPIO_A6, "fsi-mux"
-                       ... \
-                       66 73 69 2d 65 6e 61 62 6c 65 00 \               <========== GPIO_D0, "fsi-enable"
-                       ... \
-                       6e 69 63 5f 66 75 6e 63 5f 6d 6f 64 65 30 00 \   <========== GPIO_D3, "nic_func_mode0"
-                       6e 69 63 5f 66 75 6e 63 5f 6d 6f 64 65 31 00 \   <========== GPIO_D4, "nic_func_mode1"
-                       ... \
-                       ... \
-                       70 6f 77 65 72 2d 62 75 74 74 6f 6e 00 \         <========== GPIO_I3, "power-button"
-                       ... \
-                       63 68 65 63 6b 73 74 6f 70 00 \                  <========== GPIO_J2, "checkstop"
-                       ... \
-                       6c 65 64 2d 66 61 75 6c 74 00 \                  <========== GPIO_N2, "led-fault"
-                       ... \
-                       6c 65 64 2d 69 64 65 6e 74 69 66 79 00 \         <========== GPIO_N4, "led-identify"
-                       ... \
-                       69 64 2d 62 75 74 74 6f 6e 00 \                  <========== GPIO_Q7, "id-button"
-                       ... \
-                       66 73 69 2d 74 72 61 6e 73 00 \                  <========== GPIO_R2, "fsi-trans"
-                       ... \
-                       6c 65 64 2d 70 6f 77 65 72 00 \                  <========== GPIO_R5, "led-power"
-                       ... \
-                       73 65 71 5f 63 6f 6e 74 00 \                     <========== GPIO_S7, "seq_cont"
-                       ... \
-                       66 73 69 2d 63 6c 6f 63 6b 00 \                  <========== GPIO_AA0, "fsi-clock"
-                       ... \
-                       66 73 69 2d 64 61 74 61 00 \                     <========== GPIO_AA2, "fsi-data"
-                       ...];
-    phandle = <0x29>; 
-```
+arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts
 
-- Table in driver
+&gpio {
+    gpio-line-names =
+    /*A0-A7*/   "","cfam-reset","","","","","fsi-mux","",
+    /*B0-B7*/   "","","","","","","","",
+    /*C0-C7*/   "","","","","","","","",
+    /*D0-D7*/   "fsi-enable","","","nic_func_mode0","nic_func_mode1","","","",
+    /*E0-E7*/   "","","","","","","","",
+    /*F0-F7*/   "","","","","","","","",
+    /*G0-G7*/   "","","","","","","","",
+    /*H0-H7*/   "","","","","","","","",
+    /*I0-I7*/   "","","","power-button","","","","",
+    /*J0-J7*/   "","","checkstop","","","","","",
+    /*K0-K7*/   "","","","","","","","",
+    /*L0-L7*/   "","","","","","","","",
+    /*M0-M7*/   "","","","","","","","",
+    /*N0-N7*/   "","","led-fault","",
+                "led-identify","","","",
+    /*O0-O7*/   "","","","","","","","",
+    /*P0-P7*/   "","","","","","","","",
+    /*Q0-Q7*/   "","","","","","","","id-button",
+    /*R0-R7*/   "","","fsi-trans","","","led-power","","",
+    /*S0-S7*/   "","","","","","","","seq_cont",
+    /*T0-T7*/   "","","","","","","","",
+    /*U0-U7*/   "","","","","","","","",
+    /*V0-V7*/   "","","","","","","","",
+    /*W0-W7*/   "","","","","","","","",
+    /*X0-X7*/   "","","","","","","","",
+    /*Y0-Y7*/   "","","","","","","","",
+    /*Z0-Z7*/   "","","","","","","","",
+    /*AA0-AA7*/ "fsi-clock","","fsi-data","","","","","",
+    /*AB0-AB7*/ "","","","","","","","",
+    /*AC0-AC7*/ "","","","","","","","";
 
 ```
-static const struct of_device_id aspeed_gpio_of_table[] = {
-    { .compatible = "aspeed,ast2400-gpio", .data = &ast2400_config, },
-    { .compatible = "aspeed,ast2500-gpio", .data = &ast2500_config, }, <========== match
-    { .compatible = "aspeed,ast2600-gpio", .data = &ast2600_config, },
-    {}
-};
-```
+
+
+
+
 
 The probe function allocates vendor-specific structure, installs regular GPIO operations, and sets up the IRQ chip since it's also an interrupt controller. 
 Then it calls **devm_gpiochip_add_data** to connect the generic layer (GPIO Lib) to the specific driver (Aspeed).
