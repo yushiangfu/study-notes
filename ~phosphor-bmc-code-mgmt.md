@@ -182,6 +182,7 @@ download_manager_main.cpp
 ```
 
 ```
+download_manager.cpp
 +---------------------------+                                  
 | Download::downloadViaTFTP | : download image from tftp server
 +-|-------------------------+                                  
@@ -222,6 +223,7 @@ item_updater_main.cpp
 ```
 
 ```
+item_updater.hpp
 +--------------------------+
 | ItemUpdater::ItemUpdater | : prepare an item updater
 +-|------------------------+
@@ -300,6 +302,7 @@ item_updater.cpp
 ```
 
 ```
+item_updater.cpp
 +----------------------------------+                                                                  
 | ItemUpdater::setBMCInventoryPath | : get bmc_inventory_path from obj_mapper, save in member variable
 +-|--------------------------------+                                                                  
@@ -317,6 +320,7 @@ item_updater.cpp
 ```
 
 ```
+item_updater.cpp
 +------------------------------+                                                                                         
 | ItemUpdater::processBMCImage | : create a few associations and a activation instance                                   
 +-|----------------------------+                                                                                         
@@ -372,6 +376,7 @@ item_updater.cpp
 ```
 
 ```
+item_updater.cpp
 +-------------------------------------+                                                 
 | ItemUpdater::restoreFieldModeStatus | : read uboot env, enable field mode if necessary
 +-|-----------------------------------+                                                 
@@ -386,6 +391,7 @@ item_updater.cpp
 ```
 
 ```
+item_updater.cpp
 +-------------------------------+                        
 | ItemUpdater::fieldModeEnabled | : enable field mode (?)
 +-|-----------------------------+                        
