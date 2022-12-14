@@ -455,6 +455,7 @@ activation.cpp
 ```
 
 ```
+activation.cpp
 +-----------------------------+                                                                         
 | Activation::verifySignature | : prepare key & hash, verify {manifest, pubkey, image files, full-image)
 +-|---------------------------+                                                                         
@@ -470,6 +471,7 @@ activation.cpp
 ```
 
 ```
+image_verify.cpp
 +-------------------+                                                                                                                     
 | Signature::verify | : verify manifest, pubkey, image files, full-image                                                                  
 +-|-----------------+                                                                                                                     
@@ -494,6 +496,7 @@ activation.cpp
 ```
 
 ```
+image_verify.cpp
 +------------------------------+                                                                                        
 | Signature::systemLevelVerify | : verify manifest and pubkey files                                                     
 +-|----------------------------+                                                                                        
@@ -578,6 +581,7 @@ image_verify.cpp
 ```
 
 ```
+image_verify.cpp
 +----------------------------+                                                                     
 | Signature::verifyFullImage | : merge files into one full image, verify it, remove the merged file
 +-|--------------------------+                                                                     
@@ -597,6 +601,7 @@ image_verify.cpp
 ```
 
 ```
+activation.cpp
 +----------------------------+                                          
 | Activation::flashWriteHost | : call systemd service to flash host bios
 +-|--------------------------+                                          
@@ -673,6 +678,7 @@ activation.cpp
 ```
 
 ```
+activation.cpp
 +--------------------------------------+                                                
 | Activation::deleteImageManagerObject | : delete 'version' object from software manager
 +-|------------------------------------+                                                
@@ -683,6 +689,7 @@ activation.cpp
 ```
 
 ```
+activation.cpp
 +-------------------------------------+                                                                         
 | Activation::checkApplyTimeImmediate | : read property 'requested_apply_time' to determine if it is 'immediate'
 +-|-----------------------------------+                                                                         
