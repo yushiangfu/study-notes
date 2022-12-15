@@ -1,6 +1,13 @@
 Many of the example snippets come from 'setup' in 'openbmc' project. 
 
-- -Z: return true if the string length is zero, and that includes undefined and empty string.
+- set
+
+```
+-x: enable debugging
++x: disable debugging
+```
+
+- -z: return true if the string length is zero, and that includes undefined and empty string.
 ```
 if [ -z "$COLUMN" ]; then
     # If it is not, use 'cat'
