@@ -1,3 +1,46 @@
+```                                                                             
+meta-phosphor/recipes-phosphor/initrdscripts/files/obmc-init.sh             
++------+                                                                     
+| init | handle mounts and switch root
++-|----+                                                                     
+  |                                                                          
+  |--> mount dev, sys, proc, and run                                         
+  |                                                                          
+  |--> create ro and rw folders under /run/initramfs                         
+  |                                                                          
+  |--> copy important folders and scripts into /run/initramfs                
+  |                                                                          
+  |--> prepare default paths and settings                                    
+  |                                                                          
+  |--> handle 'init-options' files                                           
+  |                                                                          
+  |--> print e.g., "rofs = mtd4 squashfs rwfs = mtd5 jffs2"                  
+  |                                                                          
+  |--> let debug script take over if specified                               
+  |                                                                          
+  |--> if consider downloading files, (skip)                                 
+  |                                                                          
+  |--> if there's any /image-*, move to /run/                                
+  |                                                                          
+  |--> clean rwfs if it's specified in /run/initramfs/init-options           
+  |                                                                          
+  |--> perform factory reset if it's specified in /run/initramfs/init-options
+  |                                                                          
+  |    +--------+                                                            
+  |--> | update | update image-* if there's any                              
+  |    +--------+                                                            
+  |                                                                          
+  |--> mount rofs                                                            
+  |                                                                          
+  |--> do some fsck                                                          
+  |                                                                          
+  |--> mount rwfs                                                            
+  |                                                                          
+  +--> create upper and work folders, and mount overlay                      
+  |                                                                          
+  +--> move mounts and switch root                                           
+```
+
 ```
 meta-phosphor/recipes-phosphor/initrdscripts/files/obmc-shutdown.sh                               
 +----------+                                                                                       
