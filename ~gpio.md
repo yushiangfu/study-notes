@@ -3,7 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Framework](#framework)
+- [GPIO Chip](#gpio-chip)
 - [Pin Control](#pin-control)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
@@ -15,10 +15,10 @@ Generic purpose input-output (GPIO) can work as output to control target device 
 In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
 Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
 
-## <a name="framework"></a> Framework
+## <a name="gpio-chip"></a> GPIO Chip
 
 Generic purpose input-output (GPIO) is the hardware pin through which we can send hardware signals to or receive from an external component. 
-Given that the AST2500 chip provides 29 groups (A, B, ... AB, AC), and each group contains 8 pins, there are 232 GPIO lines that we can control. 
+Given that the AST2500 GPIO chip provides 29 groups (A, B, ... AB, AC), and each group contains 8 pins, there are 232 GPIO lines that we can control. 
 Hardware designers decide where these lines connect; thus, the same pin might serve different purposes on different products. 
 Information such as offset (index) or name is necessary to find the target line, but note that not all lines are configured with an identifier in DTS.
 
@@ -45,8 +45,67 @@ As for the event, a kernel thread is created to monitor and wake up the stalled 
 - event waiting
   - input + register interrupt handler
 
+<p align="center"><img src="images/gpio/chip.png" /></p>
 
+The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
 
+```
+                                                +--
+                                                |   static const struct file_operations gpio_fileops = {
+                                                |       .release = gpio_chrdev_release,
+                                                |       .open = gpio_chrdev_open,
+  user             +------+ e.g. /dev/gpiochip0 |       .poll = lineinfo_watch_poll,
+  -----------------| cdev |------------------   |       .read = lineinfo_watch_read,
+  kernel           +------+                     |       .owner = THIS_MODULE,
+                       |                        |       .llseek = no_llseek,
+                       v                        |       .unlocked_ioctl = gpio_ioctl,
+             |--  +---------+                   |   };
+    generic  |    | gpiolib |                   +--
+             +--  +---------+
+                       |
+                       v
+             |--  +--------+
+   specific  |    | driver |
+e.g. aspeed  +--  +--------+                                                                              
+```
+
+```
+                                            |                                   
+                                   gpio lib | aspeed driver                     
+                                            |                                   
++----------------------+                    |                                   
+| gpiod_request_commit |                    |                                   
++-----|----------------+                    |                                   
+      |                                     |                                   
+      |--> gc->request() -------------------|--- e.g., aspeed_gpio_request      
+      |                                     |                                   
+      |    +---------------------+          |                                   
+      +--> | gpiod_get_direction |          |                                   
+           +-----|---------------+          |                                   
+                 |                          |                                   
+                 +--> gc->get_direction() --|--- e.g., aspeed_gpio_get_direction
+                                            |                                   
+```
+
+### External GPIO Chip
+
+(TBD)
+
+```
+arch/arm/boot/dts/aspeed-bmc-vegman-sx20.dts
+
+...
+&i2c11 {
+    /* SMB_BMC_MGMT_LVC3 */
+    gpio@21 {
+        compatible = "nxp,pcal9535";
+        reg = <0x21>;
+        gpio-controller;
+        #gpio-cells = <2>;
+...
+```
+
+<details><summary> More Details </summary>
 
 | GPIO | Line | Name           | Use            | Direction | Note              |
 | ---  | ---  | ---            | ---            | ---       | ---               |
@@ -106,126 +165,6 @@ As for the event, a kernel thread is created to monitor and wake up the stalled 
 | U7   | 167  |                | kernel         | input     | RGMII/RMII        |
 | V0   | 168  |                | kernel         | input     | RGMII/RMII        |
 | V1   | 169  |                | kernel         | input     | RGMII/RMII        |
-
-
-The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
-
-```
-                                                +--
-                                                |   static const struct file_operations gpio_fileops = {
-                                                |       .release = gpio_chrdev_release,
-                                                |       .open = gpio_chrdev_open,
-  user             +------+ e.g. /dev/gpiochip0 |       .poll = lineinfo_watch_poll,
-  -----------------| cdev |------------------   |       .read = lineinfo_watch_read,
-  kernel           +------+                     |       .owner = THIS_MODULE,
-                       |                        |       .llseek = no_llseek,
-                       v                        |       .unlocked_ioctl = gpio_ioctl,
-             |--  +---------+                   |   };
-    generic  |    | gpiolib |                   +--
-             +--  +---------+
-                       |
-                       v
-             |--  +--------+
-   specific  |    | driver |
-e.g. aspeed  +--  +--------+                                                                              
-```
-
-Nothing worths mentioning from the function **gpiolib_dev_init** in our study case. 
-Just note that once **gpiolib_initialized** becomes true, the subsequent GPIO chip driver registration will set up the cdev file operations during initialization.
-
-```
-arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts
-
-&gpio {
-    gpio-line-names =
-    /*A0-A7*/   "","cfam-reset","","","","","fsi-mux","",
-    /*B0-B7*/   "","","","","","","","",
-    /*C0-C7*/   "","","","","","","","",
-    /*D0-D7*/   "fsi-enable","","","nic_func_mode0","nic_func_mode1","","","",
-    /*E0-E7*/   "","","","","","","","",
-    /*F0-F7*/   "","","","","","","","",
-    /*G0-G7*/   "","","","","","","","",
-    /*H0-H7*/   "","","","","","","","",
-    /*I0-I7*/   "","","","power-button","","","","",
-    /*J0-J7*/   "","","checkstop","","","","","",
-    /*K0-K7*/   "","","","","","","","",
-    /*L0-L7*/   "","","","","","","","",
-    /*M0-M7*/   "","","","","","","","",
-    /*N0-N7*/   "","","led-fault","",
-                "led-identify","","","",
-    /*O0-O7*/   "","","","","","","","",
-    /*P0-P7*/   "","","","","","","","",
-    /*Q0-Q7*/   "","","","","","","","id-button",
-    /*R0-R7*/   "","","fsi-trans","","","led-power","","",
-    /*S0-S7*/   "","","","","","","","seq_cont",
-    /*T0-T7*/   "","","","","","","","",
-    /*U0-U7*/   "","","","","","","","",
-    /*V0-V7*/   "","","","","","","","",
-    /*W0-W7*/   "","","","","","","","",
-    /*X0-X7*/   "","","","","","","","",
-    /*Y0-Y7*/   "","","","","","","","",
-    /*Z0-Z7*/   "","","","","","","","",
-    /*AA0-AA7*/ "fsi-clock","","fsi-data","","","","","",
-    /*AB0-AB7*/ "","","","","","","","",
-    /*AC0-AC7*/ "","","","","","","","";
-
-```
-
-
-
-
-
-The probe function allocates vendor-specific structure, installs regular GPIO operations, and sets up the IRQ chip since it's also an interrupt controller. 
-Then it calls **devm_gpiochip_add_data** to connect the generic layer (GPIO Lib) to the specific driver (Aspeed).
-
-At the moment, we have the complete GPIO framework, and userspace utilities can send requests through the char device.
-
-```
-root@romulus:~# gpiodetect
-gpiochip0 [1e780000.gpio] (232 lines)
-
-root@romulus:~# gpioinfo 0 | head
-gpiochip0 - 232 lines:
-        line   0:      unnamed       unused   input  active-high 
-        line   1: "cfam-reset"       unused   input  active-high 
-        line   2:      unnamed       unused   input  active-high 
-        line   3:      unnamed       unused   input  active-high 
-        line   4:      unnamed       kernel   input  active-high [used]
-        line   5:      unnamed       kernel   input  active-high [used]
-        line   6:    "fsi-mux"       unused  output  active-high 
-        line   7:      unnamed       unused   input  active-high 
-        line   8:      unnamed       unused   input  active-high 
-
-root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
-0
-
-root@romulus:~# gpioset 0 2=1   # set value to gpio chip '0' line '2' to '1'
-
-root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
-1
-
-root@romulus:~# gpiomon 0 2     # monitor value change on gpio chip '0' line '2'
-```
-
-Here's the example of a flow chart showing how the code switches from generic layer (GPIO Lib) to chip vendor (Aspeed) implementation.
-
-```
-                                            |                                   
-                                   gpio lib | aspeed driver                     
-                                            |                                   
-+----------------------+                    |                                   
-| gpiod_request_commit |                    |                                   
-+-----|----------------+                    |                                   
-      |                                     |                                   
-      |--> gc->request() -------------------|--- e.g., aspeed_gpio_request      
-      |                                     |                                   
-      |    +---------------------+          |                                   
-      +--> | gpiod_get_direction |          |                                   
-           +-----|---------------+          |                                   
-                 |                          |                                   
-                 +--> gc->get_direction() --|--- e.g., aspeed_gpio_get_direction
-                                            |                                   
-```
 
 ```
 drivers/gpio/gpiolib-cdev.c
@@ -947,6 +886,8 @@ bindings/cxx/line.cpp
   |                                                   
   +--> save timestamp and source in arg               
 ```
+    
+</details>
 
 ## <a name="pin-control"></a> Pin Control
 
@@ -2333,6 +2274,33 @@ cat value
 
 ```
 cat /sys/kernel/debug/gpio
+```
+    
+```
+root@romulus:~# gpiodetect
+gpiochip0 [1e780000.gpio] (232 lines)
+
+root@romulus:~# gpioinfo 0 | head
+gpiochip0 - 232 lines:
+        line   0:      unnamed       unused   input  active-high 
+        line   1: "cfam-reset"       unused   input  active-high 
+        line   2:      unnamed       unused   input  active-high 
+        line   3:      unnamed       unused   input  active-high 
+        line   4:      unnamed       kernel   input  active-high [used]
+        line   5:      unnamed       kernel   input  active-high [used]
+        line   6:    "fsi-mux"       unused  output  active-high 
+        line   7:      unnamed       unused   input  active-high 
+        line   8:      unnamed       unused   input  active-high 
+
+root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
+0
+
+root@romulus:~# gpioset 0 2=1   # set value to gpio chip '0' line '2' to '1'
+
+root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
+1
+
+root@romulus:~# gpiomon 0 2     # monitor value change on gpio chip '0' line '2'
 ```
 
 ## <a name="reference"></a> Reference
