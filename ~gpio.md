@@ -1466,6 +1466,8 @@ The below **create_pinctrl** looks into the device tree for the pinctrl properti
 ```
 gpiolib_dev_init: register bus & driver, reserve dev#
 gpiolib_sysfs_init: register 'gpio' class, for each entry@gpio_devices: create device and register to sysfs
+aspeed_g5_pinctrl_driver: register 'aspeed_g5_pinctrl_driver' to bus 'platform'
+  aspeed_g5_pinctrl_probe: iomap syscon (for scu), prepare pinctrl_dev and register it
 gpiolib_debugfs_init: prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
 aspeed_gpio_probe: set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
 aspeed_sgpio_driver_init: (skip, no matched device)
@@ -1518,12 +1520,455 @@ drivers/gpio/gpiolib-sysfs.c
 ```
 
 ```
+drivers/pinctrl/aspeed/pinctrl-aspeed-g5.c                                                
++-------------------------+                                                                
+| aspeed_g5_pinctrl_probe | : iomap syscon (for scu), prepare pinctrl_dev and register it  
++-|-----------------------+                                                                
+  |                                                                                        
+  |--> assign index to each line of aspeed_g5_pins                                         
+  |                                                                                        
+  |    +----------------------+                                                            
+  +--> | aspeed_pinctrl_probe | iomap syscon (for scu), prepare pinctrl_dev and register it
+       +----------------------+                                                            
+```
+
+```
+drivers/pinctrl/aspeed/pinctrl-aspeed.c                                                
++----------------------+                                                                
+| aspeed_pinctrl_probe | : iomap syscon (for scu), prepare pinctrl_dev and register it  
++-|--------------------+                                                                
+  |                                                                                     
+  |--> get pinctrl_dev's parent (syscon node)                                           
+  |                                                                                     
+  |    +-----------------------+                                                        
+  |--> | syscon_node_to_regmap | read hw_reg info and do iomap (for later scu operation)
+  |    +-----------------------+                                                        
+  |    +------------------+                                                             
+  +--> | pinctrl_register | init pinctrl_dev (and pins within), enable it               
+       +------------------+                                                             
+```
+
+```
+drivers/pinctrl/core.c                                                                      
++------------------+                                                                         
+| pinctrl_register | : init pinctrl_dev (and pins within), enable it                         
++-|----------------+                                                                         
+  |    +-------------------------+                                                           
+  |--> | pinctrl_init_controller | prepare pinctrl_dev, register pins to it                  
+  |    +-------------------------+                                                           
+  |    +----------------+                                                                    
+  +--> | pinctrl_enable | claims hogs (?), add pinctrl_dev to global list, create debug files
+       +----------------+                                                                    
+```
+
+```
+drivers/pinctrl/core.c                                               
++-------------------------+                                           
+| pinctrl_init_controller | : prepare pinctrl_dev, register pins to it
++-|-----------------------+                                           
+  |                                                                   
+  |--> alloc pinctrl_dev                                              
+  |                                                                   
+  |--> set it up based on arguments                                   
+  |                                                                   
+  |    +------------------+                                           
+  |--> | pinctrl_check_ops| check ops, e.g., aspeed_g5_pinctrl_ops    
+  |    +------------------+                                           
+  |    +------------------+                                           
+  |--> | pinmux_check_ops | check ops, e.g., aspeed_g5_pinmux_ops     
+  |    +------------------+                                           
+  |    +-------------------+                                          
+  |--> | pinconf_check_ops | check ops, e.g., aspeed_g5_conf_ops      
+  |    +-------------------+                                          
+  |    +-----------------------+                                      
+  +--> | pinctrl_register_pins | register pins, e.g., aspeed_g5_pins  
+       +-----------------------+                                      
+```
+
+```
+drivers/pinctrl/core.c                                                          
++-----------------------+                                                        
+| pinctrl_register_pins | : for each pin, prepare pin_desc and add to pinctrl_dev
++-|---------------------+                                                        
+  |                                                                              
+  +--> for each pin                                                              
+       |                                                                         
+       |    +--------------------------+                                         
+       +--> | pinctrl_register_one_pin | prepare pin_desc and add to pinctrl_dev 
+            +--------------------------+                                         
+```
+
+```
+drivers/pinctrl/core.c                                               
++--------------------------+                                          
+| pinctrl_register_one_pin | : prepare pin_desc and add to pinctrl_dev
++-|------------------------+                                          
+  |    +--------------+                                               
+  |--> | pin_desc_get | check if pin is registered already (shouldn't)
+  |    +--------------+                                               
+  |                                                                   
+  |--> alloc pin_desc and set up (name, ...)                          
+  |                                                                   
+  |    +-------------------+                                          
+  +--> | radix_tree_insert |                                          
+       +-------------------+                                          
+```
+
+```
+drivers/pinctrl/core.c                                                                             
++----------------+                                                                                  
+| pinctrl_enable | : claims hogs (?), add pinctrl_dev to global list, create debug files            
++-|--------------+                                                                                  
+  |    +--------------------+                                                                       
+  +--> | pinctrl_claim_hogs | prepare pinctrl of pinctrl_dev, ensure it has default and sleep states
+  |    +--------------------+                                                                       
+  |                                                                                                 
+  |--> add pinctrl_dev to global pinctrldev_list                                                    
+  |                                                                                                 
+  |    +-----------------------------+                                                              
+  +--> | pinctrl_init_device_debugfs | create debug info under /sys/kernel/debug/pinctrl/           
+       +-----------------------------+                                                              
+```
+
+```
+drivers/pinctrl/core.c                                                                                    
++--------------------+                                                                                     
+| pinctrl_claim_hogs | : prepare pinctrl of pinctrl_dev, ensure it has default and sleep states            
++-|------------------+                                                                                     
+  |    +----------------+                                                                                  
+  |--> | create_pinctrl | parse dt node and set up pinctrl (state and setting), add pinctrl to pinctrl_list
+  |    +----------------+                                                                                  
+  |                                                                                                        
+  +--> ensure pinctrl_dev has default and sleep states                                                     
+```
+
+```
+drivers/pinctrl/core.c                                                                                       
++----------------+                                                                                            
+| create_pinctrl | : parse dt node and set up pinctrl (state and setting), add pinctrl to pinctrl_list        
++-|--------------+                                                                                            
+  |                                                                                                           
+  |--> alloc pin_ctrl                                                                                         
+  |                                                                                                           
+  |    +-------------------+                                                                                  
+  |--> | pinctrl_dt_to_map | parse pinctrl info, for each config: register map to pinctrl_dev and pinctrl_maps
+  |    +-------------------+                                                                                  
+  |                                                                                                           
+  |--> for each maps in pinctrl_maps: for each map in maps                                                    
+  |    |                                                                                                      
+  |    |--> continue if the map isn't for the dev                                                             
+  |    |                                                                                                      
+  |    |--> continue if map isn't for the pinctrl_dev                                                         
+  |    |                                                                                                      
+  |    |    +-------------+                                                                                   
+  |    |--> | add_setting | add 'setting' to pinctrl 'state'                                                  
+  |    |    +-------------+                                                                                   
+  |    |                                                                                                      
+  |    +--> return 'defer' if pinctrl_dev isn't available yet                                                 
+  |                                                                                                           
+  +--> add pinctrl to global 'pinctrl_list'                                                                   
+```
+
+```
+drivers/pinctrl/devicetree.c                                                                                  
++-------------------+                                                                                          
+| pinctrl_dt_to_map | : parse pinctrl info, for each config: register map to pinctrl_dev and global            
++-|-----------------+                                                                                          
+  |                                                                                                            
+  +--> for state = 0, 1, ...                                                                                   
+       |                                                                                                       
+       |--> get prop, e.g., 'pinctrl-0', which is a list of config                                             
+       |                                                                                                       
+       |--> if get nothing                                                                                     
+       |    |                                                                                                  
+       |    |--> if state is 0, return error (this dev need no pin ctrl)                                       
+       |    |                                                                                                  
+       |    +--> else, break (we have at least state 0)                                                        
+       |                                                                                                       
+       |--> get prop 'pinctrl-names'                                                                           
+       |                                                                                                       
+       |--> for each config                                                                                    
+       |    |                                                                                                  
+       |    |    +----------------------+                                                                      
+       |    +--> | dt_to_map_one_config | convert config to map, register map to pinctrl_dev and 'pinctrl_maps'
+       |         +----------------------+                                                                      
+       |                                                                                                       
+       +--> if no config (not our case)                                                                        
+            |                                                                                                  
+            |    +-------------------------+                                                                   
+            +--> | dt_remember_dummy_state | (skip)                                                            
+                 +-------------------------+                                                                   
+```
+
+```
+drivers/pinctrl/devicetree.c                                                                                                 
++----------------------+                                                                                                      
+| dt_to_map_one_config | : convert config to map, register map to pinctrl_dev and 'pinctrl_maps'                              
++-|--------------------+                                                                                                      
+  |                                                                                                                           
+  |--> endless loop (to get pinctrl_dev)                                                                                      
+  |    |                                                                                                                      
+  |    |    +--------------------+                                                                                            
+  |    |--> | of_get_next_parent | which is the pinctrl dev itself                                                            
+  |    |    +--------------------+                                                                                            
+  |    |                                                                                                                      
+  |    +--> return 'defer' error if it's root node already                                                                    
+  |    |                                                                                                                      
+  |    |    +------------------------------+                                                                                  
+  |    |--> | get_pinctrl_dev_from_of_node | get pinctrl_dev from 'pinctrldev_list'                                           
+  |    |    +------------------------------+                                                                                  
+  |    |                                                                                                                      
+  |    |--> break if found                                                                                                    
+  |    |                                                                                                                      
+  |    +--> return error if we are handling pinctrl_dev itself                                                                
+  |                                                                                                                           
+  |--> get pinctrl_dev's ops, e.g., aspeed_g5_pinctrl_ops                                                                     
+  |                                                                                                                           
+  |--> call ->dt_node_to_map(), e.g.,                                                                                         
+  |    +------------------------------------+                                                                                 
+  |    | pinconf_generic_dt_node_to_map_all | parse config_node, ensure we have space in map, add mux (group, function) to map
+  |    +------------------------------------+                                                                                 
+  |                                                                                                                           
+  |    +-------------------------+                                                                                            
+  +--> | dt_remember_or_free_map | register map_info to pinctrl_dev and global 'pinctrl_maps'                                 
+       +-------------------------+                                                                                            
+```
+
+```
+include/linux/pinctrl/pinconf-generic.h                                                                                            
++------------------------------------+                                                                                              
+| pinconf_generic_dt_node_to_map_all | : parse config_node, ensure we have space in map, add mux (group, function) to map           
++-|----------------------------------+                                                                                              
+  |    +--------------------------------+                                                                                           
+  +--> | pinconf_generic_dt_node_to_map | : parse config_node, ensure we have space in map, add mux (group, function) to map        
+       +-|------------------------------+                                                                                           
+         |    +-----------------------------------+                                                                                 
+         |--> | pinconf_generic_dt_subnode_to_map | parse config_node, ensure we have space in map, add mux (group, function) to map
+         |    +-----------------------------------+                                                                                 
+         |                                                                                                                          
+         +--> for each child of config_node (not our case)                                                                          
+              -                                                                                                                     
+              +--> (skip)                                                                                                           
+```
+
+```
+drivers/pinctrl/pinconf-generic.c                                                                                      
++-----------------------------------+                                                                                   
+| pinconf_generic_dt_subnode_to_map | : parse config_node, ensure we have space in map, add mux (group, function) to map
++-|---------------------------------+                                                                                   
+  |                                                                                                                     
+  |--> get prop 'pins' (not our case)                                                                                   
+  |                                                                                                                     
+  |--> if fail                                                                                                          
+  |    |                                                                                                                
+  |    |--> get prop 'groups'                                                                                           
+  |    |                                                                                                                
+  |    +--> if type isn't set yet, set type = configs_group                                                             
+  |                                                                                                                     
+  |--> get prop 'function'                                                                                              
+  |                                                                                                                     
+  |    +---------------------------------+                                                                              
+  |--> | pinconf_generic_parse_dt_config | parse pinconf params (do nothing in our case)                                
+  |    +---------------------------------+                                                                              
+  |                                                                                                                     
+  |--> determine reserve size                                                                                           
+  |                                                                                                                     
+  |    +---------------------------+                                                                                    
+  |--> | pinctrl_utils_reserve_map | ensure we have space for new maps                                                  
+  |    +---------------------------+                                                                                    
+  |                                                             i2c3_default {                                          
+  +--> for each string in prop 'groups'                             function = "I2C3";                                  
+       |                                                            groups = "I2C3";                                    
+       |--> if prop 'function' has value                            phandle = <0x1d>;                                   
+       |    |                                                   };                                                      
+       |    |    +---------------------------+                                                                          
+       |    +--> | pinctrl_utils_add_map_mux | add mux to map (type is changed to mux_group)                            
+       |         +---------------------------+                                                                          
+       |                                                                                                                
+       +--> if pinconf found (not our case)                                                                             
+            |                                                                                                           
+            |    +-------------------------------+                                                                      
+            +--> | pinctrl_utils_add_map_configs | add configs to map                                                   
+                 +-------------------------------+                                                                      
+```
+
+```
+drivers/pinctrl/pinconf-generic.c                                                 
++---------------------------------+                                                
+| pinconf_generic_parse_dt_config | : parse pinconf params (do nothing in our case)
++-|-------------------------------+                                                
+  |                                                                                
+  |--> determine max_cfg and alloc space                                           
+  |                                                                                
+  |    +--------------+                                                            
+  |--> | parse_dt_cfg | parse pinconf params (do nothing in our case)              
+  |    +--------------+                                                            
+  |                                                                                
+  |--> return if not cfg found                                                     
+  |                                                                                
+  +--> duplicate cfg info to input args                                            
+```
+
+```
+drivers/pinctrl/pinconf-generic.c
++--------------+                                                
+| parse_dt_cfg | : parse pinconf params (do nothing in our case)
++-|------------+                                                
+  |                                                             
+  +--> for each param                                           
+       |                                                        
+       |--> get prop                                            
+       |                                                        
+       +--> continue if not found (our case)                    
+```
+
+```
+drivers/pinctrl/pinctrl-utils.c                                 
++---------------------------+                                    
+| pinctrl_utils_reserve_map | : ensure we have space for new maps
++-|-------------------------+                                    
+  |                                                              
+  |--> return if old maps are still enough to accomodate new maps
+  |                                                              
+  |--> extend old maps so it's new maps now                      
+  |                                                              
+  +--> save new maps info in input args                          
+```
+
+```
+drivers/pinctrl/devicetree.c                                                                 
++-------------------------+                                                                   
+| dt_remember_or_free_map | : register map_info to pinctrl_dev and global 'pinctrl_maps'      
++-|-----------------------+                                                                   
+  |                                                                                           
+  |--> for each map                                                                           
+  |    -                                                                                      
+  |    +--> set map name                                                                      
+  |                                                                                           
+  |--> alloc dt_map, save pinctrl_dev and map_info in it                                      
+  |                                                                                           
+  |--> add dt_map to pinctrl_dev                                                              
+  |                                                                                           
+  |    +---------------------------+                                                          
+  +--> | pinctrl_register_mappings | prepare maps_node to save map info, add to 'pinctrl_maps'
+       +---------------------------+                                                          
+```
+
+```
+drivers/pinctrl/core.c                                                                  
++---------------------------+                                                            
+| pinctrl_register_mappings | : prepare maps_node to save map info, add to 'pinctrl_maps'
++-|-------------------------+                                                            
+  |                                                                                      
+  |--> for each map                                                                      
+  |    -                                                                                 
+  |    +--> given map type, validate it                                                  
+  |                                                                                      
+  |--> alloc maps_node, save map info in it                                              
+  |                                                                                      
+  +--> add maps node to global 'pinctrl_maps'                                            
+```
+
+```
+drivers/pinctrl/core.c                                                                      
++-------------+                                                                              
+| add_setting | : add 'setting' to pinctrl 'state'                                           
++-|-----------+                                                                              
+  |                                                                                          
+  |--> ensure pinctrl has the 'state' of map                                                 
+  |                                                                                          
+  |--> alloc 'setting' and set up (map type, pinctrl_dev, ...)                               
+  |                                                                                          
+  |--> switch map_type                                                                       
+  |--> case mux_group                                                                        
+  |    -    +-----------------------+                                                        
+  |    +--> | pinmux_map_to_setting | get func and grp idx separately, save them in 'setting'
+  |         +-----------------------+                                                        
+  |--> case configs_pin (not our case)                                                       
+  |--> case configs_group (not our case)                                                     
+  |    -    +-----------------------+                                                        
+  |    +--> | pinconf_map_to_setting| (skip)                                                 
+  |         +-----------------------+                                                        
+  |                                                                                          
+  +--> add 'setting' to 'state'                                                              
+```
+
+```
+drivers/pinctrl/pinmux.c                                                                              
++-----------------------+                                                                              
+| pinmux_map_to_setting | : get func and grp idx separately, save them in 'setting'                    
++-|---------------------+                                                                              
+  |    +------------------------------+                                                                
+  |--> | pinmux_func_name_to_selector | given function name, find matched entry in array and return idx
+  |    +------------------------------+                                                                
+  |                                                                                                    
+  |--> save func idx in 'setting'                                                                      
+  |                                                                                                    
+  |--> call ->get_function_groups(), e.g.,                                                             
+  |    +-----------------------------+                                                                 
+  |--> | aspeed_pinmux_get_fn_groups | given func idx, return group info through params                
+  |    +-----------------------------+                                                                 
+  |                                                                                                    
+  |--> if map has mux.group (our case)                                                                 
+  |    |                                                                                               
+  |    |    +--------------+                                                                           
+  |    +--> | match_string | try to match (group string from map, group string from pinctrl_dev)       
+  |         +--------------+                                                                           
+  |    +----------------------------+                                                                  
+  |--> | pinctrl_get_group_selector | given group name, find matched entry in array and return idx     
+  |    +----------------------------+                                                                  
+  |                                                                                                    
+  +--> save grp idx in 'setting'                                                                       
+```
+
+```
+drivers/pinctrl/pinmux.c                                                                         
++------------------------------+                                                                  
+| pinmux_func_name_to_selector | : given function name, find matched entry in array and return idx
++-|----------------------------+                                                                  
+  |                                                                                               
+  |--> call ->get_functions_count(), e.g.,                                                        
+  |    +----------------------------+                                                             
+  |    | aspeed_pinmux_get_fn_count | return size of aspeed_g5_functions                          
+  |    +----------------------------+                                                             
+  |                                                                                               
+  +--> for each function                                                                          
+       |                                                                                          
+       |--> call ->get_function_name(), e.g.,                                                     
+       |    +---------------------------+                                                         
+       |    | aspeed_pinmux_get_fn_name | given idx, get function name from array                 
+       |    +---------------------------+                                                         
+       |                                                                                          
+       +--> if match found, return idx                                                            
+```
+
+```
+drivers/pinctrl/core.c                                                             
++----------------------------+                                                      
+| pinctrl_get_group_selector | : given group name, find matched group and return idx
++-|--------------------------+                                                      
+  |                                                                                 
+  |--> call ->get_groups_count(), e.g.,                                             
+  |    +---------------------------------+                                          
+  |    | aspeed_pinctrl_get_groups_count | return size of aspeed_g5_groups          
+  |    +---------------------------------+                                          
+  |                                                                                 
+  +--> for each group                                                               
+       |                                                                            
+       |--> call ->get_group_name(), e.g.,                                          
+       |    +---------------------------------+                                     
+       |    | aspeed_pinctrl_get_groups_count | given idx, return group name        
+       |    +---------------------------------+                                     
+       |                                                                            
+       +--> if match found, return idx                                              
+```
+
+```
 drivers/gpio/gpiolib.c                                                           
 +----------------------+                                                          
 | gpiolib_debugfs_init | : prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
 +----------------------+                                                          
 ```
-
 
 ```
 drivers/gpio/gpio-aspeed.c
