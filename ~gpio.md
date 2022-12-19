@@ -1018,24 +1018,6 @@ pinctrl@80 {
 
 It's better to register pinctrl device first, otherwise devices that need pinctrl will have to defer to a later probe.
 
-```
-+-------------------------+                                                                  
-| aspeed_g5_pinctrl_probe |                                                                  
-+------|------------------+                                                                  
-       |                                                                                     
-       |--> reassign the number of each pin in aspeed_g5_pins                                
-       |                                                                                     
-       |    +----------------------+                                                         
-       +--> | aspeed_pinctrl_probe |                                                         
-            +-----|----------------+                                                         
-                  |    +-----------------------+                                             
-                  |--> | syscon_node_to_regmap | get scu register base address               
-                  |    +-----------------------+                                             
-                  |    +------------------+                                                  
-                  +--> | pinctrl_register | set up pin device and register all the pins to it
-                       +------------------+                                                  
-```
-
 <details>
   <summary> Other code tracing </summary>
 
@@ -1372,7 +1354,7 @@ drivers/pinctrl/aspeed/pinctrl-aspeed.c
 gpiolib_dev_init: register bus & driver, reserve dev#
 gpiolib_sysfs_init: register 'gpio' class, for each entry@gpio_devices: create device and register to sysfs
 aspeed_g5_pinctrl_driver: register 'aspeed_g5_pinctrl_driver' to bus 'platform'
-  aspeed_g5_pinctrl_probe: iomap syscon (for scu), prepare pinctrl_dev and register it
+    aspeed_g5_pinctrl_probe: iomap syscon (for scu), prepare pinctrl_dev and register it
 gpiolib_debugfs_init: prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
 aspeed_gpio_probe: set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
 aspeed_sgpio_driver_init: (skip, no matched device)
@@ -1381,10 +1363,10 @@ gpio_keys_polled_driver_init: (skip, no matched device)
 i2c_mux_gpio_driver_init: (skip, no matched device)
 w1_gpio_driver_init: (skip, no matched device)
 gpio_led_driver_init: register 'gpio_led_driver' to bus 'platform'
-  gpio_led_probe: for each led, prepare gpio_desc and led_struct                         
+    gpio_led_probe: for each led, prepare gpio_desc and led_struct                         
 fsi_master_gpio_driver_init: (skip, no matched device)
 gpio_keys_init: register 'gpio_keys_device_driver' to bus 'platform'
-  gpio_keys_probe: prepare pdate & input_dev & ddata, for each button: set up key, register input_dev
+    gpio_keys_probe: prepare pdate & input_dev & ddata, for each button: set up key, register input_dev
 ```
 
 ```
