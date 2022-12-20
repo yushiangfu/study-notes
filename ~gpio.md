@@ -87,24 +87,6 @@ e.g. aspeed  +--  +--------+
                                             |                                   
 ```
 
-### External GPIO Chip
-
-(TBD)
-
-```
-arch/arm/boot/dts/aspeed-bmc-vegman-sx20.dts
-
-...
-&i2c11 {
-    /* SMB_BMC_MGMT_LVC3 */
-    gpio@21 {
-        compatible = "nxp,pcal9535";
-        reg = <0x21>;
-        gpio-controller;
-        #gpio-cells = <2>;
-...
-```
-
 <details><summary> More Details </summary>
 
 | GPIO | Line | Name           | Use            | Direction | Note              |
@@ -889,30 +871,70 @@ bindings/cxx/line.cpp
     
 </details>
 
+### External GPIO Chip
+
+(TBD)
+
+```
+arch/arm/boot/dts/aspeed-bmc-vegman-sx20.dts
+
+...
+&i2c11 {
+    /* SMB_BMC_MGMT_LVC3 */
+    gpio@21 {
+        compatible = "nxp,pcal9535";
+        reg = <0x21>;
+        gpio-controller;
+        #gpio-cells = <2>;
+...
+```
+
 ## <a name="pin-control"></a> Pin Control
 
-Some GPIO pins are multi-functional; they can have one or two extra functionality through proper settings. 
-For kernel to ensure these functions work as expected, it introduces the pin control (pinctrl) mechanism to set the required registers beforehand automatically. 
+Chips communicate with external hardware modules through pins, such as the I2C bus (2 pins), GPIO line (1 pin), or UART bus (8 pins). 
+Modern chips aggregate multiple functions into one pin, e.g., through proper settings, a pin can be part of a UART or I2C bus or a simple GPIO line. 
+If device functionality is achieved by these multi-functional pins, each must be correctly configured before the device can perform jobs. 
+Kernel introduces pin control so users can specify the pin configs, and the driver mechanism manipulates the pin mux accordingly. 
+Note that chip designers decide whether a pin is dedicated to one specific goal or is part of different purposes.
+
+```
+ uart1                                                               uart5                        
++----------------------------------------------------------+        +----------------------------+
+|serial@1e783000 {                                         |        |serial@1e784000 {           |
+|    compatible = "ns16550a";                              |        |    compatible = "ns16550a";|
+|    reg = <0x1e783000 0x20>;                              |        |    reg = <0x1e784000 0x20>;|
+|    reg-shift = <0x02>;                                   |        |    reg-shift = <0x02>;     |
+|    interrupts = <0x09>;                                  |        |    interrupts = <0x0a>;    |
+|    clocks = <0x02 0x0d>;                                 |        |    clocks = <0x02 0x0f>;   |
+|    resets = <0x0f 0x04>;                                 |        |    no-loopback-test;       |
+|    no-loopback-test;                                     |        |    status = "okay";        |
+|    status = "okay";                                      |        |};                          |
+|    pinctrl-names = "default";                            |        +----------------------------+
+|    pinctrl-0 = <0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17>;|                                      
+|};               ---+ ---+                     ---+ ---+  |                                      
++--------------------|----|------------------------|----|--+                                      
+                     v    |                        v    |                                         
++----------------------+  |  +-----------------------+  |                                         
+|txd1_default {        |  |  |ndcd1_default {        |  |                                         
+|    function = "TXD1";|  |  |    function = "NDCD1";|  |                                         
+|    groups = "TXD1";  |  |  |    groups = "NDCD1";  |  |                                         
+|    phandle = <0x10>; |  |  |    phandle = <0x16>;  |  |                                         
+|};                    |  |  |};                     |  |                                         
++----------------------+  |  +-----------------------+  |                                         
+                          v                             v                                         
+     +----------------------+      +----------------------+                                       
+     |rxd1_default {        |      |nri1_default {        |                                       
+     |    function = "RXD1";|      |    function = "NRI1";|                                       
+     |    groups = "RXD1";  |      |    groups = "NRI1";  |                                       
+     |    phandle = <0x11>; |      |    phandle = <0x17>; |                                       
+     |};                    |      |};                    |                                       
+     +----------------------+      +----------------------+                                       
+```
+
+
 Let say I2C channels one and two are born to be I2C channels, and pinctrl is unnecessary before they work. 
 However, I2C channel three is different, and proper settings are essential.
 
-```
-i2c-bus@c0 {
-    #address-cells = <0x01>;
-    #size-cells = <0x00>;
-    #interrupt-cells = <0x01>;
-    reg = <0xc0 0x40>;
-    compatible = "aspeed,ast2500-i2c-bus";
-    clocks = <0x02 0x1a>;
-    resets = <0x02 0x07>;
-    bus-frequency = <0x186a0>;
-    interrupts = <0x02>;
-    interrupt-parent = <0x1c>;
-    pinctrl-names = "default";
-    pinctrl-0 = <0x1d>; <========== refer to phandle 0x1d
-    status = "okay";
-};
-```
 
 And descriptor with phandle 0x1d is:
 
