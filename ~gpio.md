@@ -2044,29 +2044,104 @@ drivers/gpio/gpiolib.c
 ```
 
 ```
-drivers/gpio/gpiolib.c                                                                 
-+----------------------+                                                                
+drivers/gpio/gpiolib.c
++----------------------+
 | gpiod_request_commit | : set label, call ->request() and ->get_direction() if feasible
-+-|--------------------+                                                                
-  |    +----------------+                                                               
-  |--> | desc_set_label |                                                               
-  |    +----------------+                                                               
-  |                                                                                     
-  |--> if gpio_chip->request() exists                                                   
-  |    |                                                                                
-  |    |    +------------------+                                                        
-  |    |--> | gpio_chip_hwgpio | get desc offset                                        
-  |    |    +------------------+                                                        
-  |    |                                                                                
-  |    +--> if the offset is valid                                                      
-  |         -                                                                           
-  |         +--> call ->request()                                                       
-  |                                                                                     
-  +--> if gpio_chip->request() exists                                                   
-       |                                                                                
-       |    +---------------------+                                                     
++-|--------------------+
+  |    +----------------+
+  |--> | desc_set_label |
+  |    +----------------+
+  |
+  |--> if gpio_chip->request() exists
+  |    |
+  |    |    +------------------+
+  |    |--> | gpio_chip_hwgpio | get desc offset
+  |    |    +------------------+
+  |    |
+  |    +--> if the offset is valid
+  |         -
+  |         +--> call ->request()
+  |              +---------------------+
+  |              | aspeed_gpio_request | find the pinctrl_dev and request gpio from it
+  |              +---------------------+
+  |
+  +--> if gpio_chip->get_direction() exists
+       |
+       |    +---------------------+
        +--> | gpiod_get_direction | call ->get_direction() and save result in desc flags
-            +---------------------+                                                     
+            +---------------------+
+```
+    
+```
+drivers/gpio/gpio-aspeed.c                                                
++---------------------+                                                    
+| aspeed_gpio_request | : find the pinctrl_dev and request gpio from it    
++-|-------------------+                                                    
+  |                                                                        
+  |--> return error if we have no gpio on arg offset                       
+  |                                                                        
+  |    +----------------------+                                            
+  |--> | pinctrl_gpio_request | find the pinctrl_dev that contains the gpio
+  |    +----------------------+                                            
+  |    +-------------+                                                     
+  |--> | gpio_to_pin | convert gpio to pin                                 
+  |    +-------------+                                                     
+  |    +---------------------+                                             
+  +--> | pinmux_request_gpio | request gpio from pinctrl_dev               
+       +---------------------+                                             
+```
+    
+```
+drivers/pinctrl/core.c                                                       
++----------------------+                                                      
+| pinctrl_gpio_request | : find the pinctrl_dev that contains the gpio        
++-|--------------------+                                                      
+  |                                                                           
+  +--> for each pinctrl_dev in pinctrldev_list                                
+       |                                                                      
+       |    +--------------------------+                                      
+       |--> | pinctrl_match_gpio_range | find the range that includes arg gpio
+       |    +--------------------------+                                      
+       |                                                                      
+       +--> if found                                                          
+            -                                                                 
+            +--> return pinctrl_dev and range info through args               
+```
+    
+```
+drivers/pinctrl/core.c                                                       
++---------------------+                                                       
+| pinmux_request_gpio | : request gpio from pinctrl_dev                       
++-|-------------------+                                                       
+  |                                                                           
+  |--> prepare owner string                                                   
+  |                                                                           
+  |    +-------------+                                                        
+  +--> | pin_request | save owner in pin_desc, call related request() if exist
+       +-------------+                                                        
+```
+    
+```
+drivers/pinctrl/pinmux.c                                                
++-------------+                                                          
+| pin_request | : save owner in pin_desc, call related request() if exist
++-|-----------+                                                          
+  |    +--------------+                                                  
+  |--> | pin_desc_get | get pin_desc                                     
+  |    +--------------+                                                  
+  |                                                                      
+  |--> return if it's already claimed by other mux_owner or gpio_owner   
+  |                                                                      
+  |--> save owner to pin_desc's gpio_owner or mux_owner                  
+  |                                                                      
+  |--> if ->gpio_request_enable() exists (not our case)                  
+  |    -                                                                 
+  |    +--> call ->gpio_request_enable()                                 
+  |                                                                      
+  +--> elif >request() exists (not our case)                             
+       -                                                                 
+       +--> call ->request()                                             
+                                                                         
 ```
 
 ```
