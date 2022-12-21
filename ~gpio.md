@@ -69,24 +69,6 @@ The 'GPIO Lib' framework in kernel space bridges the userspace requests and the 
 e.g. aspeed  +--  +--------+                                                                              
 ```
 
-```
-                                            |                                   
-                                   gpio lib | aspeed driver                     
-                                            |                                   
-+----------------------+                    |                                   
-| gpiod_request_commit |                    |                                   
-+-----|----------------+                    |                                   
-      |                                     |                                   
-      |--> gc->request() -------------------|--- e.g., aspeed_gpio_request      
-      |                                     |                                   
-      |    +---------------------+          |                                   
-      +--> | gpiod_get_direction |          |                                   
-           +-----|---------------+          |                                   
-                 |                          |                                   
-                 +--> gc->get_direction() --|--- e.g., aspeed_gpio_get_direction
-                                            |                                   
-```
-
 <details><summary> More Details </summary>
 
 | GPIO | Line | Name           | Use            | Direction | Note              |
@@ -897,6 +879,9 @@ If device functionality is achieved by these multi-functional pins, each must be
 Kernel introduces pin control so users can specify the pin configs, and the driver mechanism manipulates the pin mux accordingly. 
 Note that chip designers decide whether a pin is dedicated to one specific goal or is part of different purposes.
 
+Let's look at the example of UART1 and UART5; the former needs the help of pin control to behave, while the latter is pretty straightforward. 
+Property `pinctrl-0` specifies all the required pin configs; each contains the `group` and `function` that are later in use.
+
 ```
  uart1                                                               uart5                        
 +----------------------------------------------------------+        +----------------------------+
@@ -906,9 +891,9 @@ Note that chip designers decide whether a pin is dedicated to one specific goal 
 |    reg-shift = <0x02>;                                   |        |    reg-shift = <0x02>;     |
 |    interrupts = <0x09>;                                  |        |    interrupts = <0x0a>;    |
 |    clocks = <0x02 0x0d>;                                 |        |    clocks = <0x02 0x0f>;   |
-|    resets = <0x0f 0x04>;                                 |        |    no-loopback-test;       |
-|    no-loopback-test;                                     |        |    status = "okay";        |
-|    status = "okay";                                      |        |};                          |
+|    resets = <0x0f 0x04>;  +-- state                      |        |    no-loopback-test;       |
+|    no-loopback-test;      |   default/init/sleep/idle    |        |    status = "okay";        |
+|    status = "okay";       v                              |        |};                          |
 |    pinctrl-names = "default";                            |        +----------------------------+
 |    pinctrl-0 = <0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17>;|                                      
 |};               ---+ ---+                     ---+ ---+  |                                      
@@ -931,24 +916,25 @@ Note that chip designers decide whether a pin is dedicated to one specific goal 
      +----------------------+      +----------------------+                                       
 ```
 
+Like the GPIO chip manages lines, the pin control device manipulates pin function through the information (pin/function/group) it keeps around. 
+When performing the device and driver match flow, the pin control mechanism takes effect before the driver probing:
 
-Let say I2C channels one and two are born to be I2C channels, and pinctrl is unnecessary before they work. 
-However, I2C channel three is different, and proper settings are essential.
+1. for each pin config in the current device node, find the `group` saved in the pin control device
+2. for each pin in the `group`
+    - disable any higher-priority function of that pin
+    - enable target `function`
+    
+The UART1 has its 8-pin bus ready and available for drivers to probe and see if there's a successful match. 
+Among all functions on a pin, GPIO has the lowest priority; this fact applies to not only multi-functional bus also single-purpose pins. 
+When we operate on those simple GPIO lines, the underlying GPIO chip implicitly requests the GPIO function from the pin control device.
 
+<p align="center"><img src="images/gpio/pin-control.png" /></p>
 
-And descriptor with phandle 0x1d is:
-
-```
-i2c3_default {      
-    function = "I2C3";
-    groups = "I2C3";
-    phandle = <0x1d>;
-};
-```
-
-From file **drivers/pinctrl/aspeed/pinctrl-aspeed-g5.c** we have the below definition:
+<details><summary> More Details </summary>
 
 ```                                                                                                
+drivers/pinctrl/aspeed/pinctrl-aspeed-g5.c
+
  #define I2C3_DESC   SIG_DESC_SET(SCU90, 16) <========== setting to enable multi-function of the below pins
                                                                                                            
                                                                                                            
@@ -1014,101 +1000,6 @@ The I2C channel nine is an excellent example of this illustration.
  FUNC_GROUP_DECL(I2C9, C14, A13); <========== declare that group 'I2C9' contains ball 'C14' and 'A13'                       
 ```
 
-It's ok not to expand the above macro into scary expressions and complicated definitions. 
-Knowing these relations between pins and functions is enough, and let's turn to the pinctrl initialization during kernel boot up. 
-Pinctrl also has its descriptor in the device tree and triggers the probing after matching the driver.
-
-```
-Driver:
-
-static const struct of_device_id aspeed_g5_pinctrl_of_match[] = {
-    { .compatible = "aspeed,ast2500-pinctrl", }, <========== match
-    { .compatible = "aspeed,g5-pinctrl", },
-    { },
-};
-```
-
-```
-DTS:
-
-pinctrl@80 {
-    compatible = "aspeed,ast2500-pinctrl"; <========== match
-    reg = <0x80 0x18 0xa0 0x10>;
-    aspeed,external-nodes = <0x08 0x09>;
-    phandle = <0x0d>;
-```
-
-It's better to register pinctrl device first, otherwise devices that need pinctrl will have to defer to a later probe.
-
-<details>
-  <summary> Other code tracing </summary>
-
-```
-+------------------+                                                    
-| pinctrl_register |                                                    
-+----|-------------+                                                    
-     |    +-------------------------+                                   
-     +--> | pinctrl_init_controller |                                   
-          +------|------------------+                                   
-                 |                                                      
-                 |--> allocate and set up pinctrl dev                   
-                 |                                                      
-                 |    +-----------------------+                         
-                 +--> | pinctrl_register_pins |                         
-                      +-----|-----------------+                         
-                            |                                           
-                            +--> for each pin                           
-                                                                        
-                                     +--------------------------+       
-                                     | pinctrl_register_one_pin |       
-                                     +------|-------------------+       
-                                            |                           
-                                            |--> allocate pin descriptor
-                                            |                           
-                                            +--> add to pinctrl dev     
-```
-  
-```
-              ball          function1                         
-                |               |                             
-                |               |                             
- #define B14 0  v               v                             
- SSSF_PIN_DECL(B14, GPIOA0, MAC1LINK, SIG_DESC_SET(SCU80, 0));
-                       ^                         ^            
-                       |                         |            
-                       |                         |            
-                     GPIO                     setting         
-                                                for           
-                                             function1                             
-```
-
-```
-                                                          setting          
-                                                            for            
-                               function1                 function1         
-                                   |                         |             
-                                   |                         |             
-                                   v                         v             
- SIG_EXPR_LIST_DECL_SINGLE(D13, SPI1CS1, SPI1CS1, SIG_DESC_SET(SCU80, 15));
- SIG_EXPR_LIST_DECL_SINGLE(D13, TIMER3, TIMER3, SIG_DESC_SET(SCU80, 2));   
-                                   ^                         ^             
-                                   |                         |             
-                                   |                         |             
-                               function2                  setting          
-                                                            for            
-                       (high prio)                       function2         
-           ball         function1                                          
-             |              |                                              
-             |              |                                              
-             v              v                                              
- PIN_DECL_2(D13, GPIOA2, SPI1CS1, TIMER3);                                 
-                    ^                ^                                     
-                    |                |                                     
-                    |                |                                     
-                  GPIO           function2                                 
-              (lowest prio)      (low prio)                                
-```
-
 ```
 // MAC1LINK
 static const struct aspeed_sig_desc sig_descs_MAC1LINK_MAC1LINK[] = {
@@ -1152,41 +1043,6 @@ static const struct aspeed_pin_desc pin_0 = {
 };
 static const int group_pins_MAC1LINK[] = { 0 };
 static const char *func_groups_MAC1LINK[] = { "MAC1LINK" };
-```
-  
-</details>
-
-When drivers and devices are busy matching each other, the pinctrl mechanism goes before the probing function to ensure the device is ready. 
-As we mentioned earlier that I2C channel three needs pin control on **I2C3** for its default state. 
-The below **create_pinctrl** looks into the device tree for the pinctrl properties, and later **pinctrl_select_state** operates on corresponding settings.
-
-<details>
-  <summary> Other code tracing </summary>
-
-```
-                +----------------+                  +----------------------+
-                |can be 'default'|                  |nri1_default {        |
-                |       'init'   |                  |    function = "NRI1";|
-                |       'sleep'  |                  |    groups = "NRI1";  |
-                |       'idle'   |                  |    phandle = <0x17>; |
-                +----------------+                  |};                    |
-                                                    +----------------------+
-                       state                                                
- serial@1e783000 {       |                          config                  
-     ...                 v                             |                    
-     pinctrl-names = "default";                        v                    
-     pinctrl-0 = <0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17>;                 
- };                                               ^                         
-                                                  |                         
-                                               config                       
-                                                                            
-                                      +-----------------------+             
-                                      |ndcd1_default {        |             
-                                      |    function = "NDCD1";|             
-                                      |    groups = "NDCD1";  |             
-                                      |    phandle = <0x16>;  |             
-                                      |};                     |             
-                                      +-----------------------+             
 ```
     
 ```
@@ -2060,7 +1916,7 @@ drivers/gpio/gpiolib.c
   |    |
   |    +--> if the offset is valid
   |         -
-  |         +--> call ->request()
+  |         +--> call ->request(), e.g.,
   |              +---------------------+
   |              | aspeed_gpio_request | find the pinctrl_dev and request gpio from it
   |              +---------------------+
@@ -2145,20 +2001,23 @@ drivers/pinctrl/pinmux.c
 ```
 
 ```
-drivers/gpio/gpiolib.c                                                       
-+---------------------+                                                       
+drivers/gpio/gpiolib.c
++---------------------+
 | gpiod_get_direction | : call ->get_direction() and save result in desc flags
-+-|-------------------+                                                       
-  |                                                                           
-  |--> get gpio_chip from desc                                                
-  |                                                                           
-  |    +------------------+                                                   
-  |--> | gpio_chip_hwgpio | get desc offset                                   
-  |    +------------------+                                                   
-  |                                                                           
-  |--> call ->get_direction()                                                 
-  |                                                                           
-  +--> save direction in desc flags                                           
++-|-------------------+
+  |
+  |--> get gpio_chip from desc
+  |
+  |    +------------------+
+  |--> | gpio_chip_hwgpio | get desc offset
+  |    +------------------+
+  |
+  |--> call ->get_direction(), e.g.,
+  |    +---------------------------+
+  |    | aspeed_gpio_get_direction |
+  |    +---------------------------+
+  |
+  +--> save direction in desc flags                                        
 ```
 
 ```
