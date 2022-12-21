@@ -2782,46 +2782,71 @@ drivers/input/keyboard/gpio_keys.c
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
-```
-cd /sys/class/gpio
-echo 123 > export
-cd gpio123
-cat direction # check current direction
-echo out > direction
-cat value
-```
-
-```
-cat /sys/kernel/debug/gpio
-```
+- Detect GPIO chips.
     
 ```
 root@romulus:~# gpiodetect
 gpiochip0 [1e780000.gpio] (232 lines)
-
+```
+    
+- Display GPIO chip information.
+    
+```
+e.g., display part of gpio chip 0
+    
 root@romulus:~# gpioinfo 0 | head
 gpiochip0 - 232 lines:
-        line   0:      unnamed       unused   input  active-high 
-        line   1: "cfam-reset"       unused   input  active-high 
-        line   2:      unnamed       unused   input  active-high 
-        line   3:      unnamed       unused   input  active-high 
+        line   0:      unnamed       unused   input  active-high
+        line   1: "cfam-reset"       unused   input  active-high
+        line   2:      unnamed       unused   input  active-high
+        line   3:      unnamed       unused   input  active-high
         line   4:      unnamed       kernel   input  active-high [used]
         line   5:      unnamed       kernel   input  active-high [used]
-        line   6:    "fsi-mux"       unused  output  active-high 
-        line   7:      unnamed       unused   input  active-high 
-        line   8:      unnamed       unused   input  active-high 
-
-root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
+        line   6:    "fsi-mux"       unused  output  active-high
+        line   7:      unnamed       unused   input  active-high
+        line   8:      unnamed       unused   input  active-high
+    
+or
+    
+root@romulus:~# head /sys/kernel/debug/gpio
+gpiochip0: GPIOs 792-1023, parent: platform/1e780000.gpio, 1e780000.gpio:
+ gpio-792 (                    )
+ gpio-793 (cfam-reset          )
+ gpio-794 (                    )
+ gpio-795 (                    )
+ gpio-796 (                    )
+ gpio-797 (                    )
+ gpio-798 (fsi-mux             )
+ gpio-799 (                    )
+ gpio-800 (                    )
+```
+    
+- Get GPIO value (direction is set to 'in' automatically).
+    
+```
+e.g., get value of gpio chip 0 line 2
+    
+root@romulus:~# gpioget 0 2
 0
+```
 
-root@romulus:~# gpioset 0 2=1   # set value to gpio chip '0' line '2' to '1'
-
-root@romulus:~# gpioget 0 2     # get value from gpio chip '0' line '2'
-1
-
-root@romulus:~# gpiomon 0 2     # monitor value change on gpio chip '0' line '2'
+- Set GPIO value (direction is set to 'out' automatically).
+    
+```
+e.g., set value of gpio chip 0 line 2 to 1
+    
+root@romulus:~# gpioset 0 2=1
+```
+   
+- Monitor GPIO events.
+    
+```
+e.g., monitor event on gpio chip 0 line 2
+    
+root@romulus:~# gpiomon 0 2 
 ```
 
 ## <a name="reference"></a> Reference
 
-- [Linux kernel GPIO user space interface](https://embeddedbits.org/new-linux-kernel-gpio-user-space-interface/)
+- [S. Prado, Linux kernel GPIO user space interface](https://embeddedbits.org/new-linux-kernel-gpio-user-space-interface/)
+- [How to control a GPIO in userspace](https://wiki.st.com/stm32mpu/wiki/How_to_control_a_GPIO_in_userspace)
