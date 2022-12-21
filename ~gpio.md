@@ -11,14 +11,12 @@
 
 ## <a name="introduction"></a> Introduction
 
-Generic purpose input-output (GPIO) can work as output to control target device or as input to receive signals from outside. 
-In modern design, these pins are usually multi-functional. One pin can be an SDA in SMBus protocol or a TX in UART with the proper configuration. 
-Pin control (pinctrl) is the mechanism implemented in the kernel to properly configure those pins when we expect them to perform a specific function. 
+(TBD)
 
 ## <a name="gpio-chip"></a> GPIO Chip
 
 Generic purpose input-output (GPIO) is the hardware pin through which we can send hardware signals to or receive from an external component. 
-Given that the AST2500 GPIO chip provides 29 groups (A, B, ... AB, AC), and each group contains 8 pins, there are 232 GPIO lines that we can control. 
+Given that the GPIO chip in AST2500 provides 29 groups (A, B, ... AB, AC), and each group contains 8 pins, there are 232 GPIO lines that we can control. 
 Hardware designers decide where these lines connect; thus, the same pin might serve different purposes on different products. 
 Information such as offset (index) or name is necessary to find the target line, but note that not all lines are configured with an identifier in DTS.
 
