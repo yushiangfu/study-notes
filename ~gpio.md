@@ -1227,18 +1227,18 @@ drivers/pinctrl/aspeed/pinctrl-aspeed.c
 ## <a name="system-startup"></a> System Startup
 
 ```
-[    0.112641] pinctrl core: initialized pinctrl subsystem      <---- pinctrl_init
+[    0.112641] pinctrl core: initialized pinctrl subsystem                                          <---- pinctrl_init
 ...
-[    0.383292] gpio-819 (nic_func_mode0): hogged as output/low
-[    0.383562] gpio-820 (nic_func_mode1): hogged as output/low
-[    0.383777] gpio-943 (seq_cont): hogged as output/low
+[    0.383292] gpio-819 (nic_func_mode0): hogged as output/low                                      <---- aspeed_gpio_probe
+[    0.383562] gpio-820 (nic_func_mode1): hogged as output/low                                      <---- aspeed_gpio_probe
+[    0.383777] gpio-943 (seq_cont): hogged as output/low                                            <---- aspeed_gpio_probe
 ...
-[    2.207040] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled)
-[    2.501380] fsi-master-acf gpio-fsi: Coprocessor startup timeout !
+[    2.207040] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled) <---- fsi_master_acf_init
+[    2.501380] fsi-master-acf gpio-fsi: Coprocessor startup timeout !                               <---- fsi_master_acf_init
 ...
-[    2.553890] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+[    2.553890] input: gpio-keys as /devices/platform/gpio-keys/input/input0                         <---- gpio_keys_probe
 ...
-[   17.143708] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.
+[   17.143708] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.                       <---- systemd
 ```
 
 ```
@@ -1248,7 +1248,8 @@ gpiolib_sysfs_init: register 'gpio' class, for each entry@gpio_devices: create d
 aspeed_g5_pinctrl_driver: register 'aspeed_g5_pinctrl_driver' to bus 'platform'
     aspeed_g5_pinctrl_probe: iomap syscon (for scu), prepare pinctrl_dev and register it
 gpiolib_debugfs_init: prepare '/sys/kernel/debug/gpio' with fops=gpiolib_fops
-aspeed_gpio_probe: set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
+aspeed_gpio_driver_init: register 'aspeed_gpio_driver' to bus 'platform'
+    aspeed_gpio_probe: set up aspeed_gpio, install ops, prepare gpio line descriptors, register gpio chip
 aspeed_sgpio_driver_init: (skip, no matched device)
 gpio_clk_driver_init: (skip, no matched device)
 gpio_keys_polled_driver_init: (skip, no matched device)
@@ -1257,6 +1258,7 @@ w1_gpio_driver_init: (skip, no matched device)
 gpio_led_driver_init: register 'gpio_led_driver' to bus 'platform'
     gpio_led_probe: for each led, prepare gpio_desc and led_struct                         
 fsi_master_gpio_driver_init: (skip, no matched device)
+fsi_master_acf_init: (skip, no matched device)
 gpio_keys_init: register 'gpio_keys_device_driver' to bus 'platform'
     gpio_keys_probe: prepare pdate & input_dev & ddata, for each button: set up key, register input_dev
 ```
@@ -2657,7 +2659,7 @@ drivers/input/keyboard/gpio_keys.c
   |         +---------------------+
   |    +-----------------------+
   |--> | input_register_device | set up input_dev, register it
-  |    +-----------------------+
+  |    +-----------------------+ print e.g., "input: gpio-keys as /devices/platform/gpio-keys/input/input0"
   |    +--------------------+
   +--> | device_init_wakeup | (skip)
        +--------------------+
