@@ -1821,6 +1821,191 @@ drivers/gpio/gpiolib.c
 ```
 
 ```
+drivers/gpio/gpiolib-of.c                                                                                       
++-----------------+                                                                                              
+| of_gpiochip_add | : prase dt to add pin range, scan child nodes to hog gpio lines                              
++-|---------------+                                                                                              
+  |                                                                                                              
+  |--> if gpio_chip isn't installed ->of_node()                                                                  
+  |    |                                                                                                         
+  |    |                            +----------------------+                                                     
+  |    +--> install the default one | of_gpio_simple_xlate |                                                     
+  |                                 +----------------------+                                                     
+  |    +-----------------------------+                                                                           
+  |--> | of_gpiochip_init_valid_mask | use property "gpio-reserved-ranges" to init mask (not our case)           
+  |    +-----------------------------+                                                                           
+  |    +---------------------------+                                                                             
+  |--> | of_gpiochip_add_pin_range | parse dt for pin range, add to gpio_dev (also add gpio range to pinctrl_dev)
+  |    +---------------------------+                                                                             
+  |    +------------------------+                                                                                
+  +--> | of_gpiochip_scan_gpios | scan gpio child nodes to hog gpio lines                                        
+       +------------------------+                                                                                
+```
+
+```
+drivers/gpio/gpiolib-of.c                                                                                                  
++---------------------------+                                                                                               
+| of_gpiochip_add_pin_range | : parse dt for pin range, add to gpio_dev (also add gpio range to pinctrl_dev)                
++-|-------------------------+                                                                                               
+  |                                                                                                                         
+  |--> find property "gpio-ranges-group-names"                                                                              
+  |                                                                                                                         
+  +--> endless loop                                                                                                         
+       |                                                                                                                    
+       |    +----------------------------------+                                                                            
+       |--> | of_parse_phandle_with_fixed_args | prop = "gpio-ranges"                                                       
+       |    +----------------------------------+                                                                            
+       |                                                                                                                    
+       |--> break if no more arguments                                                                                      
+       |                                                                                                                    
+       +--> if pin# is specified                                                                                            
+       |    |                                                                                                               
+       |    |    +------------------------+                                                                                 
+       |    +--> | gpiochip_add_pin_range | prepare pin_range, add gpio_range to pinctrl_dev, add pin_range to gpio_dev     
+       |         +------------------------+                                                                                 
+       |                                                                                                                    
+       +--> else                                     gpio@1e780000 {                                                        
+            -                                        	...                                                                   
+            +--> (special range, skip)                   gpio-ranges = <0xd 0x0 0x0 0xe8>;                                  
+                                                     	...                |   |   |    -                                     
+                                                                         |   |   |    +--> pin#                             
+                                                                         |   |   +-------> pin offset                       
+                                                                         |   +-----------> gpio offset                      
+                                                                         +---------------> pinctrl handle                   
+```
+
+```
+drivers/gpio/gpiolib.c                                                                                 
++------------------------+                                                                              
+| gpiochip_add_pin_range | : prepare pin_range, add gpio_range to pinctrl_dev, add pin_range to gpio_dev
++-|----------------------+                                                                              
+  |                                                                                                     
+  |--> alloc pin_range and set up                                                                       
+  |                                                                                                     
+  |    +---------------------------------+                                                              
+  |--> | pinctrl_find_and_add_gpio_range | add gpio_range to pinctrl_dev                                
+  |    +---------------------------------+                                                              
+  |                                                                                                     
+  +--> add pin_range to gpio_dev                                                                        
+```
+
+```
+drivers/gpio/gpiolib-of.c                                                            
++------------------------+                                                            
+| of_gpiochip_scan_gpios | : scan gpio child nodes to hog gpio lines                  
++-|----------------------+                                                            
+  |                                                                                   
+  +--> for each child of gpio node                                                    
+       |                                                                              
+       |--> if it doesn't have prop "gpio-hog", continue                              
+       |                                                                              
+       |    +---------------------+                                                   
+       |--> | of_gpiochip_add_hog | given a device node, parse dt and hog gpio line(s)
+       |    +---------------------+                                                   
+       |                                                                              
+       +--> label 'populated' on the child node                                       
+```
+
+```
+drivers/gpio/gpiolib-of.c                                                                           
++---------------------+                                                                              
+| of_gpiochip_add_hog | : given a device node, parse dt and hog gpio line(s)                         
++-|-------------------+                                                                              
+  |                                                                                                  
+  +--> endless loop                                                                                  
+       |                                                                                             
+       |    +-------------------+                                                                    
+       |--> | of_parse_own_gpio | parse dt, translate it to get gpio_desc (along with flags and name)
+       |    +-------------------+                                                                    
+       |                                                                                             
+       |--> break if no more                                                                         
+       |                                                                                             
+       |    +-----------+                                                                            
+       +--> | gpiod_hog | hog (request and set direction) a gpio line                                
+            +-----------+                                                                            
+```
+
+```
+drivers/gpio/gpiolib-of.c                                                                         
++-------------------+                                                                              
+| of_parse_own_gpio | : parse dt, translate it to get gpio_desc (along with flags and name)        
++-|-----------------+                                                                              
+  |                                                                                                
+  |--> read prop "gpio-cells" (it's 2 in our case)                                                 
+  |                                                                                                
+  |--> for each cell (2)                                                                           
+  |    -                                                                                           
+  |    +--> read prop "gpios"                                                                      
+  |                                                                                                
+  |    +------------------------------+                                                            
+  |--> | of_xlate_and_get_gpiod_flags | translate specifier and return the (gpio_desc, xlate_flags)
+  |    +------------------------------+                                                            
+  |                                                                                                
+  |--> given xlate_flags, set lflags (low, transitory, up, down)                                   
+  |                                                                                                
+  |--> read prop to set dflags (input, output_low, output_high)                                    
+  |                                                                                                
+  +--> determine name                                                                              
+                                           +----------------------------------------------+        
+                                           |nic_func_mode0 {                              |        
+                                           |    gpio-hog;                                 |        
+                                           |    gpios = <0x1b 0x0>;                       |        
+                                           |    output-low; |   -                         |        
+                                           |};              |   +--> hwnum (before xlate) |        
+                                           |                +------> flags                |        
+                                           +----------------------------------------------+        
+```
+
+```
+drivers/gpio/gpiolib-of.c                                                                    
++------------------------------+                                                              
+| of_xlate_and_get_gpiod_flags | : translate specifier and return the (gpio_desc, xlate_flags)
++-|----------------------------+                                                              
+  |                                                                                           
+  |--> call ->of_xlate(), e.g.,                                                               
+  |    +----------------------+                                                               
+  |    | of_gpio_simple_xlate | (hwnum, flags) = (arg[0], arg[1]), and return them            
+  |    +----------------------+                                                               
+  |                                                                                           
+  |    +-------------------+                                                                  
+  +--> | gpiochip_get_desc | given hwnum, get target gpio_desc                                
+       +-------------------+                                                                  
+```
+
+```
+drivers/gpio/gpiolib.c                                                                      
++-----------+                                                                                
+| gpiod_hog | : hog (request and set direction) a gpio line                                  
++-|---------+                                                                                
+  |                                                                                          
+  |--> get gpio_chip and hw_num (line) from gpio_desc                                        
+  |                                                                                          
+  |    +---------------------------+                                                         
+  |--> | gpiochip_request_own_desc | get gpio_desc, request it from pinctrl and set direction
+  |    +---------------------------+                                                         
+  |                                                                                          
+  |--> label 'hogged' on gpio_desc                                                           
+  |                                                                                          
+  +--> print e.g., "hogged as output/low"                                                    
+```
+
+```
+drivers/gpio/gpiolib.c                                                                      
++---------------------------+                                                                
+| gpiochip_request_own_desc | : get gpio_desc, request it from pinctrl and set direction     
++-|-------------------------+                                                                
+  |                                                                                          
+  |--> get gpio_desc by (gpio_chip, hw_num)                                                  
+  |                                                                                          
+  |    +----------------------+                                                              
+  |--> | gpiod_request_commit | set label, call ->request() and ->get_direction() if feasible
+  |    +----------------------+                                                              
+  |    +-----------------------+                                                             
+  +--> | gpiod_configure_flags | set gpio direction accordingly                              
+       +-----------------------+                                                             
+```
+
+```
 drivers/leds/leds-gpio.c                                                                   
 +----------------+                                                                          
 | gpio_led_probe | : for each led, prepare gpio_desc and led_struct                         
