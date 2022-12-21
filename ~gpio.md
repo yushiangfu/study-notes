@@ -1227,6 +1227,22 @@ drivers/pinctrl/aspeed/pinctrl-aspeed.c
 ## <a name="system-startup"></a> System Startup
 
 ```
+[    0.112641] pinctrl core: initialized pinctrl subsystem      <---- pinctrl_init
+...
+[    0.383292] gpio-819 (nic_func_mode0): hogged as output/low
+[    0.383562] gpio-820 (nic_func_mode1): hogged as output/low
+[    0.383777] gpio-943 (seq_cont): hogged as output/low
+...
+[    2.207040] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled)
+[    2.501380] fsi-master-acf gpio-fsi: Coprocessor startup timeout !
+...
+[    2.553890] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+...
+[   17.143708] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.
+```
+
+```
+pinctrl_init: create debug files under /sys/kernel/debug/pinctrl             
 gpiolib_dev_init: register bus & driver, reserve dev#
 gpiolib_sysfs_init: register 'gpio' class, for each entry@gpio_devices: create device and register to sysfs
 aspeed_g5_pinctrl_driver: register 'aspeed_g5_pinctrl_driver' to bus 'platform'
@@ -1243,6 +1259,19 @@ gpio_led_driver_init: register 'gpio_led_driver' to bus 'platform'
 fsi_master_gpio_driver_init: (skip, no matched device)
 gpio_keys_init: register 'gpio_keys_device_driver' to bus 'platform'
     gpio_keys_probe: prepare pdate & input_dev & ddata, for each button: set up key, register input_dev
+```
+
+```
+drivers/pinctrl/core.c                                                           
++--------------+                                                                  
+| pinctrl_init | : create debug files under /sys/kernel/debug/pinctrl             
++-|------------+                                                                  
+  |                                                                               
+  |--> print "initialized pinctrl subsystem\n"                                    
+  |                                                                               
+  |    +----------------------+                                                   
+  +--> | pinctrl_init_debugfs | create debug files under /sys/kernel/debug/pinctrl
+       +----------------------+                                                   
 ```
 
 ```
