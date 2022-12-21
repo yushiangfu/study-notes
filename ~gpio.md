@@ -1226,6 +1226,19 @@ drivers/pinctrl/aspeed/pinctrl-aspeed.c
 
 ## <a name="system-startup"></a> System Startup
 
+Let's introduce GPIO-related functions that print logs during system startup:
+
+- pinctrl_init
+    - creates the debug files under /sys/kernel/debug/pinctrl
+- aspeed_gpio_probe
+    - prepares GPIO chip struct of Aspeed operations and registers descriptors of each GPIO pin
+- fsi_master_acf_init
+    - (skip, it's a GPIO user)
+- gpio_keys_probe
+    - (skip, it's a GPIO user)
+- systemd
+    - (skip, it's a GPIO user)
+
 ```
 [    0.112641] pinctrl core: initialized pinctrl subsystem                                          <---- pinctrl_init
 ...
@@ -1240,6 +1253,8 @@ drivers/pinctrl/aspeed/pinctrl-aspeed.c
 ...
 [   17.143708] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.                       <---- systemd
 ```
+
+<details><summary> More Details </summary>
 
 ```
 pinctrl_init: create debug files under /sys/kernel/debug/pinctrl             
@@ -2762,6 +2777,8 @@ drivers/input/keyboard/gpio_keys.c
   +--> | devm_request_any_context_irq | request irq                                                     
        +------------------------------+                                                                 
 ```
+    
+</details>
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
