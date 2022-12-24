@@ -45,28 +45,6 @@ As for the event, a kernel thread is created to monitor and wake up the stalled 
 
 <p align="center"><img src="images/gpio/chip.png" /></p>
 
-The 'GPIO Lib' framework in kernel space bridges the userspace requests and the real GPIO chip driver provided by the vendor, e.g., Aspeed.
-
-```
-                                                +--
-                                                |   static const struct file_operations gpio_fileops = {
-                                                |       .release = gpio_chrdev_release,
-                                                |       .open = gpio_chrdev_open,
-  user             +------+ e.g. /dev/gpiochip0 |       .poll = lineinfo_watch_poll,
-  -----------------| cdev |------------------   |       .read = lineinfo_watch_read,
-  kernel           +------+                     |       .owner = THIS_MODULE,
-                       |                        |       .llseek = no_llseek,
-                       v                        |       .unlocked_ioctl = gpio_ioctl,
-             |--  +---------+                   |   };
-    generic  |    | gpiolib |                   +--
-             +--  +---------+
-                       |
-                       v
-             |--  +--------+
-   specific  |    | driver |
-e.g. aspeed  +--  +--------+                                                                              
-```
-
 <details><summary> More Details </summary>
 
 | GPIO | Line | Name           | Use            | Direction | Note              |
