@@ -802,6 +802,40 @@ watch.cpp
 ```
 
 ```
+                                                                                                                                                                  
+ "xyz.openbmc_project.HealthMon"                                                                                                                                  
+     "/xyz/openbmc_project/sensors/utilization/CPU"           empty                                                                                               
+                                                                                             xyz.openbmc_project.ObjectMapper                                     
+                                                                                                 /xyz/openbmc_project/software/c3a09353/software_version          
+                                                                                                      xyz.openbmc_project.Association                             
+ "xyz.openbmc_project.HealthMon"                                                                           endpoints = "/xyz/openbmc_project/software"            
+     "/xyz/openbmc_project/sensors/utilization/Memory"        empty                                                                                               
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                              xyz.openbmc_project.ObjectMapper                                    
+  "org.open_power.Software.Host.Updater"                                                          /xyz/openbmc_project/software/active                            
+      "/xyz/openbmc_project/software"                         empty                                    xyz.openbmc_project.Association                            
+                                                                                                              endpoints = "/xyz/openbmc_project/software/c3a09353"
+                                                                                                                                                                  
+                                                                                                                                                                  
+  "xyz.openbmc_project.Software.BMC.Updater"                                                                                                                      
+     "/xyz/openbmc_project/software"                                                                                                                              
+         xyz.openbmc_project.Association.Definitions                                           xyz.openbmc_project.ObjectMapper                                   
+             "functional"   "software_version"  "/xyz/openbmc_project/software/c3a09353"           /xyz/openbmc_project/software/functional                       
+                                                                                                        xyz.openbmc_project.Association                           
+              "active"      "software_version"  "/xyz/openbmc_project/software/c3a09353"                      endpoints = "/xyz/openbmc_project/software/c3a09353"
+                                                                                                                                                                  
+              "updateable"   "software_version"   "/xyz/openbmc_project/software/c3a09353"                                                                        
+                                                                                                                                                                  
+                                                                                                                                                                  
+   "xyz.openbmc_project.Software.BMC.Updater"                                                  xyz.openbmc_project.ObjectMapper                                   
+       "/xyz/openbmc_project/software/c3a09353"                                                    /xyz/openbmc_project/software/updateable                       
+                                                                                                        xyz.openbmc_project.Association                           
+                                                                                                              endpoints = "/xyz/openbmc_project/software/c3a09353"
+               "inventory"     "activation"       ""                                                                                                              
+```
+
+```
 https://github.com/openbmc/phosphor-bmc-code-mgmt
 ```
 
