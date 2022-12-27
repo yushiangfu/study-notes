@@ -140,6 +140,36 @@ inode->i_op = &shmem_special_inode_operations;
 inode->i_fop = &no_open_fops;
 ```
 
+### inotify
+
+```
+fs/notify/inotify/inotify_user.c
++---------------+
+| inotify_init1 | : prepare group, prepare anon file (priv = group) and install to fd table
++|--------------+
+ |    +-----------------+
+ +--> | do_inotify_init | : prepare group, prepare anon file (priv = group) and install to fd table
+      +-|---------------+
+        |    +-------------------+
+        |--> | inotify_new_group | prepare group & event, return group
+        |    +-------------------+
+        |    +------------------+
+        +--> | anon_inode_getfd | prepare an anon file and install to fd table
+             +------------------+
+```
+
+```
+fs/notify/inotify/inotify_user.c                                                                         
++-------------------+                                                                                     
+| inotify_new_group | : prepare group & event, return group                                               
++-|-----------------+                                                                                     
+  |    +---------------------------+                                                                      
+  |--> | fsnotify_alloc_user_group | alloc fsnotify_group and install arg ops (e.g., inotify_fsnotify_ops)
+  |    +---------------------------+                                                                      
+  |                                                                                                       
+  +--> alloc event and set it up                                                                          
+```
+
 ## <a name="boot-flow"></a> Boot Flow
 
 Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
