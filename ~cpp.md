@@ -4,6 +4,7 @@
   - [decltype](https://www.geeksforgeeks.org/type-inference-in-c-auto-and-decltype/)
   - [explicit](https://www.geeksforgeeks.org/use-of-explicit-keyword-in-cpp/)
   - [initializer list](https://www.geeksforgeeks.org/when-do-we-use-initializer-list-in-c/)
+  - [reinterpret_cast](https://www.geeksforgeeks.org/reinterpret_cast-in-c-type-casting-operators/)
   - [virtual function](https://www.geeksforgeeks.org/virtual-function-cpp/)
 
 - std
