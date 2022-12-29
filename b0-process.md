@@ -1886,35 +1886,41 @@ The systemd then spawns many other applications, including the login prompt, and
 ```
   
 ```
+include/linux/kthread.h
 +----------------+
 | kthread_create | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
-+---|------------+
-    |    +------------------------+
-    +--> | kthread_create_on_node | :
-         +-----|------------------+
-               |    +--------------------------+
-               +--> | __kthread_create_on_node | : ask kthreadd help creating kthread,
-                    +------|-------------------+   set its name, sched-related, and cpu mask
-                           |
-                           |--> allocate and setup 'create'
-                           |
-                           |--> add 'create' to the end of kthread_create_list
-                           |
-                           |    +-----------------+
-                           |--> | wake_up_process | wake up kthreadd_task
-                           |    +-----------------+
-                           |    +------------------------------+
-                           |--> | wait_for_completion_killable | wait for completion
-                           |    +------------------------------+
-                           |    +---------------+
-                           |--> | set_task_comm | set task name
-                           |    +---------------+
-                           |    +----------------------------+
-                           |--> | sched_setscheduler_nocheck | set schedule-related fields in task
-                           |    +----------------------------+
-                           |    +----------------------+
-                           +--> | set_cpus_allowed_ptr | set cpu mask
-                                +----------------------+                                                              
++-|--------------+
+  |    +------------------------+
+  +--> | kthread_create_on_node | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
+       +------------------------+
+                                                         
+```
+  
+```
+kernel/kthread.c
++--------------------------+
+| __kthread_create_on_node | : ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
++-|------------------------+
+  |
+  |--> allocate and setup 'create'
+  |
+  |--> add 'create' to the end of kthread_create_list
+  |
+  |    +-----------------+
+  |--> | wake_up_process | wake up kthreadd_task
+  |    +-----------------+
+  |    +------------------------------+
+  |--> | wait_for_completion_killable | wait for completion
+  |    +------------------------------+
+  |    +---------------+
+  |--> | set_task_comm | set task name
+  |    +---------------+
+  |    +----------------------------+
+  |--> | sched_setscheduler_nocheck | set schedule-related fields in task
+  |    +----------------------------+
+  |    +----------------------+
+  +--> | set_cpus_allowed_ptr | set cpu mask
+       +----------------------+
 ```
   
 ```
