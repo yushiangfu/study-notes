@@ -349,6 +349,71 @@ Instead, another syscall `execve` follows to load the target application into me
 ```
   
 ```
+kernel/kthread.c                                                                                                       
++-------------------------+                                                                                             
+| __kthread_create_worker | : create kthread (kthread_worker_fn), prepare worker, wake up kthread                       
++-|-----------------------+                                                                                             
+  |                                                                                                                     
+  |--> alloc kthread_worker                                                                                             
+  |                                                                                                                     
+  |           +--------------------------+                                                                              
+  |--> task = | __kthread_create_on_node | ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
+  |           +-------------------+------+                                                                              
+  |           | kthread_worker_fn | endless loop: run work->func()                                                      
+  |           +-------------------+                                                                                     
+  |                                                                                                                     
+  |--> if arg cpu is specified                                                                                          
+  |    |                                                                                                                
+  |    |    +--------------+                                                                                            
+  |    +--> | kthread_bind | bind a kthread to a cpu                                                                    
+  |         +--------------+                                                                                            
+  |                                                                                                                     
+  |--> save flags and task in kthread_worker                                                                            
+  |                                                                                                                     
+  |    +-----------------+                                                                                              
+  +--> | wake_up_process |                                                                                              
+       +-----------------+                                                                                              
+```
+  
+```
+kernel/kthread.c                                     
++-------------------+                                 
+| kthread_worker_fn | : endless loop: run work->func()
++-|-----------------+                                 
+  |                                                   
+  |--> save current_task in worker                    
+  |repeat:                                            
+  |--> set current_state = interruptible              
+  |                                                   
+  |--> if kthread should stop                         
+  |    |                                              
+  |    |--> set current_state = running               
+  |    |                                              
+  |    +--> return                                    
+  |                                                   
+  |--> if there's remaining work(s)                   
+  |    -                                              
+  |    +--> remove work from list                     
+  |                                                   
+  |--> save work (null or not) in worker->current_work
+  |                                                   
+  |--> if work exists                                 
+  |    -                                              
+  |    +--> run work->func()                          
+  |                                                   
+  |--> else                                           
+  |    |                                              
+  |    |    +----------+                              
+  |    +--> | schedule |                              
+  |         +----------+                              
+  |    +--------------+                               
+  |--> | cond_resched |                               
+  |    +--------------+                               
+  |                                                   
+  +--> go to 'repeat'                                 
+```
+  
+```
 struct linux_binfmt {
     struct list_head lh;                            // list node
     struct module *module;
