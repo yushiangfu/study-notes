@@ -17,7 +17,8 @@
 
 ```
 aspeed_wdt_init: register 'aspeed_watchdog_driver' to 'platform' bus
-  aspeed_wdt_probe: 
+  aspeed_wdt_probe: map registers, install ops, register watchdog_dev
+watchdog_init: create 'watchdogd', register class, alloc dev#, register each watchdog_dev on list
 ```
 
 ```
@@ -85,6 +86,209 @@ drivers/watchdog/watchdog_core.c
        |    +------------------------------------+                                            
        +--> | watchdog_deferred_registration_add | add watchdog_dev to 'wtd_deferred_reg_list'
             +------------------------------------+                                            
+```
+
+```
+drivers/watchdog/watchdog_core.c
++---------------+
+| watchdog_init | : create 'watchdogd', register class, alloc dev#, register each watchdog_dev on list
++-|-------------+
+  |    +-------------------+
+  |--> | watchdog_dev_init | create kthread 'watchdogd', set to rt sched class, register 'watchdog_class', alloc dev#
+  |    +-------------------+
+  |    +--------------------------------+
+  +--> | watchdog_deferred_registration | for each watchdog_dev on list: register it (work/timer/cdev/dev)
+       +--------------------------------+
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                                                                
++-------------------+                                                                                           
+| watchdog_dev_init | : create kthread 'watchdogd', set to rt sched class, register 'watchdog_class', alloc dev#
++-|-----------------+                                                                                           
+  |                      +-----------------------+                                                              
+  |-> watchdog_kworker = | kthread_create_worker |                                                              
+  |                      +-----------------------+                                                              
+  |                      create kthread (kthread_worker_fn), prepare worker, wake up kthread                    
+  |                                                                                                             
+  |   +----------------+                                                                                        
+  |-> | sched_set_fifo | change policy to sched_fifo (rt class)                                                 
+  |   +----------------+                                                                                        
+  |   +----------------+                                                                                        
+  |-> | class_register | register 'watchdog_class'                                                              
+  |   +----------------+                                                                                        
+  |   +---------------------+                                                                                   
+  +-> | alloc_chrdev_region | alloc dev# (major = whatever, count = 32)                                         
+      +---------------------+                                                                                   
+```
+
+```
+drivers/watchdog/watchdog_core.c                                                                                    
++--------------------------------+                                                                                   
+| watchdog_deferred_registration | : for each watchdog_dev on list: register it (work/timer/cdev/dev)                
++-|------------------------------+                                                                                   
+  |                                                                                                                  
+  |--> wtd_deferred_reg_done = true                                                                                  
+  |                                                                                                                  
+  +--> while there's still watchdog_dev on wtd_deferred_reg_list                                                     
+       |                                                                                                             
+       |--> remove watchdog_dev from list                                                                            
+       |                                                                                                             
+       |    +----------------------------+                                                                           
+       +--> | __watchdog_register_device | get id, prepare watchdog_data, register cdev/dev, register restart handler
+            +----------------------------+                                                                           
+```
+
+```
+drivers/watchdog/watchdog_core.c                                                                          
++----------------------------+                                                                             
+| __watchdog_register_device | : get id, prepare watchdog_data, register cdev/dev, register restart handler
++-|--------------------------+                                                                             
+  |                                                                                                        
+  |--> get a unique id and save in watchdog_dev (wdd)                                                      
+  |                                                                                                        
+  |    +-----------------------+                                                                           
+  |--> | watchdog_dev_register | prepare watchdog_data (dev, work, timer), register cdev/dev               
+  |    +-----------------------+                                                                           
+  |                                                                                                        
+  +--> if ->restart() exists                                                                               
+       |                                                                                                   
+       |    +--------------------------+ +---------------------------+                                     
+       +--> | register_restart_handler | | watchdog_restart_notifier |                                     
+            +--------------------------+ +---------------------------+                                     
+                                         call ->restart()                                                  
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                                             
++-----------------------+                                                                    
+| watchdog_dev_register | : prepare watchdog_data (dev, work, timer), register cdev/dev      
++-|---------------------+                                                                    
+  |    +------------------------+                                                            
+  |--> | watchdog_cdev_register | prepare watchdog_data (dev, work, timer), register cdev/dev
+  |    +------------------------+                                                            
+  |    +------------------------------+                                                      
+  +--> | watchdog_register_pretimeout | simply return 0 bc of disabled config                
+       +------------------------------+                                                      
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                                            
++------------------------+                                                                  
+| watchdog_cdev_register | : prepare watchdog_data (dev, work, timer), register cdev/dev    
++-|----------------------+                                                                  
+  |                                                                                         
+  |--> alloc watchdog_data (wdd), which includes 'device' struct                            
+  |                                                                                         
+  |--> set up device                                                                        
+  |                                                                                         
+  |    +-------------------+ +--------------------+                                         
+  |--> | kthread_init_work | | watchdog_ping_work | feed watchdog if needed                 
+  |    +-------------------+ +--------------------+                                         
+  |                                +------------------------+                               
+  |--> init timer and install func | watchdog_timer_expired | queue work to watchdog_kworker
+  |                                +------------------------+                               
+  |--> if wdd id == 0                                                                       
+  |    |                                                                                    
+  |    |    +---------------+                                                               
+  |    +--> | misc_register | determine dev#, add arg 'misc' to list (misc_list)            
+  |         +---------------+                                                               
+  |    +-----------+ +---------------+                                                      
+  |--> | cdev_init | | watchdog_fops |                                                      
+  |    +-----------+ +---------------+                                                      
+  |    +-----------------+                                                                  
+  |--> | cdev_device_add | add cdev to kobj_map and register inner dev                      
+  |    +-----------------+                                                                  
+  |                                                                                         
+  +--> if watchdog hw is running                                                            
+       -                                                                                    
+       +--> if handle_boot_enabled is set (our case)                                        
+            |                                                                               
+            |    +---------------+                                                          
+            +--> | hrtimer_start |                                                          
+                 +---------------+                                                          
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                                
++--------------------+                                                          
+| watchdog_ping_work | : feed watchdog if needed                                
++-|------------------+                                                          
+  |                                                                             
+  |--> get watchdog_data from work                                              
+  |                                                                             
+  |    +-----------------------------+                                          
+  |--> | watchdog_worker_should_ping | check if we should ping the watchdog     
+  |    +-----------------------------+                                          
+  |                                                                             
+  +--> if should                                                                
+       |                                                                        
+       |    +-----------------+                                                 
+       +--> | __watchdog_ping | feed watchdog, start or cancel timer accordingly
+            +-----------------+                                                 
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                      
++-----------------------------+                                       
+| watchdog_worker_should_ping | : check if we should ping the watchdog
++-|---------------------------+                                       
+  |                                                                   
+  |--> if watchdog_dev is active, return true                         
+  |                                                                   
+  +--> if hw is still running && haven't passed deadline, return true 
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                             
++-----------------+                                                          
+| __watchdog_ping | : feed watchdog, start or cancel timer accordingly       
++-|---------------+                                                          
+  |                                                                          
+  |--> ->last_xxx = now                                                      
+  |                                                                          
+  |--> if ->ping() exists                                                    
+  |    -                                                                     
+  |    +--> call ->ping(), e.g.,                                             
+  |         +-----------------+                                              
+  |         | aspeed_wdt_ping | write magic to hw reg 'restart'              
+  |         +-----------------+                                              
+  |                                                                          
+  |--> else                                                                  
+  |    -                                                                     
+  |    +--> call ->start()                                                   
+  |                                                                          
+  |    +-----------------------------------+                                 
+  |--> | watchdog_hrtimer_pretimeout_start | do nothing bc of disabled config
+  |    +-----------------------------------+                                 
+  |    +------------------------+                                            
+  +--> | watchdog_update_worker | start or cancel timer accordingly          
+       +------------------------+                                            
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                   
++------------------------+                                         
+| watchdog_update_worker | : start or cancel timer accordingly     
++-|----------------------+                                         
+  |    +----------------------+                                    
+  |--> | watchdog_need_worker | check if we need the worker        
+  |    +----------------------+                                    
+  |                                                                
+  |--> if need                                                     
+  |    |                                                           
+  |    |    +-------------------------+                            
+  |    |--> | watchdog_next_keepalive | calculate the time interval
+  |    |    +-------------------------+                            
+  |    |    +---------------+                                      
+  |    +--> | hrtimer_start |                                      
+  |         +---------------+                                      
+  |                                                                
+  +--> else                                                        
+       |                                                           
+       |    +----------------+                                     
+       +--> | hrtimer_cancel |                                     
+            +----------------+                                     
 ```
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
