@@ -3,7 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Watchdog](#watchdog)
+- [Framework](#framework)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -12,6 +12,132 @@
 
 (TBD)
 
+## <a name="framework"></a> Framework
+
+```
+static const struct file_operations watchdog_fops = {
+    .owner      = THIS_MODULE,
+    .write      = watchdog_write,
+    .unlocked_ioctl = watchdog_ioctl,
+    .compat_ioctl   = compat_ptr_ioctl,
+    .open       = watchdog_open,
+    .release    = watchdog_release,
+};
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                         
++----------------+                                                       
+| watchdog_write | ： feed watchdog, start or cancel timer accordingly    
++-|--------------+                                                       
+  |                                                                      
+  |--> check if there's magic char 'V' in user buffer                    
+  |                                                                      
+  |    +---------------+                                                 
+  +--> | watchdog_ping | feed watchdog, start or cancel timer accordingly
+       +---------------+                                                 
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                        
++----------------+                                                      
+| watchdog_ioctl | : watchdog ioctl                                     
++-|--------------+                                                      
+  |                                                                     
+  |--> switch cmd                                                       
+  +--> case get_support                                                 
+  |    -                                                                
+  |    +--> copy wdd info to user                                       
+  |                                                                     
+  +--> case get_status                                                  
+  |    -                                                                
+  |    +--> prepare status and copy to user                             
+  |                                                                     
+  +--> case get_boot_status                                             
+  |    -                                                                
+  |    +--> copy boot status to user                                    
+  |                                                                     
+  +--> case set_options                                                 
+  |    -                                                                
+  |    +--> get option from user, disable or enable watchdog accordingly
+  |                                                                     
+  +--> case keep_alive                                                  
+  |    -                                                                
+  |    +--> ping watchdog                                               
+  |                                                                     
+  +--> case set_timeout                                                 
+  |    -                                                                
+  |    +--> set watchdog timeout, ping it                               
+  |                                                                     
+  +--> case get_timeout                                                 
+  |    -                                                                
+  |    +--> copy timeout to user                                        
+  |                                                                     
+  +--> case get_timeleft                                                
+  |    -                                                                
+  |    +--> copy timeleft (not supported in our case)                   
+  |                                                                     
+  +--> case set_pretimeout                                              
+  |    -                                                                
+  |    +--> set pretimeout (probably not supported in our case)         
+  |                                                                     
+  +--> case get_pretimeout                                              
+       -                                                                
+       +--> get pretiemout                                              
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                           
++---------------+                                                          
+| watchdog_open | : ensure watchdog is active, save wd_data in file private
++-|-------------+                                                          
+  |                                                                        
+  |--> get watchdog_data (wd_data) from inode                              
+  |                                                                        
+  |--> if it's opened already, return 'busy' error                         
+  |                                                                        
+  |    +----------------+                                                  
+  |--> | watchdog_start | ensure watchdog is active                        
+  |    +----------------+                                                  
+  |                                                                        
+  |--> save wd_data in file_private                                        
+  |                                                                        
+  |    +-------------+                                                     
+  +--> | stream_open | ensure file isn't seekable                          
+       +-------------+                                                     
+```
+
+```
+drivers/watchdog/watchdog_dev.c                                                
++----------------+                                                              
+| watchdog_start | : ensure watchdog is active                                  
++-|--------------+                                                              
+  |                                                                             
+  |--> if it's already active, return                                           
+  |                                                                             
+  |--> label 'keep_alive' on watchdog_data (wd_data)                            
+  |                                                                             
+  |--> if watchdog hw is running && ->ping() exists                             
+  |    |                                                                        
+  |    |    +-----------------+                                                 
+  |    |--> | __watchdog_ping | feed watchdog, start or cancel timer accordingly
+  |    |    +-----------------+                                                 
+  |    |                                                                        
+  |    +--> label 'active' on watchdog_dev (wdd)                                
+  |                                                                             
+  +--> else                                                                     
+       -                                                                        
+       +--> label 'active' on watchdog_dev (wdd)                                
+       |                                                                        
+       |--> call ->start(), e.g.,                                               
+       |    +------------------+                                                
+       |    | aspeed_wdt_start | write hw reg to start watchdog                 
+       |    +------------------+                                                
+       |                                                                        
+       |    +------------------------+                                          
+       +--> | watchdog_update_worker | start or cancel timer accordingly        
+            +------------------------+                                          
+```
 
 ## <a name="system-startup"></a> System Startup
 
