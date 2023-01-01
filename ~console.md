@@ -1,13 +1,17 @@
-> Note: browser extension [GitHub + Mermaid](https://chrome.google.com/webstore/detail/github-%20-mermaid/goiiopgdnkogdbjmncgedmgpoajilohe?hl=en)
-> is needed to view the flow chart of mermaid syntax.  
-> Note: any suggestion or opinion is extremely welcome!
+> Study case: Linux version 5.15.69 on OpenBMC
 
 ## Index
+
+- [Introduction](#introduction)
+- [GPIO Chip](#gpio-chip)
+- [Pin Control](#pin-control)
+- [System Startup](#system-startup)
+- [Cheat Sheet](#cheat-sheet)
+- [Reference](#reference)
 
 1. [Introduction](#introduction)
 2. [TTY Types](#tty-types)
 3. [TTY <-> UART](#tty-uart)
-4. [Boot Flow](#boot-flow)
 5. [Mechanism of printk](#mechanism-of-printk)
 6. [Kernel Boot Arguments](#kernel-boot-arguments)
 7. [Conclusion](#conclusion)
@@ -95,7 +99,23 @@ graph TD
    ff-.->|Ready for read|gg
 ```
 
-## <a name="boot-flow"></a> Boot Flow
+## <a name="system-startup"></a> System Startup
+
+```
+param_setup_earlycon
+proc_consoles_init: create /proc/consoles
+chr_dev_init
+aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
+serial8250_init
+aspeed_vuart_driver_init
+of_platform_serial_driver_init
+mctp_serial_init
+usb_serial_init
+usb_serial_module_init
+init_netconsole
+univ8250_console_initcon
+```
+
 Here we list a few functions that are related to our topic and we'll introduce them one by one.
 ```
 init calls
