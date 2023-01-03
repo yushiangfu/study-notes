@@ -103,6 +103,7 @@ graph TD
 
 ```
 param_setup_earlycon
+console_setup
 proc_consoles_init: create /proc/consoles
 chr_dev_init
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
