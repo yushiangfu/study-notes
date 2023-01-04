@@ -105,7 +105,8 @@ graph TD
 param_setup_earlycon:   set up early console
 console_setup:          parse 'console=xxx,yyy', add as preferred console 
 proc_consoles_init:     create /proc/consoles
-chr_dev_init   
+chr_dev_init
+   tty_init:            init char devices for tty and console
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
 serial8250_init
 aspeed_vuart_driver_init
@@ -541,6 +542,40 @@ kernel/printk/printk.c
   |--> preferred_console = i                                                            
   |                                                                                     
   +--> set up first empty entry in 'console_cmdline' (name/options/user_specified/index)
+```
+
+```
+drivers/tty/tty_io.c                                                     
++----------+                                                              
+| tty_init | : init char devices for tty and console                      
++-|--------+                                                              
+  |    +-----------------+                                                
+  |--> | tty_sysctl_init | (skip)                                         
+  |    +-----------------+                                                
+  |    +-----------+                                                      
+  |--> | cdev_init | init cdev and install ops (tty_fops)                 
+  |    +-----------+                                                      
+  |    +----------+                                                       
+  |--> | cdev_add | register cdev (tty_cdev)                              
+  |    +----------+                                                       
+  |    +------------------------+                                         
+  |--> | register_chrdev_region | reserve the specified dev# range        
+  |    +------------------------+                                         
+  |    +---------------+                                                  
+  |--> | device_create | given params (tty), create device                
+  |    +---------------+                                                  
+  |    +-----------+                                                      
+  |--> | cdev_init | init cdev and install ops (console_fops)             
+  |    +-----------+                                                      
+  |    +----------+                                                       
+  |--> | cdev_add | register cdev (console_cdev)                          
+  |    +----------+                                                       
+  |    +------------------------+                                         
+  |--> | register_chrdev_region | reserve the specified dev# range        
+  |    +------------------------+                                         
+  |    +---------------------------+                                      
+  +--> | device_create_with_groups | given params (console), create device
+       +---------------------------+                                      
 ```
 
 Here we list a few functions that are related to our topic and we'll introduce them one by one.
