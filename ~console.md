@@ -102,10 +102,10 @@ graph TD
 ## <a name="system-startup"></a> System Startup
 
 ```
-param_setup_earlycon
-console_setup
-proc_consoles_init: create /proc/consoles
-chr_dev_init
+param_setup_earlycon:   set up early console
+console_setup:          parse 'console=xxx,yyy', add as preferred console 
+proc_consoles_init:     create /proc/consoles
+chr_dev_init   
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
 serial8250_init
 aspeed_vuart_driver_init
@@ -160,7 +160,30 @@ drivers/of/fdt.c
        |                                                                                                              
        |    +-------------------+                                                                                     
        +--> | of_setup_earlycon | iomap, handle dt properties, set up uart/ops, register console, print out queued log
-            +-------------------+                                                                                     
+            +-------------------+          
+            
+chosen {
+   stdout-path = "/ahb/apb/serial@1e784000"; <----------
+   bootargs = "console=ttyS4,115200 earlycon";
+};
+
+serial@1e784000 {
+    compatible = "ns16550a"; <----------
+    reg = <0x1e784000 0x20>;
+    reg-shift = <0x02>;
+    interrupts = <0x0a>;
+    clocks = <0x02 0x0f>;
+    no-loopback-test;
+    status = "okay";
+};
+
+drivers/tty/serial/8250/8250_early.c
+   EARLYCON_DECLARE(uart8250, early_serial8250_setup);
+   EARLYCON_DECLARE(uart, early_serial8250_setup);
+   OF_EARLYCON_DECLARE(ns16550, "ns16550", early_serial8250_setup);
+   OF_EARLYCON_DECLARE(ns16550a, "ns16550a", early_serial8250_setup); <----------
+   OF_EARLYCON_DECLARE(uart, "nvidia,tegra20-uart", early_serial8250_setup);
+   OF_EARLYCON_DECLARE(uart, "snps,dw-apb-uart", early_serial8250_setup);
 ```
 
 ```
@@ -484,6 +507,42 @@ kernel/printk/printk.c
   +--> if ->exit() exists, call it                                                                     
 ```
 
+```
+kernel/printk/printk.c                                                                   
++---------------+                                                                         
+| console_setup | : parse 'console=xxx,yyy', add as preferred console                     
++-|-------------+                                                                         
+  |                                                                                       
+  |--> parse arg 'str, e.g., buf=ttyS4, options=115200                                    
+  |                                                                                       
+  |    +-------------------------+                                                        
+  |--> | __add_preferred_console | ensure preferred console is set up in 'console_cmdline'
+  |    +-------------------------+                                                        
+  |                                                                                       
+  +--> console_set_on_cmdline = 1                                                         
+```
+
+```
+kernel/printk/printk.c                                                                 
++-------------------------+                                                             
+| __add_preferred_console | ： ensure preferred console is set up in 'console_cmdline'   
++-|-----------------------+                                                             
+  |                                                                                     
+  |--> for each entry in 'console_cmdline'                                              
+  |    |                                                                                
+  |    |--> find name- and index-matched console_cmd                                    
+  |    |                                                                                
+  |    +--> if found                                                                    
+  |         |                                                                           
+  |         |--> preferred_console = i                                                  
+  |         |                                                                           
+  |         +--> return                                                                 
+  |                                                                                     
+  |--> preferred_console = i                                                            
+  |                                                                                     
+  +--> set up first empty entry in 'console_cmdline' (name/options/user_specified/index)
+```
+
 Here we list a few functions that are related to our topic and we'll introduce them one by one.
 ```
 init calls
@@ -492,19 +551,6 @@ init calls
        └─ tty_init()
   └─ of_platform_serial_driver_init()
 ```
-
-- of_platform_default_populate_init
-
-  In this function, it adds lots of devices specified in DTS, which contains UART1 (serial0) and UART5 (serial4).
-  Later they are initialized and correspond to ttyS0 and ttyS4 separately.
-  
-  ```
-  of_platform_default_populate_init()
-    └─ add device ooo
-    └─ add device 1e783000.serial <-- serial0 in DTS
-    └─ add device 1e784000.serial <-- serial4 in DTS
-    └─ add device xxx
-  ```
 
 - tty_init
 
@@ -572,58 +618,6 @@ So, before registering any console, printk() can still work since it just commit
 Once there's an available console, all pending records are handled sequentially.
 
 ## <a name="kernel-boot-arguments"></a> Kernel Boot Arguments
-
-### earlycon
-
-In my runtime environment the kernel boot argument is specified in DTS, and let's introduce 'earlycon' and 'console=ttyS4,115200' in order.
-Function _param_setup_earlycon_ handles both 'earlycon' and 'console=', but we only focus on 'earlycon' here since the other one fails to find the matched entry.
-
-```
-param_setup_earlycon()
-  └─ if it's the case of 'earlycon'
-       └─ early_init_dt_scan_chosen_stdout()
-            └─ find target node in DTB
-            └─ traverse __earlycon_table and register early console if the matched one is found
-  └─ else (case of 'console=')
-       └─ (ignore)
-```
-So, based on the 'stdout-path' property, _early_init_dt_scan_chosen_stdout_ locates target node and knows it's 'compatible' property.
-```
- chosen {
-     stdout-path = "/ahb/apb/serial@1e784000"; <----------
-     bootargs = "console=ttyS4,115200 earlycon";
- };
-```
-```
-serial@1e784000 {
-    compatible = "ns16550a"; <----------
-    reg = <0x1e784000 0x20>;
-    reg-shift = <0x02>;
-    interrupts = <0x0a>;
-    clocks = <0x02 0x0f>;
-    no-loopback-test;
-    status = "okay";
-};
-```
-```
-drivers/tty/serial/8250/8250_early.c:
-
-EARLYCON_DECLARE(uart8250, early_serial8250_setup);
-EARLYCON_DECLARE(uart, early_serial8250_setup);
-OF_EARLYCON_DECLARE(ns16550, "ns16550", early_serial8250_setup);
-OF_EARLYCON_DECLARE(ns16550a, "ns16550a", early_serial8250_setup); <----------
-OF_EARLYCON_DECLARE(uart, "nvidia,tegra20-uart", early_serial8250_setup);
-OF_EARLYCON_DECLARE(uart, "snps,dw-apb-uart", early_serial8250_setup);
-```
-Since the printk ring buffer is limited, the earlier we have console registered to display pending records, the lesser chance we suffer from message overwriting.
-
-### console=ttyS4,115200
-Parse the value, save to _console_cmdline_, and set preferred console which later affects the flow in _register_console_.
-```
-console_setup()
-  └─ parse the setting into, e.g. 'ttyS', '4', '115200'
-  └─ add_preferred_console(), save above info to console_cmdline, set preferred console
-```
 
 ## <a name="conclusion"></a> Conclusion
 
