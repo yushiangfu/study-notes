@@ -458,6 +458,28 @@ It doesn't matter whether a device or driver registers first because the framewo
 <details><summary> More Details </summary>
     
 ```
+drivers/char/mem.c                                                                      
++--------------+                                                                         
+| chr_dev_init | : init char devices for mem, tty, and console                           
++-|------------+                                                                         
+  |    +-----------------+                                                               
+  |--> | register_chrdev | reserve dev# range, prepare cdev of the range and add to table
+  |    +-----------------+                                                               
+  |    +--------------+                                                                  
+  |--> | class_create | create 'mem' class                                               
+  |    +--------------+                                                                  
+  |                                                                                      
+  |--> for each minor of mem dev (e.g., null, zero, random, ...)                         
+  |    |                                                                                 
+  |    |    +---------------+                                                            
+  |    +--> | device_create | given params, create device                                
+  |         +---------------+                                                            
+  |    +----------+                                                                      
+  +--> | tty_init | init char devices for tty and console                                
+       +----------+                                                                      
+```
+    
+```
                                         +-------+        +-------+
                                    ┌──► | dev A | ◄────► | dev B |
                  subsys_private    │    +-------+        +-------+
@@ -542,7 +564,7 @@ static struct char_device_struct {
 
 ```
 +-------------------+                                                                              
-| __register_chrdev | :
+| __register_chrdev | : reserve dev# range, prepare cdev of the range and add to table
 +----|--------------+                                                                              
      |    +--------------------------+                                                             
      |--> | __register_chrdev_region | check if specified dev# range is available, reserve it if so
