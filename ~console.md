@@ -117,6 +117,373 @@ init_netconsole
 univ8250_console_initcon
 ```
 
+```
+drivers/tty/serial/earlycon.c                                       
++----------------------+                                             
+| param_setup_earlycon | : set up early console                      
++-|--------------------+                                             
+  |                                                                  
+  |--> if no buf (it is 'earlycon' alone)                            
+  |    |                                                             
+  |    |    +----------------------------------+                     
+  |    |--> | early_init_dt_scan_chosen_stdout | set up early console
+  |    |    +----------------------------------+                     
+  |    |                                                             
+  |    +--> return                                                   
+  |                                                                  
+  |    +----------------+                                            
+  +--> | setup_earlycon | （skip, it is for case of 'earlycon=???')   
+       +----------------+                                            
+```
+
+```
+drivers/of/fdt.c                                                                                                     
++----------------------------------+                                                                                  
+| early_init_dt_scan_chosen_stdout | ： set up early console                                                           
++-|--------------------------------+                                                                                  
+  |                                                                                                                   
+  |--> get node '/chosen'                                                                                             
+  |                                                                                                                   
+  |--> get property 'stdout-path'                                                                                     
+  |                                                                                                                   
+  |--> based on property value, get node, e.g., 'serial@1e784000'                                                     
+  |                                                                                                                   
+  +--> for each entry in '__earlycon_table' (drivers/tty/serial/8250/8250_early.c)                                    
+       |                                                                                                              
+       |--> if entry has no 'compatible' field, continue                                                              
+       |                                                                                                              
+       |    +---------------------------+                                                                             
+       |--> | fdt_node_check_compatible | check if entry can handle the earlycon                                      
+       |    +---------------------------+                                                                             
+       |                                                                                                              
+       |--> if not, continue                                                                                          
+       |                                                                                                              
+       |    +-------------------+                                                                                     
+       +--> | of_setup_earlycon | iomap, handle dt properties, set up uart/ops, register console, print out queued log
+            +-------------------+                                                                                     
+```
+
+```
+drivers/tty/serial/earlycon.c                                                                              
++-------------------+                                                                                       
+| of_setup_earlycon | : iomap, handle dt properties, set up uart/ops, register console, print out queued log
++-|-----------------+                                                                                       
+  |    +------------------------------+                                                                     
+  |--> | of_flat_dt_translate_address | translate reg addr from given node, e.g., 'serial@1e784000'         
+  |    +------------------------------+                                                                     
+  |                                                                                                         
+  |--> handle other dt properties                                                                           
+  |                                                                                                         
+  |--> if options (baud rate) is provided, save it in early_console_dev                                     
+  |                                                                                                         
+  |    +---------------+                                                                                    
+  |--> | earlycon_init | parse string to determine idx                                                      
+  |    +---------------+                                                                                    
+  |                                                                                                         
+  |--> call ->setup(), e.g.,                                                                                
+  |    +------------------------+                                                                           
+  |    | early_serial8250_setup | set up uart and install ops                                               
+  |    +------------------------+                                                                           
+  |                                                                                                         
+  |    +---------------------+                                                                              
+  |--> | earlycon_print_info | print, e.g., "earlycon: ns16550a0 at MMIO 0x1e784000 (options '')"           
+  |    +---------------------+                                                                              
+  |    +------------------+                                                                                 
+  +--> | register_console | add console to 'console_drivers', print out queued log                          
+       +------------------+                                                                                 
+```
+
+```
+drivers/tty/serial/8250/8250_early.c                                         
++------------------------+                                                    
+| early_serial8250_setup | : set up uart and install ops                      
++-|----------------------+                                                    
+  |                                                                           
+  |--> if dev hasn't specified baud rate                                      
+  |    -                                                                      
+  |    +--> read/write hw reg to setup uart                                   
+  |                                                                           
+  |--> else (not our case)                                                    
+  |    |                                                                      
+  |    |    +-----------+                                                     
+  |    +--> | init_port | read/write hw reg to config baud rate and setup uart
+  |         +-----------+                                                     
+  |                                                                           
+  +--> install ops                                                            
+       +------------------------+                                             
+       | early_serial8250_write | write each char in string to hw reg         
+       +-----------------------++                                             
+       | early_serial8250_read | (null bc of disabled config)                 
+       +-----------------------+                                              
+```
+
+```
+drivers/tty/serial/8250/8250_early.c                                              
++------------------------+                                                         
+| early_serial8250_write | : write each char in string to hw reg                   
++-|----------------------+                                                         
+  |    +--------------------+                                                      
+  +--> | uart_console_write | : write each char in string to hw reg                
+       +-|------------------+                                                      
+         |                                                                         
+         +--> for each char in string                                              
+              -                                                                    
+              +--> call arg putchar(), e.g.,                                       
+                   +-------------+                                                 
+                   | serial_putc | write 'c' to tx reg, wait till status shows done
+                   +-------------+                                                 
+```
+
+```
+kernel/printk/printk.c                                                                                          
++------------------+                                                                                             
+| register_console | : add console to 'console_drivers', print out queued log                                    
++-|----------------+                                                                                             
+  |                                                                                                              
+  |--> ensure we have a preferred console                                                                        
+  |                                                                                                              
+  |    +------------------------+                                                                                
+  |--> | try_enable_new_console | try to match new_con with 'console_cmdline', enable it if matched              
+  |    +------------------------+                                                                                
+  |                                                                                                              
+  |--> if fail, try again with loosen condition                                                                  
+  |                                                                                                              
+  |    +--------------+                                                                                          
+  |--> | console_lock |                                                                                          
+  |    +--------------+                                                                                          
+  |                                                                                                              
+  |--> add new_con to the head of 'console_drivers'                                                              
+  |                                                                                                              
+  |    +----------------+                                                                                        
+  |--> | console_unlock | for each valid record: prepend timestamp and ask console drivers to print out          
+  |    +----------------+                                                                                        
+  |    +----------------------+                                                                                  
+  |--> | console_sysfs_notify | (skip)                                                                           
+  |    +----------------------+                                                                                  
+  |                                                                                                              
+  |--> print, e.g., 'printk: bootconsole [ns16550a0] enabled'                                                    
+  |                                                                                                              
+  +--> if we have boot console already, and new one is real console                                              
+       -                                                                                                         
+       +--> for each console in 'console_drivers'                                                                
+            -                                                                                                    
+            +--> if it's boot console                                                                            
+                 |                                                                                               
+                 |    +--------------------+                                                                     
+                 +--> | unregister_console | remove console from list, clear 'enabled' flag, print out queued log
+                      +--------------------+                                                                     
+```
+
+```
+kernel/printk/printk.c                                                                       
++------------------------+                                                                    
+| try_enable_new_console | : try to match new_con with 'console_cmdline', enable it if matched
++-|----------------------+                                                                    
+  |                                                                                           
+  +--> for each console in 'console_cmdline' (e.g., added by console_setup)                   
+       |                                                                                      
+       |--> if attributes 'user_specified' mismatch, continue                                 
+       |                                                                                      
+       |--> if new_con doesn't have ->match() or fail to match                                
+       |    |                                                                                 
+       |    |--> try other attributes: name, index, and ->setup()                             
+       |    |                                                                                 
+       |    +--> if it still fails, continue or return error                                  
+       |                                                                                      
+       |--> label 'enabled' on new_con                                                        
+       |                                                                                      
+       |--> if it's the preferred console                                                     
+       |    |                                                                                 
+       |    |--> label 'cons_dev' on new_con                                                  
+       |    |                                                                                 
+       |    +--> has_preferred_console = true                                                 
+       |                                                                                      
+       +--> return                                                                            
+```
+
+```
+kernel/printk/printk.c                                                                           
++----------------+                                                                                
+| console_unlock | : for each valid record: prepend timestamp and ask console drivers to print out
++-|--------------+                                                                                
+  |    +-----------------+                                                                        
+  |--> | prb_rec_init_rd | init record with info and text                                         
+  |    +-----------------+                                                                        
+  |again:                                                                                         
+  |--> endless loop                                                                               
+  |    |                                                                                          
+  |    |    +----------------+                                                                    
+  |    |--> | prb_read_valid | read a record, update arg seq#                                     
+  |    |    +----------------+                                                                    
+  |    |                                                                                          
+  |    |--> if fail to read, break                                                                
+  |    |                                                                                          
+  |    |--> ensure console_seq == r.info->seq                                                     
+  |    |                                                                                          
+  |    |    +-------------------+                                                                 
+  |    |--> | record_print_text | prepend prefix and append '\0' to text body                     
+  |    |    +-------------------+                                                                 
+  |    |                                                                                          
+  |    |--> console_seq++                                                                         
+  |    |                                                                                          
+  |    |    +----------------------+                                                              
+  |    +--> | call_console_drivers | for each driver in 'console_drivers': call ->write()         
+  |         +----------------------+                                                              
+  |                                                                                               
+  |--> next_seq = console_seq                                                                     
+  |                                                                                               
+  |    +----------------+                                                                         
+  |--> | prb_read_valid | next_seq                                                                
+  |    +----------------+                                                                         
+  |                                                                                               
+  +--> if next_seq is valid (somewhere fills it while we're performing the above actions)         
+       -                                                                                          
+       +--> go to 'again'                                                                         
+```
+
+```
+kernel/printk/printk_ringbuffer.c                               
++----------------+                                               
+| prb_read_valid | : read a record, update arg seq#              
++-|--------------+                                               
+  |    +-----------------+                                       
+  +--> | _prb_read_valid | : read a record, update arg seq#      
+       +-|---------------+                                       
+         |          +----------+                                 
+         |--> while | prb_read |                                 
+         |    |     +----------+                                 
+         |    |     copy text data from ring buffer to arg record
+         |    |                                                  
+         |    |    +---------------+                             
+         |    |--> | prb_first_seq | get seq# of tail descriptor 
+         |    |    +---------------+                             
+         |    |                                                  
+         |    |--> if seq# < tail                                
+         |    |    -                                             
+         |    |    +--> seq# = tail (catch up and try again)     
+         |    |                                                  
+         |    +--> else                                          
+         |         -                                             
+         |         +--> return false (no existent record)        
+         |                                                       
+         +--> return true                                        
+```
+
+```
+kernel/printk/printk_ringbuffer.c                                         
++----------+                                                               
+| prb_read | : copy text data from ring buffer to arg record               
++-|--------+                                                               
+  |                                                                        
+  |--> extract descriptor id                                               
+  |                                                                        
+  |    +-------------------------+                                         
+  |--> | desc_read_finalized_seq | copy desc to desc_out                   
+  |    +-------------------------+                                         
+  |                                                                        
+  |--> if r->info is provided, copy info to it                             
+  |                                                                        
+  |    +-----------+                                                       
+  |--> | copy_data |                                                       
+  |    +-----------+                                                       
+  |    +-------------------------+                                         
+  +--> | desc_read_finalized_seq | to ensure it's still a finalized record?
+       +-------------------------+                                         
+```
+
+```
+kernel/printk/printk_ringbuffer.c                 
++-------------------------+                        
+| desc_read_finalized_seq | : copy desc to desc_out
++-|-----------------------+                        
+  |    +-----------+                               
+  +--> | desc_read | : copy desc to desc_out       
+       +-|---------+                               
+         |                                         
+         |--> copy desc to desc_out                
+         |                                         
+         +--> save state in desc_out               
+```
+
+```
+kernel/printk/printk.c
++-------------------+                                                        
+| record_print_text | : prepend prefix and append '\0' to text body          
++-|-----------------+                                                        
+  |    +-------------------+                                                 
+  |--> | info_print_prefix | add prefix (syslog/timestamp/caller) is required
+  |    +-------------------+                                                 
+  |                                                                          
+  |--> endless loop (to handle multiple lines)                               
+  |    |                                                                     
+  |    |--> determine line_len                                               
+  |    |                                                                     
+  |    |--> assemble prefix and text                                         
+  |    |                                                                     
+  |    +--> append '\n' and break                                            
+  |                                                                          
+  +--> append '\0'                                                           
+```
+
+```
+kernel/printk/printk.c                                                 
++-------------------+                                                   
+| info_print_prefix | : add prefix (syslog/timestamp/caller) is required
++-|-----------------+                                                   
+  |                                                                     
+  |--> if arg syslog is specified                                       
+  |    |                                                                
+  |    |    +--------------+                                            
+  |    +--> | print_syslog | add "<%u>" to buffer                       
+  |         +--------------+                                            
+  |                                                                     
+  |--> if arg time is specified                                         
+  |    |                                                                
+  |    |    +------------+                                              
+  |    +--> | print_time | add timestamp to buffer                      
+  |         +------------+                                              
+  |    +--------------+                                                 
+  +--> | print_caller | print caller?                                   
+       +--------------+                                                 
+```
+
+```
+kernel/printk/printk.c                                                        
++----------------------+                                                       
+| call_console_drivers | : for each driver in 'console_drivers': call ->write()
++-|--------------------+                                                       
+  |                                                                            
+  +--> for each driver in 'console_drivers'                                    
+       -                                                                       
+       +--> call driver->write(), e.g.,                                        
+            +------------------------+                                         
+            | early_serial8250_write | write each char in string to hw reg     
+            +------------------------+                                         
+```
+
+```
+kernel/printk/printk.c                                                                                
++--------------------+                                                                                 
+| unregister_console | : remove console from list, clear 'enabled' flag, print out queued log          
++-|------------------+                                                                                 
+  |                                                                                                    
+  +--> print, e.g., "printk: bootconsole [ns16550a0] disabled"                                         
+  |                                                                                                    
+  |    +--------------+                                                                                
+  |--> | console_lock |                                                                                
+  |    +--------------+                                                                                
+  |                                                                                                    
+  |--> remove arg console from 'console_drivers'                                                       
+  |                                                                                                    
+  |--> remove flag 'enabled' from arg console                                                          
+  |                                                                                                    
+  |    +----------------+                                                                              
+  |--> | console_unlock | for each valid record: prepend timestamp and ask console drivers to print out
+  |    +----------------+                                                                              
+  |                                                                                                    
+  +--> if ->exit() exists, call it                                                                     
+```
+
 Here we list a few functions that are related to our topic and we'll introduce them one by one.
 ```
 init calls
