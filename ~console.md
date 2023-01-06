@@ -102,13 +102,13 @@ graph TD
 ## <a name="system-startup"></a> System Startup
 
 ```
-param_setup_earlycon:   set up early console
-console_setup:          parse 'console=xxx,yyy', add as preferred console 
-proc_consoles_init:     create /proc/consoles
-chr_dev_init
-   tty_init:            init char devices for tty and console
+param_setup_earlycon:            set up early console
+console_setup:                   parse 'console=xxx,yyy', add as preferred console 
+proc_consoles_init:              create /proc/consoles
+chr_dev_init:                    (don't care)
+   tty_init:                     init char devices for tty and console
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
-serial8250_init
+serial8250_init:                 init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)
 aspeed_vuart_driver_init
 of_platform_serial_driver_init
 mctp_serial_init
@@ -577,6 +577,309 @@ drivers/tty/tty_io.c
   +--> | device_create_with_groups | given params (console), create device
        +---------------------------+                                      
 ```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                                                     
++-----------------+                                                                                                      
+| serial8250_init | : init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)  
++-|---------------+                                                                                                      
+  |    +---------------------------+                                                                                     
+  |--> |serial8250_isa_init_ports  | init each port in 'serial8250_ports'                                                
+  |    +---------------------------+                                                                                     
+  |                                                                                                                      
+  |--> print, e.g., Serial: "8250/16550 driver, 6 ports, IRQ sharing enabled"                                            
+  |                                                                                                                      
+  |    +----------------------+                                                                                          
+  |--> | uart_register_driver | prepare tty driver (ops, cdeev, ...) for uart driver                                     
+  |    +----------------------+                                                                                          
+  |    +-----------------------+                                                                                         
+  |--> | platform_device_alloc | prepare platform_object (name = "serial8250")                                           
+  |    +-----------------------+                                                                                         
+  |    +---------------------+                                                                                           
+  |--> | platform_device_add | add device to bus 'platform'                                                              
+  |    +---------------------+                                                                                           
+  |    +---------------------------+                                                                                     
+  |--> | serial8250_register_ports | for each port in 'serial8250_ports': config port, prepare device/cdev, register them
+  |    +---------------------------+                                                                                     
+  |    +--------------------------+                                                                                      
+  +--> | platform_driver_register | register platform driver 'serial8250_isa_driver'                                     
+       +--------------------------+                                                                                      
+```
+
+```
+drivers/tty/serial/8250/8250_core.c
++---------------------------+
+| serial8250_isa_init_ports | : init each port in 'serial8250_ports'
++-|-------------------------+
+  |
+  |--> for each port in 'serial8250_ports'
+  |    |
+  |    |    +----------------------+
+  |    |--> | serial8250_init_port | init port and install ops (serial8250_pops)
+  |    |    +----------------------+
+  |    |
+  |    |--> overwrite ops with 'univ8250_port_ops' (which is later duplicated from serial8250_pops)
+  |    |
+  |    |    +-------------+ +--------------------+
+  |    |--> | timer_setup | | serial8250_timeout |
+  |    |    +-------------+ +--------------------+
+  |    |
+  |    |--> install uart ops (univ8250_driver_ops)
+  |    |
+  |    |    +-------------------------+
+  |    +--> | serial8250_set_defaults | install default ops for up and p
+  |         +-------------------------+
+  |
+  +--> univ8250_driver_ops = base_ops, e.g., serial8250_pops
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                 
++-------------------------+                                          
+| serial8250_set_defaults | : install default ops for up and p       
++-|-----------------------+                                          
+  |    +------------------+                                          
+  |--> | set_io_from_upio | install ops for up, install ops/isr for p
+  |    +------------------+                                          
+  |                                                                  
+  +--> if specified, install dma ops                                 
+```
+
+```
+drivers/tty/serial/serial_core.c                                                             
++----------------------+                                                                      
+| uart_register_driver | : prepare tty driver (ops, cdeev, ...) for uart driver               
++-|--------------------+                                                                      
+  |                                                                                           
+  |--> alloc state                                                                            
+  |                                                                                           
+  |    +------------------+                                                                   
+  |--> | tty_alloc_driver | : prepare tty_driver (tty, ports, cdevs)                          
+  |    +------------------+                                                                   
+  |                                                                                           
+  |--> save tty_driver in uart_driver                                                         
+  |                                                                                           
+  |--> set up tty_driver and install ops (uart_ops)                                           
+  |                                                                                           
+  |--> for each uart state                                                                    
+  |    |                                                                                      
+  |    |--> get tty_port from state                                                           
+  |    |                                                                                      
+  |    |    +---------------+                                                                 
+  |    +--> | tty_port_init | init tty_port and install ops (tty_port_default_client_ops)     
+  |         +---------------+                                                                 
+  |    +---------------------+                                                                
+  +--> | tty_register_driver | reserve dev# range, add tty_driver to list, create proc file(s)
+       +---------------------+                                                                
+```
+
+```
+include/linux/tty_driver.h
++------------------+
+| tty_alloc_driver | : prepare tty_driver (tty, ports, cdevs)
++-|----------------+
+  |    drivers/tty/tty_io.c
+  |    +--------------------+
+  +--> | __tty_alloc_driver | : prepare tty_driver (tty, cdevs, ...)
+       +-|------------------+
+         |
+         |--> alloc and set up driver
+         |
+         |--> if flag hasn't specified dev_pts_mem (our case)
+         |    |
+         |    |--> alloc tty and save in driver
+         |    |
+         |    +--> alloc termios and save in driver
+         |
+         |--> if flag hasn't specified dynamic_alloc (our case)
+         |    -
+         |    +--> alloc ports and save in driver
+         |
+         +--> alloc cdevs and save in driver
+```
+
+```
+drivers/tty/tty_io.c                                                                      
++---------------------+                                                                    
+| tty_register_driver | : reserve dev# range, add tty_driver to list, create proc file(s)  
++-|-------------------+                                                                    
+  |                                                                                        
+  |--> alloc or register char dev# range                                                   
+  |                                                                                        
+  |--> if driver has specified 'dynamic_alloc' (not our case)                              
+  |    |                                                                                   
+  |    |    +--------------+                                                               
+  |    +--> | tty_cdev_add | prepare cdev and install ops (tty_fops), add to slot, add cdev
+  |         +--------------+                                                               
+  |                                                                                        
+  |--> add tty_driver to 'tty_drivers'                                                     
+  |                                                                                        
+  |--> if driver hasn't specified 'dynamic_dev' (not our case)                             
+  |    -                                                                                   
+  |    +--> for each dev governed by driver                                                
+  |         |                                                                              
+  |         |    +---------------------+                                                   
+  |         +--> | tty_register_device |                                                   
+  |              +---------------------+                                                   
+  |    +--------------------------+                                                        
+  |--> | proc_tty_register_driver | create proc file(s)                                    
+  |    +--------------------------+                                                        
+  |                                                                                        
+  +--> label 'installed' on driver                                                         
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                                                
++---------------------------+                                                                                       
+| serial8250_register_ports | : for each port in 'serial8250_ports': config port, prepare device/cdev, register them
++-|-------------------------+                                                                                       
+  |                                                                                                                 
+  +--> for each port in 'serial8250_ports'                                                                          
+       |                                                                                                            
+       |--> save dev in it                                                                                          
+       |                                                                                                            
+       |    +-------------------+                                                                                   
+       +--> | uart_add_one_port | config port, save port in driver, alloc device/cdev for tty and register them     
+            +-------------------+                                                                                   
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                                            
++-------------------+                                                                                           
+| uart_add_one_port | : config port, save port in driver, alloc device/cdev for tty and register them           
++-|-----------------+                                                                                           
+  |                                                                                                             
+  |--> given line as index, get target state and port                                                           
+  |                                                                                                             
+  |--> link uport and state                                                                                     
+  |                                                                                                             
+  |--> set up uport                                                                                             
+  |                                                                                                             
+  |    +----------------------+                                                                                 
+  |--> | tty_port_link_device | save port in driver                                                             
+  |    +----------------------+                                                                                 
+  |    +---------------------+                                                                                  
+  |--> | uart_configure_port | low-level config port, set mctrl, ensure the port console is registered          
+  |    +---------------------+                                                                                  
+  |    +--------------------------------------+                                                                 
+  +--> | tty_port_register_device_attr_serdev | save port in driver, alloc device/cdev for tty and register them
+       +--------------------------------------+                                                                 
+```
+
+```
+drivers/tty/serial/serial_core.c                                                                                                    
++---------------------+                                                                                                              
+| uart_configure_port | : low-level config port, set mctrl, ensure the port console is registered                                    
++-|-------------------+                                                                                                              
+  |                                                                                                                                  
+  |--> if port has specified boot_auto_config                                                                                        
+  |     -                                                                                                                            
+  |     +--> call ->config_port(), e.g.,                                                                                             
+  |          +------------------------+                                                                                              
+  |          | serial8250_config_port | request mem region as resource, config port type and reset uart                              
+  |          +------------------------+                                                                                              
+  |                                                                                                                                  
+  +--> if port type isn't unknown                                                                                                    
+       |                                                                                                                             
+       |    +------------------+                                                                                                     
+       |--> | uart_report_port | print, e.g., "1e783000.serial: ttyS0 at MMIO 0x1e783000 (irq = 32, base_baud = 1500000) is a 16550A"
+       |    +------------------+                                                                                                     
+       |                                                                                                                             
+       |--> call ->set_mctrl(), e.g.,                                                                                                
+       |    +-----------------------+                                                                                                
+       |    | serial8250_set_mctrl  | set mctrl                                                                                      
+       |    +-----------------------+                                                                                                
+       |                                                                                                                             
+       +--> if the port has an unregistered console                                                                                  
+            |                                                                                                                        
+            |    +------------------+                                                                                                
+            +--> | register_console | add console to 'console_drivers', print out queued log                                         
+                 +------------------+                                                                                                
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                                        
++------------------------+                                                                  
+| serial8250_config_port | : request mem region as resource, config port type and reset uart
++-|----------------------+                                                                  
+  |    +---------------------------------+                                                  
+  |--> | serial8250_request_std_resource | request mem region as resource                   
+  |    +---------------------------------+                                                  
+  |                                                                                         
+  |--> if io type changes                                                                   
+  |    |                                                                                    
+  |    |    +------------------+                                                            
+  |    +--> | set_io_from_upio | install ops for up, install ops/isr for p                  
+  |         +------------------+                                                            
+  |                                                                                         
+  +--> if there is 'config_type' flag                                                       
+       |                                                                                    
+       |    +------------+                                                                  
+       +--> | autoconfig | find out port type and config if needed, reset uart              
+            +------------+                                                                  
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                
++------------+                                                      
+| autoconfig | : find out port type and config if needed, reset uart
++-|----------+                                                      
+  |                                                                 
+  |--> if port has no 'buggy_uart' flag                             
+  |    -                                                            
+  |    +--> do existence test                                       
+  |                                                                 
+  |--> if port has no 'skip_test' flag                              
+  |    -                                                            
+  |    +--> see if uart is really there?                            
+  |                                                                 
+  |--> find out port type and config it if needed                   
+  |                                                                 
+  +--> reset uart                                                   
+```
+
+```
+drivers/tty/tty_port.c                                                                                    
++--------------------------------------+                                                                   
+| tty_port_register_device_attr_serdev | : save port in driver, alloc device/cdev for tty and register them
++-|------------------------------------+                                                                   
+  |    +----------------------+                                                                            
+  |--> | tty_port_link_device | save port in driver                                                        
+  |    +----------------------+                                                                            
+  |    +--------------------------+                                                                        
+  |--> | serdev_tty_port_register | (do nothing bc of disabled config)                                     
+  |    +--------------------------+                                                                        
+  |    +--------------------------+                                                                        
+  +--> | tty_register_device_attr | alloc device for tty and register it, prepare its cdev as well         
+       +--------------------------+                                                                        
+```
+
+```
+drivers/tty/tty_io.c                                                                                    
++--------------------------+                                                                             
+| tty_register_device_attr | : alloc device for tty and register it, prepare its cdev as well            
++-|------------------------+                                                                             
+  |                                                                                                      
+  |--> determine name based on type (pty or tty)                                                         
+  |                                                                                                      
+  |--> alloc device and set up (tty class)                                                               
+  |                                                                                                      
+  |    +-----------------+                                                                               
+  |--> | device_register |                                                                               
+  |    +-----------------+                                                                               
+  |                                                                                                      
+  +--> if driver has no 'dynamic_alloc' flag (our case)                                                  
+       |                                                                                                 
+       |    +--------------+                                                                             
+       +--> | tty_cdev_add | prepare cdev and install ops (tty_fops), save in driver and add to framework
+            +--------------+                                                                             
+```
+
+
+
+
+
+
 
 Here we list a few functions that are related to our topic and we'll introduce them one by one.
 ```
