@@ -109,7 +109,9 @@ chr_dev_init:                    (don't care)
    tty_init:                     init char devices for tty and console
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
 serial8250_init:                 init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)
-aspeed_vuart_driver_init
+   serial8250_probe:             for each valid port in dev data: register a 8250 port
+aspeed_vuart_driver_init:        register platform driver 'aspeed_vuart_driver'
+   aspeed_vuart_probe:           
 of_platform_serial_driver_init
 mctp_serial_init
 usb_serial_init
@@ -875,6 +877,91 @@ drivers/tty/tty_io.c
             +--------------+                                                                             
 ```
 
+```
+drivers/tty/serial/8250/8250_core.c                                                           
++------------------+                                                                           
+| serial8250_probe | : for each valid port in dev data: register a 8250 port                   
++-|----------------+                                                                           
+  |                                                                                            
+  |--> get port(s) from device data                                                            
+  |                                                                                            
+  +--> for each valid port                                                                     
+       |                                                                                       
+       |--> given the port, set up a tmp uart port                                             
+       |                                                                                       
+       |    +-------------------------------+                                                  
+       +--> | serial8250_register_8250_port | find matched uport from 'serial8250_ports',      
+            +-------------------------------+ set it up based on arg uport, add it to framework
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                                                             
++-------------------------------+                                                                                                
+| serial8250_register_8250_port | : find matched uport from 'serial8250_ports', set it up based on arg uport, add it to framework
++-|-----------------------------+                                                                                                
+  |    +---------------------------------+                                                                                       
+  |--> | serial8250_find_match_or_unused | try to find a matched or available uart port from 'serial8250_ports'                  
+  |    +---------------------------------+                                                                                       
+  |                                                                                                                              
+  +--> if uart port is found                                                                                                     
+       |                                                                                                                         
+       |--> if the uart port has dev                                                                                             
+       |    |                                                                                                                    
+       |    |    +----------------------+                                                                                        
+       |    +--> | uart_remove_one_port | label 'dead' on port, unregister device/cdev and console                               
+       |         +----------------------+                                                                                        
+       |                                                                                                                         
+       |--> set up the uart_port by arg uart_port                                                                                
+       |                                                                                                                         
+       |    +-------------------------+                                                                                          
+       |--> | serial8250_set_defaults | install default ops for up and p                                                         
+       |    +-------------------------+                                                                                          
+       |                                                                                                                         
+       |--> install ops to the uart_port based on arg uart_port                                                                  
+       |                                                                                                                         
+       |    +-------------------+                                                                                                
+       +--> | uart_add_one_port | config port, save port in driver, alloc device/cdev for tty and register them                  
+            +-------------------+                                                                                                
+```
+
+```
+drivers/tty/serial/serial_core.c                                                                      
++----------------------+                                                                               
+| uart_remove_one_port | : label 'dead' on port, unregister device/cdev and console                    
++-|--------------------+                                                                               
+  |                                                                                                    
+  |--> set 'dead' flag to prevent other opens                                                          
+  |                                                                                                    
+  |    +----------------------------+                                                                  
+  |--> | tty_port_unregister_device | destroy device/cdev, remove cdev from driver                     
+  |    +----------------------------+                                                                  
+  |    +------------------+                                                                            
+  |--> | tty_port_tty_get | get tty from port                                                          
+  |    +------------------+                                                                            
+  |                                                                                                    
+  |--> if the port is used as console                                                                  
+  |    |                                                                                               
+  |    |    +--------------------+                                                                     
+  |    +--> | unregister_console | remove console from list, clear 'enabled' flag, print out queued log
+  |         +--------------------+                                                                     
+  |                                                                                                    
+  |--> if ->release_port() exists, call it                                                             
+  |                                                                                                    
+  +--> set port_type = unknown to indicate it's not there                                              
+```
+
+```
+drivers/tty/tty_port.c                                                      
++----------------------------+                                               
+| tty_port_unregister_device | : destroy device/cdev, remove cdev from driver
++-|--------------------------+                                               
+  |    +----------------------------+                                        
+  |--> | serdev_tty_port_unregister | (do nothing bc of disabled config)     
+  |    +----------------------------+                                        
+  |    +-----------------------+                                             
+  +--> | tty_unregister_device | destroy device/cdev, remove cdev from driver
+       +-----------------------+                                             
+```
 
 
 
