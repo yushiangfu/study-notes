@@ -112,10 +112,11 @@ serial8250_init:                 init and register 'seerial8250_ports', prepare 
    serial8250_probe:             for each valid port in dev data: register a 8250 port
 aspeed_vuart_driver_init:        register platform driver 'aspeed_vuart_driver'
    aspeed_vuart_probe:           prepare port (ops), install handle_irq, register 8250 ports, set enabled  
-of_platform_serial_driver_init
-mctp_serial_init
-usb_serial_init
-usb_serial_module_init
+of_platform_serial_driver_init:  register platform driver 'of_platform_serial_driver'
+   of_platform_serial_probe:     get iomem/irq, prepare info, register 8250 ports
+mctp_serial_init:                (mctp over serial, skip)
+usb_serial_init:                 prepare tty driver, register bus 'usb-serial'
+usb_serial_module_init:          register usb intf driver, register arg drivers to bus 'usb-serial'
 init_netconsole
 univ8250_console_initcon
 ```
@@ -1251,8 +1252,119 @@ drivers/tty/serial/8250/8250_port.c
             +------------+                                   
 ```
 
+```
+drivers/tty/serial/8250/8250_of.c                                                        
++--------------------------+                                                              
+| of_platform_serial_probe | : get iomem/irq, prepare info, register 8250 ports           
++-|------------------------+                                                              
+  |    +--------------------------+                                                       
+  |--> | of_platform_serial_setup | handle dt properties, get iomem/irq, do reset control 
+  |    +--------------------------+                                                       
+  |                                                                                       
+  |--> handle dt properties                                                               
+  |                                                                                       
+  |--> alloc 'info'                                                                       
+  |                                                                                       
+  |    +-------------------------------+                                                  
+  |--> | serial8250_register_8250_port | find matched uport from 'serial8250_ports',      
+  |    +-------------------------------+ set it up based on arg uport, add it to framework
+  |                                                                                       
+  +--> save port_type and line# in 'info'                                                 
+```
 
+```
+drivers/tty/serial/8250/8250_of.c                                                     
++--------------------------+                                                           
+| of_platform_serial_setup | : handle dt properties, get iomem/irq, do reset control   
++-|------------------------+                                                           
+  |                                                                                    
+  |--> handle dt properties                                                            
+  |                                                                                    
+  |--> get iomem resource from dt and save in port                                     
+  |                                                                                    
+  |    +------------+                                                                  
+  |--> | of_irq_get | get hwirq, prepare virq, create mapping of them and add to domain
+  |    +------------+                                                                  
+  |    +----------------------------------------+                                      
+  |--> | devm_reset_control_get_optional_shared | (reset control, skip)                
+  |    +----------------------------------------+                                      
+  |    +------------------------+                                                      
+  +--> | reset_control_deassert | (reset control, skip)                                
+       +------------------------+                                                      
+```
 
+```
+drivers/usb/serial/usb-serial.c
++-----------------+                                                    
+| usb_serial_init | : prepare tty driver, register bus 'usb-serial'    
++-|---------------+                                                    
+  |    +------------------+                                            
+  |--> | tty_alloc_driver | prepare tty driver                         
+  |    +------------------+                                            
+  |                                                                    
+  |--> assign to 'usb_serial_tty_driver'                               
+  |                                                                    
+  |    +--------------+                                                
+  |--> | bus_register | 'usb_serial_bus_type'                          
+  |    +--------------+                                                
+  |                                                                    
+  |--> further set up 'usb_serial_tty_driver'                          
+  |                                                                    
+  |    +--------------------+                                          
+  |--> | tty_set_operations | 'serial_ops'                             
+  |    +--------------------+                                          
+  |    +-----------------------------+                                 
+  +--> | usb_serial_generic_register | do nothing bc of disabled config
+       +-----------------------------+                                 
+```
+
+```
+serial/pl2303.c                                                                                                    
++------------------------+                                                                                           
+| usb_serial_module_init | : register usb intf driver, register arg drivers to bus 'usb-serial'                      
++-|----------------------+                                                                                           
+  |    +-----------------------------+                                                                               
+  +--> | usb_serial_register_drivers | : register usb intf driver, register arg drivers to bus 'usb-serial'          
+       +-|---------------------------+                                                                               
+         |                                                                                                           
+         |--> alloc usb_driver                                                                                       
+         |                                                                                                           
+         |--> set up driver and install ops                                                                          
+         |                                                                                                           
+         |    +--------------+                                                                                       
+         |--> | usb_register | register usb interface driver                                                         
+         |    +--------------+                                                                                       
+         |                                                                                                           
+         |--> for each driver in arg 'serial_drivers'                                                                
+         |                                                                                                           
+         |------> save the newly allocated usb_driver ptr                                                            
+         |                                                                                                           
+         |        +---------------------+                                                                            
+         |------> | usb_serial_register | add driver to 'usb_serial_driver_list', register driver to bus 'usb-serial'
+         |        +---------------------+                                                                            
+         |                                                                                                           
+         |--> set id_table for match                                                                                 
+         |                                                                                                           
+         |    +---------------+                                                                                      
+         +--> | driver_attach | try match device and probe (but I don't see the 'bus' set anywhere)                  
+              +---------------+                                                                                      
+```
+
+```
+drivers/usb/serial/usb-serial.c
++---------------------+                                                                              
+| usb_serial_register | : add driver to 'usb_serial_driver_list', register driver to bus 'usb-serial'
++-|-------------------+                                                                              
+  |    +----------------------------+                                                                
+  |--> | usb_serial_operations_init | reset some fields                                              
+  |    +----------------------------+                                                                
+  |                                                                                                  
+  |--> add driver to 'usb_serial_driver_list'                                                        
+  |                                                                                                  
+  |    +-------------------------+                                                                   
+  +--> | usb_serial_bus_register | set driver bus type to 'usb-serial', register driver              
+       +-------------------------+                                                                   
+```
 
 
 
