@@ -111,7 +111,7 @@ aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'p
 serial8250_init:                 init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)
    serial8250_probe:             for each valid port in dev data: register a 8250 port
 aspeed_vuart_driver_init:        register platform driver 'aspeed_vuart_driver'
-   aspeed_vuart_probe:           
+   aspeed_vuart_probe:           prepare port (ops), install handle_irq, register 8250 ports, set enabled  
 of_platform_serial_driver_init
 mctp_serial_init
 usb_serial_init
@@ -962,6 +962,297 @@ drivers/tty/tty_port.c
   +--> | tty_unregister_device | destroy device/cdev, remove cdev from driver
        +-----------------------+                                             
 ```
+
+```
+drivers/tty/serial/8250/8250_aspeed_vuart.c                                                     
++--------------------+                                                                           
+| aspeed_vuart_probe | : prepare port (ops), install handle_irq, register 8250 ports, set enabled
++-|------------------+                                                                           
+  |                                                                                              
+  |--> alloc vuart                                                                               
+  |                                                                                              
+  |    +-------------+ +-----------------------------+                                           
+  |--> | timer_setup | | aspeed_vuart_unthrottle_exp | control throttling                        
+  |    +-------------+ +-----------------------------+                                           
+  |                                                                                              
+  |--> set up port and install ops                                                               
+  |                                                                                              
+  |    +--------------------+                                                                    
+  |--> | sysfs_create_group | create files under /sys                                            
+  |    +--------------------+                                                                    
+  |                                                                                              
+  |--> handlel dt properties                                                                     
+  |                           +-------------------------+                                        
+  +--> parse irq# and install | aspeed_vuart_handle_irq |                                        
+  |                           +-------------------------+                                        
+  |                           rx data, and tx data if needed                                     
+  |                                                                                              
+  |    +-------------------------------+                                                         
+  |--> | serial8250_register_8250_port | find matched uport from 'serial8250_ports',             
+  |    +-------------------------------+ set it up based on arg uport, add it to framework       
+  |                                                                                              
+  |    +------------------------------+                                                          
+  |--> | aspeed_vuart_set_lpc_address | set lpc addr in hw reg                                   
+  |    +------------------------------+                                                          
+  |    +-----------------------+                                                                 
+  |--> | aspeed_vuart_set_sirq | set sirq in hw reg                                              
+  |    +-----------------------+                                                                 
+  |    +--------------------------------+                                                        
+  |--> | aspeed_vuart_set_sirq_polarity | set sirq polarity in hw reg                            
+  |    +--------------------------------+                                                        
+  |    +--------------------------+                                                              
+  |--> | aspeed_vuart_set_enabled |                                                              
+  |    +--------------------------+                                                              
+  |    +----------------------------------+                                                      
+  +--> | aspeed_vuart_set_host_tx_discard |                                                      
+       +----------------------------------+                                                      
+```
+
+```
+drivers/tty/serial/8250/8250_aspeed_vuart.c
++-------------------------+
+| aspeed_vuart_handle_irq | : rx data, and tx data if needed
++-|-----------------------+
+  |
+  |--> read reg 'lsr'
+  |
+  |--> if bit 'dr' or 'bi is set
+  |    |
+  |    |    +------------------------+
+  |    |--> | tty_buffer_space_avail | get unused buffer space
+  |    |    +------------------------+
+  |    |
+  |    |--> if no space left
+  |    |    |
+  |    |    |    +-----------------------------+
+  |    |    |--> | __aspeed_vuart_set_throttle |
+  |    |    |    +-----------------------------+
+  |    |    |
+  |    |    +--> schedule the timer for later unthrottle
+  |    |
+  |    +--> else
+  |         |
+  |         |--> while available
+  |         |    |
+  |         |    |    +----------------------+
+  |         |    +--> | serial8250_read_char | serial in a char, add to uart/tty layer
+  |         |         +----------------------+
+  |         |    +----------------------+
+  |         +--> | tty_flip_buffer_push | queue work to receive data to tty read buffer, wake up task if needed
+  |              +----------------------+
+  |
+  +--> if transmit_hold_register is empty
+       |
+       |    +---------------------+
+       +--> | serial8250_tx_chars | send out data from transmit buffer
+            +---------------------+
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                   
++----------------------+                                               
+| serial8250_read_char | : serial in a char, add to uart/tty layer     
++-|--------------------+                                               
+  |         +-----------+                                              
+  |--> ch = | serial_in |                                              
+  |         +-----------+                                              
+  |    +------------------+                                            
+  +--> | uart_insert_char | add ch to uart layer, further to tty buffer
+       +------------------+                                            
+```
+
+```
+drivers/tty/tty_buffer.c                                                                                    
++----------------------+                                                                                     
+| tty_flip_buffer_push | : queue work to receive data to tty read buffer, wake up task if needed             
++-|--------------------+                                                                                     
+  |    +------------------------+                                                                            
+  |--> | tty_flip_buffer_commit | (skip, not our concern)                                                    
+  |    +------------------------+                                                                            
+  |    +------------+ +----------------+                                                                     
+  +--> | queue_work | | flush_to_ldisc | receive data to tty read buffer till no more, wake up task if needed
+       +------------+ +----------------+                                                                     
+```
+
+```
+drivers/tty/tty_buffer.c                                                                             
++----------------+                                                                                    
+| flush_to_ldisc | : receive data to tty read buffer till no more, wake up task if needed             
++-|--------------+                                                                                    
+  |                                                                                                   
+  +--> endless loop                                                                                   
+       |                                                                                              
+       |--> calculate how much to read (count)                                                        
+       |                                                                                              
+       |    +-------------+                                                                           
+       |--> | receive_buf | receive data to tty read buffer, wake up task if needed, clear data source
+       |    +-------------+                                                                           
+       |                                                                                              
+       |--> if receive nothing, break                                                                 
+       |                                                                                              
+       +--> reschedule if needed                                                                      
+```
+
+```
+drivers/tty/tty_buffer.c                                                                              
++-------------+                                                                                        
+| receive_buf | : receive data to tty read buffer, wake up task if needed, clear data source           
++-|-----------+                                                                                        
+  |                                                                                                    
+  |--> get ptr to the data head                                                                        
+  |                                                                                                    
+  |--> call ->receive_buf(), e.g.,                                                                     
+  |    +------------------------------+                                                                
+  |    | tty_port_default_receive_buf | receive data and put to tty read buffer, wake up task if needed
+  |    +------------------------------+                                                                
+  |                                                                                                    
+  +--> memset data source                                                                              
+```
+
+```
+drivers/tty/tty_buffer.c                                                                         
++-----------------------+                                                                         
+| tty_ldisc_receive_buf | : receive data and put to tty read buffer, wake up task if needed       
++-|---------------------+                                                                         
+  |                                                                                               
+  |--> if ld has ->receive_buf2()                                                                 
+  |    -                                                                                          
+  |    +--> call ->receive_buf2(), e.g.,                                                          
+  |         +--------------------+                                                                
+  |         | n_tty_receive_buf2 | receive data and put to tty read buffer, wake up task if needed
+  |         +--------------------+                                                                
+  |                                                                                               
+  +--> elif ->receive_buf() exists                                                                
+       -                                                                                          
+       +--> call ->receive_buf()                                                                  
+```
+
+```
+drivers/tty/n_tty.c                                                                                 
++--------------------+                                                                               
+| n_tty_receive_buf2 | : receive data and put to tty read buffer, wake up task if needed             
++-|------------------+                                                                               
+  |    +--------------------------+                                                                  
+  +--> | n_tty_receive_buf_common | : receive data and put to tty read buffer, wake up task if needed
+       +-|------------------------+                                                                  
+         |                                                                                           
+         |--> while flag 'changing' is not set                                                       
+         |    |                                                                                      
+         |    |--> min(count, room)                                                                  
+         |    |                                                                                      
+         |    +--> break if no count or no room                                                      
+         |    |                                                                                      
+         |    |    +---------------+                                                                 
+         |    |--> | __receive_buf | receive data and put to tty read buffer, wake up task if needed 
+         |    |    +---------------+                                                                 
+         |    |                                                                                      
+         |    +--> update cp/count/rcvd                                                              
+         |                                                                                           
+         |    +----------------------+                                                               
+         +--> | n_tty_check_throttle |                                                               
+              +----------------------+                                                               
+```
+
+```
+drivers/tty/n_tty.c                                                                     
++---------------+                                                                        
+| __receive_buf | : receive data and put to tty read buffer, wake up task if needed      
++-|-------------+                                                                        
+  |--> if blabla                                                                         
+  |    -    +----------------------------+                                               
+  |    +--> | n_tty_receive_buf_real_raw | (skip)                                        
+  |         +----------------------------+                                               
+  |--> elif blabla                                                                       
+  |    -    +-----------------------+                                                    
+  |    +--> | n_tty_receive_buf_raw | (skip)                                             
+  |         +-----------------------+                                                    
+  |--> elif blabla                                                                       
+  |    -    +---------------------------+                                                
+  |    +--> | n_tty_receive_buf_closing | (skip)                                         
+  |         +---------------------------+                                                
+  |--> else                                                                              
+  |    |    +----------------------------+                                               
+  |    |--> | n_tty_receive_buf_standard | add each char in arg buffer to tty read buffer
+  |    |    +----------------------------+                                               
+  |    |    +--------------+                                                             
+  |    |--> | flush_echoes |                                                             
+  |    |    +--------------+                                                             
+  |    +--> if ->flush_chars() exists                                                    
+  |         -                                                                            
+  |         +--> call it, e.g.,                                                          
+  |              +------------------+                                                    
+  |              | uart_flush_chars | start uart                                         
+  |              +------------------+                                                    
+  +--> if ldata has read cnt                                                             
+       |    +-------------+                                                              
+       |--> | kill_fasync | (skip)                                                       
+       |    +-------------+                                                              
+       |    +----------------------------+                                               
+       +--> | wake_up_interruptible_poll | wake up task                                  
+            +----------------------------+                                               
+```
+
+```
+                                                                               
+ drivers/tty/n_tty.c                                                           
++----------------------------+                                                 
+| n_tty_receive_buf_standard | : add each char in arg buffer to tty read buffer
++-|--------------------------+                                                 
+  |                                                                            
+  +--> while count > 0                                                         
+       |                                                                       
+       |--> if data has next                                                   
+       |    |                                                                  
+       |    |    +--------------------------+                                  
+       |    +--> | n_tty_receive_char_lnext | add char to tty read buffer      
+       |    |    +--------------------------+                                  
+       |    |                                                                  
+       |    +--> continue                                                      
+       |                                                                       
+       |--> if c is in ldata's char_map                                        
+       |    |                                                                  
+       |    |    +----------------------------+                                
+       |    +--> | n_tty_receive_char_special | (skip)                         
+       |         +----------------------------+                                
+       |                                                                       
+       +--> else                                                               
+            |                                                                  
+            |    +--------------------+                                        
+            +--> | n_tty_receive_char | add char to tty read buffer            
+                 +--------------------+                                        
+```
+
+```
+drivers/tty/n_tty.c                                       
++--------------------------+                               
+| n_tty_receive_char_lnext | : add char to tty read buffer 
++-|------------------------+                               
+  |    +--------------------+                              
+  +--> | n_tty_receive_char | : add char to tty read buffer
+       +-|------------------+                              
+         |                                                 
+         |--> other handling                               
+         |                                                 
+         |    +---------------+                            
+         +--> | put_tty_queue | add char to tty read buffer
+              +---------------+                            
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                         
++---------------------+                                      
+| serial8250_tx_chars | : send out data from transmit buffer 
++-|-------------------+                                      
+  |                                                          
+  +--> while --count > 0                                     
+       |                                                     
+       |    +------------+                                   
+       +--> | serial_out | send out data from transmit buffer
+            +------------+                                   
+```
+
+
+
 
 
 
