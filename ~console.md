@@ -3,8 +3,8 @@
 ## Index
 
 - [Introduction](#introduction)
-- [GPIO Chip](#gpio-chip)
-- [Pin Control](#pin-control)
+- [TTY to UART](#tty-to-uart)
+- [Console](#console)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -16,18 +16,24 @@
 6. [Kernel Boot Arguments](#kernel-boot-arguments)
 7. [Conclusion](#conclusion)
 
-
 ## <a name="introduction"></a> Introduction
 
-Console is the interface that users interact with systems through. 
-In the old days, computers were expensive and many users shared one and accessed it by terminals, 
-which were composed of small screens and teletypewriters (TTY). 
-Nowadays it has become legacy but we can still see it on common OS. 
-There are also pseudo TTYs shown when people access consoles in GUI desktop, or operate remote machines by SSH. 
-On embedded systems, it's common that developers type commands through serial port interface (UART).
-The following notes are based on OpenBMC@QEMU and Raspberry Pi 4.
+(TBD)
+
+## <a name="tty-to-uart"></a> TTY to UART
+
+(TBD)
+
+### Virtual UART
+
+### Net Cconsole (PTY?)
+
+### Line Discipline
+
+
 
 ## <a name="tty-types"></a> TTY Types
+
 Device Name       | Description
 --                | --
 tty1 ~ n          | Command line interface. On Raspberry Pi, Ctrl + Alt + F1 ~ F6 can switch to corresponding TTY 
@@ -117,8 +123,8 @@ of_platform_serial_driver_init:  register platform driver 'of_platform_serial_dr
 mctp_serial_init:                (mctp over serial, skip)
 usb_serial_init:                 prepare tty driver, register bus 'usb-serial'
 usb_serial_module_init:          register usb intf driver, register arg drivers to bus 'usb-serial'
-init_netconsole
-univ8250_console_initcon
+init_netconsole:                 register netdevice notifer, register net console
+univ8250_console_init:           init serial8250 ports, register console (univ8250)          
 ```
 
 ```
@@ -1366,6 +1372,61 @@ drivers/usb/serial/usb-serial.c
        +-------------------------+                                                                   
 ```
 
+```
+drivers/net/netconsole.c                                                              
++-----------------+                                                                    
+| init_netconsole | : register netdevice notifer, register net console                 
++-|---------------+                                                                    
+  |                                                                                    
+  |--> handle config (it's empty in our case)                                          
+  |                                                                                    
+  |    +-----------------------------+                                                 
+  |--> | register_netdevice_notifier | .notifier_call  = netconsole_netdev_event       
+  |    +-----------------------------+                                                 
+  |    +-------------------------+                                                     
+  |--> | dynamic_netconsole_init | (do nothing bc of disabled config)                  
+  |    +-------------------------+                                                     
+  |                                                                                    
+  |--> if netconsole_ext has specified 'enabled' (not our case)                        
+  |    |                                                                               
+  |    |    +------------------+                                                       
+  |    +--> | register_console | add console to 'console_drivers', print out queued log
+  |         +------------------+ (console = external net console)                      
+  |    +------------------+                                                            
+  |--> | register_console | add console to 'console_drivers', print out queued log     
+  |    +------------------+ (console = net console)                                    
+  |                                                                                    
+  +--> print "netconsole: network logging started"                                     
+```
+
+```
+drivers/net/netconsole.c                               
++-------------------------+                             
+| netconsole_netdev_event |                             
++-|-----------------------+                             
+  |                                                     
+  |--> for each entry on target_list (empty in our case)
+  |    -                                                
+  |    +--> (skip)                                      
+  |                                                     
+  +--> if stopped (false in our case)                   
+       -                                                
+       +--> (skip)                                      
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                              
++-----------------------+                                                         
+| univ8250_console_init | : init serial8250 ports, register console (univ8250)    
++-|---------------------+                                                         
+  |    +---------------------------+                                              
+  |--> | serial8250_isa_init_ports | init each port in 'serial8250_ports'         
+  |    +---------------------------+                                              
+  |    +------------------+                                                       
+  +--> | register_console | add console to 'console_drivers', print out queued log
+       +------------------+ (console = univ8250_console)                          
+```
+
 
 
 
@@ -1375,22 +1436,8 @@ Here we list a few functions that are related to our topic and we'll introduce t
 ```
 init calls
   └─ of_platform_default_populate_ini()
-  └─ chr_dev_init()
-       └─ tty_init()
   └─ of_platform_serial_driver_init()
 ```
-
-- tty_init
-
-  This function registers character devices for /dev/tty, /dev/console, and /dev/tty0~63 one after another.
-  Noet that /dev/tty0 is handled differently from other /dev/tty#.
-  However we won't look into any of them since they are not in the root file system of OpenBMC.
-  
-  ```
-  tty_init()
-    └─ register character device for /dev/tty
-    └─ register character device for /dev/console
-  ```
   
 - of_platform_serial_driver_init
 
@@ -1457,23 +1504,9 @@ which is further written out to each valid console if there's any.
 There are still other interesting topics worth digging into, such as pseudo TTY and serial over LAN. Hope this note helps, thanks!
 
 ```
-+------------------+                               
-| tty_alloc_driver | : prepare tty driver          
-+-|----------------+                               
-  |    +--------------------+                      
-  +--> | __tty_alloc_driver | : prepare tty driver 
-       +-|------------------+                      
-         |                                         
-         |--> alloc and set up tty_driver          
-         |                                         
-         |--> if flag has no 'devpts_mem'          
-         |                                         
-         |------> alloc ttys and termios for driver
-         |                                         
-         |--> if flag has no 'dynamic_alloc'       
-         |                                         
-         |------> alloc ports for driver           
-         |                                         
-         +--> alloc cdevs for driver               
+grep '0x' /sys/class/tty/ttyS*/iomem_base  
 ```
+
+[What are TTY, serial, and UART lines?](https://subscription.packtpub.com/book/hardware-&-creative/9781786461803/7/ch07lvl1sec37/what-are-tty-serial-and-uart-lines)
+
 
