@@ -8,6 +8,7 @@
   - [virtual function](https://www.geeksforgeeks.org/virtual-function-cpp/)
 
 - std
+  - [std::accumulate](https://www.geeksforgeeks.org/accumulate-and-partial_sum-in-c-stl-numeric-header/)
   - [std::back_inserter](https://www.geeksforgeeks.org/stdback_inserter-in-cpp/)
   - [std::bind](https://www.geeksforgeeks.org/bind-function-placeholders-c/)
   - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
