@@ -18,5 +18,6 @@
   - [std::mem_fn](http://zhaoyan.website/xinzhi/cpp/cppsu77.html)
   - [std::pair](https://www.geeksforgeeks.org/pair-in-cpp-stl/)
   - [std::placeholders](https://www.geeksforgeeks.org/bind-function-placeholders-c/)
+  - [std::plus](https://www.geeksforgeeks.org/stdplus-in-c/)
   - [std::string_view](https://www.geeksforgeeks.org/class-stdstring_view-in-cpp-17/)
   - [std::variant](https://www.cppstories.com/2018/06/variant/)
