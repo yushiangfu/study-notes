@@ -11,6 +11,7 @@
   - [std::accumulate](https://www.geeksforgeeks.org/accumulate-and-partial_sum-in-c-stl-numeric-header/)
   - [std::back_inserter](https://www.geeksforgeeks.org/stdback_inserter-in-cpp/)
   - [std::bind](https://www.geeksforgeeks.org/bind-function-placeholders-c/)
+  - [std::holds_alternative](https://pd.codechef.com/docs/cpp/cpp/utility/variant/holds_alternative.html)
   - [std::less](https://www.geeksforgeeks.org/stdless-in-c-with-examples/)
   - [std::make_tuple](https://www.geeksforgeeks.org/tuples-in-c/)
   - [std::make_unique](https://www.geeksforgeeks.org/auto_ptr-unique_ptr-shared_ptr-weak_ptr-2/)
