@@ -23,3 +23,4 @@
   - [std::plus](https://www.geeksforgeeks.org/stdplus-in-c/)
   - [std::string_view](https://www.geeksforgeeks.org/class-stdstring_view-in-cpp-17/)
   - [std::variant](https://www.cppstories.com/2018/06/variant/)
+  - [std::visit](https://pd.codechef.com/docs/cpp/cpp/utility/variant/visit.html)
