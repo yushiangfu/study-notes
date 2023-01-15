@@ -18,7 +18,403 @@
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+```
+static const struct file_operations tty_fops = {
+    .llseek     = no_llseek,
+    .read_iter  = tty_read,
+    .write_iter = tty_write,
+    .splice_read    = generic_file_splice_read,
+    .splice_write   = iter_file_splice_write,
+    .poll       = tty_poll,
+    .unlocked_ioctl = tty_ioctl,
+    .compat_ioctl   = tty_compat_ioctl,
+    .open       = tty_open,
+    .release    = tty_release,
+    .fasync     = tty_fasync,
+    .show_fdinfo    = tty_show_fdinfo,
+};
+```
+
+```
+drivers/tty/tty_io.c                                                                    
++----------+                                                                             
+| tty_open | : ready tty/ldisc/tty_port(xmit buffer, isr, ...), wait                     
++-|--------+                                                                             
+  |    +------------------+                                                              
+  |--> | nonseekable_open | remove flags to make the file non-seekable                   
+  |    +------------------+                                                              
+  |    +----------------+                                                                
+  |--> | tty_alloc_file | alloc private and save in file                                 
+  |    +----------------+                                                                
+  |    +----------------------+                                                          
+  |--> | tty_open_current_tty | get tty from current->signal, ensure it has ldisc        
+  |    +----------------------+                                                          
+  |                                                                                      
+  |--> if no tty, which means its dev# isn't (5, 0)                                      
+  |    |                                                                                 
+  |    |    +--------------------+                                                       
+  |    +--> | tty_open_by_driver | look up driver, ensure tty and ldisc are ready        
+  |         +--------------------+                                                       
+  |    +--------------+                                                                  
+  |--> | tty_add_file | add file_priv to tty                                             
+  |    +--------------+                                                                  
+  |                                                                                      
+  +--> call ->open, e.g.,                                                                
+       +-----------+                                                                     
+       | uart_open | ensure tty_port is initialized (xmit buffer, port set up, isr), wait
+       +-----------+                                                                     
+```
+
+```
+drivers/tty/tty_io.c                                                       
++----------------------+                                                    
+| tty_open_current_tty | : get tty from current->signal, ensure it has ldisc
++-|--------------------+                                                    
+  |                                                                         
+  |--> if dev# isn't (5, 0), return null (let caller handle it)             
+  |                                                                         
+  |    +-----------------+                                                  
+  |--> | get_current_tty | get tty from current->signal                     
+  |    +-----------------+                                                  
+  |    +------------+                                                       
+  +--> | tty_reopen | ensure tty has ldisc                                  
+       +------------+                                                       
+```
+
+```
+drivers/tty/tty_io.c                                                                                
++--------------------+                                                                               
+| tty_open_by_driver | : look up driver, ensure tty and ldisc are ready                              
++-|------------------+                                                                               
+  |    +-------------------+                                                                         
+  |--> | tty_lookup_driver | look up tty driver based on dev#                                        
+  |    +-------------------+                                                                         
+  |    +-----------------------+                                                                     
+  |--> | tty_driver_lookup_tty | get tty from driver->ttys[index]                                    
+  |    +-----------------------+                                                                     
+  |                                                                                                  
+  |--> if tty exists                                                                                 
+  |    |                                                                                             
+  |    |    +------------+                                                                           
+  |    +--> | tty_reopen | ensure tty has ldisc                                                      
+  |         +------------+                                                                           
+  |                                                                                                  
+  +--> else                                                                                          
+       |                                                                                             
+       |    +--------------+                                                                         
+       +--> | tty_init_dev | prepare tty and save in driver, ensure it has port, open line discipline
+            +--------------+                                                                         
+```
+
+```
+drivers/tty/tty_io.c                                                                                          
++-------------------+                                                                                          
+| tty_lookup_driver | : look up tty driver based on dev#                                                       
++-|-----------------+                                                                                          
+  |                                                                                                            
+  |--> switch dev#                                                                                             
+  |--> case (5, 1)                                                                                             
+  |    |                                                                                                       
+  |    |    +----------------+                                                                                 
+  |    +--> | console_device | traverse console_drivers, get the 1st console with driver, return the driver    
+  |         +----------------+                                                                                 
+  |                                                                                                            
+  +--> default                                                                                                 
+       |                                                                                                       
+       |    +----------------+                                                                                 
+       +--> | get_tty_driver | traverse tty_drivers to find the driver that governs arg dev#, return the driver
+            +----------------+                                                                                 
+```
+
+```
+kernel/printk/printk.c                                                                          
++----------------+                                                                               
+| console_device | : traverse console_drivers, get the 1st console with driver, return the driver
++-|--------------+                                                                               
+  |                                                                                              
+  +--> for each console in console_drivers                                                       
+       |                                                                                         
+       |--> if ->device() doesn't exist, continue                                                
+       |                                                                                         
+       |--> call ->device(), e.g.,                                                               
+       |    +---------------------+                                                              
+       |    | uart_console_device | return index & tty_driver                                    
+       |    +---------------------+                                                              
+       |                                                                                         
+       +--> if driver found, break                                                               
+```
+
+```
+drivers/tty/tty_io.c                                                                      
++--------------+                                                                           
+| tty_init_dev | : prepare tty and save in driver, ensure it has port, open line discipline
++-|------------+                                                                           
+  |    +------------------+                                                                
+  |--> | alloc_tty_struct | alloc and set up tty                                           
+  |    +------------------+                                                                
+  |    +------------------------+                                                          
+  |--> | tty_driver_install_tty | install tty to driver                                    
+  |    +------------------------+                                                          
+  |                                                                                        
+  |--> ensure tty has port                                                                 
+  |                                                                                        
+  |    +-----------------+                                                                 
+  +--> | tty_ldisc_setup | open tty's line discipline                                      
+       +-----------------+                                                                 
+```
+
+```
+drivers/tty/tty_io.c                                                
++------------------------+                                           
+| tty_driver_install_tty | : install tty to driver                   
++-|----------------------+                                           
+  |                                                                  
+  |--> if ->install() exists                                         
+  |    -                                                             
+  |    +--> call ->install(), e.g.,                                  
+  |         +--------------+                                         
+  |         | uart_install | save state in tty, install tty to driver
+  |         +--------------+                                         
+  |                                                                  
+  +--> else                                                          
+       |                                                             
+       |    +----------------------+                                 
+       +--> | tty_standard_install | install tty to driver           
+            +----------------------+                                 
+```
+
+```
+drivers/tty/tty_io.c                                              
++-----------------+                                                
+| tty_ldisc_setup | : open tty's line discipline                   
++-|---------------+                                                
+  |    +----------------+                                          
+  |--> | tty_ldisc_open | open a line discipline                   
+  |    +----------------+                                          
+  |                                                                
+  +--> if o_tty is provided                                        
+       |                                                           
+       |    +----------------+                                     
+       +--> | tty_ldisc_open | open o_tty's line discipline as well
+            +----------------+                                     
+```
+
+```
+drivers/tty/tty_ldisc.c                                 
++----------------+                                       
+| tty_ldisc_open | : open a line discipline              
++-|--------------+                                       
+  |                                                      
+  +--> if ->open() exists                                
+       -                                                 
+       +--> call it, e.g.,                               
+            +------------+                               
+            | n_tty_open | alloc and set up ldisc for tty
+            +------------+                               
+```
+
+```
+drivers/tty/serial/serial_core.c                                                            
++-----------+                                                                                
+| uart_open | : ensure tty_port is initialized (xmit buffer, port set up, isr), wait         
++-|---------+                                                                                
+  |    +---------------+                                                                     
+  +--> | tty_port_open | ensure tty_port is initialized (xmit buffer, port set up, isr), wait
+       +---------------+                                                                     
+```
+
+```
+drivers/tty/tty_port.c                                                                                        
++---------------+                                                                                              
+| tty_port_open | : ensure tty_port is initialized (xmit buffer, port set up, isr), wait                       
++-|-------------+                                                                                              
+  |    +------------------+                                                                                    
+  |--> | tty_port_tty_set | save tty in port                                                                   
+  |    +------------------+                                                                                    
+  |                                                                                                            
+  |--> if the port isn't initialized yet                                                                       
+  |    |                                                                                                       
+  |    |--> if ->activate() exisits                                                                            
+  |    |    -                                                                                                  
+  |    |    +--> call it, e.g.,                                                                                
+  |    |         +--------------------+                                                                        
+  |    |         | uart_port_activate | prepare transmit buffer, set up 8250/uart ports, register isr for tx/rx
+  |    |         +--------------------+                                                                        
+  |    |    +--------------------------+                                                                       
+  |    +--> | tty_port_set_initialized | set 'initialized' flag                                                
+  |         +--------------------------+                                                                       
+  |    +--------------------------+                                                                            
+  +--> | tty_port_block_til_ready | waiting logic for tty open                                                 
+       +--------------------------+                                                                            
+```
+
+```
+drivers/tty/serial/serial_core.c                                                               
++--------------------+                                                                          
+| uart_port_activate | : prepare transmit buffer, set up 8250/uart ports, register isr for tx/rx
++-|------------------+                                                                          
+  |    +--------------+                                                                         
+  +--> | uart_startup | prepare transmit buffer, set up 8250/uart ports, register isr for tx/rx 
+       +--------------+                                                                         
+```
+
+```
+drivers/tty/serial/serial_core.c                                                                   
++--------------+                                                                                    
+| uart_startup | : prepare transmit buffer, set up 8250/uart ports, register isr for tx/rx          
++-|------------+                                                                                    
+  |                                                                                                 
+  |--> if tty_port is initialized already, return                                                   
+  |                                                                                                 
+  |    +-------------------+                                                                        
+  +--> | uart_port_startup | prepare transmit buffer, set up 8250/uart ports, register isr for tx/rx
+       +-------------------+                                                                        
+```
+
+```
+drivers/tty/serial/serial_core.c                                                                     
++-------------------+                                                                                 
+| uart_port_startup | : prepare transmit buffer, set up 8250/uart ports, register isr for tx/rx       
++-|-----------------+                                                                                 
+  |                                                                                                   
+  |--> ensure the uart_state has transmit buffer                                                      
+  |                                                                                                   
+  +--> call ->startup(), e.g.,                                                                        
+       +--------------------+                                                                         
+       | serial8250_startup | set up 8250/uart ports, clear fifo and interrupt, register isr for tx/rx
+       +--------------------+                                                                         
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                                                     
++--------------------+                                                                                   
+| serial8250_startup | : set up 8250/uart ports, clear fifo and interrupt, register isr for tx/rx        
++-|------------------+                                                                                   
+  |                                                                                                      
+  |--> if uart_port has ->startup()                                                                      
+  |    -                                                                                                 
+  |    +--> call it, and return                                                                          
+  |                                                                                                      
+  |    +-----------------------+                                                                         
+  +--> | serial8250_do_startup | set up 8250/uart ports, clear fifo and interrupt, register isr for tx/rx
+       +-----------------------+                                                                         
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                                                
++-----------------------+                                                                           
+| serial8250_do_startup | : set up 8250/uart ports, clear fifo and interrupt, register isr for tx/rx
++-|---------------------+                                                                           
+  |                                                                                                 
+  |--> set up 8250_port and uart_port                                                               
+  |                                                                                                 
+  |    +------------------------+                                                                   
+  |--> | serial8250_clear_fifos | clear fifo buffer (hw level)                                      
+  |    +------------------------+                                                                   
+  |                                                                                                 
+  |--> clear interrupt registers                                                                    
+  |                                                                                                 
+  |--> test 'thre' if appropriate                                                                   
+  |                                                                                                 
+  +--> call ->setup_irq(), e.g.,                                                                    
+       +--------------------+                                                                       
+       | univ8250_setup_irq | prepare timer or isr to handle tx/rx                                  
+       +--------------------+                                                                       
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                             
++--------------------+                                                                           
+| univ8250_setup_irq | : prepare timer or isr to handle tx/rx                                    
++-|------------------+                                                                           
+  |                                                                                              
+  |--> if uart_port has no irq                                                                   
+  |    |                                                                                         
+  |    |    +-----------+                                                                        
+  |    +--> | mod_timer |                                                                        
+  |         +-----------+                                                                        
+  |                                                                                              
+  +--> else                                                                                      
+       |                                                                                         
+       |    +-----------------------+                                                            
+       +--> | serial_link_irq_chain | add 8250_port's irq_info to chain, ensure isr is registered
+            +-----------------------+                                                            
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                   
++-----------------------+                                                              
+| serial_link_irq_chain | : add 8250_port's irq_info to chain, ensure isr is registered
++-|---------------------+                                                              
+  |                                                                                    
+  |--> ensure 8250_port has its irq_info in irq_lists                                  
+  |                                                                                    
+  |--> if irq_info has head (someone's there already)                                  
+  |    -                                                                               
+  |    +--> add 8250_port to it                                                        
+  |                                                                                    
+  +--> else                                                                            
+       |                                                                               
+       |--> set 8250_port as its head                                                  
+       |                                                                               
+       |    +-------------+                                                            
+       +--> | request_irq | register isr                                               
+            +-------------+ +----------------------+                                   
+                            | serial8250_interrupt |                                   
+                            +----------------------+                                   
+                            for each irq_info in list: handle irq (perform rx/tx)      
+```
+
+```
+drivers/tty/serial/8250/8250_core.c                                                             
++----------------------+                                                                         
+| serial8250_interrupt | : for each irq_info in list: handle irq (perform rx/tx)                 
++-|--------------------+                                                                         
+  |                                                                                              
+  +--> for each irq_info in list                                                                 
+       |                                                                                         
+       |--> get its uart_port                                                                    
+       |                                                                                         
+       +--> call ->handle_irq(), e.g.,                                                           
+            +-------------------------------+                                                    
+            | serial8250_default_handle_irq | read line status register, handle rx/tx accordingly
+            +-------------------------------+                                                    
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                                   
++-------------------------------+                                                      
+| serial8250_default_handle_irq | : read line status register, handle rx/tx accordingly
++-|-----------------------------+                                                      
+  |    +----------------+                                                              
+  |--> | serial_port_in | read interrupt id register                                   
+  |    +----------------+                                                              
+  |    +-----------------------+                                                       
+  +--> | serial8250_handle_irq | read line status register, handle rx/tx accordingly   
+       +-----------------------+                                                       
+```
+
+```
+drivers/tty/serial/8250/8250_port.c                                                  
++-----------------------+                                                             
+| serial8250_handle_irq | : read line status register, handle rx/tx accordingly       
++-|---------------------+                                                             
+  |    +----------------+                                                             
+  |--> | serial_port_in | read line status register                                   
+  |    +----------------+                                                             
+  |                                                                                   
+  |--> if status has flag 'dr' or 'bi' set                                            
+  |    |                                                                              
+  |    |    +---------------------+                                                   
+  |    +--> | serial8250_rx_chars | read chars from register, place in tty read buffer
+  |         +---------------------+                                                   
+  |                                                                                   
+  +--> if status has flag 'thre' set                                                  
+       |                                                                              
+       |    +---------------------+                                                   
+       +--> | serial8250_tx_chars | for chars in transmit buffer, output to register  
+            +---------------------+                                                   
+```
 
 ## <a name="tty-to-uart"></a> TTY to UART
 
