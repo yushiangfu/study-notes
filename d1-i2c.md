@@ -1485,6 +1485,12 @@ i2cdetect -y -a 11
 # 11: bus 11
 ```
   
+- List all I2C adapters (controllers + mux channels).
+  
+```
+i2cdetect -l
+```
+  
 - Transfer data with the target device on a bus.
  
 ```
@@ -1498,6 +1504,7 @@ i2ctransfer -y -a 11 w1@0x71 0x40 r1
 # w1@0x71: write 1 byte to slave 0x71
 # 0x40: the data to write
 # r1: read 1 byte from the previously specified slave address
+# i2ctransfer uses ICC
 ```
   
 ```
@@ -1506,6 +1513,10 @@ Equivalent:
 ipmitool i2c bus=11 0xe2 0x01 0x40
   
 # 0xe2 is the 8-bit address representation of 0x71
+# [note] openbmc accepts bus numbers 0 to 7 only due to the uint3_t type in ipmiMasterWriteRead()
+# [note] tools use different i2c protocols
+#     i2c: i2ctransfer, ipmitool
+#     smbus: i2cget, i2cset
 ```
   
 - Dump transaction data from kernel space.
