@@ -298,23 +298,26 @@ tatic const struct i2c_algorithm aspeed_i2c_algo = {
 ```
   
 ```
-+--------------------+                                                                                                 
-| aspeed_i2c_bus_irq | : ack, based on master state: write or read, if rx done: ack                                    
-+----|---------------+                                                                                                 
-     |                                                                                                                 
-     |--> read interrupt bits                                                                                          
-     |                                                                                                                 
-     |--> ack all interrupts except rx done                                                                            
-     |                                                                                                                 
-     |--> (ignore the case of slave controller)                                                                        
-     |                                                                                                                 
-     |    +-----------------------+                                                                                    
-     +--> | aspeed_i2c_master_irq | based on master state, write to or read from hw reg for a byte, notify waiting task
-     |    +-----------------------+                                                                                    
-     |                                                                                                                 
-     |--> if bits has 'rx done'                                                                                        
-     |                                                                                                                 
-     +------> write hw register to ack                                                                                 
+drivers/i2c/busses/i2c-aspeed.c
++--------------------+
+| aspeed_i2c_bus_irq | : ack, based on master state: write or read, if rx done: ack
++----|---------------+
+     |
+     |--> read interrupt bits
+     |
+     |--> ack all interrupts except rx done
+     |
+     |--> (ignore the case of slave controller)
+     |
+     |    +----------------------+
+     +--> | aspeed_i2c_slave_irq | (for ssif)
+     |    +----------------------+
+     |
+     +--> if there's remaining events
+          |
+          |    +-----------------------+
+          +--> | aspeed_i2c_master_irq | based on master state,
+               +-----------------------+ write to or read from hw reg for a byte, notify waiting task                                                                           
 ```
 
 ```
