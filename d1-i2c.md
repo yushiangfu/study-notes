@@ -1012,6 +1012,88 @@ drivers/i2c/busses/i2c-aspeed.c
        +------------------------+                                                              
 ```
   
+```
+drivers/char/ipmi/ssif_bmc.c
+static const struct file_operations ssif_bmc_fops = {
+    .owner      = THIS_MODULE,
+    .read       = ssif_bmc_read,
+    .write      = ssif_bmc_write,
+    .poll       = ssif_bmc_poll,
+    .unlocked_ioctl = ssif_bmc_ioctl,
+};
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                     
++---------------+                                                 
+| ssif_bmc_read | : wait for ssif request and copy to user        
++-|-------------+                                                 
+  |    +--------------------------+                               
+  |--> | receive_ssif_bmc_request | wait till request is available
+  |    +--------------------------+                               
+  |                                                               
+  +--> copy data to user buffer                                   
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                           
++--------------------------+                                            
+| receive_ssif_bmc_request | : wait till request is available           
++-|------------------------+                                            
+  |                                                                     
+  |--> if 'blocking' is specified                                       
+ retry:|                                                                
+  |    |    +--------------------------+                                
+  |    +--> | wait_event_interruptible |                                
+  |         +--------------------------+                                
+  |                                                                     
+  +--> if request isn't available at the point (after waking up)        
+       |                                                                
+       |                                                                
+       |--> if 'non blocking' is specified                              
+       |    -                                                           
+       |    +--> return error 'again' (it's possibly woken up by signal)
+       |                                                                
+       +--> else, go to 'retry' (what happened?)                        
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                                
++----------------+                                                           
+| ssif_bmc_write | : copy response from user, send it, set bmc status 'ready'
++-|--------------+                                                           
+  |                                                                          
+  |--> copy response from user buffer                                        
+  |                                                                          
+  |    +------------------------+                                            
+  |--> | send_ssif_bmc_response | label 'response_in_progress'               
+  |    +------------------------+                                            
+  |                                                                          
+  +--> if ->set_ssif_bmc_status() exists                                     
+       |                                                                     
+       +--> call it, e.g.,                                                   
+            +----------------------------+                                   
+            | aspeed_set_ssif_bmc_status | write hw reg to set bmc status    
+            +----------------------------+                                   
+```
+  
+```
+drivers/char/ipmi/ssif_bmc.c                                           
++------------------------+                                              
+| send_ssif_bmc_response | : label 'response_in_progress'               
++-|----------------------+                                              
+  |                                                                     
+  |--> if 'blocking' is specified                                       
+  |    |                                                                
+  |    |    +--------------------------+                                
+  |    +--> | wait_event_interruptible |                                
+  |         +--------------------------+                                
+  |                                                                     
+  |--> wait till the progress finishes                                  
+  |                                                                     
+  +--> label 'response_in_progress' (does anyone monitoring this field?)
+```
+  
 </details>
   
 ## <a name="system-startup"></a> System Startup
