@@ -1094,6 +1094,79 @@ drivers/char/ipmi/ssif_bmc.c
   +--> label 'response_in_progress' (does anyone monitoring this field?)
 ```
   
+### ssifbridge
+  
+```
+ssifbridged.cpp                                                                                              
++------+                                                                                                      
+| main |                                                                                                      
++-|----+                                                                                                      
+  |                                                                                                           
+  |--> request service name "xyz.openbmc_project.Ipmi.Channel.ipmi_ssif"                                      
+  |                                                                                                           
+  |    +--------------------------+                                                                           
+  +--> | SsifChannel::SsifChannel | set up async read for request/response handling, add interface and init it
+       +--------------------------+                                                                           
+```
+  
+```
+ssifbridged.cpp                                                                                         
++--------------------------+                                                                             
+| SsifChannel::SsifChannel | : set up async read for request/response handling, add interface and init it
++-|------------------------+                                                                             
+  |                                                                                                      
+  |--> open "/dev/ipmi-ssif-host"                                                                        
+  |                                                                                                      
+  |    +-------------------------+                                                                       
+  |--> | SsifChannel::async_read | set up async read (handle request and return response)                
+  |    +-------------------------+                                                                       
+  |                                                                                                      
+  +--> for object: "/xyz/openbmc_project/Ipmi/Channel/ipmi_ssif"                                         
+       add iface: "xyz.openbmc_project.Ipmi.Channel.ipmi_ssif"                                           
+```
+  
+```
+ssifbridged.cpp                                                                                                          
++-------------------------+                                                                                               
+| SsifChannel::async_read | : set up async read (handle request and return response)                                      
++-|-----------------------+                                                                                               
+  |                                                                                                                       
+  +--> set up async read                                                                                                  
+          +--------------------------------------------------------------------------------------------------------------+
+          |+-----------------------------+                                                                               |
+          || SsifChannel::processMessage | set up request (from host), send to ipmid, set up response, write to ssif dev |
+          |+-----------------------------+                                                                               |
+          +--------------------------------------------------------------------------------------------------------------+
+```
+  
+```
+ssifbridged.cpp
++-----------------------------+                                                                                          
+| SsifChannel::processMessage | : set up request (from host), send to ipmid, set up response, write to ssif dev (to host)
++-|---------------------------+                                                                                          
+  |    +-------------------------+                                                                                       
+  +--> | SsifChannel::async_read | set up async_read for next time                                                       
+  |    +-------------------------+                                                                                       
+  |                                                                                                                      
+  |--> get net_fn/lun/cmd from transfer buffer to set up 'prev_req_cmd'                                                  
+  |                                                                                                                      
+  |--> copy payload to local 'data'                                                                                      
+  |                                                                                                                      
+  +--> dbus-call service (ipmid) method                                                                                  
+          +-----------------------------------------+                                                                    
+          |service: "xyz.openbmc_project.Ipmi.Host" |                                                                    
+          |object: "/xyz/openbmc_project/Ipmi"      |                                                                    
+          |iface: "xyz.openbmc_project.Ipmi.Server" |                                                                    
+          |method: "execute"                        |                                                                    
+          +-------------------------------------------------------------------------------+                              
+          |if net_fs/lun/cmd of response don't matcho those from the last request, return |                              
+          |                                                                               |                              
+          |set up response                                                                |                              
+          |                                                                               |                              
+          |write response to ssif device                                                  |                              
+          +-------------------------------------------------------------------------------+                              
+```
+  
 </details>
   
 ## <a name="system-startup"></a> System Startup
