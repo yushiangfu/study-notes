@@ -310,14 +310,62 @@ drivers/i2c/busses/i2c-aspeed.c
      |--> (ignore the case of slave controller)
      |
      |    +----------------------+
-     +--> | aspeed_i2c_slave_irq | (for ssif)
-     |    +----------------------+
+     +--> | aspeed_i2c_slave_irq | advance state machine and handle r/w request from host accordingly
+     |    +----------------------+ (so called 'ssif')
      |
      +--> if there's remaining events
           |
           |    +-----------------------+
           +--> | aspeed_i2c_master_irq | based on master state,
-               +-----------------------+ write to or read from hw reg for a byte, notify waiting task                                                                           
+               +-----------------------+ write to or read from hw reg for a byte, notify waiting task
+```
+  
+```
+drivers/i2c/busses/i2c-aspeed.c                                                                  
++----------------------+                                                                          
+| aspeed_i2c_slave_irq | : advance state machine and handle r/w request from host accordingly     
++-|--------------------+                                                                          
+  |                                                                                               
+  |--> read cmd from hw reg                                                                       
+  |                                                                                               
+  |--> if slave is requested, proceed the state machine                                           
+  |                                                                                               
+  |--> if slave is inactive, return (maybe the interrupt is for controller as master mode)        
+  |                                                                                               
+  |--> switch slave_state                                                                         
+  |    case read_requested                                                                        
+  |    |    +-----------------+                                                                   
+  |    |--> | i2c_slave_event | execute slave callback (e.g., handle read/write request from host)
+  |    |    +-----------------+                                                                   
+  |    +--> write hw reg to do tx                                                                 
+  |                                                                                               
+  |--> case read_processed                                                                        
+  |    |    +-----------------+                                                                   
+  |    |--> | i2c_slave_event |                                                                   
+  |    |    +-----------------+                                                                   
+  |    +--> write hw reg to do tx                                                                 
+  |                                                                                               
+  |--> case write_requested                                                                       
+  |    -    +-----------------+                                                                   
+  |    +--> | i2c_slave_event |                                                                   
+  |         +-----------------+                                                                   
+  |                                                                                               
+  +--> case write_received                                                                        
+       -    +-----------------+                                                                   
+       +--> | i2c_slave_event |                                                                   
+            +-----------------+                                                                   
+```  
+  
+```
+include/linux/i2c.h                                                                    
++-----------------+                                                                     
+| i2c_slave_event | : execute slave callback (e.g., handle read/write request from host)
++-|---------------+                                                                     
+  |                                                                                     
+  +--> call ->slave_cb, e.g.,                                                           
+       +-------------+                                                                  
+       | ssif_bmc_cb | handle smbus read or write request (from host perspective)       
+       +-------------+                                                                  
 ```
 
 ```
@@ -757,7 +805,7 @@ drivers/char/misc.c
 ```
 drivers/char/ipmi/ssif_bmc.c                                                                  
 +-------------+                                                                                
-| ssif_bmc_cb | : handle smbus read or write request                                           
+| ssif_bmc_cb | : handle smbus read or write request (from host perspective)
 +-|-----------+                                                                                
   |                                                                                            
   |--> switch event                                                                            
@@ -770,16 +818,16 @@ drivers/char/ipmi/ssif_bmc.c
   |    |         +--------------------------------+                                            
   |    +--> else                                                                               
   |         -    +-------------------------------+                                             
-  |         +--> | set_multipart_response_buffer | get valuem, set up response buffer          
+  |         +--> | set_multipart_response_buffer | get value, set up response buffer          
   |              +-------------------------------+                                             
   |                                                                                            
   |--> case write_requested                                                                    
   |    -                                                                                       
   |    +--> ssif_bmc.msg_ids = 0                                                               
   |                                                                                            
-  |    case read_processed                                                                     
+  |--> case read_processed                                                                     
   |    |                                                                                       
-  |--> |    +-----------------------+                                                          
+  |    |    +-----------------------+                                                          
   |    +--> | handle_read_processed | get value, complete response                             
   |         +-----------------------+                                                          
   |                                                                                            
