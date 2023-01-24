@@ -443,3 +443,26 @@ ipmid-new.cpp
 | 0x2C 0x10    | getTempReadings |
 | 0x2C 0x12    | setDCMIConfParams |
 | 0x2C 0x13    | getDCMIConfParams |
+
+```
+sensorhandler.cpp                                                                                         
++----------------------+                                                                                   
+| ipmicmdPlatformEvent | : parse request data and ready argument, dbus-call service method to add sel entry
++-|--------------------+                                                                                   
+  |                                                                                                        
+  |--> ready request, generate id, and source path ('system' or 'ipmb')                                    
+  |                                                                                                        
+  |--> determine data count (1 ~ 3)                                                                        
+  |                                                                                                        
+  |--> ready (de)assert and event_data                                                                     
+  |                                                                                                        
+  |--> prepare method call                                                                                 
+  |    +-------------------------------------------+                                                       
+  |    |service: "xyz.openbmc_project.Logging.IPMI"|                                                       
+  |    |object: "/xyz/openbmc_project/Logging/IPMI"|                                                       
+  |    |iface: "xyz.openbmc_project.Logging.IPMI"  |                                                       
+  |    |method: "IpmiSelAdd"                       |                                                       
+  |    +-------------------------------------------+                                                       
+  |                                                                                                        
+  +--> call it                                                                                             
+```
