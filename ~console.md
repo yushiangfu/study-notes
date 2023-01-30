@@ -416,6 +416,42 @@ drivers/tty/serial/8250/8250_port.c
             +---------------------+                                                   
 ```
 
+```
+drivers/tty/tty_io.c                                       
++----------+                                                
+| tty_read | : wait for ldisc, read data into arg iterator  
++-|--------+                                                
+  |    +--------------------+                               
+  |--> | tty_ldisc_ref_wait | wait for tty ldisc            
+  |    +--------------------+                               
+  |                                                         
+  +--> if ldisc has ->read()                                
+       |                                                    
+       |    +------------------+                            
+       +--> | iterate_tty_read | read data into arg iterator
+            +------------------+                            
+```
+
+```
+drivers/tty/tty_io.c                             
++------------------+                              
+| iterate_tty_read | : read data into arg iterator
++-|----------------+                              
+  |                                               
+  +--> while still valid                          
+       |                                          
+       |--> call ->read(), e.g.,                  
+       |    +------------+                        
+       |    | n_tty_read | read data into arg kbuf
+       |    +------------+                        
+       |                                          
+       |    +--------------+                      
+       |--> | copy_to_iter | copy to arg iterator 
+       |    +--------------+                      
+       |                                          
+       +--> update offset and remaining count     
+```
+
 ## <a name="tty-to-uart"></a> TTY to UART
 
 (TBD)
