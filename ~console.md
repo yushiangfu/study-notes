@@ -497,6 +497,29 @@ drivers/tty/tty_io.c
        +--> break if nothing left to write                                   
 ```
 
+```
+drivers/tty/tty_io.c                                                           
++-------------+                                                                 
+| tty_release | : delete file, release ldisc, flush work, remove tty from driver
++-|-----------+                                                                 
+  |    +--------------+                                                         
+  |--> | __tty_fasync | (skip)                                                  
+  |    +--------------+                                                         
+  |                                                                             
+  |--> if ->close() exists                                                      
+  |    -                                                                        
+  |    +--> call it, e.g.,                                                      
+  |         +------------+                                                      
+  |         | uart_close |                                                      
+  |         +------------+                                                      
+  |    +--------------+                                                         
+  +--> | tty_del_file | delete file from tty (free file private)                
+  |    +--------------+                                                         
+  |    +--------------------+                                                   
+  +--> | tty_release_struct | release ldisc, flush work, remove tty from driver 
+       +--------------------+                                                   
+```
+
 ## <a name="tty-to-uart"></a> TTY to UART
 
 (TBD)
