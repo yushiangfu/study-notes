@@ -452,6 +452,51 @@ drivers/tty/tty_io.c
        +--> update offset and remaining count     
 ```
 
+```
+drivers/tty/tty_io.c                                                               
++-----------+                                                                       
+| tty_write | : copy data from iter to tty_write_buf, call tty-level write          
++-|---------+                                                                       
+  |    +----------------+                                                           
+  +--> | file_tty_write | copy data from iter to tty_write_buf, call tty-level write
+       +----------------+                                                           
+```
+
+```
+drivers/tty/tty_io.c                                                             
++----------------+                                                                
+| file_tty_write | : copy data from iter to tty_write_buf, call tty-level write   
++-|--------------+                                                                
+  |    +--------------------+                                                     
+  |--> | tty_ldisc_ref_wait | wait for tty ldisc                                  
+  |    +--------------------+                                                     
+  |    +--------------+                                                           
+  +--> | do_tty_write | copy data from iter to tty_write_buf, call tty-level write
+       +--------------+                                                           
+```
+
+```
+drivers/tty/tty_io.c                                                        
++--------------+                                                             
+| do_tty_write | : copy data from iter to tty_write_buf, call tty-level write
++-|------------+                                                             
+  |                                                                          
+  +--> endless loop                                                          
+       |                                                                     
+       |    +----------------+                                               
+       |--> | copy_from_iter | copy data from iterator to tty write buf      
+       |    +----------------+                                               
+       |                                                                     
+       |--> cal arg write(), e.g.,                                           
+       |    +-------------+                                                  
+       |    | n_tty_write | tty-level write                                  
+       |    +-------------+                                                  
+       |                                                                     
+       |--> update written and remaining count                               
+       |                                                                     
+       +--> break if nothing left to write                                   
+```
+
 ## <a name="tty-to-uart"></a> TTY to UART
 
 (TBD)
