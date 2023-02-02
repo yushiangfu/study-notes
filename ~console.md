@@ -19,6 +19,19 @@
 ## <a name="introduction"></a> Introduction
 
 ```
+root@romulus:/dev# ls -l tty* console
+crw-------    1 root     root        5,   1 Jan 31 04:06 console
+crw-rw-rw-    1 root     tty         5,   0 Jan 31 04:05 tty
+crw-rw----    1 root     dialout     4,  64 Jan 31 04:05 ttyS0
+crw-rw----    1 root     dialout     4,  65 Jan 31 04:05 ttyS1
+crw-rw----    1 root     dialout     4,  66 Jan 31 04:05 ttyS2
+crw-rw----    1 root     dialout     4,  67 Jan 31 04:05 ttyS3
+crw-------    1 root     tty         4,  68 Feb  1 06:36 ttyS4
+crw-rw----    1 root     dialout     4,  69 Jan 31 04:05 ttyS5
+lrwxrwxrwx    1 root     root             5 Jan 31 04:05 ttyVUART0 -> ttyS5
+```
+
+```
 static const struct file_operations tty_fops = {
     .llseek     = no_llseek,
     .read_iter  = tty_read,
