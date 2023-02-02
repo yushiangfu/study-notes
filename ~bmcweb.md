@@ -50,7 +50,10 @@ src/webserver_main.cpp
   |    +-------------------------------------------+
   |    +------------------------------------------+
   +--> | hostname_monitor::registerHostnameSignal | register callback to hostname property change
-       +------------------------------------------+
+  |    +------------------------------------------+
+  |    +----------+
+  +--> | App::run | prepare server/connection, authenticate, handle url
+       +----------+
 ```
 
 ```
@@ -405,6 +408,198 @@ src/webserver_main.cpp
   |    +--------------------------------------+                                         
   +--> | hostname_monitor::installCertificate | install certificate to dbus             
        +--------------------------------------+                                         
+```
+
+```
+http/app.hpp                                                      
++----------+                                                       
+| App::run | : prepare server/connection, authenticate, handle url 
++-|--------+                                                       
+  |    +---------------+                                           
+  |--> | App::validate | (skip)                                    
+  |    +---------------+                                           
+  |                                                                
+  |--> prepare 'ssl_server_t'                                      
+  |                                                                
+  |    +-------------+                                             
+  +--> | Server::run | prepare connection, authenticate, handle url
+       +-------------+                                             
+```
+
+```
+http/http_server.hpp                                           
++-------------+                                                 
+| Server::run | : prepare connection, authenticate, handle url  
++-|-----------+                                                 
+  |    +-----------------+                                      
+  |--> | loadCertificate | (skip)                               
+  |    +-----------------+                                      
+  |    +---------------+                                        
+  |--> | updateDateStr | (skip)                                 
+  |    +---------------+                                        
+  |    +-------------------------+                              
+  |--> | startAsyncWaitForSignal | (skip)                       
+  |    +-------------------------+                              
+  |    +----------+                                             
+  +--> | doAccept | prepare connection, authenticate, handle url
+       +----------+                                             
+```
+
+```
+http/http_server.hpp                                                     
++----------+                                                              
+| doAccept | : prepare connection, authenticate, handle url               
++-|--------+                                                              
+  |                                                                       
+  |--> prepare 'Connection'                                               
+  |                                                                       
+  +--> ->async_accept                                                     
+          +--------------------------------------------------------------+
+          |+-------------------+                                         |
+          || Connection::start | get client ip, authenticate, handle url |
+          |+-------------------+                                         |
+          |+----------+                                                  |
+          || doAccept | for next one                                     |
+          |+----------+                                                  |
+          +--------------------------------------------------------------+
+```
+
+```
+http/http_connection.hpp                                                   
++-------------------+                                                       
+| Connection::start | : get client ip, authenticate, handle url             
++-|-----------------+                                                       
+  |    +---------------------------+                                        
+  |--> | Connection::startDeadline |                                        
+  |    +---------------------------+                                        
+  |    +---------------------------+                                        
+  +--> | Connection::doReadHeaders | get client ip, authenticate, handle url
+       +---------------------------+                                        
+```
+
+```
+http/http_connection.hpp                                                         
++---------------------------+                                                     
+| Connection::doReadHeaders | : get client ip, authenticate, handle url           
++-|-------------------------+                                                     
+  |                                                                               
+  +--> http::async_read_header                                                    
+          +----------------------------------------------------------------------+
+          |+---------------------------------+                                   |
+          || Connection::cancelDeadlineTimer |                                   |
+          |+---------------------------------+                                   |
+          |+--------------------------+                                          |
+          || Connection::readClientIp |                                          |
+          |+--------------------------+                                          |
+          |+------------------------------+                                      |
+          || authentication::authenticate | try all kinds of auth till it passes |
+          |+------------------------------+                                      |
+          |+---------------------+                                               |
+          || Connectioin::doRead | get client ip, print request info, handle url |
+          |+---------------------+                                               |
+          +----------------------------------------------------------------------+
+```
+
+```
+include/authentication.hpp                                            
++------------------------------+                                       
+| authentication::authenticate | : try all kinds of auth till it passes
++-|----------------------------+                                       
+  |                                                                    
+  |--> ge auth_methods_config                                          
+  |                                                                    
+  |--> if config has tls                                               
+  |    -    +----------------+                                         
+  |    +--> | performTLSAuth | (skip)                                  
+  |         +----------------+                                         
+  |                                                                    
+  |--> if not pass yet && config has xtoken                            
+  |    -    +-------------------+                                      
+  |    +--> | performXtokenAuth | (skip)                               
+  |         +-------------------+                                      
+  |                                                                    
+  |--> if not pass yet && config has cookie                            
+  |    -    +-------------------+                                      
+  |    +--> | performCookieAuth | (skip)                               
+  |         +-------------------+                                      
+  |                                                                    
+  |--> if not pass yet && config has session_token                     
+  |    -    +------------------+                                       
+  |    +--> | performTokenAuth | (skip)                                
+  |         +------------------+                                       
+  |                                                                    
+  +--> if not pass yet && config has basic                             
+       -    +------------------+                                       
+       +--> | performBasicAuth | (skip)                                
+            +------------------+                                       
+```
+
+```
+http/http_connection.hpp                                                        
++--------------------+                                                           
+| Connection::doRead | : get client ip, print request info, handle url           
++-|------------------+                                                           
+  |                                                                              
+  +--> http::async_read                                                          
+          +---------------------------------------------------------------------+
+          |+---------------------------------+                                  |
+          || Connection::cancelDeadlineTimer | (skip)                           |
+          |+---------------------------------+                                  |
+          |+--------------------+                                               |
+          || Connection::handle | get client ip, print request info, handle url |
+          |+--------------------+                                               |
+          +---------------------------------------------------------------------+
+```
+
+```
+http/http_connection.hpp                                             
++--------------------+                                                
+| Connection::handle | : get client ip, print request info, handle url
++-|------------------+                                                
+  |    +--------------------------+                                   
+  |--> | Connection::readClientIp |                                   
+  |    +--------------------------+                                   
+  |                                                                   
+  |--> print request info (need to enable macro first)                
+  |                                                                   
+  |    +-------------+                                                
+  +--> | App::handle | given url, find matched rule and handle the url
+       +-------------+                                                
+```
+
+```
+http/app.hpp                                                             
++-------------+                                                           
+| App::handle | : given url, find matched rule and handle the url         
++-|-----------+                                                           
+  |    +-----------------+                                                
+  +--> | Rounter::handle | given url, find matched rule and handle the url
+       +-----------------+                                                
+```
+
+```
+http/routing.hpp                                                       
++----------------+                                                      
+| Router::handle | : given url, find matched rule and handle the url    
++-|--------------+                                                      
+  |    +-----------+                                                    
+  |--> | findRoute | find rule method for later url handling            
+  |    +-----------+                                                    
+  |                                                                     
+  |--> print match_rule info, e.g., '/login'                            
+  |                                                                     
+  +--> dbus-method call                                                 
+          +----------------------------------------------+              
+          |service: "xyz.openbmc_project.User.Manager"   |              
+          |object: "/xyz/openbmc_project/user"           |              
+          |interface: "xyz.openbmc_project.User.Manager" |              
+          |method: "GetUserInfo"                         |              
+          +------------------------------------------------------------+
+          |check user attributes: privilege, remote, expired password? |
+          |                                                            |
+          |rule.handle                                                 |
+          |(e.g., registered method in include/login_routes.hpp)       |
+          +------------------------------------------------------------+
 ```
 
 ### redfish
