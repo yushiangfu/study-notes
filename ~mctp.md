@@ -342,3 +342,244 @@ core.c
        | mctp_binding_astlpc_tx | send data out through kcs
        +------------------------+                          
 ```
+
+### linux driver
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                   
++-------------------+                                                               
+| aspeed_mctp_probe |                                                               
++-|-----------------+                                                               
+  |                                                                                 
+  |--> alloc priv                                                                   
+  |                                                                                 
+  |--> read dt properties (e.g., "pcie_rc", ...)                                    
+  |                                                                                 
+  |    +----------------------+                                                     
+  |--> | aspeed_mctp_drv_init | : init priv struct/work/tasklets                    
+  |    +----------------------+                                                     
+  |    +----------------------------+                                               
+  |--> | aspeed_mctp_resources_init | map iomem                                     
+  |    +----------------------------+                                               
+  |    +---------------------------+                                                
+  |--> | aspeed_mctp_channels_init | init rx/tx channels                            
+  |    +---------------------------+                                                
+  |    +---------------+                                                            
+  |--> | misc_register | determine dev#, add arg 'misc' to list (misc_list)         
+  |    +---------------+                                                            
+  |    +----------------------+                                                     
+  |--> | aspeed_mctp_irq_init | register two isr for mctp/pcie interrupts separately
+  |    +----------------------+                                                     
+  |    +------------------------+                                                   
+  |--> | aspeed_mctp_pcie_setup | reset, flush tx queues, enable irq, trigger rx    
+  |    +------------------------+                                                   
+  |    +------------------------+                                                   
+  +--> | aspeed_mctp_rx_trigger | hw-level trigger rx                               
+       +------------------------+                                                   
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                             
++----------------------+                                                                      
+| aspeed_mctp_drv_init | : init priv struct/work/tasklets                                     
++-|--------------------+                                                                      
+  |    +-------------------+ +------------------------+                                       
+  |--> | INIT_DELAYED_WORK | | aspeed_mctp_reset_work |                                       
+  |    +-------------------+ +------------------------+                                       
+  |                          reset, flush tx queues, enable irq, trigger rx                   
+  |                                                                                           
+  |    +--------------+ +------------------------+                                            
+  |--> | tasklet_init | | aspeed_mctp_tx_tasklet |                                            
+  |    +--------------+ +------------------------+                                            
+  |                     set up tx cmd for each client packets, trigger hardware               
+  |                                                                                           
+  |    +--------------+ +------------------------+                                            
+  +--> | tasklet_init | | aspeed_mctp_rx_tasklet |                                            
+       +--------------+ +------------------------+                                            
+                        for each valid header, prepare rx_packet and dispatch to target client
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                          
++------------------------+                                                 
+| aspeed_mctp_reset_work | : reset, flush tx queues, enable irq, trigger rx
++-|----------------------+                                                 
+  |    +------------------------+                                          
+  |--> | aspeed_mctp_pcie_setup | scheudle a reset if necessary            
+  |    +------------------------+                                          
+  |                                                                        
+  +--> if (bus, dev, func) tuple isn't 0                                   
+       |                                                                   
+       |    +---------------------------------+                            
+       |--> | aspeed_mctp_flush_all_tx_queues |                            
+       |    +---------------------------------+                            
+       |    +------------------------+                                     
+       |--> | aspeed_mctp_irq_enable | hw-level enable                     
+       |    +------------------------+                                     
+       |     +------------------------+                                    
+       +-->  | aspeed_mctp_rx_trigger |                                    
+             +------------------------+                                    
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                   
++------------------------+                                                          
+| aspeed_mctp_tx_tasklet | : set up tx cmd for each client packets, trigger hardware
++-|----------------------+                                                          
+  |                                                                                 
+  |--> for each client on priv list                                                 
+  |    -                                                                            
+  |    +--> while tx isn't full                                                     
+  |         |                                                                       
+  |         |    +------------------+                                               
+  |         |--> | ptr_ring_consume | get next packet to send                       
+  |         |    +------------------+                                               
+  |         |    +-------------------------+                                        
+  |         |--> | aspeed_mctp_emit_tx_cmd | set up tx command and update write ptr 
+  |         |    +-------------------------+                                        
+  |         |    +-------------------------+                                        
+  |         +--> | aspeed_mctp_packet_free | free packet to kmem                    
+  |              +-------------------------+                                        
+  |                                                                                 
+  +--> if we've set up any tx command                                               
+       |                                                                            
+       |    +------------------------+                                              
+       +--> | aspeed_mctp_tx_trigger | hw-level trigger tx                          
+            +------------------------+                                              
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                                  
++------------------------+                                                                         
+| aspeed_mctp_rx_tasklet | : for each valid header, prepare rx_packet and dispatch to target client
++-|----------------------+                                                                         
+  |                                                                                                
+  |--> if vdm_header_direct_transfer                                                               
+  |    |                                                                                           
+  |    |--> trigger hw read-ptr update                                                             
+  |    |                                                                                           
+  |    |--> maintain our own state of buffer                                                       
+  |    |                                                                                           
+  |    +--> while the header is valid                                                              
+  |         |                                                                                      
+  |         |--> alloc rx packet                                                                   
+  |         |                                                                                      
+  |         |    +-----------------------------+                                                   
+  |         |--> | aspeed_mctp_dispatch_packet | dispatch packet to target client                  
+  |         |    +-----------------------------+                                                   
+  |         |                                                                                      
+  |         +--> get next header                                                                   
+  |                                                                                                
+  |--> else                                                                                        
+  |    -                                                                                           
+  |    +--> while the header is valid                                                              
+  |         |                                                                                      
+  |         |--> alloc rx packet                                                                   
+  |         |                                                                                      
+  |         |    +-----------------------------+                                                   
+  |         |--> | aspeed_mctp_dispatch_packet | dispatch packet to target client                  
+  |         |    +-----------------------------+                                                   
+  |         |                                                                                      
+  |         +--> get next header                                                                   
+  |                                                                                                
+  +--> trigger rx if it stops (when it was full)                                                   
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                            
++-----------------------------+                                              
+| aspeed_mctp_dispatch_packet | : dispatch packet to target client           
++-|---------------------------+                                              
+  |    +--------------------------+                                          
+  |--> | aspeed_mctp_find_handler | find a (mctp, vendor, vdm) matched client
+  |    +--------------------------+                                          
+  |                                                                          
+  +--> if client found                                                       
+       |                                                                     
+       |    +------------------+                                             
+       |--> | ptr_ring_produce | let pointer point to valid data?            
+       |    +------------------+                                             
+       |    +-------------+                                                  
+       +--> | wake_up_all | wakt up waiting clients                          
+            +-------------+                                                  
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                       
++--------------------------+                                            
+| aspeed_mctp_find_handler | : find a (mctp, vendor, vdm) matched client
++-|------------------------+                                            
+  |                                                                     
+  |--> determine mctp/vendor/vdm of our target                          
+  |                                                                     
+  +--> for each registered type handler (e.g., peci)                    
+       -                                                                
+       +--> if (mctp, vendor, vdm) of handler match our specification   
+            -                                                           
+            +--> return found client                                    
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                           
++----------------------------+                              
+| aspeed_mctp_resources_init | : map iomem                  
++-|--------------------------+                              
+  |    +--------------------------------+                   
+  |--> | devm_platform_ioremap_resource | get iomem resource
+  |    +--------------------------------+                   
+  |    +-----------------------+                            
+  |--> | devm_regmap_init_mmio | map iomem                  
+  |    +-----------------------+                            
+  |    +---------------------------------+                  
+  +--> | syscon_regmap_lookup_by_phandle | get syscon iomem 
+       +---------------------------------+                  
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                                                                        
++----------------------+                                                                                                                 
+| aspeed_mctp_irq_init | : register two isr for mctp/pcie interrupts separately                                                          
++-|--------------------+                                                                                                                 
+  |                                                                                                                                      
+  |--> get irq# of 'mctp'                                                                                                                
+  |                                                                                                                                      
+  |    +------------------+                                                                                                              
+  |--> | devm_request_irq | prepare 'action' (handler, thread_fn, ...) and install to irq desc                                           
+  |    +------------------+ +-------------------------+                                                                                  
+  |                         | aspeed_mctp_irq_handler | handle tx/rx interrupts                                                          
+  |                         +-------------------------+                                                                                  
+  |                                                                                                                                      
+  |    +------------------------+                                                                                                        
+  |--> | aspeed_mctp_irq_enable | hw-level enable                                                                                        
+  |    +------------------------+                                                                                                        
+  |                                                                                                                                      
+  |--> get irq# of 'pcie'                                                                                                                
+  |                                                                                                                                      
+  |    +------------------+                                                                                                              
+  +--> | devm_request_irq | prepare 'action' (handler, thread_fn, ...) and install to irq desc                                           
+       +------------------+ +----------------------------------+                                                                         
+                            | aspeed_mctp_pcie_rst_irq_handler | init rx/tx channels, reset mctp, flush tx queues, enable irq, trigger rx
+                            +----------------------------------+                                                                         
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                                         
++-------------------------+                                                                               
+| aspeed_mctp_irq_handler | : handle tx/rx interrupts                                                     
++-|-----------------------+                                                                               
+  |                                                                                                       
+  |--> read interrupt status                                                                              
+  |                                                                                                       
+  |--> if it's tx_sent                                                                                    
+  |    |                                                                                                  
+  |    |    +---------------------+ +------------------------+                                            
+  |    +--> | tasklet_hi_schedule | | aspeed_mctp_tx_tasklet |                                            
+  |         +---------------------+ +------------------------+                                            
+  |                                 set up tx cmd for each client packets, trigger hardware               
+  +--> if it's rx_receive                                                                                 
+       |                                                                                                  
+       |    +---------------------+ +------------------------+                                            
+       +--> | tasklet_hi_schedule | | aspeed_mctp_rx_tasklet |                                            
+            +---------------------+ +------------------------+                                            
+                                    for each valid header, prepare rx_packet and dispatch to target client
+```
