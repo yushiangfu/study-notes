@@ -659,3 +659,146 @@ drivers/soc/aspeed/aspeed-mctp.c
        +---------------------+ +------------------------+                                
                                set up tx cmd for each client packets, trigger hardware   
 ```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                                           
++-------------------+                                                                                       
+| aspeed_mctp_ioctl | : mctp ioctl                                                                          
++-|-----------------+                                                                                       
+  |--> switch cmd                                                                                           
+  |--> case filter_eid                                                                                      
+  |    -    +------------------------+                                                                      
+  |    +--> | aspeed_mctp_filter_eid | copy data from user, write eid to hw reg                             
+  |         +------------------------+                                                                      
+  |--> case get_bdf                                                                                         
+  |    -    +---------------------+                                                                         
+  |    +--> | aspeed_mctp_get_bdf | assemble bdf from hw reg, copy to user                                  
+  |         +---------------------+                                                                         
+  |--> case get_medium_id                                                                                   
+  |    -    +---------------------------+                                                                   
+  |    +--> | aspeed_mctp_get_medium_id | it's fixed 0x09, copy to user                                     
+  |         +---------------------------+                                                                   
+  |--> case get_mtu                                                                                         
+  |    -    +---------------------+                                                                         
+  |    +--> | aspeed_mctp_get_mtu | it's fixed 64, copy to user                                             
+  |         +---------------------+                                                                         
+  |--> case register_default_handler                                                                        
+  |    -    +--------------------------------------+                                                        
+  |    +--> | aspeed_mctp_register_default_handler | register current client as mctp_priv's default handler 
+  |         +--------------------------------------+                                                        
+  |--> case register_type_handler                                                                           
+  |    -    +-----------------------------------+                                                           
+  |    +--> | aspeed_mctp_register_type_handler | copy from user, set up new handler and add to list in priv
+  |         +-----------------------------------+                                                           
+  |--> case unregister_type_handler                                                                         
+  |    -    +-------------------------------------+                                                         
+  |    +--> | aspeed_mctp_unregister_type_handler | copy from user, remove handler from list in priv        
+  |         +-------------------------------------+                                                         
+  |--> case get_eid_info or get_eid_ext_info                                                                
+  |    -    +--------------------------+                                                                    
+  |    +--> | aspeed_mctp_get_eid_info | copy generic or extended eid info to user                          
+  |         +--------------------------+                                                                    
+  |--> case set_eid_info or set_eid_ext_info                                                                
+  |    -    +--------------------------+                                                                    
+  |    +--> | aspeed_mctp_set_eid_info | given user data, build up new ep list and replace the old one      
+  |         +--------------------------+                                                                    
+  +--> case set_own_eid                                                                                     
+       -    +-------------------------+                                                                     
+       +--> | aspeed_mctp_set_own_eid | copy from user, save eid in priv                                    
+            +-------------------------+                                                                     
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                                 
++-----------------------------------+                                                             
+| aspeed_mctp_register_type_handler | : copy from user, set up new handler and add to list in priv
++-|---------------------------------+                                                             
+  |    +----------------+                                                                         
+  |--> | copy_from_user |                                                                         
+  |    +----------------+                                                                         
+  |    +------------------------------+                                                           
+  +--> | aspeed_mctp_add_type_handler | prepare new handler and add to list in priv               
+       +------------------------------+                                                           
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                             
++------------------------------+                                              
+| aspeed_mctp_add_type_handler | : prepare new handler and add to list in priv
++-|----------------------------+                                              
+  |                                                                           
+  |--> alloc and set up new handler                                           
+  |                                                                           
+  |--> for each type_handler in priv                                          
+  |    -                                                                      
+  |    +--> if there's other client occupies the (mctp, vendor, vdm)          
+  |                                                                           
+  +--> add new handler to the end of list                                     
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                   
++--------------------------+                        
+| aspeed_mctp_get_eid_info | : copy eid info to user
++-|------------------------+                        
+  |    +----------------+                           
+  |--> | copy_from_user | copy meta data from user  
+  |    +----------------+                           
+  |                                                 
+  |--> for each endpoint on list in priv            
+  |    |                                            
+  |    |    +--------------+                        
+  |    +--> | copy_to_user | copy ep data to user   
+  |         +--------------+                        
+  |                                                 
+  |    +--------------+                             
+  +--> | copy_to_user | copy meta data to user      
+       +--------------+                             
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                           
++--------------------------+                                                                
+| aspeed_mctp_set_eid_info | : given user data, build up new ep list and replace the old one
++-|------------------------+                                                                
+  |    +----------------+                                                                   
+  |--> | copy_from_user | copy meta data from user                                          
+  |    +----------------+                                                                   
+  |                                                                                         
+  |--> for each eid                                                                         
+  |    |                                                                                    
+  |    |--> alloc endpoint                                                                  
+  |    |                                                                                    
+  |    |    +----------------+                                                              
+  |    |--> | copy_from_user | copy eid data from user                                      
+  |    |    +----------------+                                                              
+  |    |                                                                                    
+  |    +--> add to end of local list                                                        
+  |                                                                                         
+  |    +-----------+                                                                        
+  |--> | list_sort |                                                                        
+  |    +-----------+                                                                        
+  |    +---------------------------------+                                                  
+  |--> | aspeed_mctp_eid_info_list_valid | check if every ep on local list is valid         
+  |    +---------------------------------+                                                  
+  |                                                                                         
+  |--> swap local list with priv's list                                                     
+  |                                                                                         
+  |    +----------------------------------+                                                 
+  +--> | aspeed_mctp_eid_info_list_remove | free each old ep                                
+       +----------------------------------+                                                 
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                        
++------------------+                                     
+| aspeed_mctp_poll | : poll wait, label poll_in/out flags
++-|----------------+                                     
+  |    +-----------+                                     
+  |--> | poll_wait |                                     
+  |    +-----------+                                     
+  |                                                      
+  |--> if queue isn't full, label 'epoll_out'            
+  |                                                      
+  +--> if there's data, label 'epoll_in'                 
+```
