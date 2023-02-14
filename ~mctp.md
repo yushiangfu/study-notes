@@ -583,3 +583,79 @@ drivers/soc/aspeed/aspeed-mctp.c
             +---------------------+ +------------------------+                                            
                                     for each valid header, prepare rx_packet and dispatch to target client
 ```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c
+static const struct file_operations aspeed_mctp_fops = {
+    .owner = THIS_MODULE,
+    .open = aspeed_mctp_open,
+    .release = aspeed_mctp_release,
+    .read = aspeed_mctp_read,
+    .write = aspeed_mctp_write,
+    .unlocked_ioctl = aspeed_mctp_ioctl,
+    .poll = aspeed_mctp_poll,
+};
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                                      
++------------------+                                                                                   
+| aspeed_mctp_open | : prepare client and add to mctp_priv                                             
++-|----------------+                                                                                   
+  |    +---------------------------+                                                                   
+  +--> | aspeed_mctp_create_client | prepare client (init its tx/rx queues), add to list in 'mctp_priv'
+  |    +---------------------------+                                                                   
+  |                                                                                                    
+  +--> save client in file                                                                             
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                     
++------------------+                                  
+| aspeed_mctp_read |                                  
++-|----------------+                                  
+  |                                                   
+  |--> consume client rx_queue                        
+  |                                                   
+  |    +---------------------+                        
+  |--> | ptr_ring_consume_bh | consume rx queue       
+  |    +---------------------+                        
+  |    +--------------+                               
+  +--> | copy_to_user | copy packet data to user space
+       +--------------+                               
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                             
++-------------------+                                                                         
+| aspeed_mctp_write | : prepare tx packet, add to tx queue, trigger hw to send out            
++-|-----------------+                                                                         
+  |    +--------------------------+                                                           
+  |--> | aspeed_mctp_packet_alloc | alloc tx packet                                           
+  |    +--------------------------+                                                           
+  |    +----------------+                                                                     
+  |--> | copy_from_user | copy packet data from user                                          
+  |    +----------------+                                                                     
+  |    +-------------------------+                                                            
+  +--> | aspeed_mctp_send_packet | fill header, add packet to tx queue, trigger hw to send out
+       +-------------------------+                                                            
+```
+
+```
+drivers/soc/aspeed/aspeed-mctp.c                                                        
++-------------------------+                                                              
+| aspeed_mctp_send_packet | : fill header, add packet to tx queue, trigger hw to send out
++-|-----------------------+                                                              
+  |                                                                                      
+  |--> fill (bus, dev, func) into header                                                 
+  |                                                                                      
+  |--> fill eid (except the case of ep discovery                                         
+  |                                                                                      
+  |    +---------------------+                                                           
+  |--> | ptr_ring_produce_bh | add packet to tx queue                                    
+  |    +---------------------+                                                           
+  |    +---------------------+ +------------------------+                                
+  +--> | tasklet_hi_schedule | | aspeed_mctp_tx_tasklet |                                
+       +---------------------+ +------------------------+                                
+                               set up tx cmd for each client packets, trigger hardware   
+```
