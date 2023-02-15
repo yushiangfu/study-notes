@@ -343,6 +343,62 @@ core.c
        +------------------------+                          
 ```
 
+### mctp_astpcie_register_type (intel openbmc libmctp)
+
+```
+utils/mctp-astpcie-register-type.c                                                                      
++------+                                                                                                 
+| main |                                                                                                 
++-|----+                                                                                                 
+  |    +-----------+                                                                                     
+  |--> | mctp_init | prepare 'mctp' struct                                                               
+  |    +-----------+                                                                                     
+  |    +-------------------+                                                                             
+  |--> | mctp_astpcie_init | (to be updated)                                                             
+  |    +-------------------+                                                                             
+  |    +-------------------+                                                                             
+  |--> | mctp_astpcie_core | get binding                                                                 
+  |    +-------------------+                                                                             
+  |    +-------------------------------+                                                                 
+  |--> | mctp_register_bus_dynamic_eid | (to be updated)                                                 
+  |    +-------------------------------+                                                                 
+  |    +-----------------+                                                                               
+  |--> | mctp_set_rx_all | (to be updated)                                                               
+  |    +-----------------+ +------------+                                                                
+  |                        | rx_message | (to be updated)                                                
+  |                        +------------+                                                                
+  |                                                                                                      
+  |    +------------------+                                                                              
+  |--> | mctp_set_rx_ctrl | (to be updated)                                                              
+  |    +------------------+ +--------------------+                                                       
+  |                         | rx_control_message | (to be updated)                                       
+  |                         +--------------------+                                                       
+  |    +------------------------------------+                                                            
+  |--> | mctp_astpcie_register_type_handler | set up params (mctp_ctrl) and ioctl (register_type_handler)
+  |    +------------------------------------+                                                            
+  |    +------------------+                                                                              
+  |--> | wait_for_message | wait for msg arrival                                                         
+  |    +------------------+                                                                              
+  |    +--------------------------------------+                                                          
+  |--> | mctp_astpcie_unregister_type_handler | set up params and ioctl (unregister_type_handler)        
+  |    +--------------------------------------+                                                          
+  |    +------------------------------------+                                                            
+  |--> | mctp_astpcie_register_type_handler | set up params (vdpci) and ioctl (register_type_handler)    
+  |    +------------------------------------+                                                            
+  |    +------------------+                                                                              
+  |--> | wait_for_message | wait for msg arrival                                                         
+  |    +------------------+                                                                              
+  |    +--------------------------------------+                                                          
+  |--> | mctp_astpcie_unregister_type_handler | set up params and ioctl (unregister_type_handler)        
+  |    +--------------------------------------+                                                          
+  |    +-------------------+                                                                             
+  |--> | mctp_astpcie_free | close file and free ast_pcie                                                
+  |    +-------------------+                                                                             
+  |    +--------------+                                                                                  
+  +--> | mctp_destroy | free mctp and related struct                                                     
+       +--------------+                                                                                  
+```
+
 ### linux driver
 
 ```
