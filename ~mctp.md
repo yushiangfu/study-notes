@@ -354,24 +354,24 @@ utils/mctp-astpcie-register-type.c
   |--> | mctp_init | prepare 'mctp' struct                                                               
   |    +-----------+                                                                                     
   |    +-------------------+                                                                             
-  |--> | mctp_astpcie_init | (to be updated)                                                             
+  |--> | mctp_astpcie_init | alloc ast_pcie and set up (install ops)
   |    +-------------------+                                                                             
   |    +-------------------+                                                                             
   |--> | mctp_astpcie_core | get binding                                                                 
   |    +-------------------+                                                                             
   |    +-------------------------------+                                                                 
-  |--> | mctp_register_bus_dynamic_eid | (to be updated)                                                 
+  |--> | mctp_register_bus_dynamic_eid | set up bus, link 'mctp' and 'binding', call binding->start (open file, ...)
   |    +-------------------------------+                                                                 
   |    +-----------------+                                                                               
-  |--> | mctp_set_rx_all | (to be updated)                                                               
+  |--> | mctp_set_rx_all | install rx function for msg
   |    +-----------------+ +------------+                                                                
-  |                        | rx_message | (to be updated)                                                
+  |                        | rx_message | given cmd from response, handle it (e.g., print log)
   |                        +------------+                                                                
   |                                                                                                      
   |    +------------------+                                                                              
-  |--> | mctp_set_rx_ctrl | (to be updated)                                                              
+  |--> | mctp_set_rx_ctrl | install rx function for ctrl
   |    +------------------+ +--------------------+                                                       
-  |                         | rx_control_message | (to be updated)                                       
+  |                         | rx_control_message | given cmd, prepare response and send out
   |                         +--------------------+                                                       
   |    +------------------------------------+                                                            
   |--> | mctp_astpcie_register_type_handler | set up params (mctp_ctrl) and ioctl (register_type_handler)
@@ -397,6 +397,275 @@ utils/mctp-astpcie-register-type.c
   |    +--------------+                                                                                  
   +--> | mctp_destroy | free mctp and related struct                                                     
        +--------------+                                                                                  
+```
+
+### mctp_astpcie_discovery (intel openbmc libmctp)
+
+```
+utils/mctp-astpcie-discovery.c
++------+
+| main | : init struct (ops), set up bus/binding, ioctl (default handler), install rx, send packet (discovery)
++-|----+
+  |    +-----------+
+  |--> | mctp_init | prepare 'mctp' struct
+  |    +-----------+
+  |    +-------------------+
+  |--> | mctp_astpcie_init | alloc ast_pcie and set up (install ops)
+  |    +-------------------+
+  |    +-------------------------------+
+  |--> | mctp_register_bus_dynamic_eid | set up bus, link 'mctp' and 'binding', call binding->start (open file, ...)
+  |    +-------------------------------+
+  |    +---------------------------------------+
+  |--> | mctp_astpcie_register_default_handler | ioctl (register default handler)
+  |    +---------------------------------------+
+  |    +-----------------+
+  |--> | mctp_set_rx_all | install rx function for msg
+  |    +-----------------+ +------------+
+  |                        | rx_message | given cmd from response, handle it (e.g., print log)
+  |                        +------------+
+  |
+  |    +------------------+
+  |--> | mctp_set_rx_ctrl | install rx function for ctrl
+  |    +------------------+ +--------------------+
+  |                         | rx_control_message | given cmd, prepare response and send out
+  |                         +--------------------+
+  |    +----------------------------+
+  +--> | discovery_with_notify_flow | build packet (cmd = discovery_notify) and send out
+       +----------------------------+
+```
+
+```
+astpcie.c                                                                                
++-------------------+                                                                     
+| mctp_astpcie_init | : alloc ast_pcie and set up (install ops)                           
++-|-----------------+                                                                     
+  |                                                                                       
+  |--> alloc ast_pcie and set up its binding                                              
+  |                                                                                       
+  +--> install ops                                                                        
+           +-----------------+                                                            
+           | mctp_astpcie_tx | build header, write packet to fd (send out)                
+           +-----------------+                                                            
+           +--------------------+                                                         
+           | mctp_astpcie_start | open "/dev/aspeed-mctp" and save fd, get bdf & medium_id
+           +--------------------+                                                         
+```
+
+```
+astpcie.c                                                                       
++--------------------+                                                           
+| mctp_astpcie_start | : open "/dev/aspeed-mctp" and save fd, get bdf & medium_id
++-|------------------+                                                           
+  |    +-------------------+                                                     
+  |--> | mctp_astpcie_open | open "/dev/aspeed-mctp" and save fd                 
+  |    +-------------------+                                                     
+  |    +----------------------------+                                            
+  |--> | mctp_astpcie_get_bdf_ioctl | ioctl (get_bdf)                            
+  |    +----------------------------+                                            
+  |    +----------------------------------+                                      
+  +--> | mctp_astpcie_get_medium_id_ioctl | ioctl (get_medium_id)                
+       +----------------------------------+                                      
+```
+
+```
+utils/mctp-astpcie-discovery.c                                                                                     
++--------------------+                                                                                              
+| rx_control_message | : given cmd, prepare response and send out                                                   
++-|------------------+                                                                                              
+  |                                                                                                                 
+  |--> get cmd code from request                                                                                    
+  |                                                                                                                 
+  |--> switch (cmd)                                                                                                 
+  |--> case prepare_ep_discovery                                                                                    
+  |    -    +----------------------------------+                                                                    
+  |    +--> | discovery_prepare_broadcast_resp | set completion in response                                         
+  |         +----------------------------------+                                                                    
+  |--> case ep_discovery                                                                                            
+  |    -    +----------------------------------+                                                                    
+  |    +--> | discovery_prepare_broadcast_resp | set completion in response                                         
+  |         +----------------------------------+                                                                    
+  |--> case get_ep_id                                                                                               
+  |    -    +----------------------------------------+                                                              
+  |    +--> | discovery_prepare_get_endpoint_id_resp | set eid/type/completion in response                          
+  |         +----------------------------------------+                                                              
+  |--> case set_ep_id                                                                                               
+  |    -    +----------------------------------------+                                                              
+  |    +--> | discovery_prepare_set_endpoint_id_resp | save eid from request in bus, set completion code in response
+  |         +----------------------------------------+                                                              
+  |    +-----------------------------+                                                                              
+  |--> | mctp_binding_set_tx_enabled | enable tx, if there's pending packets: send out through binding, e.g., pcie  
+  |    +-----------------------------+                                                                              
+  |    +-----------------+                                                                                          
+  +--> | mctp_message_tx | prepare packet(s) to accommodate msg, send out through binding (e.g., pcie)              
+       +-----------------+                                                                                          
+```
+
+```
+utils/mctp-astpcie-discovery.c                                                                           
++----------------------------------------+                                                                
+| discovery_prepare_set_endpoint_id_resp | : save eid from request in bus, set completion code in response
++-|--------------------------------------+                                                                
+  |    +-------------------------------+                                                                  
+  +--> | mctp_ctrl_cmd_set_endpoint_id | : save eid from request in bus, set completion code in response  
+       +-|-----------------------------+                                                                  
+         |                                                                                                
+         |--> switch request_op                                                                           
+         |                                                                                                
+         |--> case set_eid                                                                                
+         |    -                                                                                           
+         |    +--> save eid from request in bus                                                           
+         |                                                                                                
+         +--> case force_eid                                                                              
+              -                                                                                           
+              +--> save eid from request in bus                                                           
+```
+
+```
+utils/mctp-astpcie-discovery.c                                                                                   
++----------------------------+                                                                                    
+| discovery_with_notify_flow | : build packet (cmd = discovery_notify) and send out                               
++-|--------------------------+                                                                                    
+  |                                                                                                               
+  |--> set up request and packet (cmd = discovery_notify)                                                         
+  |                                                                                                               
+  |    +-----------------------------+                                                                            
+  |--> | mctp_binding_set_tx_enabled | enable tx, if there's pending packets: send out through binding, e.g., pcie
+  |    +-----------------------------+                                                                            
+  |    +-----------------+                                                                                        
+  |--> | mctp_message_tx | prepare packet(s) to accommodate msg, send out through binding (e.g., pcie)            
+  |    +-----------------+                                                                                        
+  |    +------------------------+                                                                                 
+  +--> | discovery_regular_flow | poll, read data and build packet, handle or forward it                          
+       +------------------------+                                                                                 
+```
+
+```
+utils/mctp-astpcie-discovery.c                                                                                   
++----------------------------+                                                                                    
+| discovery_with_notify_flow | : build packet (cmd = discovery_notify) and send out                               
++-|--------------------------+                                                                                    
+  |                                                                                                               
+  |--> set up request and packet (cmd = discovery_notify)                                                         
+  |                                                                                                               
+  |    +-----------------------------+                                                                            
+  |--> | mctp_binding_set_tx_enabled | enable tx, if there's pending packets: send out through binding, e.g., pcie
+  |    +-----------------------------+                                                                            
+  |    +-----------------+                                                                                        
+  |--> | mctp_message_tx | prepare packet(s) to accommodate msg, send out through binding (e.g., pcie)            
+  |    +-----------------+                                                                                        
+  |    +------------------------+                                                                                 
+  +--> | discovery_regular_flow | poll, read data and build packet, handle or forward it                          
+       +------------------------+                                                                                 
+```
+
+```
+utils/mctp-astpcie-discovery.c                                                                           
++------------------------+                                                                                
+| discovery_regular_flow | : poll, read data and build packet, handle or forward it                       
++-|----------------------+                                                                                
+  |                                                                                                       
+  +--> while it's not yet discovered                                                                      
+       |                                                                                                  
+       |    +-------------------+                                                                         
+       |--> | mctp_astpcie_poll | poll fd                                                                 
+       |    +-------------------+                                                                         
+       |                                                                                                  
+       +--> if poll_in is set                                                                             
+            |                                                                                             
+            |    +-----------------+                                                                      
+            +--> | mctp_astpcie_rx | read data and build packet, handle it locally or forward to elsewhere
+                 +-----------------+                                                                      
+```
+
+```
+astpcie.c                                                                                 
++-----------------+                                                                        
+| mctp_astpcie_rx | : read data and build packet, handle it locally or forward to elsewhere
++-|---------------+                                                                        
+  |                                                                                        
+  |--> read data from fd                                                                   
+  |                                                                                        
+  |    +-----------------------------------+                                               
+  |--> | mctp_astpcie_is_routing_supported | check ifi routing is supported                
+  |    +-----------------------------------+                                               
+  |    +-------------------+                                                               
+  |--> | mctp_pktbuf_alloc | alloc packet buffer                                           
+  |    +-------------------+                                                               
+  |    +------------------+                                                                
+  |--> | mctp_pktbuf_push | push (copy) data to proper position in packet buffer           
+  |    +------------------+                                                                
+  |    +-------------+                                                                     
+  +--> | mctp_bus_rx | parse som/eom, receive packet accordingly                           
+       +-------------+                                                                     
+```
+
+```
+core.c                                                                              
++-------------+                                                                      
+| mctp_bus_rx | : parse som/eom, receive packet accordingly                          
++-|-----------+                                                                      
+  |                                                                                  
+  |--> get header from packet                                                        
+  |                                                                                  
+  |--> get eom/som flags                                                             
+  |                                                                                  
+  |--> switch flags                                                                  
+  |--> case eom and som                                                              
+  |    -    +---------+                                                              
+  |    +--> | mctp_rx | handle packet locally or forward to other bus                
+  |         +---------+                                                              
+  |--> case som                                                                      
+  |    |    +---------------------+                                                  
+  |    |--> | mctp_msg_ctx_lookup | given src/dst/..., look up context               
+  |    |    +---------------------+                                                  
+  |    |--> if found, reset it, otherwise create a new context                       
+  |    |    +----------------------+                                                 
+  |    +--> | mctp_msg_ctx_add_pkt | create buffer for context, copy data from packet
+  |         +----------------------+                                                 
+  |--> case eom                                                                      
+  |    -    +---------------------+                                                  
+  |    +--> | mctp_msg_ctx_lookup | given src/dst/..., look up context               
+  |    |    +---------------------+                                                  
+  |    |    +----------------------+                                                 
+  |    +--> | mctp_msg_ctx_add_pkt | create buffer for context, copy data from packet
+  |         +----------------------+                                                 
+  +--> case not som and not eom                                                      
+       |    +---------------------+                                                  
+       |--> | mctp_msg_ctx_lookup | given src/dst/..., look up context               
+       |    +---------------------+                                                  
+       |--> update seq#                                                              
+       |    +----------------------+                                                 
+       +--> | mctp_msg_ctx_add_pkt | create buffer for context, copy data from packet
+            +----------------------+                                                 
+```
+
+```
+core.c                                                                                                       
++---------+                                                                                                   
+| mctp_rx | : handle packet locally or forward to other bus                                                   
++-|-------+                                                                                                   
+  |                                                                                                           
+  |--> if policy is 'route_endpoint'                                                                          
+  |    |                                                                                                      
+  |    |--> if it's a control request                                                                         
+  |    |    |                                                                                                 
+  |    |    |    +----------------------+                                                                     
+  |    |    +--> | mctp_ctrl_handle_msg | call binding->control_rx() or mctp->control_rx()                    
+  |    |         +----------------------+                                                                     
+  |    |                                                                                                      
+  |    +--> if ->message_rx() exists                                                                          
+  |         -                                                                                                 
+  |         +--> call it, e.g.,                                                                               
+  |              +------------+                                                                               
+  |              | rx_message | given cmd from response, handle it (e.g., print log)                          
+  |              +------------+                                                                               
+  |                                                                                                           
+  +--> if policy is 'route_bridge'                                                                            
+       -                                                                                                      
+       +--> for each bus other than the argument one                                                          
+            -    +------------------------+                                                                   
+            +--> | mctp_message_tx_on_bus | prepare packet(s) to accommodate msg, send out through, e.g., pcie
+                 +------------------------+                                                                   
 ```
 
 ### linux driver
