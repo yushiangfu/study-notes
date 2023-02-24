@@ -1,3 +1,5 @@
+# pldmd
+
 ```
 pldmd/pldmd.cpp                                                                                                               
 +------+                                                                                                                       
@@ -511,4 +513,135 @@ host-bmc/host_pdr_handler.cpp
                  |    +--------------------------+                                                                       
                  +--> | Handler::registerRequest | register request (get_state_sensor_readings) to 'handlers'            
                       +--------------------------+ callback = prepared response_handler                                  
+```
+
+### pldmtool
+
+```
+pldmtool/pldm_cmd_helper.cpp                                                                                             
++------------------------+                                                                                                
+| CommandInterface::exec | : create msg, send request & receive response, parse it                                        
++-|----------------------+                                                                                                
+  |                                                                                                                       
+  |--> given path/interface, get target service through obj mapper                                                        
+  |                                                                                                                       
+  |--> prepare method call                                                                                                
+  |       +--------------------------------------------+                                                                  
+  |       |service: $service                           |                                                                  
+  |       |object: "/xyz/openbmc_project/pldm"         |                                                                  
+  |       |iface: "xyz.openbmc_project.PLDM.Requester" |                                                                  
+  |       |method: "GetInstanceId"                     |                                                                  
+  |       +--------------------------------------------+                                                                  
+  |                                                                                                                       
+  |--> call it, and get reply                                                                                             
+  |                                                                                                                       
+  |--> call ->createRequestMsg(), e.g.,                                                                                   
+  |    +--------------------------------+                                                                                 
+  |    | GetPLDMTypes::createRequestMsg | encode request accordingly                                                      
+  |    +--------------------------------+                                                                                 
+  |                                                                                                                       
+  |    +--------------------------------+                                                                                 
+  |--> | CommandInterface::pldmSendRecv | set up socket (mctp-mux), connect to server, send/receive pldm msg, close socket
+  |    +--------------------------------+                                                                                 
+  |                                                                                                                       
+  +--> call ->parseResponseMsg(), e.g.,                                                                                   
+       +--------------------------------+                                                                                 
+       | GetPLDMTypes::parseResponseMsg | parse response and print out                                                    
+       +--------------------------------+                                                                                 
+```
+
+```
+pldmtool/pldm_cmd_helper.cpp                                                                                        
++--------------------------------+                                                                                   
+| CommandInterface::pldmSendRecv | : set up socket (mctp-mux), connect to server, send/receive pldm msg, close socket
++-|------------------------------+                                                                                   
+  |                                                                                                                  
+  |--> if mctp_eid != pldm_entity_id                                                                                 
+  |    |                                                                                                             
+  |    |    +-----------+                                                                                            
+  |    |--> | pldm_open | set up socket (mctp-mux), connect to server, write 'pldm_type'                             
+  |    |    +-----------+                                                                                            
+  |    |    +----------------+                                                                                       
+  |    |--> | pldm_send_recv | send and receive pldm msg                                                             
+  |    |    +----------------+                                                                                       
+  |    |                                                                                                             
+  |    +--> copy response data to argument                                                                           
+  |                                                                                                                  
+  +--> else                                                                                                          
+       |                                                                                                             
+       |    +------------------+                                                                                     
+       +--> | mctpSockSendRecv | set up socket (mctp-mux), connect to server, send/receive msg, shutdown socket      
+       |    +------------------+                                                                                     
+       |                                                                                                             
+       +--> skip mctp header                                                                                         
+```
+
+```
+src/requester/pldm.c                                        
++----------------+                                           
+| pldm_send_recv | : send and receive pldm msg               
++-|--------------+                                           
+  |    +-----------+                                         
+  |--> | pldm_send | set up iov[] and send msg through socket
+  |    +-----------+                                         
+  |                                                          
+  +--> endless loop                                          
+       |                                                     
+       |    +-----------+                                    
+       |--> | pldm_recv | read pldm msg if there's nany      
+       |    +-----------+                                    
+       |                                                     
+       +--> if received, break loop                          
+```
+
+```
+src/requester/pldm.c                                 
++-----------+                                         
+| pldm_recv | : read pldm msg if there's nany         
++-|---------+                                         
+  |    +---------------+                              
+  +--> | pldm_recv_any | read pldm msg if there's nany
+       +---------------+                              
+```
+
+```
+src/requester/pldm.c                                                        
++---------------+                                                            
+| pldm_recv_any | : read pldm msg if there's nany                            
++-|-------------+                                                            
+  |    +-----------+                                                         
+  +--> | mctp_recv | read mctp socket if there's data, check if it's pldm msg
+       +-----------+                                                         
+```
+
+```
+pldmtool/pldm_cmd_helper.cpp                                                                  
++------------------+                                                                           
+| mctpSockSendRecv | : set up socket, connect to server, send/receive pldm msg, shutdown socket
++-|----------------+                                                                           
+  |                                                                                            
+  |--> open socket "mctp-mux"                                                                  
+  |                                                                                            
+  |--> connect to server                                                                       
+  |                                                                                            
+  |--> write pldm type to socket                                                               
+  |                                                                                            
+  |--> check if it's able to receive                                                           
+  |                                                                                            
+  |--> receive response                                                                        
+  |                                                                                            
+  +--> shutdown socket                                                                         
+```
+
+```
+pldmtool/pldm_base_cmd.cpp                                      
++--------------------------------+                               
+| GetPLDMTypes::parseResponseMsg | : parse response and print out
++-|------------------------------+                               
+  |    +-----------------------+                                 
+  +--> | decode_get_types_resp |                                 
+  |    +-----------------------+                                 
+  |    +----------------+                                        
+  +--> | printPldmTypes |                                        
+       +----------------+                                        
 ```
