@@ -627,6 +627,7 @@ proc_consoles_init:              create /proc/consoles
 chr_dev_init:                    (don't care)
    tty_init:                     init char devices for tty and console
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
+pty_init:                           
 serial8250_init:                 init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)
    serial8250_probe:             for each valid port in dev data: register a 8250 port
 aspeed_vuart_driver_init:        register platform driver 'aspeed_vuart_driver'
@@ -1584,20 +1585,20 @@ drivers/tty/serial/8250/8250_port.c
 ```
 drivers/tty/tty_buffer.c                                                                                    
 +----------------------+                                                                                     
-| tty_flip_buffer_push | : queue work to receive data to tty read buffer, wake up task if needed             
+| tty_flip_buffer_push | : queue work to receive data to ldisc buffer, wake up task if needed             
 +-|--------------------+                                                                                     
   |    +------------------------+                                                                            
   |--> | tty_flip_buffer_commit | (skip, not our concern)                                                    
   |    +------------------------+                                                                            
   |    +------------+ +----------------+                                                                     
-  +--> | queue_work | | flush_to_ldisc | receive data to tty read buffer till no more, wake up task if needed
+  +--> | queue_work | | flush_to_ldisc | receive data to ldisc buffer till no more, wake up task if needed
        +------------+ +----------------+                                                                     
 ```
 
 ```
 drivers/tty/tty_buffer.c                                                                             
 +----------------+                                                                                    
-| flush_to_ldisc | : receive data to tty read buffer till no more, wake up task if needed             
+| flush_to_ldisc | : receive data to ldisc buffer till no more, wake up task if needed             
 +-|--------------+                                                                                    
   |                                                                                                   
   +--> endless loop                                                                                   
@@ -1616,14 +1617,14 @@ drivers/tty/tty_buffer.c
 ```
 drivers/tty/tty_buffer.c                                                                              
 +-------------+                                                                                        
-| receive_buf | : receive data to tty read buffer, wake up task if needed, clear data source           
+| receive_buf | : receive data and put to ldisc buffer, wake up task if needed, clear data source           
 +-|-----------+                                                                                        
   |                                                                                                    
   |--> get ptr to the data head                                                                        
   |                                                                                                    
   |--> call ->receive_buf(), e.g.,                                                                     
   |    +------------------------------+                                                                
-  |    | tty_port_default_receive_buf | receive data and put to tty read buffer, wake up task if needed
+  |    | tty_port_default_receive_buf | receive data and put to ldisc buffer, wake up task if needed
   |    +------------------------------+                                                                
   |                                                                                                    
   +--> memset data source                                                                              
@@ -1632,7 +1633,7 @@ drivers/tty/tty_buffer.c
 ```
 drivers/tty/tty_buffer.c                                                                         
 +-----------------------+                                                                         
-| tty_ldisc_receive_buf | : receive data and put to tty read buffer, wake up task if needed       
+| tty_ldisc_receive_buf | : receive data and put to ldisc buffer, wake up task if needed
 +-|---------------------+                                                                         
   |                                                                                               
   |--> if ld has ->receive_buf2()                                                                 
