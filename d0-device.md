@@ -699,6 +699,9 @@ struct device_driver {
    |    +----------------+
    |--> | bus_add_device | create files in /sys, add device to list of bus
    |    +----------------+
+   |    +----------------------+
+   |--> | devtmpfs_create_node | submit a request (create dev file) to devtmpfsd (a.k.a. "kdevtmpfs")
+   |    +----------------------+
    |
    |--> if dev->bus is set
    |
