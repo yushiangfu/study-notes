@@ -1591,7 +1591,7 @@ dir /root 0700 0 0
 
 ```
 +-----------+                                                                           
-| vfs_mknod |                                                                           
+| vfs_mknod | : call inode->mknod(e.g., prepare inode of specified type and link to arg dentry)
 +--|--------+                                                                           
    |                                                                                    
    |--> if dir inode has no ->mknod(), return error                                     
@@ -1664,10 +1664,10 @@ dir /root 0700 0 0
 
 ```
 +------------+                                                                                                                 
-| init_mkdir |                                                                                                                 
+| init_mkdir | : create dentry, prepare inode of dir and link to that dentry
 +--|---------+                                                                                                                 
    |    +------------------+                                                                                                   
-   |--> | kern_path_create |                                                                                                   
+   |--> | kern_path_create | : ensure target dentry exists (create one if not)
    |    +----|-------------+                                                                                                   
    |         |    +-----------------+                                                                                          
    |         +--> | filename_create | ensure target dentry exists (create one if not)                                          
@@ -1694,7 +1694,7 @@ dir /root 0700 0 0
              |--> preapre 'iattr' and update 'size' field                                                                              
              |                                                                                                                         
              |    +---------------+                                                                                                    
-             +--> | notify_change |                                                                                                    
+             +--> | notify_change | : update attributes in inode (truncate inode is size becomes smaller)
                   +---|-----------+                                                                                                    
                       |                                                                                                                
                       |--> adjust 'iattr'                                                                                              
