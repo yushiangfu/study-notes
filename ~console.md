@@ -1102,6 +1102,177 @@ drivers/tty/tty_io.c
 ```
 
 ```
+drivers/tty/pty.c                                                                                       
++----------+                                                                                             
+| pty_init |                                                                                             
++-|--------+                                                                                             
+  |    +-----------------+                                                                               
+  |--> | legacy_pty_init | (do nothing bc of disabled config)                                            
+  |    +-----------------+                                                                               
+  |    +-----------------+                                                                               
+  +--> | unix98_pty_init | alloc and register tty drivers for ptm/pts, prepare and register cdev for ptmx
+       +-----------------+                                                                               
+```
+
+```
+drivers/tty/pty.c                                                                                  
++-----------------+                                                                                 
+| unix98_pty_init | : alloc and register tty drivers for ptm/pts, prepare and register cdev for ptmx
++-|---------------+                                                                                 
+  |    +------------------+                                                                         
+  |--> | tty_alloc_driver | prepare tty_driver (e.g., uart case: alloc ttys/termios/ports)          
+  |    +------------------+                                                                         
+  |    +------------------+                                                                         
+  |--> | tty_alloc_driver | the above is for ptm, this one is for pts                               
+  |    +------------------+                                                                         
+  |                                                                                                 
+  |--> set up ptm (major = 128, install ptm_unix98_ops)                                             
+  |                                                                                                 
+  |--> set up pts (major = 136, install pty_unix98_ops)                                             
+  |                                                                                                 
+  |    +---------------------+                                                                      
+  |--> | tty_register_driver | reserve dev# range, add tty_driver to list, create proc file(s)      
+  |    +---------------------+                                                                      
+  |    +---------------------+                                                                      
+  |--> | tty_register_driver | the above is for ptm, this one is for pts                            
+  |    +---------------------+                                                                      
+  |    +------------------+                                                                         
+  |--> | tty_default_fops | ptmx_fops = tty_fops                                                    
+  |    +------------------+                                                                         
+  |                                                                                                 
+  |--> overwrite ->open() = ptmx_open()                                                             
+  |                         +-----------+                                                           
+  |                         | ptmx_open |                                                           
+  |                         +-----------+                                                           
+  |    +-----------+                                                                                
+  |--> | cdev_init | init cdev and install ops (ptmx_fops)                                          
+  |    +-----------+                                                                                
+  |    +----------+                                                                                 
+  |--> | cdev_add | register cdev (ptmx_cdev)                                                       
+  |    +----------+                                                                                 
+  |    +------------------------+                                                                   
+  |--> | register_chrdev_region |                                                                   
+  |    +------------------------+                                                                   
+  |    +---------------+                                                                            
+  +--> | device_create |                                                                            
+       +---------------+                                                                            
+```
+
+```
+static const struct tty_operations ptm_unix98_ops = {
+    .lookup = ptm_unix98_lookup,
+    .install = pty_unix98_install,
+    .remove = pty_unix98_remove,
+    .open = pty_open, ------------------------ set flags
+    .close = pty_close, ---------------------- set flags
+    .write = pty_write, ---------------------- copy data to tty buffer, and flush to ldisc
+    .write_room = pty_write_room,
+    .flush_buffer = pty_flush_buffer,
+    .unthrottle = pty_unthrottle,
+    .ioctl = pty_unix98_ioctl,
+    .compat_ioctl = pty_unix98_compat_ioctl,
+    .resize = pty_resize,
+    .cleanup = pty_cleanup,
+    .show_fdinfo = pty_show_fdinfo,
+};                                                                                      
+```
+
+```
+drivers/tty/pty.c                                                                           
++-----------+                                                                                
+| pty_write | : copy data to tty buffer, and flush to ldisc                                  
++-|---------+                                                                                
+  |    +----------------------------------------+                                            
+  +--> | tty_insert_flip_string_and_push_buffer | copy data to tty buffer, and flush to ldisc
+       +----------------------------------------+                                            
+```
+
+```
+drivers/tty/tty_buffer.c                                                                 
++----------------------------------------+                                                
+| tty_insert_flip_string_and_push_buffer | : copy data to tty buffer, and flush to ldisc  
++-|--------------------------------------+                                                
+  |    +------------------------+                                                         
+  |--> | tty_insert_flip_string | copy data to tty buffer                                 
+  |    +------------------------+                                                         
+  |    +------------------------+                                                         
+  |--> | tty_flip_buffer_commit | data is ready to be flushed to ldisc                    
+  |    +------------------------+                                                         
+  |    +------------+ +----------------+                                                  
+  +--> | queue_work | | flush_to_ldisc |                                                  
+       +------------+ +----------------+                                                  
+                      receive data to tty read buffer till no more, wake up task if needed
+```
+
+```
+include/linux/tty_flip.h                                             
++------------------------+                                            
+| tty_insert_flip_string | : copy data to tty buffer                  
++-|----------------------+                                            
+  |    +-----------------------------------+                          
+  +--> | tty_insert_flip_string_fixed_flag | : copy data to tty buffer
+       +-|---------------------------------+                          
+         |    +---------------------------+                           
+         |--> | __tty_buffer_request_room | grow tty buffer if needed 
+         |    +---------------------------+                           
+         |                                                            
+         +--> copy data to tty buffer                                 
+```
+
+```
+drivers/tty/pty.c                                                                              
++-----------+                                                                                   
+| ptmx_open | : open a unix98 pty master (create inode for pts)                                 
++-|---------+                                                                                   
+  |    +----------------+                                                                       
+  |--> | tty_alloc_file | alloc private and save in file                                        
+  |    +----------------+                                                                       
+  |    +----------------+                                                                       
+  |--> | devpts_acquire | get fs_info of sb                                                     
+  |    +----------------+                                                                       
+  |    +------------------+                                                                     
+  |--> | devpts_new_index | find an unused index                                                
+  |    +------------------+                                                                     
+  |    +--------------+                                                                         
+  |--> | tty_init_dev | prepare tty and save in driver, ensure it has port, open line discipline
+  |    +--------------+                                                                         
+  |    +--------------+                                                                         
+  |--> | tty_add_file | add file_priv to tty                                                    
+  |    +--------------+                                                                         
+  |    +----------------+                                                                       
+  |--> | devpts_pty_new | create (inode, dentry) for pts                                        
+  |    +----------------+                                                                       
+  |                                                                                             
+  +--> call ->open(), e.g.,                                                                     
+       +----------+                                                                             
+       | pty_open | set flags on tty                                                            
+       +----------+                                                                             
+```
+
+```
+drivers/tty/pty.c                                     
++----------------+                                     
+| devpts_pty_new | : create (inode, dentry) for pts    
++-|--------------+                                     
+  |    +-----------+                                   
+  |--> | new_inode |                                   
+  |    +-----------+                                   
+  |    +--------------------+                          
+  |--> | init_special_inode | char dev for slave       
+  |    +--------------------+                          
+  |    +--------------+                                
+  |--> | d_alloc_name | alloc child dentry of sb dentry
+  |    +--------------+                                
+  |    +-------+                                       
+  +--> | d_add | add to hash table                     
+       +-------+                                       
+```
+
+```
+
+```
+
+```
 drivers/tty/serial/8250/8250_core.c                                                                                     
 +-----------------+                                                                                                      
 | serial8250_init | : init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)  
@@ -1197,28 +1368,33 @@ drivers/tty/serial/serial_core.c
 ```
 
 ```
-include/linux/tty_driver.h
-+------------------+
-| tty_alloc_driver | : prepare tty_driver (tty, ports, cdevs)
-+-|----------------+
-  |    drivers/tty/tty_io.c
-  |    +--------------------+
-  +--> | __tty_alloc_driver | : prepare tty_driver (tty, cdevs, ...)
-       +-|------------------+
-         |
-         |--> alloc and set up driver
-         |
-         |--> if flag hasn't specified dev_pts_mem (our case)
-         |    |
-         |    |--> alloc tty and save in driver
-         |    |
-         |    +--> alloc termios and save in driver
-         |
-         |--> if flag hasn't specified dynamic_alloc (our case)
-         |    -
-         |    +--> alloc ports and save in driver
-         |
-         +--> alloc cdevs and save in driver
+include/linux/tty_driver.h                                                                   
++------------------+                                                                          
+| tty_alloc_driver | : prepare tty_driver (e.g., uart case: alloc ttys/termios/ports)         
++-|----------------+                                                                          
+  |    +--------------------+                                                                 
+  +--> | __tty_alloc_driver | : prepare tty_driver (e.g., uart case: alloc ttys/termios/ports)
+       +-|------------------+                                                                 
+         |                                                                                    
+         |--> alloc and set up 'driver' struct (magic, lines, ...)                            
+         |                                                                                    
+         |--> if no 'devpts_mem' flag (e.g., uart case)                                       
+         |    -                                                                               
+         |    +--> alloc ttys and termios for 'driver'                                        
+         |                                                                                    
+         |--> if no 'dynamic_alloc' flag (e.g., uart case)                                    
+         |    -                                                                               
+         |    +--> alloc ports for 'driver'                                                   
+         |                                                                                    
+         +--> alloc cdevs for 'driver'                                                        
+                                                                                             
+                                                                                              
+     uart                          pty                                                        
+     TTY_DRIVER_REAL_RAW           TTY_DRIVER_RESET_TERMIOS                                   
+     TTY_DRIVER_DYNAMIC_DEV        TTY_DRIVER_REAL_RAW                                        
+                                   TTY_DRIVER_DYNAMIC_DEV                                     
+                                   TTY_DRIVER_DEVPTS_MEM                                      
+                                   TTY_DRIVER_DYNAMIC_ALLOC                                   
 ```
 
 ```
