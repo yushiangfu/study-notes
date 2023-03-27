@@ -187,7 +187,10 @@ drivers/tty/tty_io.c
   |    +--> call ->install(), e.g.,                                  
   |         +--------------+                                         
   |         | uart_install | save state in tty, install tty to driver
-  |         +--------------+                                         
+  |         +--------------+    
+  |         +--------------------+                                         
+  |         | pty_unix98_install | set up pty pair
+  |         +--------------------+   
   |                                                                  
   +--> else                                                          
        |                                                             
