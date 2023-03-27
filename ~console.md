@@ -103,7 +103,7 @@ drivers/tty/tty_io.c
   |--> | tty_lookup_driver | look up tty driver based on dev#                                        
   |    +-------------------+                                                                         
   |    +-----------------------+                                                                     
-  |--> | tty_driver_lookup_tty | get tty from driver->ttys[index]                                    
+  |--> | tty_driver_lookup_tty | look up tty from slave dentry (pty case) or tty driver (tty case)
   |    +-----------------------+                                                                     
   |                                                                                                  
   |--> if tty exists                                                                                 
@@ -155,6 +155,24 @@ kernel/printk/printk.c
        |    +---------------------+                                                              
        |                                                                                         
        +--> if driver found, break                                                               
+```
+
+```
+drivers/tty/tty_io.c                                                                        
++-----------------------+                                                                    
+| tty_driver_lookup_tty | : look up tty from slave dentry (pty case) or tty driver (tty case)
++-|---------------------+                                                                    
+  |                                                                                          
+  |--> if tty driver has ->lookup()                                                          
+  |    -                                                                                     
+  |    +--> call it, e.g.,                                                                   
+  |         +-------------------+                                                            
+  |         | pts_unix98_lookup | get slave tty from dentry private                          
+  |         +-------------------+                                                            
+  |                                                                                          
+  +--> else                                                                                  
+       -                                                                                     
+       +--> given idx, get tty from tty_driver                                               
 ```
 
 ```
@@ -1162,8 +1180,8 @@ drivers/tty/pty.c
 ```
 
 ```
-static const struct tty_operations ptm_unix98_ops = {
-    .lookup = ptm_unix98_lookup,
+static const struct tty_operations pty_unix98_ops = { 
+    .lookup = pts_unix98_lookup, ------------- set up pty pair
     .install = pty_unix98_install,
     .remove = pty_unix98_remove,
     .open = pty_open, ------------------------ set flags
@@ -1172,12 +1190,33 @@ static const struct tty_operations ptm_unix98_ops = {
     .write_room = pty_write_room,
     .flush_buffer = pty_flush_buffer,
     .unthrottle = pty_unthrottle,
-    .ioctl = pty_unix98_ioctl,
-    .compat_ioctl = pty_unix98_compat_ioctl,
-    .resize = pty_resize,
+    .set_termios = pty_set_termios,
+    .start = pty_start,
+    .stop = pty_stop,
     .cleanup = pty_cleanup,
-    .show_fdinfo = pty_show_fdinfo,
-};                                                                                      
+};
+```
+
+```
+drivers/tty/pty.c                                          
++--------------------+                                      
+| pty_unix98_install | : set up pty pair                    
++-|------------------+                                      
+  |    +--------------------+                               
+  +--> | pty_common_install | : set up pty pair             
+       +-|------------------+                               
+         |                                                  
+         |--> alloc two tty ports                           
+         |                                                  
+         |    +------------------+                          
+         |--> | alloc_tty_struct | alloc and set up o_tty   
+         |    +------------------+                          
+         |                                                  
+         |--> link arg tty and newly created o_tty          
+         |                                                  
+         |--> init both ports                               
+         |                                                  
+         +--> assign port[0] to o_tty and port[1] to arg tty
 ```
 
 ```
