@@ -648,7 +648,7 @@ proc_consoles_init:              create /proc/consoles
 chr_dev_init:                    (don't care)
    tty_init:                     init char devices for tty and console
 aspeed_uart_routing_driver_init: register 'aspeed_uart_routing_driver' to bus 'platform'
-pty_init:                           
+pty_init:                        init ptmx/ptm/pty       
 serial8250_init:                 init and register 'seerial8250_ports', prepare tty driver, register platform dev/drv (serial8250)
    serial8250_probe:             for each valid port in dev data: register a 8250 port
 aspeed_vuart_driver_init:        register platform driver 'aspeed_vuart_driver'
@@ -1123,9 +1123,47 @@ drivers/tty/tty_io.c
 ```
 
 ```
+drivers/soc/aspeed/aspeed-uart-routing.c            
+                                                      
+#define ROUTING_ATTR(_name) {                   \    
+    .attr = {.name = _name,                 \        
+         .mode = VERIFY_OCTAL_PERMISSIONS(0644) },  \
+    .show = aspeed_uart_routing_show,           \    
+    .store = aspeed_uart_routing_store,         \    
+}                                                    
+```
+
+```
+drivers/soc/aspeed/aspeed-uart-routing.c                                          
++--------------------------+                                                       
+| aspeed_uart_routing_show | : given current reg setting, print options accordingly
++-|------------------------+                                                       
+  |                                                                                
+  |--> get value from register (e.g., read hicra, shift, and mask)                 
+  |                                                                                
+  +--> for each opiton                                                             
+       |                                                                           
+       |--> if it matches the current value, print [$option]                       
+       |                                                                           
+       +--> else, print $option                                                    
+```
+
+```
+drivers/soc/aspeed/aspeed-uart-routing.c                         
++---------------------------+                                     
+| aspeed_uart_routing_store | : update option in hw reg           
++-|-------------------------+                                     
+  |    +--------------+                                           
+  |--> | match_string | given string, try to find a match in array
+  |    +--------------+                                           
+  |                                                               
+  +--> update option in hw reg                                    
+```
+
+```
 drivers/tty/pty.c                                                                                       
 +----------+                                                                                             
-| pty_init |                                                                                             
+| pty_init | : init ptmx/ptm/pty
 +-|--------+                                                                                             
   |    +-----------------+                                                                               
   |--> | legacy_pty_init | (do nothing bc of disabled config)                                            
@@ -1308,10 +1346,6 @@ drivers/tty/pty.c
   |    +-------+                                       
   +--> | d_add | add to hash table                     
        +-------+                                       
-```
-
-```
-
 ```
 
 ```
