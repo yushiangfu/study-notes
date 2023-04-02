@@ -2273,6 +2273,9 @@ There are still other interesting topics worth digging into, such as pseudo TTY 
 grep '0x' /sys/class/tty/ttyS*/iomem_base  
 ```
 
-[What are TTY, serial, and UART lines?](https://subscription.packtpub.com/book/hardware-&-creative/9781786461803/7/ch07lvl1sec37/what-are-tty-serial-and-uart-lines)
+## <a name="reference"></a> Reference
 
-
+- [What are TTY, serial, and UART lines?](https://subscription.packtpub.com/book/hardware-&-creative/9781786461803/7/ch07lvl1sec37/what-are-tty-serial-and-uart-lines)
+- [The TTY demystified](https://www.linusakesson.net/programming/tty/)
+- [pty(7) — Linux manual page](https://man7.org/linux/man-pages/man7/pty.7.html)
+- 
