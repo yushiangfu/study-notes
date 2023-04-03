@@ -19,10 +19,12 @@
 
 I hadn't been through any evolvement of the teletype, terminal, or its pseudo replacement, but merely trying to summarize what I have learned.
 First is teletype, which has nothing to do with the computer; people press a button, and the device prints that character onto the paper accordingly.
-Later, computers were invented, and teletypes were adopted as input and output devices because of their readiness and capabilities.
+Afterward, computers were invented, and teletypes were adopted as input and output devices because of their readiness and capabilities.
 Teletype then wasn't part of the computer but worked as a terminal, along with others, connected to a computer to share the expensive resource.
-Later personal computers became much more affordable, and the terminal/computer model was further simplified and incorporated into one PC.
+Gradually personal computers became much more affordable, and the terminal/computer model was further simplified and incorporated into one PC.
 The terminal was first emulated in the kernel but later moved to userspace considering flexibility, thus the pseudo terminal design (master/slave).
+
+<p align="center"><img src="images/tty/tty-evolution.png" /></p>
 
 ## <a name="tty-framework"></a> TTY Framework
 
