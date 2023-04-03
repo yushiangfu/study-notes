@@ -2288,3 +2288,4 @@ grep '0x' /sys/class/tty/ttyS*/iomem_base
 - [pty(7) — Linux manual page](https://man7.org/linux/man-pages/man7/pty.7.html)
 - [A. Yakout, Terminal under the hood - TTY & PTY](https://yakout.io/blog/terminal-under-the-hood/)
 - [A. Rubini, Serial Drivers](https://www.linux.it/~rubini/docs/serial/serial.html)
+- [What are the responsibilities of each Pseudo-Terminal (PTY) component (software, master side, slave side)?](https://unix.stackexchange.com/questions/117981/what-are-the-responsibilities-of-each-pseudo-terminal-pty-component-software)
