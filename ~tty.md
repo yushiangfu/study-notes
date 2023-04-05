@@ -3,7 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [TTY Framework](#tty-framework)
+- [Framework](#framework)
 - [Console](#console)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
@@ -26,7 +26,22 @@ The terminal was first emulated in the kernel but later moved to userspace consi
 
 <p align="center"><img src="images/tty/tty-evolution.png" /></p>
 
-## <a name="tty-framework"></a> TTY Framework
+## <a name="framework"></a> Framework
+
+### PTY
+
+In the PTY design, a pair of master and slave tty devices are bound to each other; output from the master is input to the slave and vice versa. 
+For example, when we start the GUI terminal, that application opens `/dev/ptmx` to get the file descriptor of the pseudo-terminal master (ptm). 
+Simultaneously, a pseudo-terminal slave (pts) file is generated, e.g., `/dev/pts/0`, and we expect a newly forked shell attached to it. 
+Anything we input on the master side goes through its tty driver and line discipline:
+
+- tty driver
+    - manage session IO
+- line discipline
+    - handle character echo, ^C, line editing, ...
+
+When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, tty driver up to the shell for command processing. 
+As you can imagine, the output follows the same logic going back to the master side for display, locally or remotely (e.g., ssh server case).
 
 ```
 root@romulus:/dev# ls -l tty* console
