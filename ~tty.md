@@ -24,24 +24,36 @@ Teletype then wasn't part of the computer but worked as a terminal, along with o
 Gradually personal computers became much more affordable, and the terminal/computer model was further simplified and incorporated into one PC.
 The terminal was first emulated in the kernel but later moved to userspace considering flexibility, thus the pseudo terminal design (master/slave).
 
-<p align="center"><img src="images/tty/tty-evolution.png" /></p>
-
 ## <a name="framework"></a> Framework
 
-### PTY
+### TTY
 
-In the PTY design, a pair of master and slave tty devices are bound to each other; output from the master is input to the slave and vice versa. 
-For example, when we start the GUI terminal, that application opens `/dev/ptmx` to get the file descriptor of the pseudo-terminal master (ptm). 
-Simultaneously, a pseudo-terminal slave (pts) file is generated, e.g., `/dev/pts/0`, and we expect a newly forked shell attached to it. 
-Anything we input on the master side goes through its tty driver and line discipline:
 
-- tty driver
+Whether it's a traditional hardware terminal or modern software PuTTY, they're other entities accessing the target machine through the UART cable. 
+For example, starting from PuTTY, the data traverse through hardware, UART driver, line discipline, TTY driver, and eventually the shell. 
+After the command interpretation and processing, the output tracks the same way (data path) back and displays at the endpoint.
+
+- TTY driver
     - manage session IO
 - line discipline
     - handle character echo, ^C, line editing, ...
+- UART driver
+    - control hardware component
 
-When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, tty driver up to the shell for command processing. 
+<p align="center"><img src="images/tty/tty.png" /></p>
+
+### PTY
+
+In the PTY design, a pair of master and slave TTY devices are bound to each other; output from the master is input to the slave and vice versa. 
+For example, when we start the GUI terminal, that application opens `/dev/ptmx` to get the file descriptor of the pseudo-terminal master (ptm). 
+Simultaneously, a pseudo-terminal slave (pts) file is generated, e.g., `/dev/pts/0`, and we expect a newly forked shell attached to it. 
+Anything we input on the master side goes through its TTY driver and line discipline.
+When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, the TTY driver up to the shell for command processing. 
 As you can imagine, the output follows the same logic going back to the master side for display, locally or remotely (e.g., ssh server case).
+
+<p align="center"><img src="images/tty/pty.png" /></p>
+
+
 
 ```
 root@romulus:/dev# ls -l tty* console
