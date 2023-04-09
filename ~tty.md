@@ -3,17 +3,11 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Framework](#framework)
+- [TTY & PTY](#tty-and-pty)
 - [Console](#console)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
-
-2. [TTY Types](#tty-types)
-3. [TTY <-> UART](#tty-uart)
-5. [Mechanism of printk](#mechanism-of-printk)
-6. [Kernel Boot Arguments](#kernel-boot-arguments)
-7. [Conclusion](#conclusion)
 
 ## <a name="introduction"></a> Introduction
 
@@ -24,7 +18,7 @@ Teletype then wasn't part of the computer but worked as a terminal, along with o
 Gradually personal computers became much more affordable, and the terminal/computer model was further simplified and incorporated into one PC.
 The terminal was first emulated in the kernel but later moved to userspace considering flexibility, thus the pseudo terminal design (master/slave).
 
-## <a name="framework"></a> Framework
+## <a name="tty-and-pty"></a> TTY & PTY
 
 ### TTY
 
@@ -42,19 +36,76 @@ After the command interpretation and processing, the output tracks the same way 
 
 <p align="center"><img src="images/tty/tty.png" /></p>
 
-### PTY
+<details><summary> More Details </summary>
+   
+Device Name       | Description
+--                | --
+tty1 ~ n          | Command line interface. On Raspberry Pi, Ctrl + Alt + F1 ~ F6 can switch to corresponding TTY 
+ptmx & pts/0 ~ n  | Pseudo TTY, responsible for GUI and SSH consoles
+ttyS0 ~ n         | It means serial console and each represents one UART within chip
+ttyAMA0 ~ n       | ARM serial console?
+ttyUSB0 ~ n       | Serial cable with USB interface. E.g. Plug in the USB-to-TTL cable to Raspberry Pi and you can see one
+ttyprintk         | Redirect message to this file and then it can be displayed by command 'dmesg'
+tty               | Conceptually it's like a link that always points to the TTY device of current task
+console           | In terms of results, it represents the one specified by the kernel boot argument 'console=', which is ttyS4 in my case
 
-In the PTY design, a pair of master and slave TTY devices are bound to each other; output from the master is input to the slave and vice versa. 
-For example, when we start the GUI terminal, that application opens `/dev/ptmx` to get the file descriptor of the pseudo-terminal master (ptm). 
-Simultaneously, a pseudo-terminal slave (pts) file is generated, e.g., `/dev/pts/0`, and we expect a newly forked shell attached to it. 
-Anything we input on the master side goes through its TTY driver and line discipline.
-When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, the TTY driver up to the shell for command processing. 
-As you can imagine, the output follows the same logic going back to the master side for display, locally or remotely (e.g., ssh server case).
+```
+In serial console:
+root@romulus:~# ls -l /proc/$$/fd
+lrwx------    1 root     root            64 Jul 27 15:25 0 -> /dev/ttyS4
+lrwx------    1 root     root            64 Jul 27 15:25 1 -> /dev/ttyS4
+lrwx------    1 root     root            64 Jul 27 15:25 2 -> /dev/ttyS4
+lrwx------    1 root     root            64 Jul 27 15:25 255 -> /dev/ttyS4
 
-<p align="center"><img src="images/tty/pty.png" /></p>
+In SSH console:
+root@romulus:~# ls -l /proc/$$/fd
+lrwx------    1 root     root            64 Jul 27 15:26 0 -> /dev/pts/0
+lrwx------    1 root     root            64 Jul 27 15:26 1 -> /dev/pts/0
+lrwx------    1 root     root            64 Jul 27 15:26 2 -> /dev/pts/0
+lrwx------    1 root     root            64 Jul 27 15:26 255 -> /dev/pts/0
+```
 
-
-
+```
+         TTY out                         TTY in          
+                                                         
+      +-----------+                    +----------+      
+      | tty_write |                    | tty_read |      
+      +-----------+                    +----------+      
+            |                                |           
+            v                                v           
+     +-------------+                  +------------+     
+     | n_tty_write |                  | n_tty_read |     
+     +-------------+                  +------------+     
+            |                                |           
+            |                                v           
+            |                              data          
+            |                                ^           
+            |                                |           
+            |                      +-------------------+ 
+            |                      | n_tty_receive_buf | 
+            |                      +-------------------+ 
+            |                                ^           
+            v                                |           
+     +------------+                +------------------+  
+     | uart_write |                | uart_insert_char |  
+     +------------+                +------------------+  
+            |                                ^           
+            v                                |           
+ +---------------------+                     |           
+ | serial8250_start_tx |                     |           
+ +---------------------+                     |           
+     async  |                                |           
+            v                                |           
++----------------------+         +----------------------+
+| serial8250_interrupt |         | serial8250_interrupt |
++--+----------------+--+         +---+---------------+--+
+   | mem_serial_out |                | mem_serial_in |   
+   +----------------+                +---------------+   
+            |                                ^           
+            v                                |           
+      UART hardware                    UART hardware     
+```
+    
 ```
 root@romulus:/dev# ls -l tty* console
 crw-------    1 root     root        5,   1 Jan 31 04:06 console
@@ -590,91 +641,214 @@ drivers/tty/tty_io.c
   +--> | tty_release_struct | release ldisc, flush work, remove tty from driver 
        +--------------------+                                                   
 ```
+    
+</details>
 
-## <a name="tty-to-uart"></a> TTY to UART
+### PTY
 
-(TBD)
+In the PTY design, a pair of master and slave TTY devices are bound to each other; output from the master is input to the slave and vice versa. 
+For example, when we start the GUI terminal, that application opens `/dev/ptmx` to get the file descriptor of the pseudo-terminal master (ptm). 
+Simultaneously, a pseudo-terminal slave (pts) file is generated, e.g., `/dev/pts/0`, and we expect a newly forked shell attached to it. 
+Anything we input on the master side goes through its TTY driver and line discipline.
+When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, the TTY driver up to the shell for command processing. 
+As you can imagine, the output follows the same logic going back to the master side for display, locally or remotely (e.g., ssh server case).
 
-### Virtual UART
+<p align="center"><img src="images/tty/pty.png" /></p>
 
-### Net Cconsole (PTY?)
-
-### Line Discipline
-
-
-
-## <a name="tty-types"></a> TTY Types
-
-Device Name       | Description
---                | --
-tty1 ~ n          | Command line interface. On Raspberry Pi, Ctrl + Alt + F1 ~ F6 can switch to corresponding TTY 
-ptmx & pts/0 ~ n  | Pseudo TTY, responsible for GUI and SSH consoles
-ttyS0 ~ n         | It means serial console and each represents one UART within chip
-ttyAMA0 ~ n       | ARM serial console?
-ttyUSB0 ~ n       | Serial cable with USB interface. E.g. Plug in the USB-to-TTL cable to Raspberry Pi and you can see one
-ttyprintk         | Redirect message to this file and then it can be displayed by command 'dmesg'
-tty               | Conceptually it's like a link that always points to the TTY device of current task
-console           | In terms of results, it represents the one specified by the kernel boot argument 'console=', which is ttyS4 in my case
-
-## <a name="tty-uart"></a> TTY <-> UART
-
-By default, each user space task has the first three file descriptors used for stdin/stdout/stderr. Issue below command to inspect which TTY devices are used.
-```
-ls -l /proc/$$/fd
-```
+<details><summary> More Details </summary>
 
 ```
-In serial console:
-root@romulus:~# ls -l /proc/$$/fd
-lrwx------    1 root     root            64 Jul 27 15:25 0 -> /dev/ttyS4
-lrwx------    1 root     root            64 Jul 27 15:25 1 -> /dev/ttyS4
-lrwx------    1 root     root            64 Jul 27 15:25 2 -> /dev/ttyS4
-lrwx------    1 root     root            64 Jul 27 15:25 255 -> /dev/ttyS4
-
-In SSH console:
-root@romulus:~# ls -l /proc/$$/fd
-lrwx------    1 root     root            64 Jul 27 15:26 0 -> /dev/pts/0
-lrwx------    1 root     root            64 Jul 27 15:26 1 -> /dev/pts/0
-lrwx------    1 root     root            64 Jul 27 15:26 2 -> /dev/pts/0
-lrwx------    1 root     root            64 Jul 27 15:26 255 -> /dev/pts/0
+static const struct tty_operations pty_unix98_ops = { 
+    .lookup = pts_unix98_lookup, ------------- set up pty pair
+    .install = pty_unix98_install,
+    .remove = pty_unix98_remove,
+    .open = pty_open, ------------------------ set flags
+    .close = pty_close, ---------------------- set flags
+    .write = pty_write, ---------------------- copy data to tty buffer, and flush to ldisc
+    .write_room = pty_write_room,
+    .flush_buffer = pty_flush_buffer,
+    .unthrottle = pty_unthrottle,
+    .set_termios = pty_set_termios,
+    .start = pty_start,
+    .stop = pty_stop,
+    .cleanup = pty_cleanup,
+};
 ```
 
-Below are the flowcharts showing how data is output to or input from users.
+```
+drivers/tty/pty.c                                          
++--------------------+                                      
+| pty_unix98_install | : set up pty pair                    
++-|------------------+                                      
+  |    +--------------------+                               
+  +--> | pty_common_install | : set up pty pair             
+       +-|------------------+                               
+         |                                                  
+         |--> alloc two tty ports                           
+         |                                                  
+         |    +------------------+                          
+         |--> | alloc_tty_struct | alloc and set up o_tty   
+         |    +------------------+                          
+         |                                                  
+         |--> link arg tty and newly created o_tty          
+         |                                                  
+         |--> init both ports                               
+         |                                                  
+         +--> assign port[0] to o_tty and port[1] to arg tty
+```
+
+```
+drivers/tty/pty.c                                                                           
++-----------+                                                                                
+| pty_write | : copy data to tty buffer, and flush to ldisc                                  
++-|---------+                                                                                
+  |    +----------------------------------------+                                            
+  +--> | tty_insert_flip_string_and_push_buffer | copy data to tty buffer, and flush to ldisc
+       +----------------------------------------+                                            
+```
+
+```
+drivers/tty/tty_buffer.c                                                                 
++----------------------------------------+                                                
+| tty_insert_flip_string_and_push_buffer | : copy data to tty buffer, and flush to ldisc  
++-|--------------------------------------+                                                
+  |    +------------------------+                                                         
+  |--> | tty_insert_flip_string | copy data to tty buffer                                 
+  |    +------------------------+                                                         
+  |    +------------------------+                                                         
+  |--> | tty_flip_buffer_commit | data is ready to be flushed to ldisc                    
+  |    +------------------------+                                                         
+  |    +------------+ +----------------+                                                  
+  +--> | queue_work | | flush_to_ldisc |                                                  
+       +------------+ +----------------+                                                  
+                      receive data to tty read buffer till no more, wake up task if needed
+```
+
+```
+include/linux/tty_flip.h                                             
++------------------------+                                            
+| tty_insert_flip_string | : copy data to tty buffer                  
++-|----------------------+                                            
+  |    +-----------------------------------+                          
+  +--> | tty_insert_flip_string_fixed_flag | : copy data to tty buffer
+       +-|---------------------------------+                          
+         |    +---------------------------+                           
+         |--> | __tty_buffer_request_room | grow tty buffer if needed 
+         |    +---------------------------+                           
+         |                                                            
+         +--> copy data to tty buffer                                 
+```
+
+```
+drivers/tty/pty.c                                                                              
++-----------+                                                                                   
+| ptmx_open | : open a unix98 pty master (create inode for pts)                                 
++-|---------+                                                                                   
+  |    +----------------+                                                                       
+  |--> | tty_alloc_file | alloc private and save in file                                        
+  |    +----------------+                                                                       
+  |    +----------------+                                                                       
+  |--> | devpts_acquire | get fs_info of sb                                                     
+  |    +----------------+                                                                       
+  |    +------------------+                                                                     
+  |--> | devpts_new_index | find an unused index                                                
+  |    +------------------+                                                                     
+  |    +--------------+                                                                         
+  |--> | tty_init_dev | prepare tty and save in driver, ensure it has port, open line discipline
+  |    +--------------+                                                                         
+  |    +--------------+                                                                         
+  |--> | tty_add_file | add file_priv to tty                                                    
+  |    +--------------+                                                                         
+  |    +----------------+                                                                       
+  |--> | devpts_pty_new | create (inode, dentry) for pts                                        
+  |    +----------------+                                                                       
+  |                                                                                             
+  +--> call ->open(), e.g.,                                                                     
+       +----------+                                                                             
+       | pty_open | set flags on tty                                                            
+       +----------+                                                                             
+```
+
+```
+drivers/tty/pty.c                                     
++----------------+                                     
+| devpts_pty_new | : create (inode, dentry) for pts    
++-|--------------+                                     
+  |    +-----------+                                   
+  |--> | new_inode |                                   
+  |    +-----------+                                   
+  |    +--------------------+                          
+  |--> | init_special_inode | char dev for slave       
+  |    +--------------------+                          
+  |    +--------------+                                
+  |--> | d_alloc_name | alloc child dentry of sb dentry
+  |    +--------------+                                
+  |    +-------+                                       
+  +--> | d_add | add to hash table                     
+       +-------+                                       
+```
+
+</details>
+
+## <a name="console"></a> Console
+
+Here we list a few functions that are related to our topic and we'll introduce them one by one.
+```
+init calls
+  └─ of_platform_default_populate_ini()
+  └─ of_platform_serial_driver_init()
+```
+  
+- of_platform_serial_driver_init
+
+  It registers driver 'of_serial' and probes device '1e783000.serial' & '1e784000.serial' sequentially. Here we have to introduce the 'port' concept of uart.
+  Take AST2500 for example, it might be equipped with up to 5 regular UARTs (leave virtual UART alone).
+  Each UART component is regarded as 'port' in the code, e.g. ttyS4 is the port 5 of UART.
+  Back to the probe, it registers the UART port to the framework for each of the matched devices.
+
+  ```
+  of_platform_serial_driver_init()
+    └─ register driver 'of_serial'
+         └─ probe device 1e783000.serial
+              └─ set up the UART port and register it
+              └─ register console but fail (it's not our preferred console, which is set by kernel boot command)
+         └─ probe device 1e784000.serial
+              └─ set up the UART port and register it              
+              └─ register console and pass (preferred console)
+  ```
+  
+  Registered consoles are for kernel space to print out messages.
+  
+Unlike user space processes have TTY device to direct input/output/error, kernel threads output messages by printk and below flowchart shows how it works.
 
 ```mermaid
 graph TD
-   a>TTY -> UART]
-   b(TTY Layer <br> e.g. tty_write)
-   c(Line Discipline Layer <br> e.g. n_tty_write)
-   d(UART Generic Layer <br> e.g. uart_write)
-   e(UART Driver Layer <br> e.g. serial8250_start_tx)
-   f(UART Driver ISR <br> e.g. serial8250_interrupt)
-   g(UART Port Handler <br> e.g. serial8250_default_handle_irq <br> ->mem_serial_out)
-   h>Output to Users]
+   a(printk)
+   b(vprintk_func)
+   c(vsnprintf)
+   d(log_output)
+   e(console_unlock)
    
-   a-.-b
-   b-->c
+   a-->b
+   b-->c 
    c-->d
    d-->e
-   e-.->|asynchronous|f
-   f-->g
-   g-.-h
-   
-   aa>UART -> TTY]
-   bb>Input from Users]
-   cc(UART Driver ISR <br> e.g. serial8250_interrupt)
-   dd(UART Port Handler <br> e.g. serial8250_default_handle_irq <br> ->mem_serial_in)
-   ee(UART Generic Layer <br> e.g. uart_insert_char)
-   ff(Line Discipline Layer <br> e.g. n_tty_receive_buf)
-   gg(TTY Layer <br> e.g. tty_read)
-   
-   aa-.-bb
-   bb-.-cc
-   cc-->dd
-   dd-.->|Below is data direction instead of code flow|ee
-   ee-.->ff
-   ff-.->|Ready for read|gg
 ```
+
+- printk(), aggregate arguments
+- vprintk_func(), deal with different contexts, e.g. NMI, safe, ...
+- vsnprintf(), replace specifiers with real data
+- log_output(), commit string to the circular buffer of printk as 'record'
+- console_unlock(), for each valid record, add prefix and write to each console
+
+```
+console_unlock()
+  └─ record_print_text(), insert timestamp to the beginning of string
+  └─ call_console_drivers(), write out the committed record to each registered console
+```
+
+So, before registering any console, printk() can still work since it just commits the message into the ring buffer.
+Once there's an available console, all pending records are handled sequentially.
 
 ## <a name="system-startup"></a> System Startup
 
@@ -1252,137 +1426,6 @@ drivers/tty/pty.c
   |    +---------------+                                                                            
   +--> | device_create |                                                                            
        +---------------+                                                                            
-```
-
-```
-static const struct tty_operations pty_unix98_ops = { 
-    .lookup = pts_unix98_lookup, ------------- set up pty pair
-    .install = pty_unix98_install,
-    .remove = pty_unix98_remove,
-    .open = pty_open, ------------------------ set flags
-    .close = pty_close, ---------------------- set flags
-    .write = pty_write, ---------------------- copy data to tty buffer, and flush to ldisc
-    .write_room = pty_write_room,
-    .flush_buffer = pty_flush_buffer,
-    .unthrottle = pty_unthrottle,
-    .set_termios = pty_set_termios,
-    .start = pty_start,
-    .stop = pty_stop,
-    .cleanup = pty_cleanup,
-};
-```
-
-```
-drivers/tty/pty.c                                          
-+--------------------+                                      
-| pty_unix98_install | : set up pty pair                    
-+-|------------------+                                      
-  |    +--------------------+                               
-  +--> | pty_common_install | : set up pty pair             
-       +-|------------------+                               
-         |                                                  
-         |--> alloc two tty ports                           
-         |                                                  
-         |    +------------------+                          
-         |--> | alloc_tty_struct | alloc and set up o_tty   
-         |    +------------------+                          
-         |                                                  
-         |--> link arg tty and newly created o_tty          
-         |                                                  
-         |--> init both ports                               
-         |                                                  
-         +--> assign port[0] to o_tty and port[1] to arg tty
-```
-
-```
-drivers/tty/pty.c                                                                           
-+-----------+                                                                                
-| pty_write | : copy data to tty buffer, and flush to ldisc                                  
-+-|---------+                                                                                
-  |    +----------------------------------------+                                            
-  +--> | tty_insert_flip_string_and_push_buffer | copy data to tty buffer, and flush to ldisc
-       +----------------------------------------+                                            
-```
-
-```
-drivers/tty/tty_buffer.c                                                                 
-+----------------------------------------+                                                
-| tty_insert_flip_string_and_push_buffer | : copy data to tty buffer, and flush to ldisc  
-+-|--------------------------------------+                                                
-  |    +------------------------+                                                         
-  |--> | tty_insert_flip_string | copy data to tty buffer                                 
-  |    +------------------------+                                                         
-  |    +------------------------+                                                         
-  |--> | tty_flip_buffer_commit | data is ready to be flushed to ldisc                    
-  |    +------------------------+                                                         
-  |    +------------+ +----------------+                                                  
-  +--> | queue_work | | flush_to_ldisc |                                                  
-       +------------+ +----------------+                                                  
-                      receive data to tty read buffer till no more, wake up task if needed
-```
-
-```
-include/linux/tty_flip.h                                             
-+------------------------+                                            
-| tty_insert_flip_string | : copy data to tty buffer                  
-+-|----------------------+                                            
-  |    +-----------------------------------+                          
-  +--> | tty_insert_flip_string_fixed_flag | : copy data to tty buffer
-       +-|---------------------------------+                          
-         |    +---------------------------+                           
-         |--> | __tty_buffer_request_room | grow tty buffer if needed 
-         |    +---------------------------+                           
-         |                                                            
-         +--> copy data to tty buffer                                 
-```
-
-```
-drivers/tty/pty.c                                                                              
-+-----------+                                                                                   
-| ptmx_open | : open a unix98 pty master (create inode for pts)                                 
-+-|---------+                                                                                   
-  |    +----------------+                                                                       
-  |--> | tty_alloc_file | alloc private and save in file                                        
-  |    +----------------+                                                                       
-  |    +----------------+                                                                       
-  |--> | devpts_acquire | get fs_info of sb                                                     
-  |    +----------------+                                                                       
-  |    +------------------+                                                                     
-  |--> | devpts_new_index | find an unused index                                                
-  |    +------------------+                                                                     
-  |    +--------------+                                                                         
-  |--> | tty_init_dev | prepare tty and save in driver, ensure it has port, open line discipline
-  |    +--------------+                                                                         
-  |    +--------------+                                                                         
-  |--> | tty_add_file | add file_priv to tty                                                    
-  |    +--------------+                                                                         
-  |    +----------------+                                                                       
-  |--> | devpts_pty_new | create (inode, dentry) for pts                                        
-  |    +----------------+                                                                       
-  |                                                                                             
-  +--> call ->open(), e.g.,                                                                     
-       +----------+                                                                             
-       | pty_open | set flags on tty                                                            
-       +----------+                                                                             
-```
-
-```
-drivers/tty/pty.c                                     
-+----------------+                                     
-| devpts_pty_new | : create (inode, dentry) for pts    
-+-|--------------+                                     
-  |    +-----------+                                   
-  |--> | new_inode |                                   
-  |    +-----------+                                   
-  |    +--------------------+                          
-  |--> | init_special_inode | char dev for slave       
-  |    +--------------------+                          
-  |    +--------------+                                
-  |--> | d_alloc_name | alloc child dentry of sb dentry
-  |    +--------------+                                
-  |    +-------+                                       
-  +--> | d_add | add to hash table                     
-       +-------+                                       
 ```
 
 ```
@@ -2230,72 +2273,7 @@ drivers/tty/serial/8250/8250_core.c
        +------------------+ (console = univ8250_console)                          
 ```
 
-
-
-
-
-
-Here we list a few functions that are related to our topic and we'll introduce them one by one.
-```
-init calls
-  └─ of_platform_default_populate_ini()
-  └─ of_platform_serial_driver_init()
-```
-  
-- of_platform_serial_driver_init
-
-  It registers driver 'of_serial' and probes device '1e783000.serial' & '1e784000.serial' sequentially. Here we have to introduce the 'port' concept of uart.
-  Take AST2500 for example, it might be equipped with up to 5 regular UARTs (leave virtual UART alone).
-  Each UART component is regarded as 'port' in the code, e.g. ttyS4 is the port 5 of UART.
-  Back to the probe, it registers the UART port to the framework for each of the matched devices.
-
-  ```
-  of_platform_serial_driver_init()
-    └─ register driver 'of_serial'
-         └─ probe device 1e783000.serial
-              └─ set up the UART port and register it
-              └─ register console but fail (it's not our preferred console, which is set by kernel boot command)
-         └─ probe device 1e784000.serial
-              └─ set up the UART port and register it              
-              └─ register console and pass (preferred console)
-  ```
-  
-  Registered consoles are for kernel space to print out messages.
-  
-## <a name="mechanism-of-printk"></a> Mechanism of printk()
-
-Unlike user space processes have TTY device to direct input/output/error, kernel threads output messages by printk and below flowchart shows how it works.
-
-```mermaid
-graph TD
-   a(printk)
-   b(vprintk_func)
-   c(vsnprintf)
-   d(log_output)
-   e(console_unlock)
-   
-   a-->b
-   b-->c 
-   c-->d
-   d-->e
-```
-
-- printk(), aggregate arguments
-- vprintk_func(), deal with different contexts, e.g. NMI, safe, ...
-- vsnprintf(), replace specifiers with real data
-- log_output(), commit string to the circular buffer of printk as 'record'
-- console_unlock(), for each valid record, add prefix and write to each console
-
-```
-console_unlock()
-  └─ record_print_text(), insert timestamp to the beginning of string
-  └─ call_console_drivers(), write out the committed record to each registered console
-```
-
-So, before registering any console, printk() can still work since it just commits the message into the ring buffer.
-Once there's an available console, all pending records are handled sequentially.
-
-## <a name="kernel-boot-arguments"></a> Kernel Boot Arguments
+## <a name="cheat-sheet"></a> Cheat Sheet
 
 ## <a name="conclusion"></a> Conclusion
 
