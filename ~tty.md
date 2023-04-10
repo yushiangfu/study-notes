@@ -850,6 +850,82 @@ console_unlock()
 So, before registering any console, printk() can still work since it just commits the message into the ring buffer.
 Once there's an available console, all pending records are handled sequentially.
 
+<details><summary> More Details </summary>
+    
+```
+include/linux/printk.h                                                                       
++--------+                                                                                    
+| printk |                                                                                    
++-|------+                                                                                    
+  |    +-------------------+                                                                  
+  +--> | printk_index_wrap |                                                                  
+       +-|-----------------+                                                                  
+         |    +---------+                                                                     
+         +--> | _printk |                                                                     
+              +-|-------+                                                                     
+                |    +---------+                                                              
+                +--> | vprintk |                                                              
+                     +-|-------+                                                              
+                       |    +-----------------+                                               
+                       +--> | vprintk_default |                                               
+                            +-|---------------+                                               
+                              |    +--------------+                                           
+                              +--> | vprintk_emit | commit log to ring buffer, try to flush it
+                                   +--------------+ 
+```
+    
+```
+kernel/printk/printk.c                                                                                          
++--------------+                                                                                                 
+| vprintk_emit | : commit log to ring buffer, try to flush it                                                    
++-|------------+                                                                                                 
+  |    +---------------+                                                                                         
+  |--> | vprintk_store | complete string and commit to ring buffer                                               
+  |    +---------------+                                                                                         
+  |                                                                                                              
+  +--> if not from scheduler                                                                                     
+       |                                                                                                         
+       |    +--------------------------+                                                                         
+       |--> | console_trylock_spinning |                                                                         
+       |    +--------------------------+                                                                         
+       |                                                                                                         
+       +--> if try lock successfully                                                                             
+            |                                                                                                    
+            |    +----------------+                                                                              
+            +--> | console_unlock | for each valid record: prepend timestamp and ask console drivers to print out
+                 +----------------+                                                                              
+```
+    
+```
+kernel/printk/printk.c                                                                     
++---------------+                                                                           
+| vprintk_store | : complete string and commit to ring buffer                               
++-|-------------+                                                                           
+  |    +-------------+                                                                      
+  |--> | local_clock | get timestamp                                                        
+  |    +-------------+                                                                      
+  |    +-----------+                                                                        
+  |--> | vsnprintf | replace specifier(s) in prefix string                                  
+  |    +-----------+                                                                        
+  |    +---------------------+                                                              
+  |--> | printk_parse_prefix | get log level and control flags                              
+  |    +---------------------+                                                              
+  |    +-----------------+                                                                  
+  |--> | prb_rec_init_wr | init record                                                      
+  |    +-----------------+                                                                  
+  |    +-------------+                                                                      
+  |--> | prb_reserve | reserve space for record in ring buffer                              
+  |    +-------------+                                                                      
+  |    +---------------+                                                                    
+  |--> | printk_sprint | fill (complete) msg in record (space is allocated from ring buffer)
+  |    +---------------+                                                                    
+  |    +------------------+                                                                 
+  +--> | prb_final_commit | reserved entry's state = desc_finalized                         
+       +------------------+                                                                 
+```
+    
+</details>
+
 ## <a name="system-startup"></a> System Startup
 
 ```
