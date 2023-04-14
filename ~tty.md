@@ -792,6 +792,45 @@ drivers/tty/pty.c
 
 ## <a name="console"></a> Console
 
+The TTY and PTY are IO devices for user space applications but not for the kernel, which outputs its log through the console device. 
+The below setting in DTS configures both the early and preferred consoles through which the kernel prints the message.
+
+```
+chosen {
+    stdout-path = "/ahb/apb/serial@1e784000";
+    bootargs = "console=ttyS4,115200 earlycon";
+};
+```
+
+The attribute `earlycon` instructs the kernel to prepare an early console, a.k.a. boot console, based on property `ns16550a` in node `serial@1e784000`.
+
+```
+serial@1e784000 {
+    compatible = "ns16550a";
+    reg = <0x1e784000 0x20>;
+    reg-shift = <0x02>;
+    interrupts = <0x0a>;
+    clocks = <0x02 0x0f>;
+    no-loopback-test;
+    status = "okay";
+};
+```
+
+Later enabled serial devices from DTS are sequentially added and matched, but only the preferred one becomes the formal console device for the kernel.
+
+- 1e787000.serial: ttyS5
+    - virtual uart, no idea yet
+- 1e783000.serial: ttyS0
+    - regular uart
+- 1e784000.serial: ttyS4
+    - regular uart, and is specified as the preferred console in boot arguments
+
+
+
+
+
+
+
 Here we list a few functions that are related to our topic and we'll introduce them one by one.
 ```
 init calls
