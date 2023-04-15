@@ -676,7 +676,7 @@ struct device_driver {
     
 ```
 +-----------------+                                                          
-| device_register | ： add to bus, send 'add dev' to notifier, probe device   
+| device_register | : add to bus, send 'add dev' to notifier, probe device   
 +----|------------+                                                          
      |    +-------------------+                                              
      |--> | device_initialize |                                              
