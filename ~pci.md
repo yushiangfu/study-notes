@@ -8,7 +8,7 @@ pci_proc_init:                      create /proc/bus/pci and attach device info
 pcie_portdrv_init:                  register port services and port driver
 pci_stub_init:                      (probably do nothing)
 aspeed_pcie_driver_init:            register aspeed_pcie_driver
-  aspeed_pcie_probe:                
+  aspeed_pcie_probe:                prepare host bridge/bus, register them, recursively scan buses, and then add devices
 pci_resource_alignment_sysfs_init:  
 pci_sysfs_init
 ```
@@ -57,7 +57,7 @@ drivers/pci/pcie/portdrv_pci.c
 ```
 drivers/pci/controller/pcie-aspeed.c                                                                            
 +-------------------+                                        
-| aspeed_pcie_probe |                                        
+| aspeed_pcie_probe | : prepare host bridge/bus, register them, recursively scan buses, and then add devices
 +-|-----------------+                                        
   |    +----------------------------+                                                                            
   |--> | devm_pci_alloc_host_bridge | : set up bridge (install irq ops, parse and add pci ranges as dev resource)
@@ -82,8 +82,80 @@ drivers/pci/controller/pcie-aspeed.c
   |         | aspeed_pcie_reset_work | remove all pci_dev on list, toggle perst_rc_out, rescan bus               
   |         +------------------------+                                                                           
   |    +----------------+                                                                                        
-  +--> | pci_host_probe |                                                                                        
+  +--> | pci_host_probe | prepare bus, register bridge/bus, recursively scan buses, and then add devices
        +----------------+                                                                                        
+```
+
+```
+drivers/pci/probe.c                                                                                   
++----------------+                                                                                     
+| pci_host_probe | : prepare bus, register bridge/bus, recursively scan buses, and then add devices    
++-|--------------+                                                                                     
+  |    +--------------------------+                                                                    
+  |--> | pci_scan_root_bus_bridge | prepare bus, register bridge/bus, recursively scan child bus       
+  |    +--------------------------+                                                                    
+  |                                                                                                    
+  |--> request iomem or ioport resource                                                                
+  |                                                                                                    
+  |    +---------------------+                                                                         
+  +--> | pci_bus_add_devices | recursively for each pci_dev: create sysfs/proc files & attach to driver
+       +---------------------+                                                                         
+```
+
+```
+drivers/pci/probe.c                                                                                             
++--------------------------+                                                                                     
+| pci_scan_root_bus_bridge | : prepare bus, register bridge/bus, recursively scan child bus                      
++-|------------------------+                                                                                     
+  |                                                                                                              
+  |--> for each window in bridge, try to find one with 'bus' type resource                                       
+  |                                                                                                              
+  |    +--------------------------+                                                                              
+  |--> | pci_register_host_bridge | prepare bus for bridge, register both bridge/bus, add bus to 'pci_root_buses'
+  |    +--------------------------+                                                                              
+  |                                                                                                              
+  |--> if not found (not 'bus' type resource)                                                                    
+  |    |                                                                                                         
+  |    |--> print "No busn resource found for root bus, will use [bus %02x-ff]\n"                                
+  |    |                                                                                                         
+  |    |    +-------------------------+                                                                          
+  |    +--> | pci_bus_insert_busn_res | request and reserve resource                                             
+  |         +-------------------------+                                                                          
+  |    +--------------------+                                                                                    
+  +--> | pci_scan_child_bus | scan pci devices on the bus, recursively scan bridges                              
+       +--------------------+                                                                                    
+```
+
+```
+drivers/pci/probe.c                                                                                        
++--------------------------+                                                                                
+| pci_register_host_bridge | : prepare bus for bridge, register both bridge/bus, add bus to 'pci_root_buses'
++-|------------------------+                                                                                
+  |    +---------------+                                                                                    
+  |--> | pci_alloc_bus | alloc pci_bus for bridge                                                           
+  |    +---------------+                                                                                    
+  |                                                                                                         
+  |--> determine bridge name "pci%04x:%02x"                                                                 
+  |                                                                                                         
+  |    +------------+                                                                                       
+  |--> | device_add | add to bus, send 'add dev' to notifier, probe device                                  
+  |    +------------+                                                                                       
+  |                                                                                                         
+  |--> determine bus name "pci%04x:%02x"                                                                    
+  |                                                                                                         
+  |    +-----------------+                                                                                  
+  |--> | device_register | add to bus, send 'add dev' to notifier, probe device                             
+  |    +-----------------+                                                                                  
+  |                                                                                                         
+  |--> print "PCI host bridge to bus %s\n"                                                                  
+  |                                                                                                         
+  |--> for each initial resource                                                                            
+  |    |                                                                                                    
+  |    |--> add to bus                                                                                      
+  |    |                                                                                                    
+  |    +--> print "root bus resource %pR%s\n"                                                               
+  |                                                                                                         
+  +--> add bus to 'pci_root_buses'                                                                          
 ```
 
 ```
