@@ -9,8 +9,8 @@ pcie_portdrv_init:                  register port services and port driver
 pci_stub_init:                      (probably do nothing)
 aspeed_pcie_driver_init:            register aspeed_pcie_driver
   aspeed_pcie_probe:                prepare host bridge/bus, register them, recursively scan buses, and then add devices
-pci_resource_alignment_sysfs_init:  
-pci_sysfs_init
+pci_resource_alignment_sysfs_init:  create sys files 
+pci_sysfs_init:                     for each pci_dev: create sys files    
 ```
 
 ```
