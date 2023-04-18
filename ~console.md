@@ -34,7 +34,7 @@ After the command interpretation and processing, the output tracks the same way 
 - UART driver
     - control hardware component
 
-<p align="center"><img src="images/tty/tty.png" /></p>
+<p align="center"><img src="images/console/tty.png" /></p>
 
 <details><summary> More Details </summary>
    
@@ -653,7 +653,7 @@ Anything we input on the master side goes through its TTY driver and line discip
 When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, the TTY driver up to the shell for command processing. 
 As you can imagine, the output follows the same logic going back to the master side for display, locally or remotely (e.g., ssh server case).
 
-<p align="center"><img src="images/tty/pty.png" /></p>
+<p align="center"><img src="images/console/pty.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -825,69 +825,10 @@ Later enabled serial devices from DTS are sequentially added and matched, but on
 - 1e784000.serial: ttyS4
     - regular uart, and is specified as the preferred console in boot arguments
 
+The function `printk` and its variants commit the argument string to the ring buffer, and another function, `console_unlock`, flush them to the console. That said, before the boot or preferred console is registered, `printk` can still put logs into that ring buffer, except we don't see them. 
+At any point when we have a ready console, all the stacked logs, if they are not overwritten, are flushed out to console(s) at once.
 
-
-
-
-
-
-Here we list a few functions that are related to our topic and we'll introduce them one by one.
-```
-init calls
-  └─ of_platform_default_populate_ini()
-  └─ of_platform_serial_driver_init()
-```
-  
-- of_platform_serial_driver_init
-
-  It registers driver 'of_serial' and probes device '1e783000.serial' & '1e784000.serial' sequentially. Here we have to introduce the 'port' concept of uart.
-  Take AST2500 for example, it might be equipped with up to 5 regular UARTs (leave virtual UART alone).
-  Each UART component is regarded as 'port' in the code, e.g. ttyS4 is the port 5 of UART.
-  Back to the probe, it registers the UART port to the framework for each of the matched devices.
-
-  ```
-  of_platform_serial_driver_init()
-    └─ register driver 'of_serial'
-         └─ probe device 1e783000.serial
-              └─ set up the UART port and register it
-              └─ register console but fail (it's not our preferred console, which is set by kernel boot command)
-         └─ probe device 1e784000.serial
-              └─ set up the UART port and register it              
-              └─ register console and pass (preferred console)
-  ```
-  
-  Registered consoles are for kernel space to print out messages.
-  
-Unlike user space processes have TTY device to direct input/output/error, kernel threads output messages by printk and below flowchart shows how it works.
-
-```mermaid
-graph TD
-   a(printk)
-   b(vprintk_func)
-   c(vsnprintf)
-   d(log_output)
-   e(console_unlock)
-   
-   a-->b
-   b-->c 
-   c-->d
-   d-->e
-```
-
-- printk(), aggregate arguments
-- vprintk_func(), deal with different contexts, e.g. NMI, safe, ...
-- vsnprintf(), replace specifiers with real data
-- log_output(), commit string to the circular buffer of printk as 'record'
-- console_unlock(), for each valid record, add prefix and write to each console
-
-```
-console_unlock()
-  └─ record_print_text(), insert timestamp to the beginning of string
-  └─ call_console_drivers(), write out the committed record to each registered console
-```
-
-So, before registering any console, printk() can still work since it just commits the message into the ring buffer.
-Once there's an available console, all pending records are handled sequentially.
+<p align="center"><img src="images/console/console.png" /></p>
 
 <details><summary> More Details </summary>
     
