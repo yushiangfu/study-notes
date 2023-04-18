@@ -1283,17 +1283,20 @@ kernel/printk/printk.c
 ```
 
 ```
-kernel/printk/printk.c                                                        
-+----------------------+                                                       
+kernel/printk/printk.c
++----------------------+
 | call_console_drivers | : for each driver in 'console_drivers': call ->write()
-+-|--------------------+                                                       
-  |                                                                            
-  +--> for each driver in 'console_drivers'                                    
-       -                                                                       
-       +--> call driver->write(), e.g.,                                        
-            +------------------------+                                         
-            | early_serial8250_write | write each char in string to hw reg     
-            +------------------------+                                         
++-|--------------------+
+  |
+  +--> for each driver in 'console_drivers'
+       -
+       +--> call driver->write(), e.g.,
+            +------------------------+
+            | early_serial8250_write | write each char in string to hw reg
+            +------------------------+
+            +------------------------+
+            | univ8250_console_write |
+            +------------------------+
 ```
 
 ```
