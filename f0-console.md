@@ -908,6 +908,41 @@ kernel/printk/printk.c
 
 ## <a name="system-startup"></a> System Startup
 
+Let's introduce console-related functions that print logs during system startup:
+
+- param_setup_earlycon
+    - parse kernel command and set up the early console
+- aspeed_uart_routing_driver_init
+    - AST2500 supports UART routing, and this driver implements interfaces for users to config
+- serial8250_init
+    - init six (specified in the config file) serial 8250 ports
+- aspeed_vuart_probe
+    - (skip)
+- of_platform_serial_probe
+    - match and probe enabled serial devices from DTS, and overwrite the default setting in corresponding 8250 ports
+- init_netconsole
+    - (skip)
+
+```
+[    0.000000] earlycon: ns16550a0 at MMIO 0x1e784000 (options '')                                          <---- param_setup_earlycon
+[    0.000000] printk: bootconsole [ns16550a0] enabled                                                      <
+...
+[    0.000000] Kernel command line: console=ttyS4,115200 earlycon
+...
+[    0.399431] aspeed-uart-routing 1e78909c.uart-routing: module loaded                                     <---- aspeed_uart_routing_driver_init
+[    0.401357] Serial: 8250/16550 driver, 6 ports, IRQ sharing enabled                                      <---- serial8250_init
+[    0.410609] 1e787000.serial: ttyS5 at MMIO 0x1e787000 (irq = 34, base_baud = 1546875) is a ASPEED VUART  <---- aspeed_vuart_probe
+[    0.424438] 1e783000.serial: ttyS0 at MMIO 0x1e783000 (irq = 32, base_baud = 1500000) is a 16550A        <---- of_platform_serial_probe
+[    0.429486] 1e784000.serial: ttyS4 at MMIO 0x1e784000 (irq = 33, base_baud = 1500000) is a 16550A        <---- of_platform_serial_probe
+[    0.430992] printk: console [ttyS4] enabled                                                              <
+[    0.431583] printk: bootconsole [ns16550a0] disabled                                                     <
+...
+[    2.159554] printk: console [netcon0] enabled                                                            <---- init_netconsole
+[    2.159703] netconsole: network logging started                                                          <
+```
+
+<details><summary> More Details </summary>
+
 ```
 param_setup_earlycon:            set up early console
 console_setup:                   parse 'console=xxx,yyy', add as preferred console 
@@ -2332,17 +2367,12 @@ drivers/tty/serial/8250/8250_core.c
        +------------------+ (console = univ8250_console)                          
 ```
 
+</details>
+    
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
-## <a name="conclusion"></a> Conclusion
-
-User space tasks interact with TTY devices to control message direction, 
-and the underlying destination can be local desktop application, remote machine, or serial port. 
-Meanwhile, logs emitted by kernel space threads or services are committed to the circular buffer, 
-which is further written out to each valid console if there's any.
-
-There are still other interesting topics worth digging into, such as pseudo TTY and serial over LAN. Hope this note helps, thanks!
-
+- Get register bases of enabled serial devices.
+    
 ```
 grep '0x' /sys/class/tty/ttyS*/iomem_base  
 ```
