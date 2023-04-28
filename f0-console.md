@@ -120,6 +120,61 @@ lrwxrwxrwx    1 root     root             5 Jan 31 04:05 ttyVUART0 -> ttyS5
 ```
 
 ```
+                                                                                                                                                                        
+                                                                                                     static const struct uart_ops serial8250_pops = {                   
+                                                                                                         .tx_empty   = serial8250_tx_empty,                             
+                                                                                                         .set_mctrl  = serial8250_set_mctrl,                            
+                                  static const struct tty_port_operations uart_port_ops = {              .get_mctrl  = serial8250_get_mctrl,                            
+                                      .carrier_raised = uart_carrier_raised,                             .stop_tx    = serial8250_stop_tx,                              
+                                      .dtr_rts    = uart_dtr_rts,                                        .start_tx   = serial8250_start_tx,                             
+                                      .activate   = uart_port_activate,                                  .stop_rx    = serial8250_stop_rx,                              
+                                      .shutdown   = uart_tty_port_shutdown,                              .startup    = serial8250_startup,                              
+                                  };                                                                     .shutdown   = serial8250_shutdown,                             
+                                                                                                                                                                        
+                                                                                                         ...-------------------------+                                  
+                                                      +------------------------------+               |                               |           (struct uart_8250_port)
+                                                      |         uart_port  -------------------------------------> port               |                                  
+                                                      |                              |               |  +--------------------------+ |                                  
+                                                      |         (tty_)port  <---------------+        |  |                          | | ---------- serial8250_ports[0]   
+                                                      |  +------------------------+  |      |        |  |  ops = serial8250_pops   | |                                  
+                       （uart_driver）                  |  |  ops = uart_port_ops   |  | <----|------------- state                   | |            serial8250_ports[1]   
+                                                      |  |                        |  |      |        |  |  minor                   | |                                  
+                         serial8250_reg->state[0] ----|  |                        |  |      |        |  +--------------------------+ |                     -            
+                                                      |  |                        |  |      |        |                               |                     -            
+                         serial8250_reg->state[1]     |  +------------------------+  |      |        |    ops = univ8250_driver_ops  |                     -            
+                                                      +------------------------------+      |        +-------------------------------+                                  
+                                    -                                                       |                                                     serial8250_ports[5]   
+                                    -                                                       |                                                                           
+                                    -                                                       |                                                                           
+                                                                                            |         static const struct uart_8250_ops univ8250_driver_ops = {         
+                         serial8250_reg->state[5]                                           |             .setup_irq  = univ8250_setup_irq,                             
+                                                                                            |             .release_irq    = univ8250_release_irq,                       
+                         serial8250_reg->tty_driver                                         |                                                                           
+                                            |                                               |                                                                           
+                                            |                                               |                                                                           
+                                            |                    tty_driver                 |                                                                           
+                                            |        +--------------------------------------|---+                                                                       
+                                            |        |  ttys[0]   - - -    ttys[5]          |   |                                                                       
+                                            +---->   |                                  ports[0]|                                                                       
+                                                     |                                  ports[1]|                                                                       
+ static const struct file_operations tty_fops = {    |                                  ports[2]|                                                                       
+     .llseek     = no_llseek,                        |  termios[0]  - - -  termios[5]           |                                                                       
+     .read_iter  = tty_read,                         |                                          |                                                                       
+     .write_iter = tty_write,                        |  cdevs[0]   - - -   cdevs[5]             |                                                                       
+     .splice_read    = generic_file_splice_read,     |                                  ports[5]|                                                                       
+     .splice_write   = iter_file_splice_write,       |  ops = uart_ops                          |                                                                       
+     .poll       = tty_poll,                         +------------------------------------------+                                                                       
+     .unlocked_ioctl = tty_ioctl,                                                                                                                                       
+     .compat_ioctl   = tty_compat_ioctl,             static const struct tty_operations uart_ops = {         static const struct tty_operations pty_unix98_ops = {      
+     .open       = tty_open,                             .install    = uart_install,                             .lookup = pts_unix98_lookup,                           
+     .release    = tty_release,                          .open       = uart_open,                                .install = pty_unix98_install,                         
+     .fasync     = tty_fasync,                           .close      = uart_close,                      or       .open = pty_open,                                      
+     .show_fdinfo    = tty_show_fdinfo,                  .write      = uart_write,                               .close = pty_close,                                    
+ };                                                  ...                                                         .write = pty_write,                                    
+                                                                                                             ...                                                        
+```
+    
+```
 static const struct file_operations tty_fops = {
     .llseek     = no_llseek,
     .read_iter  = tty_read,
