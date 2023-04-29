@@ -5,6 +5,55 @@ ast_kcs_bmc_driver_init:  register platform driver 'ast_kcs_bmc_driver'
 ```
 
 ```
+drivers/char/ipmi/kcs_bmc_cdev_ipmi.c                                                    
++-------------------+                                                                     
+| kcs_bmc_ipmi_init | : register 'kcs_bmc_ipmi_driver', probe devices on 'kcs_bmc_devices'
++-|-----------------+                                                                     
+  |    +-------------------------+                                                        
+  +--> | kcs_bmc_register_driver | register kcs driver, probe devices on 'kcs_bmc_devices'
+       +-------------------------+                                                        
+```
+
+```
+drivers/char/ipmi/kcs_bmc.c                                                                                         
++-------------------------+                                                                                          
+| kcs_bmc_register_driver | : register kcs driver, probe devices on 'kcs_bmc_devices'                                
++-|-----------------------+                                                                                          
+  |                                                                                                                  
+  |--> add driver to list 'kcs_bmc_drivers'                                                                          
+  |                                                                                                                  
+  +--> for each dev on 'kcs_bmc_devices'                                                                             
+       -                                                                                                             
+       +--> call ->add_device(), e.g.,                                                                               
+            +-------------------------+                                                                              
+            | kcs_bmc_ipmi_add_device | prepare 'priv' and ste up its misc_dev, register misc_dev, add 'priv' to list
+            +-------------------------+                                                                              
+```
+
+```
+drivers/char/ipmi/kcs_bmc_cdev_ipmi.c                                                                     
++-------------------------+                                                                                
+| kcs_bmc_ipmi_add_device | : prepare 'priv' and ste up its misc_dev, register misc_dev, add 'priv' to list
++-|-----------------------+                                                                                
+  |                                                                                                        
+  |--> alloc 'priv'                                                                                        
+  |                                                                                                        
+  |--> install ops 'kcs_bmc_ipmi_client_ops'                                                               
+  |                                                                                                        
+  |--> alloc spaces for data_in/data_out/kbuffer                                                           
+  |                                                                                                        
+  |--> set up misc_dev and install fops 'kcs_bmc_ipmi_fops'                                                
+  |                                                                                                        
+  |    +---------------+                                                                                   
+  |--> | misc_register | determine dev#, add arg 'misc' to list (misc_list)                                
+  |    +---------------+                                                                                   
+  |                                                                                                        
+  |--> add 'priv' to list 'kcs_bmc_ipmi_instances'                                                         
+  |                                                                                                        
+  +--> print "Initialised IPMI client for channel %d"                                                      
+```
+
+```
  drivers/char/ipmi/kcs_bmc_aspeed.c                                                                             
 +------------------+                                                                                            
 | aspeed_kcs_probe | : alloc and set up priv/kcs_bmc, register isr for h2b irq, enable channel, register kcs_bmc
