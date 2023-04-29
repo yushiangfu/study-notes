@@ -54,6 +54,66 @@ ast_kcs_bmc_driver_init:  register platform driver 'ast_kcs_bmc_driver'
 ```
 
 ```
+drivers/char/ipmi/kcs_bmc_cdev_ipmi.c                                             
++----------------------+                                                           
+| aspeed_kcs_check_obe | : get client of kcs_bmc to handle event (cmd or data)     
++-|--------------------+                                                           
+  |    +----------------+                                                          
+  |--> | aspeed_kcs_inb | read a byte from hw reg                                  
+  |    +----------------+                                                          
+  |                                                                                
+  |--> if bit 'obf' is set                                                         
+  |    |                                                                           
+  |    |    +-----------+                                                          
+  |    |--> | mod_timer | respawn timer later                                      
+  |    |    +-----------+                                                          
+  |    |                                                                           
+  |    +--> return                                                                 
+  |                                                                                
+  |    +----------------------+                                                    
+  +--> | kcs_bmc_handle_event | get client of kcs_bmc to handle event (cmd or data)
+       +----------------------+                                                    
+```
+
+```
+drivers/char/ipmi/kcs_bmc.c                                                  
++----------------------+                                                      
+| kcs_bmc_handle_event | : get client of kcs_bmc to handle event (cmd or data)
++-|--------------------+                                                      
+  |                                                                           
+  |--> get client from kcs_bmc                                                
+  |                                                                           
+  +--> call ->event(), e.g.,                                                  
+       +--------------------+                                                 
+       | kcs_bmc_ipmi_event | read status, handle cmd or data accordingly     
+       +--------------------+                                                 
+```
+
+```
+drivers/char/ipmi/kcs_bmc_cdev_ipmi.c                              
++--------------------+                                              
+| kcs_bmc_ipmi_event | : read status, handle cmd or data accordingly
++-|------------------+                                              
+  |    +---------------------+                                      
+  |--> | kcs_bmc_read_status |                                      
+  |    +---------------------+                                      
+  |                                                                 
+  |--> read status                                                  
+  |                                                                 
+  |--> if it's about cmd                                            
+  |                                                                 
+  |        +-------------------------+                              
+  |------> | kcs_bmc_ipmi_handle_cmd | handle cmd                   
+  |        +-------------------------+                              
+  |                                                                 
+  |--> else (data)                                                  
+  |                                                                 
+  |        +--------------------------+                             
+  +------> | kcs_bmc_ipmi_handle_data | handle data                 
+           +--------------------------+                             
+```
+
+```
 drivers/char/ipmi/kcs_bmc_aspeed.c                                                   
 +----------------------------------+                                                  
 | aspeed_kcs_config_downstream_irq | : get irq# and register isr (for host-to-bmc irq)
