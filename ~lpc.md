@@ -2,6 +2,8 @@
 kcs_bmc_ipmi_init
 ast_kcs_bmc_driver_init:  register platform driver 'ast_kcs_bmc_driver'
   aspeed_kcs_probe:       alloc and set up priv/kcs_bmc, register isr for h2b irq, enable channel, register kcs_bmc
+reset_simple_driver_init: register platform driver 'reset_simple_driver'
+  reset_simple_probe:     set up 'data' and install ops, prepare reset_controller_dev
 ```
 
 ```
@@ -173,4 +175,36 @@ drivers/char/ipmi/kcs_bmc_aspeed.c
   |    +------------------+ +----------------+                                        
   +--> | devm_request_irq | | aspeed_kcs_irq | handle event                           
        +------------------+ +----------------+                                        
+```
+
+```
+drivers/reset/reset-simple.c                                                                               
++--------------------+                                                                                      
+| reset_simple_probe | : set up 'data' and install ops, prepare reset_controller_dev                        
++-|------------------+                                                                                      
+  |                                                                                                         
+  |--> alloc 'data'                                                                                         
+  |                                                                                                         
+  |--> get resource and iomap                                                                               
+  |                                                                                                         
+  |--> set up 'data' and install ops                                                                        
+  |                                                                                                         
+  |    +--------------------------------+                                                                   
+  +--> | devm_reset_controller_register | alloc reset_controller_dev, register it and add to dev as resource
+       +--------------------------------+                                                                   
+```
+
+```
+drivers/reset/core.c                                                                                  
++--------------------------------+                                                                     
+| devm_reset_controller_register | : alloc reset_controller_dev, register it and add to dev as resource
++-|------------------------------+                                                                     
+  |                                                                                                    
+  |--> alloc reset_controller_dev as resource                                                          
+  |                                                                                                    
+  |    +---------------------------+                                                                   
+  |--> | reset_controller_register | add reset_controller_dev to 'reset_controller_list'               
+  |    +---------------------------+                                                                   
+  |                                                                                                    
+  +--> add resource to dev                                                                             
 ```
