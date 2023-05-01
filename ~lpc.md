@@ -1,9 +1,11 @@
 ```
-kcs_bmc_ipmi_init
-ast_kcs_bmc_driver_init:  register platform driver 'ast_kcs_bmc_driver'
-  aspeed_kcs_probe:       alloc and set up priv/kcs_bmc, register isr for h2b irq, enable channel, register kcs_bmc
-reset_simple_driver_init: register platform driver 'reset_simple_driver'
-  reset_simple_probe:     set up 'data' and install ops, prepare reset_controller_dev
+kcs_bmc_ipmi_init:            register 'kcs_bmc_ipmi_driver', probe devices on 'kcs_bmc_devices
+ast_kcs_bmc_driver_init:      register platform driver 'ast_kcs_bmc_driver'
+  aspeed_kcs_probe:           alloc and set up priv/kcs_bmc, register isr for h2b irq, enable channel, register kcs_bmc
+aspeed_lpc_ctrl_driver_init:  register platform driver aspeed_lpc_ctrl_driver
+  aspeed_lpc_ctrl_probe:      
+reset_simple_driver_init:     register platform driver 'reset_simple_driver'
+  reset_simple_probe:         set up 'data' and install ops, prepare reset_controller_dev
 ```
 
 ```
@@ -175,6 +177,27 @@ drivers/char/ipmi/kcs_bmc_aspeed.c
   |    +------------------+ +----------------+                                        
   +--> | devm_request_irq | | aspeed_kcs_irq | handle event                           
        +------------------+ +----------------+                                        
+```
+
+```
+drivers/soc/aspeed/aspeed-lpc-ctrl.c                                                                              
++-----------------------+                                                                                          
+| aspeed_lpc_ctrl_probe | : prepare 'lpc_ctrl', set up misc dev 'aspeed-lpc-ctrl, install fops and register the dev
++-|---------------------+                                                                                          
+  |                                                                                                                
+  |--> alloc 'lpc_ctrl'                                                                                            
+  |                                                                                                                
+  +--> handle property 'flash' and 'memory-region'                                                                 
+  |                                                                                                                
+  |    +-----------------------+                                                                                   
+  |--> | syscon_node_to_regmap | ensure system controller exists and return its register map                       
+  |    +-----------------------+                                                                                   
+  |                                                                                                                
+  |--> set up misc dev "aspeed-lpc-ctrl" and install fops 'aspeed_lpc_ctrl_fops'                                   
+  |                                                                                                                
+  |    +---------------+                                                                                           
+  +--> | misc_register | determine dev#, add arg 'misc' to list (misc_list)                                        
+       +---------------+                                                                                           
 ```
 
 ```
