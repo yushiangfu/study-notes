@@ -546,6 +546,274 @@ static struct mtd_blktrans_ops mtdblock_tr = {
 
 </details>
   
+## <a name="boot-up"></a> U-Boot
+  
+```
+cmd/sf.c                                                                           
++--------------------+                                                              
+| do_spi_flash_probe | : given bus/cs, probe target dev, save flash struct in global
++-|------------------+                                                              
+  |                                                                                 
+  |--> prepare default bus/cs/speed/mode                                            
+  |                                                                                 
+  |--> parse bus/cs/speed/mode from argv                                            
+  |                                                                                 
+  |--> given bus/cs, remove existing one if it's found                              
+  |                                                                                 
+  |    +------------------------+                                                   
+  |--> | spi_flash_probe_bus_cs | bind dev to driver, probe it if not yet active    
+  |    +------------------------+                                                   
+  |                                                                                 
+  +--> get flash struct and save in global                                          
+```
+  
+```
+drivers/mtd/spi/sf-uclass.c                                                
++------------------------+                                                  
+| spi_flash_probe_bus_cs | : bind dev to driver, probe it if not yet active 
++-|----------------------+                                                  
+  |                                                                         
+  |--> determine name                                                       
+  |                                                                         
+  |    +--------------------+                                               
+  +--> | spi_get_bus_and_cs | bind dev to driver, probe it if not yet active
+       +--------------------+                                               
+```
+  
+```
+drivers/spi/spi-uclass.c                                                          
++--------------------+                                                             
+| spi_get_bus_and_cs | : bind dev to driver, probe it if not yet active            
++-|------------------+                                                             
+  |    +--------------------------+                                                
+  |--> | uclass_get_device_by_seq | given bus#, find bus dev                       
+  |    +--------------------------+                                                
+  |    +----------------------+                                                    
+  |--> | spi_find_chip_select | traverse all dev on bus to find the cs#-matched one
+  |    +----------------------+                                                    
+  |                                                                                
+  |--> if not found (expected)                                                     
+  |    |                                                                           
+  |    |    +--------------------+                                                 
+  |    |--> | device_bind_driver |                                                 
+  |    |    +--------------------+                                                 
+  |    |                                                                           
+  |    +--> set up plat-data (cs/max_hz/mode)                                      
+  |                                                                                
+  |--> if not yet active                                                           
+  |    |                                                                           
+  |    |    +--------------+                                                       
+  |    +--> | device_probe | label 'activated', call ->probe                       
+  |         +--------------+                                                       
+  |                                                                                
+  |    +--------------------+                                                      
+  |--> | spi_set_speed_mode | call ->set_speed() & ->set_mode()                    
+  |    +--------------------+                                                      
+  |                                                                                
+  +--> return bus and dev through argumets                                         
+```
+  
+```
+drivers/core/device.c                                                                                                     
++--------------+                                                                                                           
+| device_probe | : label 'activated', call ->probe                                                                         
++-|------------+                                                                                                           
+  |                                                                                                                        
+  |--> if parent dev exists                                                                                                
+  |    |                                                                                                                   
+  |    |    +--------------+                                                                                               
+  |    +--> | device_probe | (recursive)                                                                                   
+  |         +--------------+                                                                                               
+  |    +--------------------+                                                                                              
+  |--> | uclass_resolve_seq | get a unique seq# for dev?                                                                   
+  |    +--------------------+                                                                                              
+  |                                                                                                                        
+  |--> label 'activated'                                                                                                   
+  |                                                                                                                        
+  |--> select pinctrl state 'default'                                                                                      
+  |                                                                                                                        
+  |    +-------------------------+                                                                                         
+  |--> | uclass_pre_probe_device | call uclass drvier's ->pre_probe() & ->child_pre_probe()                                
+  |    +-------------------------+                                                                                         
+  |                                                                                                                        
+  |--> if parent dev has ->child_pre_probe(), call it                                                                      
+  |                                                                                                                        
+  |    +------------------+                                                                                                
+  |--> | clk_set_defaults | (key of stability?)                                                                            
+  |    +------------------+                                                                                                
+  |                                                                                                                        
+  |--> call ->probe(), e.g.,                                                                                               
+  |    +---------------------+                                                                                             
+  |    | spi_flash_std_probe | do calibration, identify id, determine params and init hw regs, select read/write/erase cmds
+  |    +---------------------+                                                                                             
+  |                                                                                                                        
+  |    +--------------------------+                                                                                        
+  |--> | uclass_post_probe_device | call uclass drvier's ->child_post_probe() & ->post_probe()                             
+  |    +--------------------------+                                                                                        
+  |                                                                                                                        
+  +--> select pinctrl state 'default'                                                                                      
+```
+  
+```
+drivers/core/uclass.c                                                                
++-------------------------+                                                           
+| uclass_pre_probe_device | : call uclass drvier's ->pre_probe() & ->child_pre_probe()
++-|-----------------------+                                                           
+  |                                                                                   
+  |--> if ->pre_probe() exists                                                        
+  |    -                                                                              
+  |    +--> call it, e.g.,                                                            
+  |         +-----------------------+                                                 
+  |         | wait for real example |                                                 
+  |         +-----------------------+                                                 
+  |                                                                                   
+  +--> if ->child_pre_probe() exists                                                  
+       -                                                                              
+       +--> call it, e.g.,                                                            
+            +---------------------+                                                   
+            | spi_child_pre_probe | ste up 'slave' from plat-data (max_hz, mode, ...) 
+            +---------------------+                                                   
+```
+  
+```
+drivers/mtd/spi/sf_probe.c                                                                                                    
++---------------------+                                                                                                        
+| spi_flash_std_probe | : do calibration, identify id, determine params and init hw regs, select read/write/erase cmds         
++-|-------------------+                                                                                                        
+  |    +-----------------------+                                                                                               
+  +--> | spi_flash_probe_slave | : do calibration, identify id, determine params and init hw regs, select read/write/erase cmds
+       +-|---------------------+                                                                                               
+         |    +---------------+                                                                                                
+         |--> | spi_claim_bus | given cs, determine read/write modes to init hw registers, do calibration                      
+         |    +---------------+                                                                                                
+         |    +--------------+                                                                                                 
+         +--> | spi_nor_scan | identify id, determine params and init hw regs, select read/write/erase cmds                    
+              +--------------+                                                                                                 
+```
+  
+```
+drivers/spi/spi-uclass.c                                                                                            
++---------------+                                                                                                    
+| spi_claim_bus | : given cs, determine read/write modes to init hw registers, do calibration                        
++-|-------------+                                                                                                    
+  |    +------------------+                                                                                          
+  +--> | dm_spi_claim_bus | : given cs, determine read/write modes to init hw registers, do calibration              
+       +-|----------------+                                                                                          
+         |                                                                                                           
+         |--> determine speed                                                                                        
+         |                                                                                                           
+         |--> if the target speed != slave speed                                                                     
+         |    |                                                                                                      
+         |    |    +--------------------+                                                                            
+         |    +--> | spi_set_speed_mode | call ->set_speed() & ->set_mode()                                          
+         |         +--------------------+                                                                            
+         |                                                                                                           
+         +--> if ->claim_bus() exists                                                                                
+              -                                                                                                      
+              +--> call it, e.g.,                                                                                    
+                   +----------------------+                                                                          
+                   | aspeed_spi_claim_bus | given cs, determine read/write modes to init hw registers, do calibration
+                   +----------------------+                                                                          
+```
+  
+```
+drivers/spi/spi-uclass.c                                                                   
++--------------------+                                                                      
+| spi_set_speed_mode | : call ->set_speed() & ->set_mode()                                  
++-|------------------+                                                                      
+  |                                                                                         
+  |--> if ->set_speed() exists                                                              
+  |    -                                                                                    
+  |    +--> call it, e.g.,                                                                  
+  |         +----------------------+                                                        
+  |         | aspeed_spi_set_speed | do nothing, ->claim_bus() will take care of it         
+  |         +----------------------+                                                        
+  |                                                                                         
+  +--> if ->set_mode() exists                                                               
+       -                                                                                    
+       +--> call it, e.g.,                                                                  
+            +---------------------+                                                         
+            | aspeed_spi_set_mode | basically do nothing, ->claim_bus() will take care of it
+            +---------------------+                                                         
+```
+  
+```
+drivers/spi/aspeed_spi.c                                                                           
++----------------------+                                                                            
+| aspeed_spi_claim_bus | : given cs, determine read/write modes to init hw registers, do calibration
++-|--------------------+                                                                            
+  |    +----------------------+                                                                     
+  |--> | aspeed_spi_get_flash | given cs, get the corresponding flash struct                        
+  |    +----------------------+                                                                     
+  |    +-----------------------+                                                                    
+  +--> | aspeed_spi_flash_init | determine read/write modes to init hw, do calibration, label 'init'
+       +-----------------------+                                                                    
+```
+  
+```
+drivers/spi/aspeed_spi.c                                                                      
++-----------------------+                                                                      
+| aspeed_spi_flash_init | : determine read/write modes to init hw, do calibration, label 'init'
++-|---------------------+                                                                      
+  |                                                                                            
+  |--> if labeld 'init', return                                                                
+  |                                                                                            
+  |--> given spi read opcode, determine flash read mode                                        
+  |                                                                                            
+  |--> given spi program opcode, determine flash write mode                                    
+  |                                                                                            
+  |--> determine value for control register                                                    
+  |                                                                                            
+  |--> write addr-width to hw reg                                                              
+  |                                                                                            
+  |--> write value to hw (control) reg                                                         
+  |                                                                                            
+  |    +------------------------------+                                                        
+  |--> | aspeed_spi_flash_set_segment | set segment addr in hw reg                             
+  |    +------------------------------+                                                        
+  |    +-------------------------------+                                                       
+  |--> | aspeed_spi_timing_calibration | (key of stability?)                                   
+  |    +-------------------------------+                                                       
+  |                                                                                            
+  +--> label 'init'                                                                            
+```
+  
+```
+drivers/mtd/spi/spi-nor-core.c                                                                
++--------------+                                                                               
+| spi_nor_scan | : identify id, determine params and init hw regs, select read/write/erase cmds
++-|------------+                                                                               
+  |                                                                                            
+  |--> prepare default protocols for read/write                                                
+  |                                                                                            
+  |    +-----------------+                                                                     
+  |--> | spi_nor_read_id | read id from flash, return the corresponding info                   
+  |    +-----------------+                                                                     
+  |    +---------------------+                                                                 
+  |--> | spi_nor_init_params | determine read & page-program parameters                        
+  |    +---------------------+                                                                 
+  |                                                                                            
+  |--> set up mtd and install ops (spi_nor_erase/spi_nor_read/spi_nor_write)                   
+  |                                                                                            
+  |    +---------------+                                                                       
+  |--> | spi_nor_setup | select commands for fast read, page program, and sector erase         
+  |    +---------------+                                                                       
+  |    +--------------+                                                                        
+  +--> | spi_nor_init | enable quad if necessary, enable 4-byte-addr mode if necessary         
+       +--------------+                                                                        
+```
+  
+```
+drivers/mtd/spi/spi-nor-core.c                                   
++---------------------+                                           
+| spi_nor_init_params | : determine read & page-program parameters
++-|-------------------+                                           
+  |                                                               
+  |--> determine read & page-program settings                     
+  |                                                               
+  +--> if it has quad capability, install op if ncessary          
+```
+  
 ## <a name="boot-up"></a> Boot Up
   
 During the kernel boot flow, the SPI driver sequentially probes SPI controllers and parses partitions from DTB. 
