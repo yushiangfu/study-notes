@@ -678,36 +678,37 @@ drivers/mtd/spi/sf-uclass.c
 ```
   
 ```
-drivers/spi/spi-uclass.c                                                          
-+--------------------+                                                             
-| spi_get_bus_and_cs | : bind dev to driver, probe it if not yet active            
-+-|------------------+                                                             
-  |    +--------------------------+                                                
-  |--> | uclass_get_device_by_seq | given bus#, find bus dev                       
-  |    +--------------------------+                                                
-  |    +----------------------+                                                    
+drivers/spi/spi-uclass.c
++--------------------+
+| spi_get_bus_and_cs | : bind dev to driver, probe it if not yet active
++-|------------------+
+  |    +--------------------------+
+  |--> | uclass_get_device_by_seq | given bus#, find bus dev
+  |    +--------------------------+ (here it probes the spi controler, and hence it calls aspeed_spi_probe)
+  |                                 (each spi controller is probed at most once)
+  |    +----------------------+
   |--> | spi_find_chip_select | traverse all dev on bus to find the cs#-matched one
-  |    +----------------------+                                                    
-  |                                                                                
-  |--> if not found (expected)                                                     
-  |    |                                                                           
-  |    |    +--------------------+                                                 
-  |    |--> | device_bind_driver |                                                 
-  |    |    +--------------------+                                                 
-  |    |                                                                           
-  |    +--> set up plat-data (cs/max_hz/mode)                                      
-  |                                                                                
-  |--> if not yet active                                                           
-  |    |                                                                           
-  |    |    +--------------+                                                       
-  |    +--> | device_probe | label 'activated', call ->probe                       
-  |         +--------------+                                                       
-  |                                                                                
-  |    +--------------------+                                                      
-  |--> | spi_set_speed_mode | call ->set_speed() & ->set_mode()                    
-  |    +--------------------+                                                      
-  |                                                                                
-  +--> return bus and dev through argumets                                         
+  |    +----------------------+
+  |
+  |--> if not found (expected)
+  |    |
+  |    |    +--------------------+
+  |    |--> | device_bind_driver |
+  |    |    +--------------------+
+  |    |
+  |    +--> set up plat-data (cs/max_hz/mode)
+  |
+  |--> if not yet active
+  |    |
+  |    |    +--------------+
+  |    +--> | device_probe | label 'activated', call ->probe
+  |         +--------------+ (here it probes the spi flash, and hence it calls spi_flash_std_probe)
+  |                          (unlike spi controller, flash seems to be probed everytime)
+  |    +--------------------+
+  |--> | spi_set_speed_mode | call ->set_speed() & ->set_mode()
+  |    +--------------------+
+  |
+  +--> return bus and dev through argumets
 ```
   
 ```
