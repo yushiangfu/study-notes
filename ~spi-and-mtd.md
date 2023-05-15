@@ -549,6 +549,86 @@ static struct mtd_blktrans_ops mtdblock_tr = {
 ## <a name="uboot"></a> U-Boot
   
 ```
+env/sf.c                                                                                                                                    
++------------------------+                                                                                                                   
+| spi_flash_probe_bus_cs |                                                                                                                   
++-|----------------------+                                                                                                                   
+  |    +------------------------+                                                                                                            
+  +--> | spi_flash_probe_bus_cs |                                                                                                            
+       +-|----------------------+                                                                                                            
+         |    +--------------------+                                                                                                         
+         +--> | spi_get_bus_and_cs |                                                                                                         
+              +-|------------------+                                                                                                         
+                |    +--------------------------+                                                                                            
+                +--> | uclass_get_device_by_seq | get bus dev (probe spi controller if not yet)                                              
+                |    +--------------------------+                                                                                            
+                |    +--------------+                                                                                                        
+                +--> | device_probe | probe spi flash                                                                                        
+                     +-|------------+                                                                                                        
+                       |                                                                                                                     
+                       |--> select pinctrl (another probe is triggered)                                                                      
+                       |                                                                                                                     
+                       +--> call ->probe(), e.g.,                                                                                            
+                            +---------------------+                                                                                          
+                            | spi_flash_std_probe |                                                                                          
+                            +-|-------------------+                                                                                          
+                              |    +-----------------------+                                                                                 
+                              +--> | spi_flash_probe_slave |                                                                                 
+                                   +-|---------------------+                                                                                 
+                                     |    +---------------+   +----------------------+                                                       
+                                     |--> | spi_claim_bus |...| aspeed_spi_claim_bus |                                                       
+                                     |    +---------------+   +-|--------------------+                                                       
+                                     |                          |    +-----------------------+                                               
+                                     |                          +--> | aspeed_spi_flash_init | if flash hasn't been probed, return right away
+                                     |                               +-----------------------+ (the flow changes after spi_nor_scan is run)  
+                                     |    +--------------+                                                                                   
+                                     +--> | spi_nor_scan |                                                                                   
+                                          +-|------------+                                                                                   
+                                            |                                                                                                
+                                            |--> read flash id, init params, select cmd (, init flash if needed)                             
+                                            |                                                                                                
+                                            +--> SF: Detected $$ with page size $$, erase $$, total $$                                   
+```
+  
+```
+drivers/spi/spi-uclass.c                                                                                          
++---------------+   +----------------------+                                                                       
+| spi_claim_bus |...| aspeed_spi_claim_bus |                                                                       
++---------------+   +-|--------------------+                                                                       
+                      |    +-----------------------+                                                               
+                      +--> | aspeed_spi_flash_init |                                                               
+                           +-|---------------------+                                                               
+                             |                                                                                     
+                             |--> if flash has no name (not yet probed), return
+                             |  
+                             |--> if flash has been init, return (so each flash will be init at most once)         
+                             |                                                                                     
+                             |--> print CS0: init $ flags:$ size:$ page:$ sector:$ erase:$                   
+                             |    print cmds [ erase:$ read=$ write:$ ] dummy:$, speed:$                
+                             |                                                                                     
+                             |    +----------------------------+                                                   
+                             |--> | aspeed_g6_spi_hclk_divisor |
+                             |    +-|--------------------------+                                                   
+                             |      |                                                                              
+                             |      +--> print hclk=$$ required=$$ h_div $$, divisor is $$ (mask $$) speed=$$
+                             |                                                                                     
+                             |--> init flash's iomode                                                              
+                             |                                                                                     
+                             |--> determine ce_ctrl_user and ce_ctrl_fread, set ce_ctrl_fread to hw reg 
+                             |                                                                                     
+                             |--> print CS0: USER mode $$ FREAD mode $$                                    
+                             |                                                                                     
+                             |    +-------------------------------+                                                
+                             +--> | aspeed_spi_timing_calibration |
+                                  +-|-----------------------------+                                                
+                                    |    +----------------------------+                                            
+                                    |--> | aspeed_g6_spi_hclk_divisor |
+                                    |    +----------------------------+                                            
+                                    |                                                                              
+                                    +--> print cs: $$, freq: $$MHz                                         
+```
+  
+```
 drivers/core/root.c                                                                                      
 +------------------+                                                                                      
 | dm_init_and_scan | : save udevice 'root' in gd, bind each enabled dev of dt to driver                   
