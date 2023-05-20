@@ -7,6 +7,8 @@ pci_apply_final_quirks:             apply patch?
 pci_proc_init:                      create /proc/bus/pci and attach device info
 pcie_portdrv_init:                  register port services and port driver
 pci_stub_init:                      (probably do nothing)
+aspeed_pciecfg_driver_init:         register aspeed_pciecfg_driver
+  aspeed_pciecfg_probe:             prepare pciecfg struct, map io, determine reset convention, init pcie host
 aspeed_pcie_driver_init:            register aspeed_pcie_driver
   aspeed_pcie_probe:                prepare host bridge/bus, register them, recursively scan buses, and then add devices
 pci_resource_alignment_sysfs_init:  create sys files 
@@ -52,6 +54,69 @@ drivers/pci/pcie/portdrv_pci.c
   |    +---------------------+                                            
   +--> | pci_register_driver | register pcie port driver                  
        +---------------------+                                            
+```
+
+```
+drivers/pci/controller/aspeed_pciecfg.c                                                             
++----------------------+                                                                             
+| aspeed_pciecfg_probe | : prepare pciecfg struct, map io, determine reset convention, init pcie host
++-|--------------------+                                                                             
+  |                                                                                                  
+  |--> alloc pciecfg                                                                                 
+  |                                                                                                  
+  |    +--------------------------------+                                                            
+  |--> | devm_platform_ioremap_resource |                                                            
+  |    +--------------------------------+                                                            
+  |    +----------------------------------+                                                          
+  |--> | devm_reset_control_get_exclusive |                                                          
+  |    +----------------------------------+                                                          
+  |                                                                                                  
+  |--> if pcie0 device is enabled                                                                    
+  |    |                                                                                             
+  |    |--> try to set rc_low_rst_gpio = gpio "pcie0-perst"                                          
+  |    |                                                                                             
+  |    +--> if failed, try to set rc_low_rst = reset-control "rc_low"                                
+  |                                                                                                  
+  |--> if pcie1 device is enabled                                                                    
+  |    |                                                                                             
+  |    |--> try to set rc_high_rst_gpio = gpio "pcie1-perst"                                         
+  |    |                                                                                             
+  |    +--> if failed, try to set rc_high_rst = reset-control "rc_high"                              
+  |                                                                                                  
+  |    +---------------------+                                                                       
+  +--> | aspeed_pciecfg_init | reset and enable pcie host                                            
+       +---------------------+                                                                       
+```
+
+```
+drivers/pci/controller/aspeed_pciecfg.c            
++---------------------+                             
+| aspeed_pciecfg_init | : reset and enable pcie host
++-|-------------------+                             
+  |    +----------------------+                     
+  |--> | reset_control_assert |                     
+  |    +----------------------+                     
+  |                                                 
+  |--> if we have gpio for rc low reset             
+  |    -                                            
+  |    +--> toggle gpio                             
+  |                                                 
+  +--> else if we have reset controller for reset   
+  |    -                                            
+  |    +--> deassert & assert                       
+  |                                                 
+  |--> if we have gpio for rc high reset            
+  |    -                                            
+  |    +--> toggle gpio                             
+  |                                                 
+  |--> else if we have reset controller for reset   
+  |    -                                            
+  |    +--> deassert & assert                       
+  |    +------------------------+                   
+  |--> | reset_control_deassert |                   
+  |    +------------------------+                   
+  |                                                 
+  +--> write hw reg to enable pcie host             
 ```
 
 ```
