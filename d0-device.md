@@ -271,6 +271,105 @@ dtc -I fs -O dts /sys/firmware/devicetree/base                  # construct dts 
 [    0.257606] device: 'iio-hwmon-battery': device_add
 ```
 
+## <a name="uboot"></a> U-Boot
+    
+```
+drivers/core/root.c                                                                                      
++------------------+                                                                                      
+| dm_init_and_scan | : save udevice 'root' in gd, bind each enabled dev of dt to driver                   
++-|----------------+                                                                                      
+  |    +---------+                                                                                        
+  |--> | dm_init | get udevice 'root' and save in gd                                                      
+  |    +---------+                                                                                        
+  |    +------------------+                                                                               
+  |--> | dm_scan_platdata | (skip)                                                                        
+  |    +------------------+                                                                               
+  |    +----------------------+                                                                           
+  |--> | dm_extended_scan_fdt | for each eanbled dev in dt: find target driver & prepare dev binding to it
+  |    +----------------------+                                                                           
+  |    +---------------+                                                                                  
+  +--> | dm_scan_other | (skip)                                                                           
+       +---------------+                                                                                  
+```
+    
+```
+drivers/core/root.c                                                     
++---------+                                                              
+| dm_init | : get udevice 'root' and save in gd                          
++-|-------+            -                                                 
+  |    +---------------------+                                           
+  |--> | device_bind_by_name | given info (root info), get target udevice
+  |    +---------------------+                                           
+  |    +--------------+                                                  
+  +--> | device_probe | (root driver has no ->probe() though)            
+       +--------------+                                                  
+```
+    
+```
+drivers/core/root.c                                                                                 
++----------------------+                                                                             
+| dm_extended_scan_fdt | : for each eanbled dev in dt: find target driver & prepare dev binding to it
++-|--------------------+                                                                             
+  |    +-------------+                                                                               
+  |--> | dm_scan_fdt | for each eanbled dev in dt: find target driver & prepare dev binding to it    
+  |    +-------------+                                                                               
+  |    +-------------------------+                                                                   
+  |--> | dm_scan_fdt_ofnode_path | "/clocks"                                                         
+  |    +-------------------------+                                                                   
+  |    +-------------------------+                                                                   
+  +--> | dm_scan_fdt_ofnode_path | "/firmware"                                                       
+       +-------------------------+                                                                   
+```
+    
+```
+drivers/core/root.c                                                                                                      
++-------------+                                                                                                           
+| dm_scan_fdt | : for each eanbled dev in dt: find target driver & prepare dev binding to it                              
++-|-----------+                                                                                                           
+  |    +------------------+                                                                                               
+  +--> | dm_scan_fdt_node | : for each eanbled dev in dt: find target driver & prepare dev binding to it                  
+       +-|----------------+                                                                                               
+         |                                                                                                                
+         +--> while we can still get a valid node                                                                         
+              |                                                                                                           
+              |--> get dt node name                                                                                       
+              |                                                                                                           
+              |--> if it's 'chosen' or 'firmware', specially handle it and continue                                       
+              |                                                                                                           
+              |--> if it's not enabled, continue                                                                          
+              |                                                                                                           
+              |    +----------------+                                                                                     
+              +--> | lists_bind_fdt | given dev compatible list, find target driver and prepare dev binding to that driver
+                   +----------------+                                                                                     
+```
+    
+```
+drivers/core/lists.c                                                                                    
++----------------+                                                                                       
+| lists_bind_fdt | : given dev compatible list, find target driver and prepare dev binding to that driver
++-|--------------+                                                                                       
+  |                                                                                                      
+  |--> get compatible list                                                                               
+  |                                                                                                      
+  +--> for each value in list                                                                            
+       |                                                                                                 
+       |--> for each compiled-in driver                                                                  
+       |    |                                                                                            
+       |    |    +-------------------------+                                                             
+       |    |--> | driver_check_compatible | check if driver supports compatible value                   
+       |    |    +-------------------------+                                                             
+       |    |                                                                                            
+       |    +--> if found, break                                                                         
+       |                                                                                                 
+       |--> if nothing found, continue                                                                   
+       |                                                                                                 
+       |    +------------------------------+                                                             
+       |--> | device_bind_with_driver_data | prepare dev and bind to driver                              
+       |    +------------------------------+                                                             
+       |                                                                                                 
+       +--> pass dev back through argument                                                               
+```
+    
 </details>
     
 ## <a name="system-startup"></a> System Startup
