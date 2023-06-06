@@ -13,22 +13,22 @@
 
 A file system is a format managing file metadata and data. E.g., NTFS from Windows and EXT family from Linux are well-known examples. 
 The virtual file system is the unified interface that allows users to operate the files using the same method, like read() and write(). 
-It significantly abstracts the sophisticated design and complicated implementation, and therefore we don't have to know the details before using any file system.
+It significantly abstracts the sophisticated design and complicated implementation; therefore, we don't have to know the details before using any file system.
 
 ## <a name="structures"></a> Structures
 
 - struct **inode**
-      - What we think of like a file is represented by a struct inode in VFS.
-      - It stores the metadata of a file and knows where and how to access the file data
+    - What we think of like a file is represented by a struct inode in VFS.
+    - It stores the metadata of a file and knows where and how to access the file data
 - struct **dentry**
-      - Usually, one **inode** pairs with one **dentry** (hard link is the exception).
-      - VFS places the file name here.
-      - It establishes the folder and file hierarchy and works as caches to speed up the file lookup.
+    - Usually, one **inode** pairs with one **dentry** (hard link is the exception).
+    - VFS places the file name here.
+    - It establishes the folder and file hierarchy and works as a cache to speed up the lookup.
 - struct **file**
-      - Temporary component when a task opens a file, and it's process-specific.
+    - Temporary component when a task opens a file, and it's process-specific.
 - struct **mount**
-      - Folders and files build up the tree within an area, e.g., partition, and each area has its filesystem and tree.
-      - We must mount them onto the root hierarchy before accessing them, and struct **mount** manage the action.
+    - Folders and files build up the tree within an area, e.g., partition, and each has its filesystem and tree.
+    - We must mount them onto the root hierarchy before accessing them, and struct mount manages the action.
 
 ```
                            +---+                                      
