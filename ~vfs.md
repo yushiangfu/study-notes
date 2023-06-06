@@ -1,21 +1,85 @@
-> Study case: Linux version 5.15.0 on AST2500 emulation
+> Study case: ASPEED Linux version 5.15.41
 
 ## Index
 
 - [Introduction](#introduction)
-- [Structures](#structures)
-- [File Types & Operations](#file-types-and-operations)
-- [Boot Flow](#boot-flow)
+- [File Types](#file-types)
+- [VFS Structures](#vfs-structures)
 - [VFS Operations](#vfs-operations)
+- [Notify](#notify)
+- [System Startup](#system-startup)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
 
 A file system is a format managing file metadata and data. E.g., NTFS from Windows and EXT family from Linux are well-known examples. 
-The virtual file system is the unified interface that allows users to operate the files using the same method, like read() and write(). 
+The virtual file system (VFS) is the unified interface that allows users to operate the files using the same method, like read() and write(). 
 It significantly abstracts the sophisticated design and complicated implementation; therefore, we don't have to know the details before using any file system.
 
-## <a name="structures"></a> Structures
+## <a name="file-types"></a> File Types
+
+Including the well-known regular files and folders that we are familiar with, the VFS supports up to seven file types, equipped with the corresponding inode and file operations for meta and data handling separately.
+
+- Regular file
+  - Most files, e.g., jpg, png, mp4, fall into this category. They share the same file type but compose in a different format.
+
+```
+inode->i_op = &shmem_inode_operations;
+inode->i_fop = &shmem_file_operations;
+```
+
+- Directory
+  - It's a collection of files and folders, e.g., /, /home/, /tmp/.
+
+```
+inode->i_op = &shmem_dir_inode_operations;
+inode->i_fop = &simple_dir_operations;
+```
+
+- Link
+  - A **symbolic** or **soft** link, not the **hard** one.
+  - Shortcut to another destination.
+
+```
+inode->i_op = &empty_iops;
+inode->i_fop = &no_open_fops;
+```
+
+- Character device
+  - Please refer to the driver framework for further introduction.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &def_chr_fops;
+```
+
+- Block device
+  - Please refer to the driver framework for further introduction.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &def_blk_fops;
+```
+
+- Pipe
+  - I have yet to study it.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &pipefifo_fops;
+```
+
+- Socket
+  - It's only there once any task opens it with specified arguments; therefore, file operation here is unnecessary to socket type.
+
+```
+inode->i_op = &shmem_special_inode_operations;
+inode->i_fop = &no_open_fops;
+```
+
+Our example shows how filesystem **shmem** implements it, but please note that each file system has its own implementation for the seven file types.
+
+## <a name="vfs-structures"></a> VFS Structures
 
 - struct **inode**
     - What we think of like a file is represented by a struct inode in VFS.
@@ -66,235 +130,6 @@ It significantly abstracts the sophisticated design and complicated implementati
 So in the above diagram, we can see that there's the root mount and two other trees mounted onto **/home** and **/var/more**. 
 Inside the root mount, the dentry of each inode maintains the file hierarchy. 
 When tasks access the **/var/log.txt**, the VFS generates temporary file structures for each separately.
-
-## <a name="file-types-and-operations"></a> File Types & Operations
-
-The VFS supports seven file types, and each of them has its inode and file operations specifying how it reacts to regular access.
-
-- Inode operation
-  - To get and set the attributes.
-  - To create or remove the child from a folder.
-  - To lookup.
-- File operation
-  - To change the content.
-  - To seek the offset.
-  - To map the data onto memory.
-
-Different file systems have their implementations for the same file type, and our example here shows how **shmem** does it. 
-Another candidate for the root file system is **ramfs**.
-
-- Regular file
-  - Most files fall into this category, e.g., jpg, png, mp4. They share the same file type but compose in a different format.
-
-```
-inode->i_op = &shmem_inode_operations;
-inode->i_fop = &shmem_file_operations;
-```
-
-- Directory
-  - It's a collection of files and folders, e.g., /, /home/, /tmp/.
-
-```
-inode->i_op = &shmem_dir_inode_operations;
-inode->i_fop = &simple_dir_operations;
-```
-
-- Link
-  - A **symbolic** or **soft** link, not the **hard** one.
-  - Shortcut to another destination.
-
-```
-inode->i_op = &empty_iops;
-inode->i_fop = &no_open_fops;
-```
-
-- Character device
-  - Please refer to the driver framework for further introduction.
-
-```
-inode->i_op = &shmem_special_inode_operations;
-inode->i_fop = &def_chr_fops;
-```
-
-- Block device
-  - Please refer to the driver framework for further introduction.
-
-```
-inode->i_op = &shmem_special_inode_operations;
-inode->i_fop = &def_blk_fops;
-```
-
-- Pipe
-  - I haven't studied it yet.
-
-```
-inode->i_op = &shmem_special_inode_operations;
-inode->i_fop = &pipefifo_fops;
-```
-
-- Socket
-  - It's not there until any task opens it with specified arguments, and therefore file operation here is unnecessary to socket type.
-
-```
-inode->i_op = &shmem_special_inode_operations;
-inode->i_fop = &no_open_fops;
-```
-
-### inotify
-
-```
-fs/notify/inotify/inotify_user.c
-+---------------+
-| inotify_init1 | : prepare group, prepare anon file (priv = group) and install to fd table
-+|--------------+
- |    +-----------------+
- +--> | do_inotify_init | : prepare group, prepare anon file (priv = group) and install to fd table
-      +-|---------------+
-        |    +-------------------+
-        |--> | inotify_new_group | prepare group & event, return group
-        |    +-------------------+
-        |    +------------------+
-        +--> | anon_inode_getfd | prepare an anon file and install to fd table
-             +------------------+
-```
-
-```
-fs/notify/inotify/inotify_user.c                                                                         
-+-------------------+                                                                                     
-| inotify_new_group | : prepare group & event, return group                                               
-+-|-----------------+                                                                                     
-  |    +---------------------------+                                                                      
-  |--> | fsnotify_alloc_user_group | alloc fsnotify_group and install arg ops (e.g., inotify_fsnotify_ops)
-  |    +---------------------------+                                                                      
-  |                                                                                                       
-  +--> alloc event and set it up                                                                          
-```
-
-## <a name="boot-flow"></a> Boot Flow
-
-Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
-We can see that there's only one pair of dentry and inode, which represents the well-known '/' entry. 
-After letting tasks know where the **mount** and **dentry** are, the file tree becomes visible to them.
-
-```
-+---------> mount                                     
-|     +----------------+                              
-|     |      mnt       |                              
-|     |  +----------+  |                              
-|     |  |+--------+|  |                              
-|     |  ||mnt_root|---------------+                  
-|     |  |+--------+|  |           |                  
-|     |  +----------+  |           v                  
-|     |+--------------+|        +------+       +-----+
-|     ||mnt_mountpoint--------> |dentry| <---> |inode|
-|     |+--------------+|        +------+       +-----+
-|     |  +----------+  |                              
-+---------mnt_parent|  |                              
-      |  +----------+  |                              
-      +----------------+                              
-```
-
-When building the kernel image, data under **usr/** will become the initramfs included in the generated kernel image, and it contributes the very minimum rootfs:
-
-- /dev
-- /dev/console
-- /root
-
-After unpacking the initramfs, the file tree is like this:
-
-```
-      mount
-+----------------+
-|      mnt       |
-|  +----------+  |
-|  |+--------+|  |
-|  ||mnt_root-----------------------------------+
-|  |+--------+|  |                              |
-|  +----------+  |                              v
-|+--------------+|                          +------+-----+
-||mnt_mountpoint--------------------------> |dentry|inode|
-|+--------------+|                          +---^--+-----+
-|  +----------+  |                              |
-|  |mnt_parent|  |                              |
-|  +----------+  |                 +------------------------+
-+----------------+                 |                        |
-                               +---|--+-----+           +---|--+-----+
-                           dev |dentry|inode|      root |dentry|inode|
-                               +---^--+-----+           +------+-----+
-                                   |
-                                   |
-                                   |
-                                   |
-                               +---|--+-----+
-                       console |dentry|inode|
-                               +------+-----+
-```
-
-And then the complete rootfs either comes from initrd or other mediums:
-
-- Initrd
-  - It's initramfs-romulus in our case. Don't be bothered by its naming since there might be some historical factors.
-- NFS
-  - The source is from an NFS server.
-- CIFS
-  - The source if from a Samba server.
-- Block
-  - The source is from a drive partition, another common case in practical usage.
-
-```
-                         +-----------+                                      
-                         | initramfs |                                      
-                         +--/-----\--+                                      
-                           /       \                                        
-                          /         \                                       
-                         v           v                                      
-                 +--------+         +-------+                               
- our study case  | initrd |         | other |                               
-                 +--------+         /-------\                               
-                                   /    |    \                              
-                                  /     |     \                             
-                                 v      v      v                            
-                           +-----+  +------+   +-------+                    
-                           | nfs |  | cifs |   | block | another common case
-                           +-----+  +------+   +-------+                    
-```
-
-After unpacking the initrd, the file tree is like this, which doesn't display them all:
-
-```
-                                            mount                                                                                 
-                                      +----------------+                                                                          
-                                      |      mnt       |                                                                          
-                                      |  +----------+  |                                                                          
-                                      |  |+--------+|  |                                                                          
-                                      |  ||mnt_root-------------+                                                                 
-                                      |  |+--------+|  |        |                                                                 
-                                      |  +----------+  |        |                                                                 
-                                      |+--------------+|        |                                                                 
-                                      ||mnt_mountpoint----------+                                                                 
-                                      |+--------------+|        |                                                                 
-                                      |  +----------+  |        |                                                                 
-                                      |  |mnt_parent|  |        |                                                                 
-                                      |  +----------+  |        v                                                                 
-                                      +----------------+                                                                          
-                                                                /                                                                 
-                                                                |                                                                 
-       +----------+---------------+----------------------+------+---------------------------------------------------------------+ 
-       |          |               |                      |                     |                    |     |          |          | 
-      bin        dev             etc                   init                   lib                  root  sbin       usr        var
-       |          |               |                                            |                                     |            
-       |          |       +---------------+                        +------------------------+                   +----|----+       
-       |          |       |       |       |                        |           |            |                   |    |    |       
- busybox.suid  console  group  passwd  systemd                 firmware  ld-linux.so.3  libc.so.6              bin  bin  sbin     
-                                          |                        |                                                              
-                                          |                        |                                                              
-                                          |                        |                                                              
-                                       system                cf-fsi-fw.bin                                                        
-                                          |                                                                                       
-                                          |                                                                                       
-                                          |                                                                                       
-                                 sysinit.target.wants                                                                             
-```
 
 ## <a name="vfs-operations"></a> VFS Operations
 
@@ -1075,6 +910,164 @@ That's how we make the source tree of a specific disk partition visible to us, a
 ```
 
 </details>
+
+## <a name="notify"></a> Notify
+
+```
+fs/notify/inotify/inotify_user.c
++---------------+
+| inotify_init1 | : prepare group, prepare anon file (priv = group) and install to fd table
++|--------------+
+ |    +-----------------+
+ +--> | do_inotify_init | : prepare group, prepare anon file (priv = group) and install to fd table
+      +-|---------------+
+        |    +-------------------+
+        |--> | inotify_new_group | prepare group & event, return group
+        |    +-------------------+
+        |    +------------------+
+        +--> | anon_inode_getfd | prepare an anon file and install to fd table
+             +------------------+
+```
+
+```
+fs/notify/inotify/inotify_user.c                                                                         
++-------------------+                                                                                     
+| inotify_new_group | : prepare group & event, return group                                               
++-|-----------------+                                                                                     
+  |    +---------------------------+                                                                      
+  |--> | fsnotify_alloc_user_group | alloc fsnotify_group and install arg ops (e.g., inotify_fsnotify_ops)
+  |    +---------------------------+                                                                      
+  |                                                                                                       
+  +--> alloc event and set it up                                                                          
+```
+
+## <a name="boot-flow"></a> Boot Flow
+
+Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
+We can see that there's only one pair of dentry and inode, which represents the well-known '/' entry. 
+After letting tasks know where the **mount** and **dentry** are, the file tree becomes visible to them.
+
+```
++---------> mount                                     
+|     +----------------+                              
+|     |      mnt       |                              
+|     |  +----------+  |                              
+|     |  |+--------+|  |                              
+|     |  ||mnt_root|---------------+                  
+|     |  |+--------+|  |           |                  
+|     |  +----------+  |           v                  
+|     |+--------------+|        +------+       +-----+
+|     ||mnt_mountpoint--------> |dentry| <---> |inode|
+|     |+--------------+|        +------+       +-----+
+|     |  +----------+  |                              
++---------mnt_parent|  |                              
+      |  +----------+  |                              
+      +----------------+                              
+```
+
+When building the kernel image, data under **usr/** will become the initramfs included in the generated kernel image, and it contributes the very minimum rootfs:
+
+- /dev
+- /dev/console
+- /root
+
+After unpacking the initramfs, the file tree is like this:
+
+```
+      mount
++----------------+
+|      mnt       |
+|  +----------+  |
+|  |+--------+|  |
+|  ||mnt_root-----------------------------------+
+|  |+--------+|  |                              |
+|  +----------+  |                              v
+|+--------------+|                          +------+-----+
+||mnt_mountpoint--------------------------> |dentry|inode|
+|+--------------+|                          +---^--+-----+
+|  +----------+  |                              |
+|  |mnt_parent|  |                              |
+|  +----------+  |                 +------------------------+
++----------------+                 |                        |
+                               +---|--+-----+           +---|--+-----+
+                           dev |dentry|inode|      root |dentry|inode|
+                               +---^--+-----+           +------+-----+
+                                   |
+                                   |
+                                   |
+                                   |
+                               +---|--+-----+
+                       console |dentry|inode|
+                               +------+-----+
+```
+
+And then the complete rootfs either comes from initrd or other mediums:
+
+- Initrd
+  - It's initramfs-romulus in our case. Don't be bothered by its naming since there might be some historical factors.
+- NFS
+  - The source is from an NFS server.
+- CIFS
+  - The source if from a Samba server.
+- Block
+  - The source is from a drive partition, another common case in practical usage.
+
+```
+                         +-----------+                                      
+                         | initramfs |                                      
+                         +--/-----\--+                                      
+                           /       \                                        
+                          /         \                                       
+                         v           v                                      
+                 +--------+         +-------+                               
+ our study case  | initrd |         | other |                               
+                 +--------+         /-------\                               
+                                   /    |    \                              
+                                  /     |     \                             
+                                 v      v      v                            
+                           +-----+  +------+   +-------+                    
+                           | nfs |  | cifs |   | block | another common case
+                           +-----+  +------+   +-------+                    
+```
+
+After unpacking the initrd, the file tree is like this, which doesn't display them all:
+
+```
+                                            mount                                                                                 
+                                      +----------------+                                                                          
+                                      |      mnt       |                                                                          
+                                      |  +----------+  |                                                                          
+                                      |  |+--------+|  |                                                                          
+                                      |  ||mnt_root-------------+                                                                 
+                                      |  |+--------+|  |        |                                                                 
+                                      |  +----------+  |        |                                                                 
+                                      |+--------------+|        |                                                                 
+                                      ||mnt_mountpoint----------+                                                                 
+                                      |+--------------+|        |                                                                 
+                                      |  +----------+  |        |                                                                 
+                                      |  |mnt_parent|  |        |                                                                 
+                                      |  +----------+  |        v                                                                 
+                                      +----------------+                                                                          
+                                                                /                                                                 
+                                                                |                                                                 
+       +----------+---------------+----------------------+------+---------------------------------------------------------------+ 
+       |          |               |                      |                     |                    |     |          |          | 
+      bin        dev             etc                   init                   lib                  root  sbin       usr        var
+       |          |               |                                            |                                     |            
+       |          |       +---------------+                        +------------------------+                   +----|----+       
+       |          |       |       |       |                        |           |            |                   |    |    |       
+ busybox.suid  console  group  passwd  systemd                 firmware  ld-linux.so.3  libc.so.6              bin  bin  sbin     
+                                          |                        |                                                              
+                                          |                        |                                                              
+                                          |                        |                                                              
+                                       system                cf-fsi-fw.bin                                                        
+                                          |                                                                                       
+                                          |                                                                                       
+                                          |                                                                                       
+                                 sysinit.target.wants                                                                             
+```
+
+## <a name="system-startup"></a> System Startup
       
 ```
 +-----------------------+                                                                                                      
