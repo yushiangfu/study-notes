@@ -94,6 +94,14 @@ Our example shows how filesystem **shmem** implements it, but please note that e
     - Folders and files build up the tree within an area, e.g., partition, and each has its filesystem and tree.
     - We must mount them onto the root hierarchy before accessing them, and struct mount manages the action.
 
+<p align="center"><img src="images/vfs/hierarchy.png" /></p>
+
+So in the above diagram, we can see the root mount and two other trees mounted onto **/home** and **/var/more**. 
+Inside the root mount, the dentry of each inode maintains the file hierarchy. 
+When tasks access the **/var/log.txt**, the VFS generates temporary file structures for each separately.
+
+<details><summary> More Details </summary>
+
 ```
                            +---+                                      
                            | m | root mount                           
@@ -127,10 +135,8 @@ Our example shows how filesystem **shmem** implements it, but please note that e
          - ---------               +---+                              
 ```
 
-So in the above diagram, we can see that there's the root mount and two other trees mounted onto **/home** and **/var/more**. 
-Inside the root mount, the dentry of each inode maintains the file hierarchy. 
-When tasks access the **/var/log.txt**, the VFS generates temporary file structures for each separately.
-
+</details>
+  
 ## <a name="vfs-operations"></a> VFS Operations
 
 ### Change working directory (within the same mount)
@@ -155,33 +161,6 @@ As you might already think, those correspond to two types of the path:
   - The path has a leading /, and the kernel starts the lookup with the dentry of the root folder.
 - Relative path
   - Anything else, and dentry from **pwd** field is where our journey begins.
-
-```
-           task_struct                                                                                  
-            +--------+                                                                                  
-            | +----+ |                                                                                  
-            | | fs |------------------->  fs_struct                                                     
-            | +----+ |                  +----------+                                                    
-            +--------+                  |   root   |  root folder '/'                                   
-                                        |+--------+|                                                    
-+--------+                              ||  +---+ ||                                                    
-|vfsmount| <---------------------------------mnt| ||  which mount the dentry belongs to, e.g. root mount
-+--------+                              ||  +---+ ||                                                    
-     ^             +--------+           ||+------+||                                                    
-     |             | dentry | <-----------|dentry|||  dentry of '/'                                     
-     |             +--------+           ||+------+||                                                    
-     |                                  |+--------+|                                                    
-     |                                  |   pwd    |  current working folder, e.g., '/home/penguin'     
-     |                                  |+--------+|                                                    
-     |                                  ||  +---+ ||                                                    
-     +--------------------------------------|mnt| ||  which mount the dentry belongs to, e.g. root mount
-                                        ||  +---+ ||                                                    
-                   +--------+           ||+------+||                                                    
-                   | dentry | <------------dentry|||  dentry of 'penguin'                               
-                   +--------+           ||+------+||                                                    
-                                        |+--------+|                                                    
-                                        +----------+                                                    
-```
 
 Taking the below command as an example, it's a downward lookup and consists of three components.
 
@@ -249,12 +228,39 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
                    skip                   
 ```
 
-<details>
-  <summary> Code trace </summary>
+<details><summary> More Details </summary>
 
 ```
+           task_struct                                                                                  
+            +--------+                                                                                  
+            | +----+ |                                                                                  
+            | | fs |------------------->  fs_struct                                                     
+            | +----+ |                  +----------+                                                    
+            +--------+                  |   root   |  root folder '/'                                   
+                                        |+--------+|                                                    
++--------+                              ||  +---+ ||                                                    
+|vfsmount| <---------------------------------mnt| ||  which mount the dentry belongs to, e.g. root mount
++--------+                              ||  +---+ ||                                                    
+     ^             +--------+           ||+------+||                                                    
+     |             | dentry | <-----------|dentry|||  dentry of '/'                                     
+     |             +--------+           ||+------+||                                                    
+     |                                  |+--------+|                                                    
+     |                                  |   pwd    |  current working folder, e.g., '/home/penguin'     
+     |                                  |+--------+|                                                    
+     |                                  ||  +---+ ||                                                    
+     +--------------------------------------|mnt| ||  which mount the dentry belongs to, e.g. root mount
+                                        ||  +---+ ||                                                    
+                   +--------+           ||+------+||                                                    
+                   | dentry | <------------dentry|||  dentry of 'penguin'                               
+                   +--------+           ||+------+||                                                    
+                                        |+--------+|                                                    
+                                        +----------+                                                    
+```
+  
+```
+fs/open.c
 +-----------+                                                                                
-| sys_chdir | chage pwd of current task to given path                                        
+| sys_chdir | : chage pwd of current task to given path                                        
 +--|--------+                                                                                
    |    +--------------+                                                                     
    +--> | user_path_at |                                                                     
@@ -271,11 +277,12 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 ```
       
 ```
+fs/namei.c
 +-----------------+                                                                                                              
-| vfs_path_lookup |                                                                                                              
+| vfs_path_lookup | : lookup the path, save dentry and mnt in 'path'
 +----|------------+                                                                                                              
      |    +-----------------+                                                                                                    
-     +--> | filename_lookup | lookup the path, save dentry and mnt in 'path'
+     +--> | filename_lookup | : lookup the path, save dentry and mnt in 'path'
           +----|------------+                                                                                                    
                |    +---------------+                                                                                            
                |--> | set_nameidata | set up nd and replace the one of current task                                              
@@ -309,8 +316,9 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 ```
 
 ```
+fs/namei.c
 +-----------+                                                 
-| path_init | set nd's root, path, and inode
+| path_init | : set nd's root, path, and inode
 +--|--------+                                                 
    |                                                          
    |--> if it's a absolute path (starts with a '/')           
@@ -332,8 +340,9 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 ```
       
 ```
+fs/namei.c
 +----------------+                                                                          
-| link_path_walk | walk through the path name, update dentry and mnt of the last component in nd
+| link_path_walk | : walk through the path name, update dentry and mnt of the last component in nd
 +---|------------+                                                                          
     |                                                                                       
     |--> endless loop                                                                       
@@ -348,8 +357,9 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 ```
 
 ```
+fs/namei.c
 +----------------+                                                                          
-| walk_component | update path (dentry + mnt) and inode of nd to next component           
+| walk_component | : update path (dentry + mnt) and inode of nd to next component           
 +---|------------+                                                                          
     |                                                                                       
     |--> if it's DOT or DOTDOT                                                              
@@ -369,8 +379,9 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 ```
 
 ```
+fs/namei.c
 +-------------+                                                                             
-| handle_dots | update path and inode of nd if it's DOTDOT (do nothing for DOT)             
+| handle_dots | : update path and inode of nd if it's DOTDOT (do nothing for DOT)             
 +---|---------+                                                                             
     |                                                                                       
     |--> if it's DOTDOT (do nothing for DOT case)                                           
@@ -397,11 +408,12 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
 ```
 
 ```
+fs/namei.c
 +-----------+                                                                     
-| step_into | update path and inode of nd (automount and link cases are considered)
+| step_into | : update path and inode of nd (automount and link cases are considered)
 +--|--------+                                                                     
    |    +---------------+                                                         
-   |--> | handle_mounts | update mnt and dentry of path if it's mounted           
+   |--> | handle_mounts | : update mnt and dentry of path if it's mounted           
    |    +---|-----------+                                                         
    |        |    +-----------------+                                              
    |        +--> | traverse_mounts |                                              
