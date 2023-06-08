@@ -139,13 +139,13 @@ When tasks access the **/var/log.txt**, the VFS generates temporary file structu
   
 ## <a name="vfs-operations"></a> VFS Operations
 
-### Change working directory (within the same mount)
+### Change working directory
 
-Command **cd** (change directory) is probably the most used command to change the current working folder to command-line Linux users. 
+Command **cd** (change directory) is one of the most used commands for command-line Linux users. 
 It's a built-in shell function and therefore has no independent binary. 
-The cd function eventually calls to syscall **chdir**, and the kernel starts to look up the target of the path string. 
-Before we begin to interpret the path, let's introduce some related fields in the data structure. 
-The **task_struct** has an **fs** pointer pointing to **fs_struct** which contains fields **root** and **path**.
+The **cd** function eventually calls to syscall **chdir**, and the kernel starts to look up the target of the path string. 
+Before we show how the kernel interprets the path, let's introduce some related fields in the data structure. 
+The **task_struct** has an **fs** pointer pointing to **fs_struct**, which contains the **root** and **path**.
 
 - root
   - mnt: which mount the dentry belongs to, e.g., root mount
@@ -162,19 +162,9 @@ As you might already think, those correspond to two types of the path:
 - Relative path
   - Anything else, and dentry from **pwd** field is where our journey begins.
 
-Taking the below command as an example, it's a downward lookup and consists of three components.
+Taking the below command as an example, it's a downward lookup and consists of five components.
 
-```
- component     component
-         ^     ^        
-         |     |        
-         -    ---       
-         /bin/usr       
-          ---           
-           |            
-           v            
-       component        
-```
+<p align="center"><img src="images/vfs/path.png" /></p>
 
 When doing lookup downwardly, we use the dentry of the current folder and name string of the following component to find the next dentry from the hash table.
 
