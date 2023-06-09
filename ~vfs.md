@@ -166,57 +166,17 @@ Taking the below command as an example, it's a downward lookup and consists of f
 
 <p align="center"><img src="images/vfs/path.png" /></p>
 
-When doing lookup downwardly, we use the dentry of the current folder and name string of the following component to find the next dentry from the hash table.
+When doing a lookup downwardly, we use the dentry of the current folder and the name string of the following component to find the next dentry from the hash table.
 
 - dentry of / + name string 'usr' --> dentry of **usr**
 - dentry of usr + name string 'sbin' --> dentry of **sbin**
 
-```
-                                    +------+
-             /  ─────────────────── |dentry| + 'usr'
-             |                      +------+
-             |                            |
- +-----+----------+                       |  lookup hash table
- |     |          |                       v
- |     |          |                 +------+
-root  sbin       usr  ───────────── |dentry| + 'sbin'
-                  |                 +------+
-                  |                       |
-             +----|----+                  |  lookup hash table
-             |    |    |                  v
-             |    |    |            +------+
-            bin  lib  sbin  ─────── |dentry|
-                                    +------+
-```
+<p align="center"><img src="images/vfs/downward-lookup.png" /></p>
 
-What's the case if our current working directory is at 'sbin' and we'd like to lookup upward, e.g. '../../'?
+What's the case if our current working directory is at 'sbin' and we'd like to lookup upward, e.g., '../../'? 
 It's relatively simple because each dentry has a pointer pointing to its parent, and that's how we follow the path.
 
-```
-                                    +------+
-             /  ─────────────────── |dentry|
-             |                      +------+
-             |                            ^
- +-----+----------+                       |  poitner to parent
- |     |          |                       |
- |     |          |                 +------+
-root  sbin       usr  ───────────── |dentry|
-                  |                 +------+
-                  |                       ^
-             +----|----+                  |  poitner to parent
-             |    |    |                  |
-             |    |    |            +------+
-            bin  lib  sbin  ─────── |dentry|
-                                    +------+
-```
-
-For the single dot and non-leading slash, the kernel will ignore them and advance till the component is meaningful.
-
-```
- /usr/./././././//////////././././././sbin
-     |-------------------------------|    
-                   skip                   
-```
+<p align="center"><img src="images/vfs/upward-lookup.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -245,6 +205,50 @@ For the single dot and non-leading slash, the kernel will ignore them and advanc
                    +--------+           ||+------+||                                                    
                                         |+--------+|                                                    
                                         +----------+                                                    
+```
+                                                     
+```
+                                    +------+
+             /  ─────────────────── |dentry| + 'usr'
+             |                      +------+
+             |                            |
+ +-----+----------+                       |  lookup hash table
+ |     |          |                       v
+ |     |          |                 +------+
+root  sbin       usr  ───────────── |dentry| + 'sbin'
+                  |                 +------+
+                  |                       |
+             +----|----+                  |  lookup hash table
+             |    |    |                  v
+             |    |    |            +------+
+            bin  lib  sbin  ─────── |dentry|
+                                    +------+
+```
+                                                     
+```
+                                    +------+
+             /  ─────────────────── |dentry|
+             |                      +------+
+             |                            ^
+ +-----+----------+                       |  poitner to parent
+ |     |          |                       |
+ |     |          |                 +------+
+root  sbin       usr  ───────────── |dentry|
+                  |                 +------+
+                  |                       ^
+             +----|----+                  |  poitner to parent
+             |    |    |                  |
+             |    |    |            +------+
+            bin  lib  sbin  ─────── |dentry|
+                                    +------+
+```
+                                                     
+For the single dot and non-leading slash, the kernel will ignore them and advance till the component is meaningful.
+
+```
+ /usr/./././././//////////././././././sbin
+     |-------------------------------|    
+                   skip                   
 ```
   
 ```
