@@ -435,21 +435,25 @@ fs/namei.c
 
 ### Create a file
 
-We can use utility **touch**, **echo**, or a formal editor like **vim** and **nano** for file creation. 
+We can use the utility **touch**, **echo**, or a formal editor like **vim** and **nano** for file creation. 
 Here's the strace of **touch**, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
 
 ```
-root@romulus:~# ./strace touch blabla
+root@romulus:~# ./strace touch /run/zzz-file
 ...
-openat(AT_FDCWD, "blabla", O_RDWR|O_CREAT|O_LARGEFILE, 0666) = 3
+openat(AT_FDCWD, "/run/zzz-file", O_RDWR|O_CREAT|O_LARGEFILE, 0666) = 3
 ...
 ```
 
 So the operational flow is like this:
 
-- It's a relative path, and we start from the dentry pointed by pwd.
-- Look up till the last component, 'blabla', and it's not there.
-- If the user has specified flag O_CREAT, then parent inode, 'root' in the example, creates the file.
+- It's an absolute path, and we start from the dentry **root**.
+- Look up till the last component, **zzz-file**, and it's not there.
+- Since the utility has specified flag **O_CREAT**, then parent inode, 'run' in the example, creates the file.
+
+<p align="center"><img src="images/vfs/create-a-file.png" /></p>
+
+<details><summary> More Details </summary>
 
 ```
     +--------------------------->     /                                                                                     
@@ -472,11 +476,8 @@ So the operational flow is like this:
                                       |                                                                                     
                                    blabla?                                                                                  
 ```
-
-<details>
-  <summary> Code trace </summary>
-
-Function vfs_create() isn't that related to our example here.
+  
+Function vfs_create() isn't related to our example here.
 
 ```
 +------------+                                                                         
@@ -511,6 +512,10 @@ So the operational flow is like this:
 - Look up till the parent of the last component, 'root'.
 - Ask the parent to unlink the child 'blabla', which means to release the inode and dentry of it.
 
+<p align="center"><img src="images/vfs/delete-a-file.png" /></p>
+
+<details><summary> More Details </summary>
+
 ```
     +--------------------------->     /                                                                                     
     |                                 |                                                                                     
@@ -532,10 +537,7 @@ So the operational flow is like this:
                                       |                                                                                     
                                  >>blabla<<  delete 
 ```
-
-<details>
-  <summary> Code trace </summary>
-
+  
 ```
 +--------+                                                                         
 | unlink |                                                                         
