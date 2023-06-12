@@ -433,7 +433,7 @@ fs/namei.c
 
 </details>
 
-### Create a file
+### File Creation
 
 We can use the utility **touch**, **echo**, or a formal editor like **vim** and **nano** for file creation. 
 Here's the strace of **touch**, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
@@ -448,10 +448,10 @@ openat(AT_FDCWD, "/run/zzz-file", O_RDWR|O_CREAT|O_LARGEFILE, 0666) = 3
 So the operational flow is like this:
 
 - It's an absolute path, and we start from the dentry **root**.
-- Look up till the last component, **zzz-file**, and it's not there.
+- Look up till the last component, **zzz-file**, but it's not there.
 - Since the utility has specified flag **O_CREAT**, then parent inode, 'run' in the example, creates the file.
 
-<p align="center"><img src="images/vfs/create-a-file.png" /></p>
+<p align="center"><img src="images/vfs/file-creation.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -494,25 +494,24 @@ Function vfs_create() isn't related to our example here.
       
 </details>      
 
-### Delete a file
-
-We use utility rm to remove the target file, and here's the strace log.
+### File Deletion
+We use the utility **rm** to remove the target file, and here's the strace log.
 
 ```
-root@romulus:~# ./strace rm blabla
+root@romulus:~# ./strace rm /run/zzz-file
 ...
-access("blabla", W_OK)                  = 0
-unlink("blabla")                        
+access("/run/zzz-file", W_OK)                  = 0
+unlink("/run/zzz-file")                        
 ...
 ```
 
 So the operational flow is like this:
 
-- It's a relative path, and we start from the dentry pointed by pwd.
-- Look up till the parent of the last component, 'root'.
-- Ask the parent to unlink the child 'blabla', which means to release the inode and dentry of it.
+- It's an absolute path, and we start from the dentry **root**.
+- Look up till the parent of the last component **run**.
+- Ask that parent to unlink the child **zzz-file**, which means releasing the inode and dentry of it.
 
-<p align="center"><img src="images/vfs/delete-a-file.png" /></p>
+<p align="center"><img src="images/vfs/file-deletion.png" /></p>
 
 <details><summary> More Details </summary>
 
