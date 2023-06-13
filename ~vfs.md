@@ -449,7 +449,7 @@ So the operational flow is like this:
 
 - It's an absolute path, and we start from the dentry **root**.
 - Look up till the last component, **zzz-file**, but it's not there.
-- Since the utility has specified flag **O_CREAT**, then parent inode, 'run' in the example, creates the file.
+- Since the utility has specified flag **O_CREAT**, then parent inode, **run** in the example, creates the file.
 
 <p align="center"><img src="images/vfs/file-creation.png" /></p>
 
@@ -494,7 +494,7 @@ Function vfs_create() isn't related to our example here.
       
 </details>      
 
-### File Deletion
+### File Removal
 We use the utility **rm** to remove the target file, and here's the strace log.
 
 ```
@@ -508,10 +508,10 @@ unlink("/run/zzz-file")
 So the operational flow is like this:
 
 - It's an absolute path, and we start from the dentry **root**.
-- Look up till the parent of the last component **run**.
+- Look up till the parent of the last component.
 - Ask that parent to unlink the child **zzz-file**, which means releasing the inode and dentry of it.
 
-<p align="center"><img src="images/vfs/file-deletion.png" /></p>
+<p align="center"><img src="images/vfs/file-removal.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -581,23 +581,27 @@ So the operational flow is like this:
       
 </details>      
 
-### Create a directory
+### Directory Creation
 
-We use utility **mkdir** to create a folder, and it eventually calls the same name syscall.
+We use the utility mkdir to create a folder, and it eventually calls the same-name syscall.
 
 ```
-root@romulus:~# ./strace mkdir klakla
+root@romulus:~# ./strace mkdir /run/zzz-dir
 ...
-mkdir("klakla", 0777)                   = 0
+mkdir("/run/zzz-dir", 0777)                   = 0
 ...
 ```
 
 So the operational flow is like this:
+  
+- It's an absolute path, and we start from the dentry **root**.
+- Look up till the parent of the last component.
+- Ask the parent to create the child folder **zzz-dir** and install operation sets of directory type.
+  
+<p align="center"><img src="images/vfs/dir-creation.png" /></p>
 
-- It's a relative path, and we start from the dentry pointed by pwd.
-- Look up till the parent of the last component, 'root'.
-- Ask the parent to create the child folder 'klakla', and install operation sets of directory type.
-
+<details><summary> More Details </summary>
+  
 ```
     +--------------------------->     /                                                                                    
     |                                 |                                                                                    
@@ -620,9 +624,6 @@ So the operational flow is like this:
                                    klakla  inode->i_op = &shmem_dir_inode_operations;                                      
                                            inode->i_fop = &simple_dir_operations;                                          
 ```
-
-<details>
-  <summary> Code trace </summary>
 
 ```
 +-----------+                                                                               
@@ -660,23 +661,27 @@ So the operational flow is like this:
 
 </details>
 
-### Remove a directory
+### Directory Removal
 
 We can utilize the command **rmdir** to remove the folder for an empty folder, and here's the strace log.
 
 ```
-root@romulus:~# ./strace rmdir klakla/
+root@romulus:~# ./strace rmdir /run/zzz-dir
 ...
-rmdir("klakla/")                        = 0
+rmdir("/run/zzz-dir")                        = 0
 ...
 ```
 
 So the operational flow is like this:
 
-- It's a relative path, and we start from the dentry pointed by pwd.
-- Look up till the parent of the last component, 'root'.
-- Ask the parent to remove the child folder 'klakla', releasing the inode and dentry.
+- It's an absolute path, and we start from the dentry **root**.
+- Look up till the parent of the last component.
+- Ask the parent to remove the child folder **/run/zzz-dir**, releasing the inode and dentry.
 
+<p align="center"><img src="images/vfs/dir-removal.png" /></p>
+
+<details><summary> More Details </summary>
+  
 ```
     +--------------------------->     /                                                                                    
     |                                 |                                                                                    
@@ -698,9 +703,6 @@ So the operational flow is like this:
                                       |                                                                                    
                                  >>klakla<<   detete                                                                       
 ```
-
-<details>
-  <summary> Code trace </summary>
 
 ```
 +-----------+                                                                     
