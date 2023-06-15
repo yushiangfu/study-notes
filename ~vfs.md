@@ -439,9 +439,10 @@ We can use the utility **touch**, **echo**, or a formal editor like **vim** and 
 Here's the strace of **touch**, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
 
 ```
-root@romulus:~# ./strace touch /run/zzz-file
+root@romulus:~# strace touch /run/zzz-file
 ...
 openat(AT_FDCWD, "/run/zzz-file", O_RDWR|O_CREAT|O_LARGEFILE, 0666) = 3
+close(3)                                = 0
 ...
 ```
 
@@ -498,10 +499,10 @@ Function vfs_create() isn't related to our example here.
 We use the utility **rm** to remove the target file, and here's the strace log.
 
 ```
-root@romulus:~# ./strace rm /run/zzz-file
+root@romulus:~# strace rm /run/zzz-file
 ...
-access("/run/zzz-file", W_OK)                  = 0
-unlink("/run/zzz-file")                        
+access("/run/zzz-file", W_OK)           = 0
+unlink("/run/zzz-file")                 = 0
 ...
 ```
 
@@ -586,9 +587,9 @@ So the operational flow is like this:
 We use the utility mkdir to create a folder, and it eventually calls the same-name syscall.
 
 ```
-root@romulus:~# ./strace mkdir /run/zzz-dir
+root@romulus:~# strace mkdir /run/zzz-dir
 ...
-mkdir("/run/zzz-dir", 0777)                   = 0
+mkdir("/run/zzz-dir", 0777)             = 0
 ...
 ```
 
@@ -666,9 +667,10 @@ So the operational flow is like this:
 We can utilize the command **rmdir** to remove the folder for an empty folder, and here's the strace log.
 
 ```
-root@romulus:~# ./strace rmdir /run/zzz-dir
+  
+root@romulus:~# strace rmdir /run/zzz-dir
 ...
-rmdir("/run/zzz-dir")                        = 0
+rmdir("/run/zzz-dir")                   = 0
 ...
 ```
 
@@ -745,34 +747,64 @@ So the operational flow is like this:
 
 </details>
       
-### Copy a file
+### Copy
 
 When we have to copy a file or a folder, utility **cp** does the job, and here's the strace log.
 
 - It opens both the source and destination files.
-- Start to read from source, and write to the destination till there's no more data.
+- Start to read from the source and write to the destination till there's no more data.
 - Close both file descriptors.
 
 ```
-root@romulus:~# ./strace cp blabla clacla
+root@romulus:~# echo abc > /run/zzz-file1 
+root@romulus:~# strace cp /run/zzz-file1 /run/zzz-file2
 ...
-openat(AT_FDCWD, "blabla", O_RDONLY|O_LARGEFILE) = 3
-openat(AT_FDCWD, "clacla", O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE, 0100644) = 4
+openat(AT_FDCWD, "/run/zzz-file1", O_RDONLY|O_LARGEFILE) = 3
+openat(AT_FDCWD, "/run/zzz-file2", O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE, 0100644) = 4
 sendfile64(4, 3, NULL, 16777216)        = 4
 sendfile64(4, 3, NULL, 16777216)        = 0
 close(4)                                = 0
-close(3)  
+close(3)                                = 0
 ...
 ```
 
-Here's the strace log of copying a folder.
+Here's the strace log for copying a folder.
 
 ```
-root@romulus:~# ./strace cp -a src_dir/ dst_dir
+root@romulus:~# mkdir /run/zzz-dir1
+root@romulus:~# echo aaa > /run/zzz-dir1/aaa
+root@romulus:~# echo bbb > /run/zzz-dir1/bbb
+root@romulus:~# strace cp -a /run/zzz-dir1/ /run/zzz-dir2
 ...
-mkdir("dst_dir", 040755)                = 0
+mkdir("/run/zzz-dir2", 040755)          = 0
 ...
-
+openat(AT_FDCWD, "/run/zzz-dir1/", O_RDONLY|O_NONBLOCK|O_LARGEFILE|O_DIRECTORY|O_CLOEXEC) = 3
+...
+openat(AT_FDCWD, "/run/zzz-dir1/bbb", O_RDONLY|O_LARGEFILE) = 4
+openat(AT_FDCWD, "/run/zzz-dir2/bbb", O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE, 0100644) = 5
+sendfile64(5, 4, NULL, 16777216)        = 4
+sendfile64(5, 4, NULL, 16777216)        = 0
+close(5)                                = 0
+close(4)                                = 0
+...
+chown32("/run/zzz-dir2/bbb", 0, 0)      = 0
+chmod("/run/zzz-dir2/bbb", 0100644)     = 0
+...
+openat(AT_FDCWD, "/run/zzz-dir1/aaa", O_RDONLY|O_LARGEFILE) = 4
+openat(AT_FDCWD, "/run/zzz-dir2/aaa", O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE, 0100644) = 5
+sendfile64(5, 4, NULL, 16777216)        = 4
+sendfile64(5, 4, NULL, 16777216)        = 0
+close(5)                                = 0
+close(4)                                = 0
+...
+chown32("/run/zzz-dir2/aaa", 0, 0)      = 0
+chmod("/run/zzz-dir2/aaa", 0100644)     = 0
+...
+close(3)                                = 0
+chmod("/run/zzz-dir2", 040755)          = 0
+...
+chown32("/run/zzz-dir2", 0, 0)          = 0
+chmod("/run/zzz-dir2", 040755)          = 0
 ...
 ```
 
