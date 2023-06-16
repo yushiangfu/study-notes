@@ -808,11 +808,9 @@ chmod("/run/zzz-dir2", 040755)          = 0
 ...
 ```
 
+<p align="center"><img src="images/vfs/copy.png" /></p>
+  
 ### Mount
-
-I was very uncomfortable when learning the Linux concept and commands because the instructor kept asking us to mount the disk without explanation. 
-Even though I raised my questions, I still didn't understand his replies (slow learner?). 
-Fast forward to today, and here are my answers to my poor old questions.
 
 - What does mount do?
   - To connect the file tree to another one.
@@ -821,6 +819,17 @@ Fast forward to today, and here are my answers to my poor old questions.
 - Why do Windows users not have to mount?
   - Automatic mount
 
+The kernel will prepare the below structures for the source tree: **mount**, **dentry**, **inode**. 
+The **mount** doesn't connect to anything yet and isn't visible to the users.
+
+Later the kernel mounts the source tree onto the dentry of the destination folder, which is also known as the mount point. 
+Also, the mount structure of the mount point acts as the parent mount, and the **mnt_parent** points to the right place. 
+That's how we make the source tree of a specific disk partition visible to us, and now the **lookup** can traverse into it.
+
+<p align="center"><img src="images/vfs/mount.png" /></p>
+  
+<details><summary> More Details </summary>
+  
 We start the introduction by command **mount** usage.
 
 ```
@@ -839,10 +848,7 @@ We start the introduction by command **mount** usage.
  +------------------+   | a.k.a. mount point           |
                         +------------------------------+
 ```
-
-The kernel will prepare the below structures for the source tree: **mount**, **dentry**, **inode**. 
-The **mount** doesn't connect to anything yet and isn't visible to the users.
-
+  
 ```
 +---------> mount                                     
 |     +----------------+                              
@@ -860,11 +866,7 @@ The **mount** doesn't connect to anything yet and isn't visible to the users.
       |  +----------+  |                              
       +----------------+                              
 ```
-
-Later the kernel mounts the source tree onto the dentry of the destination folder, which is also known as the mount point. 
-Also, the mount structure of the mount point acts as the parent mount, and the **mnt_parent** points to the right place. 
-That's how we make the source tree of a specific disk partition visible to us, and now the **lookup** can traverse into it.
-
+  
 ```
 +-----------------------------> mount
 |                   |     +----------------+
@@ -911,9 +913,6 @@ That's how we make the source tree of a specific disk partition visible to us, a
                                    +------+-----+       +------+-----+  +------+-----+
 ```
 
-<details>
-  <summary> Code trace </summary>
-
 ```
 +------------+                                                                                                                 
 | kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
@@ -953,6 +952,10 @@ That's how we make the source tree of a specific disk partition visible to us, a
 </details>
 
 ## <a name="notify"></a> Notify
+  
+(TBD)
+  
+<details><summary> More Details </summary>
 
 ```
 fs/notify/inotify/inotify_user.c
@@ -981,8 +984,10 @@ fs/notify/inotify/inotify_user.c
   |                                                                                                       
   +--> alloc event and set it up                                                                          
 ```
+  
+</details>
 
-## <a name="boot-flow"></a> Boot Flow
+## <a name="system-startup"></a> System Startup
 
 Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
 We can see that there's only one pair of dentry and inode, which represents the well-known '/' entry. 
@@ -1107,8 +1112,8 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
                                           |                                                                                       
                                  sysinit.target.wants                                                                             
 ```
-
-## <a name="system-startup"></a> System Startup
+  
+<details><summary> More Details </summary>
       
 ```
 +-----------------------+                                                                                                      
@@ -2188,6 +2193,8 @@ dir /root 0700 0 0
   +--> | destroy_inode |                                                                         
        +---------------+                                                                         
 ```
+  
+</details>
 
 ## <a name="reference"></a> Reference
 
