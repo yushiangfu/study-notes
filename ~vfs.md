@@ -481,6 +481,7 @@ So the operational flow is like this:
 Function vfs_create() isn't related to our example here.
 
 ```
+fs/namei.c
 +------------+                                                                         
 | vfs_create | prepare an inode of regular file and link it with given dentry    
 +--|---------+                                                                         
@@ -539,9 +540,10 @@ So the operational flow is like this:
 ```
   
 ```
-+--------+                                                                         
-| unlink |                                                                         
-+-|------+                                                                         
+fs/namei.c
++------------+                                                                         
+| sys_unlink |                                                                         
++-|----------+                                                                         
   |    +-------------+                                                             
   +--> | do_unlinkat |                                                             
        +---|---------+                                                             
@@ -563,6 +565,7 @@ So the operational flow is like this:
 ```
 
 ```
+fs/namei.c
 +------------+                                                           
 | vfs_unlink |                                                           
 +--|---------+                                                           
@@ -627,6 +630,7 @@ So the operational flow is like this:
 ```
 
 ```
+fs/namei.c
 +-----------+                                                                               
 | sys_mkdir |                                                                               
 +--|--------+                                                                               
@@ -648,6 +652,7 @@ So the operational flow is like this:
 ```
 
 ```
+fs/namei.c
 +-----------+                                                                      
 | vfs_mkdir | prepare an inode of directory and link it with given dentry          
 +--|--------+                                                                      
@@ -707,6 +712,7 @@ So the operational flow is like this:
 ```
 
 ```
+fs/namei.c
 +-----------+                                                                     
 | sys_rmdir |                                                                     
 +--|--------+                                                                     
@@ -725,6 +731,7 @@ So the operational flow is like this:
 ```
 
 ```
+fs/namei.c
 +-----------+                                                            
 | vfs_rmdir |                                                            
 +--|--------+                                                            
@@ -914,6 +921,7 @@ We start the introduction by command **mount** usage.
 ```
 
 ```
+fs/namespace.c
 +------------+                                                                                                                 
 | kern_mount | prepare 'super_block' and mount nowhere (for internal use)                                                      
 +--|---------+                                                                                                                 
@@ -1019,6 +1027,23 @@ When building the kernel image, data under **usr/** will become the initramfs in
 
 After unpacking the initramfs, the file tree is like this:
 
+And then the complete rootfs either comes from initrd or other mediums:
+
+- Initrd
+  - It's initramfs-romulus in our case. Don't be bothered by its naming since there might be some historical factors.
+- NFS
+  - The source is from an NFS server.
+- CIFS
+  - The source if from a Samba server.
+- Block
+  - The source is from a drive partition, another common case in practical usage.
+
+After unpacking the initrd, the file tree is like this, which doesn't display them all:
+  
+<p align="center"><img src="images/vfs/rootfs.png" /></p>
+  
+<details><summary> More Details </summary>
+
 ```
       mount
 +----------------+
@@ -1046,18 +1071,7 @@ After unpacking the initramfs, the file tree is like this:
                        console |dentry|inode|
                                +------+-----+
 ```
-
-And then the complete rootfs either comes from initrd or other mediums:
-
-- Initrd
-  - It's initramfs-romulus in our case. Don't be bothered by its naming since there might be some historical factors.
-- NFS
-  - The source is from an NFS server.
-- CIFS
-  - The source if from a Samba server.
-- Block
-  - The source is from a drive partition, another common case in practical usage.
-
+  
 ```
                          +-----------+                                      
                          | initramfs |                                      
@@ -1075,9 +1089,7 @@ And then the complete rootfs either comes from initrd or other mediums:
                            | nfs |  | cifs |   | block | another common case
                            +-----+  +------+   +-------+                    
 ```
-
-After unpacking the initrd, the file tree is like this, which doesn't display them all:
-
+  
 ```
                                             mount                                                                                 
                                       +----------------+                                                                          
@@ -1113,9 +1125,8 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
                                  sysinit.target.wants                                                                             
 ```
   
-<details><summary> More Details </summary>
-      
 ```
+fs/dcache.c
 +-----------------------+                                                                                                      
 | vfs_caches_init_early |                                                                                                      
 +-----|-----------------+                                                                                                      
@@ -1146,6 +1157,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/dcache.c
 +-----------------+
 | vfs_caches_init |
 +----|------------+
@@ -1188,6 +1200,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/namespace.c
 +----------+
 | mnt_init |
 +--|-------+
@@ -1246,8 +1259,9 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/kernfs/dir.c
 +--------------------+                                                          
-| kernfs_create_root | prepare kernel fs 'root' and its 'node'
+| kernfs_create_root | : prepare kernel fs 'root' and its 'node'
 +----|---------------+                                                          
      |                                                                          
      |--> allocate 'root' (kernfs_root)                                         
@@ -1264,6 +1278,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/open.c
 +----------+                                                                                                
 | sys_open |                                                                                                
 +--|-------+                                                                                                
@@ -1312,6 +1327,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 
 
 ```
+fs/read_write.c
 +----------+                                         
 | sys_read |                                         
 +--|-------+                                         
@@ -1340,6 +1356,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/read_write.c
 +-----------+
 | sys_write |
 +--|--------+
@@ -1378,6 +1395,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/open.c
 +-----------+                                                         
 | sys_close |                                                         
 +--|--------+                                                         
@@ -1394,6 +1412,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/inode.c
 +--------------------+                        
 | init_special_inode |                        
 +----|---------------+                        
@@ -1420,6 +1439,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/dcache.c
 +-------------+                                         
 | d_make_root |                                         
 +---|---------+                                         
@@ -1435,8 +1455,9 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/libfs.c
 +--------------------+
-| pseudo_fs_get_tree | allocate 'super_block' and set up (e.g., preapre its inode and dentry)
+| pseudo_fs_get_tree | : allocate 'super_block' and set up (e.g., preapre its inode and dentry)
 +----|---------------+
      |    +----------------+
      +--> | get_tree_nodev |
@@ -1469,6 +1490,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+init/initramfs.c
 +-----------------+                                                                 
 | populate_rootfs |                                                                 
 +----|------------+                                                                 
@@ -1490,6 +1512,7 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 ```
 
 ```
+fs/open.c
 +-----------+                                                                                       
 | filp_open |                                                                                       
 +--|--------+                                                                                       
@@ -1560,8 +1583,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +---------------+                                                                                        
-| path_parentat | walk through the path name, update dentry and mnt of the last component in nd
+| path_parentat | : walk through the path name, update dentry and mnt of the last component in nd
 +---|-----------+                                                                                        
     |    +-----------+                                                                                   
     |--> | path_init | set nd's root, path, and inode                                                    
@@ -1581,8 +1605,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/inode.c
 +-----------+                                                                                           
-| new_inode | allocate a complex or regular inode, init and add to sb's list                            
+| new_inode | : allocate a complex or regular inode, init and add to sb's list                            
 +--|--------+                                                                                           
    |    +------------------+                                                                            
    |--> | new_inode_pseudo |                                                                            
@@ -1612,8 +1637,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +-------------+                                                                                    
-| vfs_tmpfile | prepare dentry and inode, set dentry's name using ino, and link inode and dentry   
+| vfs_tmpfile | : prepare dentry and inode, set dentry's name using ino, and link inode and dentry   
 +---|---------+                                                                                    
     |                                                                                              
     |--> if dir inode doesn't have ->tmpfile(), return error                                       
@@ -1629,6 +1655,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +-----------+                                                                           
 | vfs_mknod | : call inode->mknod(e.g., prepare inode of specified type and link to arg dentry)
 +--|--------+                                                                           
@@ -1642,6 +1669,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +-------------+                                                                    
 | vfs_symlink |                                                                    
 +---|---------+                                                                    
@@ -1655,8 +1683,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +----------+                                                          
-| vfs_link | fill inode info in the new dentry and link them          
+| vfs_link | : fill inode info in the new dentry and link them          
 +--|-------+                                                          
    |                                                                  
    +--> call ->link(), e.g.,                                          
@@ -1666,6 +1695,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +------------+                                          
 | vfs_rename |                                          
 +--|---------+                                          
@@ -1679,6 +1709,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +--------------+                                                  
 | vfs_readlink |                                                  
 +---|----------+                                                  
@@ -1689,6 +1720,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namei.c
 +--------------+                                                                  
 | vfs_get_link |                                                                  
 +---|----------+                                                                  
@@ -1702,6 +1734,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/init.c
 +------------+                                                                                                                 
 | init_mkdir | : create dentry, prepare inode of dir and link to that dentry
 +--|---------+                                                                                                                 
@@ -1723,8 +1756,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/open.c
 +--------------+                                                                                                                       
-| vfs_truncate | truncate inode if size becomes to smaller, update inode info                                                          
+| vfs_truncate | : truncate inode if size becomes to smaller, update inode info                                                          
 +---|----------+                                                                                                                       
     |    +-------------+                                                                                                               
     +--> | do_truncate |                                                                                                               
@@ -1753,8 +1787,9 @@ dir /root 0700 0 0
 ```
 
 ```
+init/do_mounts.c
 +------------+                                                                               
-| mount_root | try to mount root based on root dev_t                                         
+| mount_root | : try to mount root based on root dev_t                                         
 +--|---------+                                                                               
    |                                                                                         
    |--> if ROOT_DEV == Root_NFS (actually the logic is removed bc of disabled config)        
@@ -1790,8 +1825,9 @@ dir /root 0700 0 0
 ```
 
 ```
+init/do_mounts.c
 +------------------+                                                                                
-| mount_block_root | determine fs list, try to mount root with each till any succeeds
+| mount_block_root | : determine fs list, try to mount root with each till any succeeds
 +----|-------------+                                                                                
      |    +------------+                                                                            
      |--> | alloc_page | allocate a page for fs name list                                           
@@ -1817,8 +1853,9 @@ dir /root 0700 0 0
 ```
 
 ```
+init/do_mounts.c
 +---------------+                                                      
-| do_mount_root | mount given 'name' to '/root'                        
+| do_mount_root | : mount given 'name' to '/root'                        
 +---|-----------+                                                      
     |                                                                  
     |--> if arg 'data' is given                                        
@@ -1840,8 +1877,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/init.c
 +------------+                                                                                                
-| init_mount | mount properly based on flags                                                                  
+| init_mount | : mount properly based on flags                                                                  
 +--|---------+                                                                                                
    |    +-----------+                                                                                         
    |--> | kern_path | lookup the path, save dentry and mnt in 'path'                                          
@@ -1890,8 +1928,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namespace.c
 +-------------------+                                                                    
-| do_move_mount_old | peform a moving mount
+| do_move_mount_old | : peform a moving mount
 +----|--------------+                                                                    
      |    +-----------+                                                                  
      |--> | kern_path | lookup the path, save dentry and mnt in 'path'                   
@@ -1905,8 +1944,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namespace.c
 +--------------+                                                                                
-| do_new_mount | prepare sb/dentry/inode of child mnt, and connect child mnt to parent mnt      
+| do_new_mount | : prepare sb/dentry/inode of child mnt, and connect child mnt to parent mnt      
 +---|----------+                                                                                
     |    +-------------+                                                                        
     |--> | get_fs_type | get 'fs' based on name                                                 
@@ -1926,8 +1966,9 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/namespace.c
 +-----------------+                                                                                         
-| do_new_mount_fc | connect src (child) mnt to dst (parent) mnt                                             
+| do_new_mount_fc | : connect src (child) mnt to dst (parent) mnt                                             
 +----|------------+                                                                                         
      |    +------------------+                                                                              
      |--> | vfs_create_mount | allocate 'mount' (which includes 'vfsmnt'), and set up                       
@@ -1950,43 +1991,45 @@ dir /root 0700 0 0
 ```
 
 ```
- +----------------------+                                                             
- | attach_recursive_mnt | connect src (child) mnt to dst (parent) mnt
- +-----|----------------+                                                             
-       |    +----------------+                                                        
-       +--> | get_mountpoint | get source mount point                                 
-       |    +----------------+                                                        
-       |                                                                              
-       |--> if dst mnt is shared                                                      
-       |                                                                              
-       |------> (skip, not our case)                                                  
-       |                                                                              
-       +--> if it's a moving mount (src is mounted at somewhere already)              
-       |                                                                              
-       |        +------------+                                                        
-       |------> | unhash_mnt | detatch from old parent mnt                            
-       |        +------------+                                                        
-       |        +------------+                                                        
-       |------> | attach_mnt | connect to new parent mnt                              
-       |        +------------+                                                        
-       |                                                                              
-       |--> else (new mount)                                                          
-       |                                                                              
-       |        +--------------------+                                                
-       |------> | mnt_set_mountpoint | connect src (child) mnt to dst (parent) mnt    
-       |        +--------------------+                                                
-       |        +-------------+                                                       
-       |------> | commit_tree | add child mnt to parent's hash table and children list
-       |        +-------------+                                                       
-       |                                                                              
-       |--> for each mnt in local list                                                
-       |                                                                              
-       +------> (skip, it's related to shared mnt)                                    
+fs/namespace.c
++----------------------+
+| attach_recursive_mnt | : connect src (child) mnt to dst (parent) mnt
++-----|----------------+
+      |    +----------------+
+      +--> | get_mountpoint | get source mount point
+      |    +----------------+
+      |
+      |--> if dst mnt is shared
+      |
+      |------> (skip, not our case)
+      |
+      +--> if it's a moving mount (src is mounted at somewhere already)
+      |
+      |        +------------+
+      |------> | unhash_mnt | detatch from old parent mnt
+      |        +------------+
+      |        +------------+
+      |------> | attach_mnt | connect to new parent mnt
+      |        +------------+
+      |
+      |--> else (new mount)
+      |
+      |        +--------------------+
+      |------> | mnt_set_mountpoint | connect src (child) mnt to dst (parent) mnt
+      |        +--------------------+
+      |        +-------------+
+      |------> | commit_tree | add child mnt to parent's hash table and children list
+      |        +-------------+
+      |
+      |--> for each mnt in local list
+      |
+      +------> (skip, it's related to shared mnt)                                
 ```
 
 ```
+init/do_mounts.c
 +-------------------+                                                                    
-| prepare_namespace | mount root based on boot command                                   
+| prepare_namespace | : mount root based on boot command                                   
 +----|--------------+                                                                    
      |                                                                                   
      |--> if user has specified 'root_delay' in boot command                             
@@ -2034,8 +2077,9 @@ dir /root 0700 0 0
 ```
 
 ```
+init/do_mounts.c
 +-------------------+                                                                    
-| prepare_namespace | mount root based on boot command                                   
+| prepare_namespace | : mount root based on boot command                                   
 +----|--------------+                                                                    
      |                                                                                   
      |--> if user has specified 'root_delay' in boot command                             
@@ -2083,6 +2127,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/anon_inodes.c
 +------------------+                                                                              
 | anon_inode_getfd | : prepare an anon file and install to fd table                               
 +----|-------------+                                                                              
@@ -2101,6 +2146,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/anon_inodes.c
 +----------------------+                                                        
 | __anon_inode_getfile | : prepare file (and its inode/dentry), set up that file
 +-----|----------------+                                                        
@@ -2115,6 +2161,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/file_table.c
 +-------------------+                                                   
 | alloc_file_pseudo | : allocate a file (and its dentry)                
 +----|--------------+                                                   
@@ -2130,6 +2177,7 @@ dir /root 0700 0 0
 ```
 
 ```
+include/linux/poll.h
 +----------+                                                        
 | vfs_poll | : e.g., return 'poll_in' if there's pending signal     
 +--|-------+                                                        
@@ -2141,6 +2189,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/inode.c
 +--------------+                                                        
 | dispose_list | : evict each inode in list                             
 +---|----------+                                                        
@@ -2155,6 +2204,7 @@ dir /root 0700 0 0
 ```
 
 ```
+fs/inode.c
 +-------+                                                                                        
 | evict | : unlink inode, truncate mapping, and release inode                                    
 +-|-----+                                                                                        
