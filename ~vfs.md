@@ -997,27 +997,50 @@ fs/notify/inotify/inotify_user.c
 
 ## <a name="system-startup"></a> System Startup
 
+```
+ start_kernel                                                                                                                        
+ |                                                                                                                                   
+ |--> vfs_caches_init_early                                                                                                          
+ |    |                                                                                                                              
+ |    |--> dcache_init_early                                                                                                         
+ |    |    -                                                                                                                         
+ |    |    +--> alloc_large_system_hash       [    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes, linear) 
+ |    |                                                                                                                              
+ |    +--> inode_init_early                                                                                                          
+ |         -                                                                                                                         
+ |         +--> alloc_large_system_hash       [    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes, linear)  
+ |                                                                                                                                   
+ +--> vfs_caches_init                                                                                                                
+      -                                                                                                                              
+      +--> mnt_init                                                                                                                  
+           -                                                                                                                         
+           ---> alloc_large_system_hash       [    0.007705] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)     
+           +--> alloc_large_system_hash       [    0.007951] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+                                                                                                                                     
+                                                                                                                                     
+ kernel_init                                                                                                                         
+ -                                                                                                                                   
+ +--> kernel_init_freeable                                                                                                           
+ |    -                                                                                                                              
+ |    +--> do_basic_setup                                                                                                            
+ |         -                                                                                                                         
+ |         +--> do_initcalls                                                                                                         
+ |              -                                                                                                                    
+ |              +--> populate_rootfs                                                                                                 
+ |                   -                                                                                                               
+ |                   +--> do_populate_rootfs  [    0.272771] Trying to unpack rootfs image as initramfs...                           
+ |                                                                                                                                   
+ +--> run_init_process                        [    1.770911] Run /init as init process                                               
+                                              [    1.771093]   with arguments:                                                       
+                                              [    1.771159]     /init                                                               
+                                              [    1.771183]   with environment:                                                     
+                                              [    1.771204]     HOME=/                                                              
+                                              [    1.771220]     TERM=linux                                                          
+```
+  
 Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
 We can see that there's only one pair of dentry and inode, which represents the well-known '/' entry. 
 After letting tasks know where the **mount** and **dentry** are, the file tree becomes visible to them.
-
-```
-+---------> mount                                     
-|     +----------------+                              
-|     |      mnt       |                              
-|     |  +----------+  |                              
-|     |  |+--------+|  |                              
-|     |  ||mnt_root|---------------+                  
-|     |  |+--------+|  |           |                  
-|     |  +----------+  |           v                  
-|     |+--------------+|        +------+       +-----+
-|     ||mnt_mountpoint--------> |dentry| <---> |inode|
-|     |+--------------+|        +------+       +-----+
-|     |  +----------+  |                              
-+---------mnt_parent|  |                              
-      |  +----------+  |                              
-      +----------------+                              
-```
 
 When building the kernel image, data under **usr/** will become the initramfs included in the generated kernel image, and it contributes the very minimum rootfs:
 
@@ -1043,6 +1066,24 @@ After unpacking the initrd, the file tree is like this, which doesn't display th
 <p align="center"><img src="images/vfs/rootfs.png" /></p>
   
 <details><summary> More Details </summary>
+  
+```
++---------> mount                                     
+|     +----------------+                              
+|     |      mnt       |                              
+|     |  +----------+  |                              
+|     |  |+--------+|  |                              
+|     |  ||mnt_root|---------------+                  
+|     |  |+--------+|  |           |                  
+|     |  +----------+  |           v                  
+|     |+--------------+|        +------+       +-----+
+|     ||mnt_mountpoint--------> |dentry| <---> |inode|
+|     |+--------------+|        +------+       +-----+
+|     |  +----------+  |                              
++---------mnt_parent|  |                              
+      |  +----------+  |                              
+      +----------------+                              
+```
 
 ```
       mount
