@@ -19,11 +19,10 @@
 
 ## <a name="process-and-thread"></a> Process and Thread
 
-The `process` is a concept of running logic designed to fulfill the target purpose. 
-It can be simple enough, such as the famous 'hello world' containing only one thread printing the greeting string. 
-Or quite complicated, working as a collection of threads executing the specified functions to solve complex jobs. 
-There are also kernel threads that operate in privileged mode and manage system resources. 
-Either user thread or kernel thread is regarded as a `task` from the kernel's perspective.
+A `process` is a fundamental concept in computing that represents the execution of logic designed to accomplish a specific objective. 
+It can vary in complexity, ranging from simple tasks like the well-known "hello world" program, which consists of a single thread printing a greeting message, to more intricate processes involving multiple threads working together to solve complex tasks. 
+Additionally, there are kernel threads that operate in privileged mode and handle system resource management. 
+Both user threads and kernel threads are considered `task`s from the perspective of the kernel.
 
 <p align="center"><img src="images/process/process-and-thread.png" /></p>
 
@@ -50,10 +49,11 @@ Either user thread or kernel thread is regarded as a `task` from the kernel's pe
 
 ## <a name="life-cycle"></a> Life Cycle
 
-A task is in `NEW` status when it's newly created but not yet added to any run queue. 
-It changes to `RUNNING` once queued, waiting to run, or running on a CPU. 
-If actions involve event waiting during runtime, the task becomes `SLEEPING` and temporarily standby somewhere until the condition is met. 
-The task can be a daemon working in the background continuously or a regular command exiting after performing its job.
+A task begins in the `NEW` status when it is created but not yet added to a run queue. 
+It transitions to the `RUNNING` status when it is queued and either waiting to run or actively executing on a CPU. 
+During runtime, if a task encounters an event that requires it to wait for a certain condition, it enters the `SLEEPING` status. 
+In this state, the task remains temporarily inactive until the condition is met. 
+Tasks can vary in nature, such as background daemons that continuously operate or regular commands that perform a specific job and then exit.
 
 <p align="center"><img src="images/process/life-cycle.png" /></p>
 
@@ -117,11 +117,11 @@ struct task_struct {
 
 ### State - New
 
-Threads within the same process share the same virtual memory space, file table, etc., of which the collection is exclusive to each process. 
-Syscalls like `clone` and `fork` are used to create new tasks with different shared resources, and surprisingly they call to the same core function.
-For each resource, the routine determines whether to share it with the parent task or create a new copy of its own based on pass-in flags. 
-The syscall `fork` itself rarely works alone since two identical copies are pretty redundant. 
-Instead, another syscall `execve` follows to load the target application into memory, overwriting the existing logic.
+Threads within the same process share the same virtual memory space, file table, and other resources that are exclusive to that process. 
+The creation of new tasks with distinct shared resources is facilitated by system calls like clone and fork, which interestingly invoke the same core function. 
+For each resource, the function determines whether it should be shared with the parent task or if a new copy should be created, based on the flags passed as arguments. 
+The fork syscall is typically not used in isolation since creating two identical copies would be redundant. 
+Instead, it is often followed by the execve syscall, which loads the desired application into memory, replacing the existing logic.
 
 <p align="center"><img src="images/process/fork-and-clone.png" /></p>
 
@@ -563,27 +563,26 @@ struct linux_binfmt {
 
 ### State - Running
 
-A task is in such state when it's running or ready to run.
+Tasks that are actively running on CPUs or waiting in run queues are typically labeled as being in the `RUNNING` state.
 
 ### State - Sleeping
 
-Sleeping is a conceptual state that indicates the task is removed from the run queue and waits somewhere for the specified event to happen, such as:
+Sleeping is a conceptual state in which a task is temporarily removed from the run queue and waits for a specific event to occur. 
+This event can vary and includes scenarios such as waiting for data to be read from the disk, waiting for a specific time duration to elapse, or waiting for a particular request to arrive.
 
-- waiting for the data read from the disk
-- waiting for a few seconds
-- waiting till there's a coming request
+When a task is in the sleeping state, it can have one of the following practical state values:
 
-When the task sleeps, the practical state value can be any of the below ones.
+- `TASK_INTERRUPTIBLE`: The task will wake up if it receives any signal during its sleep. It remains responsive to signals while waiting for the specified event to occur.
+- `TASK_UNINTERRUPTIBLE`: Tasks in this state will only wake up when the condition they are waiting for is met. They are not responsive to signals and stay in the sleeping state until the desired event happens.
+- `TASK_KILLABLE`: Similar to `TASK_UNINTERRUPTIBLE`, tasks in this state also wait for the specified condition to be met. However, they can be terminated forcibly if a kill signal is received.
 
-- TASK_KILLABLE: task wakes up when receiving a `kill` signal
-- TASK_INTERRUPTIBLE: task wakes up when receiving any signal
-- TASK_UNINTERRUPTIBLE: task wakes up only when the condition is met
+These practical state values define how a sleeping task behaves and determine the conditions under which it will wake up and resume its execution.
 
 ### State - Dead
 
-When a task exits, it notifies its parent before releasing the resources allocated so far. 
-And the state goes from ZOMBIE, DEAD, till the task vanishes completely. 
-Indifferent parents might cause the children to remain in the ZOMBIE state.
+When a task completes its execution, it notifies its parent before releasing the resources it has used. 
+The state of the task transitions from `ZOMBIE` to `DEAD` until it disappears entirely from the system. 
+However, if the parent is indifferent or fails to acknowledge the child's exit, the child task may remain in the `ZOMBIE` state.
 
 <details><summary> More Details </summary>
 
