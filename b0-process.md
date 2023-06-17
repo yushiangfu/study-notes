@@ -118,10 +118,10 @@ struct task_struct {
 ### State - New
 
 Threads within the same process share the same virtual memory space, file table, and other resources that are exclusive to that process. 
-The creation of new tasks with distinct shared resources is facilitated by system calls like clone and fork, which interestingly invoke the same core function. 
+The creation of new tasks with distinct shared resources is facilitated by system calls like `clone` and `fork`, which interestingly invoke the same core function. 
 For each resource, the function determines whether it should be shared with the parent task or if a new copy should be created, based on the flags passed as arguments. 
-The fork syscall is typically not used in isolation since creating two identical copies would be redundant. 
-Instead, it is often followed by the execve syscall, which loads the desired application into memory, replacing the existing logic.
+The `fork` syscall is typically not used in isolation since creating two identical copies would be redundant. 
+Instead, it is often followed by the `execve` syscall, which loads the desired application into memory, replacing the existing logic.
 
 <p align="center"><img src="images/process/fork-and-clone.png" /></p>
 
@@ -677,26 +677,20 @@ However, if the parent is indifferent or fails to acknowledge the child's exit, 
 
 ## <a name="scheduler-and-run-queue"></a> Scheduler and Run Queue
 
-Each CPU has its own run queue that holds all the ready-to-run tasks, and the scheduler is responsible for picking up the next candidate for running. 
-Please note that the scheduler is not a task but a mechanism taking effect in frequented code paths. 
-We can roughly break down the design into two parts:
+Each CPU in the system maintains its own run queue, which holds all the tasks that are ready to run on that specific CPU. 
+The scheduler, a mechanism that operates within frequently executed code paths, is responsible for selecting the next task to be executed.
 
-- RESCHED flag
-- context switch
+The design of the scheduler can be divided into two main parts: the `RESCHED` flag and the context switch. 
+The `RESCHED` flag is raised to indicate that it is time to service the next task in line. 
+This can happen for various reasons, such as when a task has utilized its allocated time slice, when it needs to sleep for a certain period, when a target lock is acquired elsewhere, when it is waiting for data to be read or written, when its priority is lowered, or when a more critical task emerges.
 
-The flag is raised to indicate that it's time to service the next task in line if, for example:
-
-- it uses up the given time slice
-- it's required to sleep for a while
-- target lock is acquired somewhere else
-- waiting for data to be read or written
-- its priority is lowered
-- another more critical task pops up
-
-Accompanied by checkpoints spread across the kernel, they examine the flag and perform the task replacement, formally called the `context switch`. 
-A typical scenario is that the timer interrupt handler routinely checks the remaining time slice, which eventually runs out and has the flag set. 
-On its way back to the userspace, the encountered checkpoint proceeds the context switch, and the chosen task resumes and continues.
-The below image is just for example since there's no second CPU in our QEMU configuration.
+Accompanied by distributed checkpoints in the kernel, the scheduler monitors the `RESCHED` flag and initiates a task replacement process called a context switch. 
+During a context switch, the state of the current task is saved, and the state of the next selected task is restored. 
+In a common scenario, the timer interrupt handler periodically checks the remaining time slice. 
+When the time slice expires, the `RESCHED` flag is set. 
+The context switch occurs when a checkpoint is encountered as the task transitions from kernel space to userspace. 
+The chosen task then resumes execution while the previous task is temporarily suspended.
+The image below serves as an illustrative example, considering that our QEMU configuration does not include a second CPU.
 
 <p align="center"><img src="images/process/scheduler-and-run-queue.png" /></p>
 
@@ -791,14 +785,16 @@ The below image is just for example since there's no second CPU in our QEMU conf
 
 ### Context Switch
 
-Take the ARM processor as an example; the CPU has a few general purpose registers and specific coprocessors. 
-Every coprocessor has particular functionality, but we now only care about the table translation base register (TTBR). 
-It always points to the page table of the currently running task, so the CPU knows how to access the mapped page frame in memory. 
-The thread info structure is designed to keep some architecture-specific fields of a task, such as CPU context, to accommodate the regular registers. 
-Whenever a context switch happens, the scheduler logic does:
+Taking the ARM processor as an example, the CPU consists of general-purpose registers and specific coprocessors. 
+Of particular interest is the table translation base register (`TTBR`), which plays a crucial role in page table translation. 
+The `TTBR` always points to the page table of the currently executing task, enabling the CPU to efficiently access the mapped page frames in memory.
 
-- Have TTBR point to the new page table.
-- Back up the CPU standard registers to thread info and resume the ones from the next task.
+To manage the architectural-specific fields of a task, such as the CPU context and regular registers, the thread info structure is utilized. 
+During a context switch, the scheduler logic performs the following steps:
+
+1. Updates the `TTBR` to point to the new page table associated with the next task.
+2. Backs up the CPU's standard registers to the thread info structure, preserving the current task's state.
+3. Restores the registers from the next task, allowing it to resume execution seamlessly.
 
 <p align="center"><img src="images/process/context-switch.png" /></p>
 
@@ -933,11 +929,16 @@ repeat
 
 ### Load Balance
   
-A task has the `load` attribute to reflect its importance, and a run queue sums up the values of in-queue tasks to indicate how busy it is. 
-With such busyness measurement, a few methods introduce to help balance the load among queues. 
-When a task is newly generated or just awakened, the scheduler mechanism will try hard to choose a relatively leisurely queue to add in. 
-Also, active balancing is triggered from the routine timer interrupt handler that eventually makes a request fulfilled by the soft IRQ framework. 
-It's worth noting that migration of queued tasks comes with a cost, considering the potentially remaining data in the local CPU cache.
+A task is assigned a load attribute to indicate its level of importance, and the run queue aggregates the load values of all tasks within it, providing an indication of its overall busyness. 
+In order to balance the load across queues, several methods have been introduced.
+
+When a task is newly created or awakened, the scheduler mechanism prioritizes selecting a relatively idle queue to accommodate it. 
+This ensures that the workload is evenly distributed among the available queues. 
+Additionally, active load balancing is triggered periodically by the timer interrupt handler. 
+This mechanism initiates a request that is ultimately handled by the soft IRQ framework, allowing for load balancing operations to be carried out.
+
+It is important to consider that migrating tasks between queues incurs a cost, particularly due to the potential data remaining in the local CPU cache. 
+Therefore, load balancing operations are performed with careful consideration of these factors to optimize the overall system performance.
   
 <details><summary> More Details </summary>
   
@@ -1065,10 +1066,12 @@ struct sched_entity {
   
 ### Low Latency
   
-When somewhere raises the RESCHED flag, it's not guaranteed that the running task can step down immediately; therefore, latency grows till it schedules. 
-Unlike resource waiting, sometimes it simply takes a longer time to finish the function. 
-The enhancement is that the task yields actively before the time-consuming main body or within the loop. 
-That said, breaking down those potential hogger functions into finer-grained execution pieces is a way of improving the latency.
+When the `RESCHED` flag is raised, it does not guarantee immediate stepping down of the running task, resulting in increased latency until scheduling occurs. 
+Unlike waiting for resources, there are situations where a task simply takes a longer time to complete its function. 
+To address this, an enhancement is to proactively yield the task's execution before entering the time-consuming main body or within a loop.
+
+By breaking down these potentially time-consuming functions into smaller, more finely-grained execution pieces, latency can be improved. 
+This approach allows for better responsiveness and ensures that other tasks have a chance to run, minimizing the overall impact on system performance.
   
 <details><summary> More Details </summary>
   
@@ -1096,8 +1099,6 @@ That said, breaking down those potential hogger functions into finer-grained exe
 +-------------+                               
 ```
   
-</details>
-  
 ### Preemption
 
 Let's skip this topic since it's disabled in the OpenBMC kernel.
@@ -1106,34 +1107,33 @@ Let's skip this topic since it's disabled in the OpenBMC kernel.
   
 ## <a name="priority-and-class"></a> Priority and Class
 
-More or less, we have the experience of boosting a task's priority and hope it's especially taken care of by the system. 
-Aside from priority, tasks are also governed by a scheduling class that determines how they interact with sub-queues within the run queue.
-The classes are sorted by priority and listed below in descending order:
+To optimize a task's priority and ensure it receives special attention from the system, we have the flexibility to adjust its nice value or even its scheduling class. 
+The scheduling class determines how tasks interact with sub-queues within the run queue. 
+Here are the available scheduling classes, listed in descending order of priority:
 
-- Stop class
-  - It's for the kernel. Only one kthread exists, is part of the load balance function, and helps with task migration.
-- Deadline class
-  - It's for the user. Either we can't promote tasks to this class, or they are guaranteed to be run by the specified deadline.
-- Real-time class
-  - It's for the user. Not as timely as the deadline class is, but every task still runs before other regular tasks.
-- Fair class
-  - It's for the user. Most tasks fall into this category and are promised to shine sooner or later if no other active task in the higher classes.
-- Idle class
-  - It's for the kernel. Only one kthread exists and makes full use of power saving mechanism, given there's nothing else worth doing.
+- Stop class: This class is dedicated to the kernel and consists of a single kthread responsible for load balancing and task migration.
+- Deadline class: This class is designed for user tasks that have specific execution deadlines and require guaranteed completion within the specified timeframe.
+- Real-time class: User tasks in this class are prioritized over regular tasks but do not have strict deadlines like those in the deadline class.
+- Fair class: The majority of tasks fall into this category. Tasks in the fair class have the opportunity to run at some point, as long as there are no active tasks in higher priority classes.
+- Idle class: This class is designed for power-saving purposes. It consists of a single kthread that maximizes power-saving mechanisms when there are no other tasks of higher importance.
+
+By carefully assigning tasks to the appropriate scheduling class, we can effectively control their priority and ensure that they receive the desired level of attention from the system.
 
 <p align="center"><img src="images/process/priority-and-class.png" /></p>
 
-So far, we've talked about how the current task switches out, but how to get the next candidate? 
-It starts from the high precedence class and checks if that class has at least one active task in hand.
+In the process of selecting the next candidate for execution, the scheduler starts from the highest priority class and checks if there is at least one active task in that class.
 
-- If yes, we have the task in readiness for running.
-- Else, advance to the next class and do it again.
+- If there is an active task, it is ready for execution.
+- If there are no active tasks in that class, the scheduler advances to the next class and repeats the process.
 
-Though we have the resident stop-class kthread, it's inactive if no migration request is received and thus won't be selected. 
-Most of the time, they are about fair and sometimes real-time classes. 
-It's notable that even though it's a highly chilled system, we still have the idle-class kthread as our last choice. 
-Rather than continuing from the previously visited scheduling class, the procedure starts from the stop class again before the next context switch. 
-Besides task selection, each class implements quite a few functions, such as enqueue and dequeue, due to their essential design differences.
+The resident stop-class kthread, although present, remains inactive unless a migration request is received. 
+Therefore, it is not considered for selection most of the time. 
+The focus is primarily on the fair and real-time classes. 
+Even in a highly optimized and efficient system, the idle-class kthread is still available as the last choice.
+
+It's important to note that during the next context switch, the procedure starts again from the stop class rather than continuing from the previously visited scheduling class. 
+This ensures a fair and comprehensive evaluation of all available tasks before making the next selection.
+Each scheduling class implements various functions, such as enqueue and dequeue, to cater to their unique design differences and requirements.
 
 <p align="center"><img src="images/process/sub-queue.png" /></p>
 
@@ -1372,18 +1372,20 @@ struct sched_rt_entity {
 
 ### Fair Class
 
-Its full name is the complete fair scheduler (CFS), and it covers most utilities, applications, and kernel threads. 
-The sub-queue of the class is a red-black tree sorted by the accumulated virtual runtime of each task, while the smaller ones are on the left side. 
-To be fair, the leftmost task possesses the least (virtual) runtime and deserves more, so it's always the candidate for task selection. 
-As for the virtual runtime, it's calculated from the execution time and the task load. 
-When we modify the priority of a task, both the `priority` and `load` fields are changed accordingly.
+The Complete Fair Scheduler (`CFS`) is a comprehensive scheduling algorithm that is applicable to various utilities, applications, and kernel threads. 
+It employs a red-black tree to manage sub-queues for each scheduling class, where tasks are sorted based on their accumulated virtual runtime. 
+The tasks with smaller runtimes are positioned on the left side of the tree.
 
-- Higher priority/load --> smaller vruntime --> slower vruntime accumulation --> prone to move leftward in tree
-- Lower priority/load --> larger vruntime --> faster vruntime accumulation --> prone to move rightward in tree
+To ensure fairness, the `CFS` prioritizes tasks with the smallest virtual runtime during task selection. 
+The virtual runtime is calculated by considering the task's execution time and priority.
 
-In other words, when we 'nice' down a task, it receives more chances instead of longer timeslice. 
-Nonetheless, the vruntime accumulation still strictly increases, and other typical or low-priority tasks are guaranteed to run sooner or later.
+In the `CFS`, tasks with higher priority have smaller virtual runtimes, resulting in a slower accumulation of runtime. 
+As a result, they tend to remain on the left side of the red-black tree for a longer duration. 
+On the other hand, tasks with lower priority have larger virtual runtimes, leading to a faster accumulation of runtime and a higher likelihood of moving towards the right side of the tree.
 
+When a task's priority is increased through "nice" adjustments, it is given more opportunities for execution without necessarily extending its timeslice. 
+However, the virtual runtime of the task continues to strictly increase, ensuring that other typical or low-priority tasks will eventually have their chance to run. 
+    
 <p align="center"><img src="images/process/fair-class.png" /></p>
   
 <details><summary> More Details </summary>
@@ -1785,27 +1787,29 @@ DEFINE_SCHED_CLASS(rt) = {
 ```
 
 </details>
-  
+
 ## <a name="system-startup"></a> System Startup
 
-Take the OpenBMC as an example; U-Boot runs first after the power is on, then it delegates the control to the assembly code of the kernel. 
-The first C function is start_kernel; from there, the most fundamental subsystems, such as memory, interrupt, and process, are initialized. 
-Before these frameworks are ready, there's no scheduler concept, not to mention tasks, the run queues, and scheduling classes. 
-After passing a certain point, that running logic wraps itself as the init task (pid = 0) and forks the other two kernel threads:
+Taking OpenBMC as an example, the boot process starts with U-Boot after powering on the system. 
+U-Boot then hands over control to the assembly code of the kernel. 
+The first C function called is `start_kernel`, which initializes the most fundamental subsystems such as memory, interrupts, and processes. 
+Prior to this point, there is no concept of a scheduler, tasks, run queues, or scheduling classes.
 
-- kernel_init (pid = 1)
-  - It takes over the duty to initialize the remaining subsystems, like file systems, network stacks, IPC frameworks, and all sorts of drivers, ...
-- kthreadd (pid = 2)
-  - The ending 'd' means daemon. It helps fulfill the kthread generation request delivered from kernel_init or other kthread.
-  - Thus it's the parent of all other kthreads except kerenl_init.
+Once the initialization of these core frameworks is completed, the running logic wraps itself as the init task (with process ID 0) and forks two additional kernel threads:
 
-Meanwhile, that init task, a.k.a. swapper, becomes the idle thread of the stop class on CPU 0. 
-When the kernel_init reaches the end of kernel initialization, it transforms to systemd, the first user space process. 
-Unlike the kthread creation, the transform only involves the internal context replacement rather than starting a new task. 
-The systemd then spawns many other applications, including the login prompt, and now the system becomes fully functional from the users' perspective.
-                        
+- `kernel_init` (with process ID 1): 
+  - This thread takes on the responsibility of initializing the remaining subsystems, including file systems, network stacks, IPC frameworks, drivers, and more.
+
+- `kthreadd` (with process ID 2): 
+  - The suffix 'd' indicates that it is a daemon. `kthreadd` assists in fulfilling kthread generation requests from `kernel_init` or other threads. 
+  - It serves as the parent thread for all other kernel threads except kernel_init.
+
+Meanwhile, the init task, also known as the `swapper`, becomes the idle thread of the stop class on CPU 0. 
+As `kernel_init` reaches the end of kernel initialization, it transforms into systemd, which becomes the first user space process. 
+Unlike the creation of kthreads, this transformation involves internal context replacement rather than starting a new task. 
+`systemd` then spawns various other applications, including the login prompt, making the system fully functional from the users' perspective.
+
 <p align="center"><img src="images/process/task-hierarchy.png" /></p>
-
 
 <details><summary> More Details </summary>
 
