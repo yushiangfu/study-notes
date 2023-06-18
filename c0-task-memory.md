@@ -568,21 +568,23 @@ bobfu@bobfu-Vostro-5402:~/workspace/oblinux$ head System.map
                                                     
 ## <a name="page-fault"></a> Page Fault
   
-Whenever a processor attempts to access an area and fails, it emits a data abort exception and is trapped by the kernel as a page fault. 
-A well-known example is a segmentation fault, usually caused by dereferencing a null or incorrect pointer, and it's a genuine issue. 
-However, a page fault doesn't necessarily equate to an error; sometimes, the virtual space mechanism needs it to finish the mapping procedure.
-Taking a 4K mapping as an example, we need the below three components to make a virtual address lookup works:
+When a processor encounters an inaccessible area and fails to access it, a data abort exception occurs, which is then trapped by the kernel as a page fault. 
+A common example of a page fault is a segmentation fault, often caused by dereferencing a null or incorrect pointer, indicating a genuine issue. 
+However, it's important to note that a page fault does not always indicate an error. 
+Sometimes, the virtual memory mechanism relies on page faults to complete the mapping process.
 
-- Virtual address
-  - The user specifies the address through the mmap argument, or the kernel helps find a region satisfying the size requirement.
-- Physical page frame
-  - Requesting a new page frame from buddy memory allocation as the mapping destination.
-- Page table
-  - With the virtual and physical address, the kernel understands which entries of both tables to fill what value accordingly.
-  - The involved 2nd-level page table is created if it doesn't exist yet.
+To illustrate this with a 4K mapping example, three components are required for a successful virtual address lookup:
 
-In practice, when a user calls `mmap()` to generate an anonymous or file mapping, only vma is set up at the moment. 
-Not until that region is visited the page table entry and physical page are prepared in time for the following read or write action.
+- Virtual address: 
+  - The user specifies the address either through the `mmap` argument or the kernel finds a suitable region that meets the size requirement.
+- Physical page frame: 
+  - A new page frame is requested from the buddy memory allocation to serve as the destination for the mapping.
+- Page table: 
+  - Using the virtual and physical addresses, the kernel determines the appropriate entries in both the first-level and second-level page tables to populate with the corresponding values. 
+  - If the second-level page table doesn't exist yet, it is created.
+
+In practice, when a user calls `mmap` to create an anonymous or file mapping, only the virtual memory area (`vma`) is set up initially. 
+It is not until the region is accessed that the page table entry and physical page are prepared in time for subsequent read or write actions.
   
 <p align="center"><img src="images/task-memory/page-fault.png" /></p>
   
@@ -839,36 +841,25 @@ static struct fsr_info ifsr_info[] = {
   
 ### Page Fault Handling
   
-The below cases are genuine errors, and the task will probably receive the `SIGSEGV` signal and terminate:
+The following cases are genuine errors that can lead to the termination of a task with the `SIGSEGV` signal:
 
 - Accessing the kernel space from a user space task.
-- Dereferencing a pointer that points to somewhere unmapped.
-  - Null pointers equate to pointers pointing to address 0, but the bottom part of virtual space is purposely reserved for catching them.
+- Dereferencing a pointer that points to an unmapped area, including null pointers.
 
-The kernel takes the below steps in response to a page fault:
+When a page fault occurs, the kernel takes the following steps:
 
-1. Checks whether the faulted address is governed by any vma.
-2. If yes, allocate an available page from the buddy system.
-3. Handle the page content properly according to the fault type.
-4. Fill the 1st- and 2nd-level page table entries to relate virtual and physical addresses.
-5. Resume to where it stopped and continue the data operation.
- 
-The involved task will never notice the procedure and continues to fault other regions unknowingly. 
-As for step 3, common fault types and data handling are:
+1. Checks if the faulted address belongs to any virtual memory area (`vma`).
+2. Allocates a page from the buddy system if the address is within a `vma`.
+3. Handles the page content based on the fault type.
+4. Updates the first-level and second-level page table entries to establish the virtual-to-physical address mapping.
+5. Resumes the task's execution and allows the data operation to continue.
   
-- Anonymous mapping
-  - Simply zero the allocated page.
-- File mapping
-  - Read data from the backed file into the page.
-- Copy on write
-  - Explained in the below paragraph.
-    
-This happens when a parent task forks a child that belongs to a new process. 
-While the page table and vma list are duplicated as memory resources for the new task, the page frames remain untouched. 
-That said, both tasks share the same physical pages since their page table entries are precisely identical. 
-This trick saves tremendous efforts on copying data, considering the child typically calls `execve()` immediately.
-If either parent or child intends to write data into a shared and writable mapping, the kernel traps the particular kind of page fault. 
-Data is then duplicated from the old page to the newly allocated one, and that task resumes to live its life.
+The involved task continues to encounter faults in other regions without being aware of the underlying procedure. 
+Regarding step 3, here are some common fault types and their corresponding data handling:
+
+- Anonymous mapping: The allocated page is simply zeroed out.
+- File mapping: Data is read from the backed file into the page.
+- Copy on write (COW): This occurs when a parent task forks a child, which belongs to a new process. The page table and vma list are duplicated as memory resources for the new task, while the page frames remain unchanged. Both tasks share the same physical pages because their page table entries are identical. This technique saves significant effort in copying data, especially since the child often immediately calls execve(). If either the parent or child attempts to write data into a shared and writable mapping, the kernel detects the specific type of page fault. The data is then duplicated from the old page to the newly allocated one, and the task can continue its execution.
    
 <p align="center"><img src="images/task-memory/copy-on-write.png" /></p>
   
@@ -1344,35 +1335,35 @@ const struct vm_operations_struct generic_file_vm_ops = {
 </details>
   
 ## <a name="task-startup"></a> Task Startup
-
-We've already seen the complete memory layout of a task, and now we will introduce what has been done before the main function runs. 
-For example, when we execute a 'Hello World' program from a shell, the shell first clones itself as a new one. 
-That shell replaces itself with the target binary and prints the greeting message. 
-All the mapping-related essential steps are listed here in chronological order:
-
-- fork()
-  1. Duplicate mm.
-  2. Duplicate page tables and vma list.
-- execve()
-  1. Prepare new mm and page table; replace the old ones.
-  2. Prepare stack.
-  3. Load the main program into memory.
-  4. Prepare heap.
-  5. Load linker into memory.
-  6. Prepare special mappings: sigpage, vvar, vdso.
-  7. Copy arguments and environment variables to stack.
-  8. Pass control to the linker.
   
-At this point, the linker (e.g., ld.so) takes control and helps load the libraries specified by the main program and passes control to it afterward. 
-The linker has a strong presence and is always part of a running task; its path is specified during program compilation.
-It should be noted that binaries copied from other Linux-based systems might have trouble looking up the linker locally and, unsurprisingly, abort.
+Before the main function runs, there are several important steps that are performed when executing a program like a 'Hello World' program from a shell. 
+Here is a chronological order of the essential mapping-related steps:
 
-- linker
-  1. Load libraries.
-  2. Extend heap.
-  3. Pass control to the main program.
-- main
-  1. Hello, Za Warudo!
+- `fork`: The shell clones itself to create a new process.
+  1. Duplicate mm: The memory management structure is duplicated.
+  2. Duplicate page tables and vma list: The page tables and virtual memory areas are duplicated from the parent shell.
+
+- `execve`: The new process replaces itself with the target binary (the 'Hello World' program) and prepares for its execution.
+  1. Prepare new `mm` and page table: A new memory management structure and page table are created for the new process.
+  2. Replace the old `mm` and page table: The old memory management structure and page table are replaced with the new ones.
+  3. Prepare stack: The stack for the new process is set up.
+  4. Load the main program into memory: The executable code of the main program is loaded into memory.
+  5. Prepare heap: The heap region is prepared for dynamic memory allocation.
+  6. Load the linker into memory: The linker (e.g., `ld.so` or `ld-linux.so`) is loaded into memory. It is responsible for loading and linking shared libraries.
+  7. Prepare special mappings: Special mappings such as `sigpage`, `vvar`, and `vdso` are set up.
+  8. Copy arguments and environment variables to the stack: The command-line arguments and environment variables are copied to the stack for access by the program.
+  9. Pass control to the linker: Control is transferred to the linker, which performs additional initialization and sets up the program's execution environment.
+
+These steps ensure that the necessary memory mappings and structures are established before the main function of the program starts executing.
+After the necessary preparations, the linker (e.g., `ld.so`) loads the libraries specified by the main program and passes control to it. 
+The linker's role is vital, and its path is determined during program compilation.
+
+- Linker:
+  - Loads libraries.
+  - Extends the heap if needed.
+  - Passes control to the main program.
+- Main:
+  - Executes the program's instructions, such as printing "Hello, Za Warudo!".
   
 <p align="center"><img src="images/task-memory/task-startup.png" /></p>
   
@@ -1734,7 +1725,7 @@ clock_nanosleep(CLOCK_REALTIME, 0, {1, 0}, {0, 135180}) = 0
 
 ### Reverse Mapping
 
-Page unmapping uses the constructed structures, and I'm considering moving this topic to the 'Page Cache' chapter.
+The process of page unmapping utilizes the constructed structures. It may be appropriate to relocate this topic to the 'Page Cache' chapter.
   
 <details><summary> More Details </summary>
   
@@ -1978,7 +1969,7 @@ struct page {
   
 ### Kmap
   
-In many cases, it's for highmem utilization, but the highmem zone contains no page in our study case.
+In our study case, the highmem zone is not populated with any pages, although in many scenarios, it is intended for high memory utilization.
 
 <details><summary> More Details </summary>
 
