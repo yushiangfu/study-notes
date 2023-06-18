@@ -18,31 +18,29 @@
 
 ## <a name="memory-layout"></a> Memory Layout
 
-The executable mainly consists of code, data, and other segments. 
-Additional mappings are requisite before running when the program's primary parts are loaded into memory.
+The executable primarily consists of code, data, and other segments. 
+Prior to running the program's main parts in memory, additional mappings are necessary.
 
-- Main program
-  - There are three mappings: `text`, `data`, and `bss`.
-  - Other segments, such as debug information, are unnecessary and won't be loaded into a mapping.
-- Stack
-  - for function call mechanism
-  - downward expandable (mapping size changes)
+- Main program:
+  - The main program consists of three mappings: `text`, `data`, and `bss`. 
+  - Debug information and other segments are unnecessary and won't be loaded into a mapping.
+- Stack:
+  - The stack is utilized for the function call mechanism and is downward expandable, meaning its mapping size can change. 
   - Each thread within a process has its own stack.
-- Heap
-  - The `malloc()` and alike make use of this region.
-  - upward expandable (mapping size changes)
-- Libraries
-  - Such as standard C and/or thread library
-  - Each one also occupies three mappings, as the main program does.
-- Linker
-  - It helps load a series of built-time-specified libraries into memory.
-  - yes, three mappings
-  - Although common names are `ld.so` or `ld-linux.so`, it's expected to be an executable instead of a shared library.
-- Others
-  - They are `sigpage`, `vvar`, and `vdso`, and I have no idea what they are doing yet.
+- Heap:
+  - The heap is utilized by functions like `malloc()` and similar operations. 
+  - It is upward expandable, allowing its mapping size to change.
+- Libraries:
+  - Libraries, such as the standard C library or thread library, also occupy three mappings, similar to the main program.
+- Linker:
+  - The linker assists in loading a series of specified libraries into memory. 
+  - It occupies three mappings, although it is expected to be an executable rather than a shared library, commonly known as `ld.so` or `ld-linux.so`.
+- Others:
+  - The `sigpage`, `vvar`, and `vdso` segments have specific functions that are currently unknown to me
 
-Each region has its own permission and flags; in practice, the kernel uses the virtual memory area (vma) structure to describe it. 
-From the content source's point of view, it's either a file mapping if a backed file exists or an anonymous mapping such as stack and heap.
+Each region has its own set of permissions and flags. 
+The kernel utilizes the virtual memory area (`vma`) structure to describe each region. 
+From the content source's perspective, regions can be either file mappings if backed by a file or anonymous mappings, as seen in the stack and heap.
 
 <p align="center"><img src="images/task-memory/memory-layout.png" /></p>
 
@@ -440,37 +438,39 @@ struct inode {
 </details>
 
 ## <a name="page-table"></a> Page Table
-  
-Please note that memory management is highly related to platforms, and our example is based on the kernel for AST2500. 
-The page table saves the mapping information, so the hardware (MMU) understands how to translate the virtual address into a physical one. 
-It's designed as a multi-level structure, and our studying case adopts two levels. 
-The first-level table is an array of 4096 entries: dividing the 4G virtual space by 1M, and exactly each region corresponds to one entry in the table. 
-The possible entry values are:
-  
-- Unmapped
-  - Accessing this entry triggers a page fault (hardware behavior).
-- Section mapping
-  - The value stored is the destination physical address already.
-  - The mapping size is 1M, and it's only used in kernel space
-- Pointer to a 2nd-level table
-  - The 2nd-level table is created when necessary and thus saves memory usage.
 
-The second-level table is an array of 256 entries: each 4K area within a section has a corresponding entry in the table. 
-Possible values are:
+Please note that memory management can vary across different platforms, and the example provided is specific to the AST2500 kernel. 
+In this system, memory mapping information is stored in the page table, which enables the hardware (MMU) to translate virtual addresses into physical addresses. 
+The page table is designed as a multi-level structure, and our case study employs a two-level structure.
 
-- Unmapped
-  - Accessing this entry triggers a page fault (hardware behavior).
-- Page mapping
-  - The value stored is the destination physical address.
-  - The mapping size is 4K, and both kernel and user spaces use it.
+The first-level table consists of 4096 entries, dividing the 4GB virtual space into 1MB regions, with each region corresponding to one entry in the table. 
+The possible values for entries are as follows:
+
+- Unmapped: 
+  - Accessing this entry triggers a page fault, which is the expected behavior at the hardware level.
+- Section mapping: 
+  - The value stored in the entry represents the destination physical address. 
+  - This mapping size is 1MB and is only used in the kernel space.
+- Pointer to a second-level table: 
+  - When necessary, a second-level table is created to save memory usage.
+
+The second-level table consists of 256 entries, where each 4KB area within a section has a corresponding entry in the table. 
+The possible values for entries in the second-level table are as follows:
+
+- Unmapped: 
+  - Accessing this entry triggers a page fault as per the hardware behavior.
+- Page mapping: 
+  - The value stored in the entry represents the destination physical address. 
+  - This mapping size is 4KB and is used in both the kernel and user spaces.
 
 <p align="center"><img src="images/task-memory/page-table.png" /></p>
-
-Both the vma and page table is managed by the memory management (mm) structure, which is either shared or cloned on creating a task. 
-The thread within a process, whether single-threaded or multi-threaded, shares this mm structure and therefore sees the identical virtual space. 
-Similarly, all kernel threads share the initial mm, except there's no vma since they don't have any user space mapping. 
-When a context switch happens, the hardware component (TTBR) points to the next task's page table so that MMU knows where to start the address lookup.
   
+The memory management (`mm`) structure manages the virtual memory area (`vma`) and page table. 
+When creating a task, the `mm` structure can be shared or cloned. 
+Threads within a process, whether single-threaded or multi-threaded, share the same mm structure, resulting in an identical virtual space. 
+Kernel threads also share the initial `mm` structure, but they don't have user space mappings and, therefore, no `vma`. 
+During a context switch, the Translation Table Base Register (`TTBR`) is updated to point to the next task's page table, enabling the `MMU` to perform address lookup correctly.
+
 <p align="center"><img src="images/task-memory/page-table-and-task.png" /></p>
 
 <details><summary> More Details </summary>
