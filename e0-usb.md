@@ -16,24 +16,21 @@
 
 ## <a name="host"></a> Host
 
-The universal serial bus (USB) is a typical master-slave framework in that the USB controller initiates a request, and the target device responds. 
-So far, a few standards have come out, and thus that many types of controllers exist along with the host controller drivers (HCD).
 
-- UHCI
-    - the universal host controller interface
-    - supports USB 1.x
-    - proprietary interface from Intel
-- OHCI
-    - the open host controller interface
-    - supports USB 1.x with improved interface
-- EHCI
-    - the enhanced host controller interface
-    - supports USB 2.x
-- xHCI
-    - the extensible host controller interface
-    - supports USB 3.x
+The Universal Serial Bus (USB) follows a master-slave framework, where the USB controller acts as the master and initiates requests, while the target device responds. 
+Over time, several standards have been developed, leading to various types of USB controllers and Host Controller Drivers (HCD). 
+Here are some commonly known USB controller types:
 
-Please refer to the below image for the general view of the USB topology obtained from my laptop (Vostro 5402):
+- UHCI (Universal Host Controller Interface): 
+  - UHCI is a proprietary interface developed by Intel. It supports USB 1.x standards.
+- OHCI (Open Host Controller Interface): 
+  - OHCI is an open standard host controller interface that also supports USB 1.x standards. It provides an improved interface compared to UHCI.
+- EHCI (Enhanced Host Controller Interface): 
+  - EHCI is an interface that supports USB 2.x standards. It provides enhanced performance and features compared to USB 1.x interfaces.
+- xHCI (Extensible Host Controller Interface): 
+  - xHCI is an interface designed for USB 3.x standards. It offers greater bandwidth and additional features for USB 3.x devices.
+
+Please refer to the image below for a general view of the USB topology observed from my laptop (Vostro 5402):
 
 <p align="center"><img src="images/usb/topology.png" /></p>
 
@@ -99,25 +96,27 @@ struct usb_bus {
 
 ## <a name="device"></a> Device
 
-Because of the excellent design and simple usage, users can easily plug and unplug the components; thus, many USB products have come out to the market. 
-The device types are arguably numerous, including but not limited to storage, video, audio, and human interface devices such as keyboards and mice. 
-Each device must clearly prepare the below descriptors for the host controller to query the details and assign addresses:
+USB products have gained popularity due to their excellent design and user-friendly nature, allowing for easy plug-and-play functionality. 
+These products span a wide range of device types, including storage devices, video devices, audio devices, and human interface devices such as keyboards and mice. 
+To ensure proper communication between USB devices and host controllers, each device must provide specific descriptors that contain essential information. 
+These descriptors are used by the host controller to query device details and assign addresses. 
+The main descriptors include:
 
-- device descriptor
-    - itself basically is nothing but a container of the configuration descriptors
-    - attribute: number of configurations
-    - attribute: device class, subclass, and protocol
-- configuration descriptor
-    - combination of interfaces and power requirements, e.g., one config for bus-powered and one for self-powered
-    - attribute: number of interfaces
-    - attribute: max power
-- interface descriptor
-    - it means the primary functionality, e.g., keyboard or mouse
-    - attribute: number of endpoints
-    - attribute: interface class, subclass, and protocol
-- endpoint descriptor
-    - data pipe
-    - attribute: transfer direction
+- Device Descriptor: 
+  - This descriptor serves as a container for configuration descriptors. 
+  - It contains attributes such as the number of configurations and device class, subclass, and protocol information.
+- Configuration Descriptor: 
+  - This descriptor combines interfaces and power requirements for the device. 
+  - For example, there may be one configuration for bus-powered operation and another for self-powered operation. 
+  - It includes attributes such as the number of interfaces and the maximum power required.
+- Interface Descriptor: 
+  - This descriptor represents the primary functionality of the device, such as a keyboard or a mouse. 
+  - It includes attributes such as the number of endpoints and the interface class, subclass, and protocol information.
+- Endpoint Descriptor: 
+  - This descriptor defines the data pipe used for data transfer. 
+  - It specifies attributes such as the transfer direction (in or out) of the data.
+
+By providing these descriptors, USB devices enable the host controller to query their details and allocate necessary resources for proper communication.
 
 <p align="center"><img src="images/usb/device.png" /></p>
 
@@ -182,23 +181,26 @@ struct usb_device {
 
 ### Hub
 
-Hub is a unique USB device equipped with ports, which is meant to connect to other USB devices or another hub, and so on. 
-With no exception, it also contains those constructive descriptors and attributes like other devices for HCD to query and set up. 
-The host controller implements the root hub; after initialization by the hub driver, a USB request block (URB) is submitted to the HCD structure. 
-When a device plugs in, e.g., my wireless receiver of keyboard and mice, the USB interrupt raises, and the story reasonably starts:
+The hub is a unique USB device that features multiple ports for connecting other USB devices or additional hubs. 
+Similar to other USB devices, the hub also contains descriptors and attributes that provide essential information for the host controller driver (HCD) to query and set up the hub.
 
-1. The interrupt service routine (ISR) addresses the signal and completes the anchored URB attached by the hub driver.
-2. Gets port status and finds out the event of port connection change.
-3. Prepares device structure and sequentially accesses the device, config, and interface descriptors.
-4. Registers the device and thus reaches the generic device framework for the device driver matching and probing to behave.
+The host controller implements the root hub, and upon initialization by the hub driver, a USB Request Block (URB) is submitted to the HCD structure. 
+When a device is plugged into the hub, such as a wireless receiver for a keyboard and mouse, a USB interrupt is raised, initiating the following sequence of events:
 
-Usually, we finish right here, but this time we still need to take care of the multiple functionalities of the device. 
-Because of the descriptor hierarchy design in a USB device, the detection procedure progressively reads them and operates accordingly.
+1. The interrupt service routine (ISR) handles the interrupt and completes the associated URB attached by the hub driver.
+2. The port status is retrieved, and any changes in port connection are detected.
+3. Device structures are prepared, and the device, configuration, and interface descriptors are sequentially accessed.
+4. The device is registered, allowing it to enter the generic device framework for device driver matching and probing.
 
-5. Chooses the proper config descriptor to apply, but commonly there's also only one possibility around.
-6. Readies device structures for entire interfaces (keyboard and mouse functions in our case) within the selected config.
-7. Registers the devices, and the device framework takes over for another match attempt, but this time it traverses interface drivers instead.
-8. Lastly, the URB is placed back in the HCD structure for the next hub event.
+At this point, the usual detection process is complete. 
+However, for USB devices with multiple functionalities, additional steps are taken due to the hierarchical design of descriptors.
+
+5. The appropriate configuration descriptor is selected and applied, although typically only one possibility exists.
+6. Device structures are prepared for all interfaces (such as keyboard and mouse functions in our example) within the selected configuration.
+7. The devices are registered, and the device framework proceeds with another matching attempt, this time exploring interface drivers.
+8. Finally, the URB is returned to the HCD structure to handle the next hub event.
+
+This sequence ensures that the hub and its connected devices are properly detected, configured, and registered, allowing for the seamless operation of multiple functionalities within the device.
 
 <p align="center"><img src="images/usb/hub.png" /></p>
 
@@ -651,22 +653,11 @@ struct usbdrv_wrap {
 
 ## <a name="gadget"></a> Gadget
 
-Laptops and mobiles can work as USB hosts accessing USB devices through a host controller and root hub. 
-However, modern mobiles and pads can also act like USB devices, ready to respond to host-side requests. 
-It's a feature in need of support from hardware which can be either a USB host controller (UHC) or USB device controller (UDC) at one time. 
-The Linux system that behaves like a USB device is called the gadget, driven by the gadget drivers that fulfill the actual functionality. 
-So far, a few types of drivers have been mentioned:
-
-- device driver
-    - to match interface driver(s)
-- interface driver
-    - to control a USB device
-- host controller driver
-    - to control a UHC
-- gadget driver
-    - to become a USB device
-- device controller driver
-    - to control a UDC
+Laptops and mobile devices can function as USB hosts, accessing USB devices through a host controller and root hub. 
+However, they can also act as USB devices, responding to requests from a host. 
+This functionality requires hardware support from either a USB host controller (UHC) or a USB device controller (UDC). 
+In the Linux system, the gadget feature enables the device to behave like a USB device and is powered by gadget drivers. 
+These drivers include device drivers, interface drivers, host controller drivers, gadget drivers, and device controller drivers.
 
 <p align="center"><img src="images/usb/gadget.png" /></p>
 
@@ -1318,10 +1309,10 @@ echo 1e6a0000.usb-vhub:p1 > UDC
 
 ### Aspeed Virtual Hub
 
-The last line of the above script attempts to bind our composite component onto a particular USB device controller (UDC). 
-In our study case, the AST2500 provides five UDCs, so we can prepare up to that many USB devices, though it's rarely necessary. 
-From the perspective of a USB host, the AST2500 virtual hub is an effective five-port hub connecting to the root hub. 
-Running the above script equates to making an effort to plug our gadget into a port of the virtual hub, and the host starts the enumeration procedure.
+The final step in the script is to bind our composite component to a specific USB device controller (UDC). 
+In our case, the AST2500 chip provides five UDCs, allowing us to create up to five USB devices if needed, although it's usually not necessary. 
+From the perspective of a USB host, the AST2500 virtual hub acts as a five-port hub connected to the root hub. 
+Running the script is equivalent to plugging our gadget into one of the virtual hub's ports, triggering the host to initiate the enumeration procedure.
 
 <p align="center"><img src="images/usb/vhub.png" /></p>
 
@@ -1836,37 +1827,37 @@ Running the above script equates to making an effort to plug our gadget into a p
 
 ## <a name="system-startup"></a> System Startup
 
-During the system startup, some functions work on the initialization of the USB framework, and let's introduce those which display logs:
+During system startup, several functions are responsible for initializing the USB framework and generate corresponding logs. Let's introduce these functions:
 
-- `usb_init`
-    - registers 'USB' bus for later encompassing of drivers and devices
-    - registers USB interface drivers (usbfs & hub) and a USB device driver (generic)
-- `ehci_hcd_init`
-    - registers driver for the USB controller
-- `usb_storage_driver_init`
-    - registers USB interface driver (storage)
-- `usb_serial_module_init`
-    - registers USB interface driver (serial)
-- `usb_serial_init`
-    - registers TTY driver
-- `ast_vhub_probe`
-    - `ast_vhub_driver_init` registers Aspeed vhub driver, where the probe function comes from
-- `hid_init`
-    - registers USB interface driver (hid)
+- `usb_init`: Registers the 'USB' bus, USB interface drivers (usbfs & hub), and a USB device driver (generic).
+- `ehci_hcd_init`: Registers the USB controller driver.
+- `usb_storage_driver_init`: Registers the USB interface driver for storage devices.
+- `ast_vhub_probe`: Initializes the Aspeed virtual hub driver by calling ast_vhub_driver_init, and the probe function is executed.
+- `hid_init`: Registers the USB interface driver for HID (Human Interface Device) devices.
 
 ```
- [    0.235546] usbcore: registered new interface driver usbfs                       <---- usb_init               
- [    0.235910] usbcore: registered new interface driver hub                         <---- usb_init               
- [    0.236208] usbcore: registered new device driver usb                            <---- usb_init               
- ...
- [    2.121077] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver           <---- ehci_hcd_init          
- [    2.121536] usbcore: registered new interface driver usb-storage                 <---- usb_storage_driver_init
- [    2.122040] usbcore: registered new interface driver pl2303                      <---- usb_serial_module_init 
- [    2.122395] usbserial: USB Serial support registered for pl2303                  <---- usb_serial_init        
- [    2.137860] aspeed_vhub 1e6a0000.usb-vhub: Initialized virtual hub in USB2 mode  <---- ast_vhub_probe       
- ...
- [    2.182510] usbcore: registered new interface driver usbhid                      <---- hid_init               
- [    2.182692] usbhid: USB HID core driver                                          <---- hid_init               
+kernel_init
+-
++--> kernel_init_freeable
+     -
+     +--> do_basic_setup
+          -
+          +--> do_initcalls
+               |
+               |--> usb_init                 [    0.235546] usbcore: registered new interface driver usbfs
+               |                             [    0.235910] usbcore: registered new interface driver hub
+               |                             [    0.236208] usbcore: registered new device driver usb
+               |
+               |--> ehci_hcd_init            [    2.121077] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+               |
+               |--> usb_storage_driver_init  [    2.121536] usbcore: registered new interface driver usb-storage
+               |
+               |--> ast_vhub_driver_init
+               |    -
+               |    +--> ast_vhub_probe      [    2.137860] aspeed_vhub 1e6a0000.usb-vhub: Initialized virtual hub in USB2 mode
+               |
+               +--> hid_init                 [    2.182510] usbcore: registered new interface driver usbhid
+                                             [    2.182692] usbhid: USB HID core driver
 ```
 
 <details><summary> More Details </summary>
