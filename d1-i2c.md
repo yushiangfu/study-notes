@@ -1187,23 +1187,43 @@ During kernel startup, functions build the I2C framework and log relevant inform
   - Bus 0 and bus 13 are not visible as they are disabled in the device tree and excluded from the process.
   
 ```
-[    0.000000] i2c controller registered, irq 17                               <---- aspeed_i2c_ic_of_init()
-...
-[    2.053378] MCTP I2C interface driver                                       <---- not related
-...
-[    2.073894] i2c_dev: i2c /dev entries driver                                <---- i2c_dev_init()
-[    2.076731] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35   <---- aspeed_i2c_probe_bus()
-[    2.078057] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36   <---- aspeed_i2c_probe_bus()
-[    2.080005] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37   <---- aspeed_i2c_probe_bus()
-[    2.081004] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38   <---- aspeed_i2c_probe_bus()
-[    2.082583] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39   <---- aspeed_i2c_probe_bus()
-[    2.083489] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40   <---- aspeed_i2c_probe_bus()
-[    2.084395] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41   <---- aspeed_i2c_probe_bus()
-[    2.085306] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42   <---- aspeed_i2c_probe_bus()
-[    2.086268] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43   <---- aspeed_i2c_probe_bus()
-[    2.087459] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44  <---- aspeed_i2c_probe_bus()
-[    2.096190] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45  <---- aspeed_i2c_probe_bus()
-[    2.097970] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46  <---- aspeed_i2c_probe_bus()
+start_kernel
+-
++--> init_IRQ
+     -
+     +--> irqchip_init
+          -
+          +--> of_irq_init
+               -
+               +--> aspeed_i2c_ic_of_init                [    0.000000] i2c controller registered, irq 17
+
+
+kernel_init
+-
++--> kernel_init_freeable
+     -
+     +--> do_basic_setup
+          -
+          +--> do_initcalls
+               |
+               |--> of_platform_default_populate_init    (parse dtb and register devices)
+               |
+               |--> i2c_dev_init                         [    2.073894] i2c_dev: i2c /dev entries driver
+               |
+               +--> aspeed_i2c_bus_driver_init
+                    |
+                    |--> aspeed_i2c_probe_bus            [    2.076731] aspeed-i2c-bus 1e78a080.i2c-bus: i2c bus 1 registered, irq 35
+                    |--> aspeed_i2c_probe_bus            [    2.078057] aspeed-i2c-bus 1e78a0c0.i2c-bus: i2c bus 2 registered, irq 36
+                    |--> aspeed_i2c_probe_bus            [    2.080005] aspeed-i2c-bus 1e78a100.i2c-bus: i2c bus 3 registered, irq 37
+                    |--> aspeed_i2c_probe_bus            [    2.081004] aspeed-i2c-bus 1e78a140.i2c-bus: i2c bus 4 registered, irq 38
+                    |--> aspeed_i2c_probe_bus            [    2.082583] aspeed-i2c-bus 1e78a180.i2c-bus: i2c bus 5 registered, irq 39
+                    |--> aspeed_i2c_probe_bus            [    2.083489] aspeed-i2c-bus 1e78a1c0.i2c-bus: i2c bus 6 registered, irq 40
+                    |--> aspeed_i2c_probe_bus            [    2.084395] aspeed-i2c-bus 1e78a300.i2c-bus: i2c bus 7 registered, irq 41
+                    |--> aspeed_i2c_probe_bus            [    2.085306] aspeed-i2c-bus 1e78a340.i2c-bus: i2c bus 8 registered, irq 42
+                    |--> aspeed_i2c_probe_bus            [    2.086268] aspeed-i2c-bus 1e78a380.i2c-bus: i2c bus 9 registered, irq 43
+                    |--> aspeed_i2c_probe_bus            [    2.087459] aspeed-i2c-bus 1e78a3c0.i2c-bus: i2c bus 10 registered, irq 44
+                    |--> aspeed_i2c_probe_bus            [    2.096190] aspeed-i2c-bus 1e78a400.i2c-bus: i2c bus 11 registered, irq 45
+                    +--> aspeed_i2c_probe_bus            [    2.097970] aspeed-i2c-bus 1e78a440.i2c-bus: i2c bus 12 registered, irq 46
 ```
   
 <details><summary> More Details </summary>
