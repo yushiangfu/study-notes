@@ -16,24 +16,24 @@
 
 ## <a name="i2c-and-smbus"></a> I2C and SMBus
 
-The I2C protocol is one of the several ways that allow the master to communicate with other devices on the same bus. 
-The layout between buses and devices is totally decided by motherboard designers as long as they ensure no device on a bus shares the same address. 
-The master broadcasts the bus-wide unique address of the target, and only that associated device will respond an ack while others remain silent.
+The I2C protocol serves as a means for the master to communicate with devices on the bus. 
+The layout of buses and devices is determined by motherboard designers, ensuring that each device on a bus has a unique address. 
+When the master wants to communicate with a specific device, it broadcasts the unique address associated with that device, and only the targeted device will respond with an acknowledgment (ack), while others remain silent.
 
-From the application's perspective, we prepare the 'message' and pass it to the device file; the driver then takes over and operates on the hardware. 
-Though a message can only be either read- or write-type, we can send a list of messages with different types for the driver to handle at once. 
-Read-type messages communicate data from the slave device back to the user space application.
+From the application's perspective, the process involves preparing a message and passing it to the device file. 
+The driver then takes control and performs the necessary operations on the hardware. 
+Messages can be of two types: read or write.
 
-- Read-type message
-  - slave: where to read from
-  - flags: read (1)
-  - len: how many bytes to read
-  - buf: where to place the data before returning to the application
-- Write-type message
-  - slave: where to write to
-  - flags: write (0)
-  - len: how many bytes to write
-  - buf: where to take data from before copying to the I2C controller register
+- For a read-type message, the following parameters are typically included:
+  - Slave: Specifies the address of the device from which to read.
+  - Flags: Indicates a read operation (1).
+  - Len: Specifies the number of bytes to read.
+  - Buf: Specifies the memory location where the data will be stored before being returned to the application.
+- On the other hand, a write-type message includes the following parameters:
+  - Slave: Specifies the address of the device to which to write.
+  - Flags: Indicates a write operation (0).
+  - Len: Specifies the number of bytes to write.
+  - Buf: Specifies the memory location from which the data will be taken and copied to the I2C controller register.
 
 <p align="center"><img src="images/i2c/framework.png" /></p>
 
@@ -444,33 +444,32 @@ include/linux/i2c.h
 
 ### SMBus
   
-The SMBus protocol shares some characteristics with the I2C protocol while being sufficiently different in the ioctl argument structure and data stream.
-  
-- read_write
-  - It's like the 'flags' in the I2C message that indicate the transaction direction.
-- command
-  - SMBus devices interpret the first byte they receive as a command; however, the I2C devices have no such assumption.
-- len
-  - Instead of a flexible length attribute, it only accepts a few predefined options.
-  - e.g., I2C_SMBUS_BYTE_DATA
-  - e.g., I2C_SMBUS_WORD_DATA
-  - e.g., I2C_SMBUS_BLOCK_DATA
-- buf
-  - Depending on the chosen `len`, the I2C library might stuff the accurate size information to the head of the byte array before passing it to ioctl.
+The SMBus protocol shares similarities with I2C, but differs in ioctl argument structure and data stream.
 
-The data structures are dissimilar, and I2C drivers can opt to provide exact two handlers or, surprisingly, just one going strong.
-The kernel offers an emulation function that converts SMBus ioctl data into I2C messages before going to the driver. 
-Take the combination of `len=I2C_SMBUS_BLOCK_DATA` and `read_write=write` as an example:
-  
-- The application first calls library API with `command`, `length`, and `data` arguments.
-- The library inserts the `length` to the head of `data` and prepares the SMBus ioctl structure accordingly.
-  - The field `len` within the form is then set to `I2C_SMBUS_BLOCK_DATA` instead of the actual size.
-- The kernel further prepends the `command` into data while performing the structure conversion.
-  
-Data stream for I2C and SMBus certainly differ in that `command` byte and sometimes `length` byte. 
-Knowing what kind of devices we are dealing with may be desirable before selecting transaction type in ioctl.
-Please note that I don't distinguish them outside this section and continue to use the term 'I2C device' for convenience.
-  
+- read_write: 
+  - Similar to I2C flags, indicates transaction direction.
+- command: 
+  - SMBus interprets first received byte as command, unlike I2C.
+- len: 
+  - Instead of flexible length, it accepts predefined options like 
+  - I2C_SMBUS_BYTE_DATA
+  - I2C_SMBUS_WORD_DATA
+  - I2C_SMBUS_BLOCK_DATA
+- buf: 
+  - Depending on len, I2C library may prepend accurate size information to byte array before ioctl.
+
+The data structures for SMBus and I2C are different, and I2C drivers can choose to provide either two handlers or just one. 
+To handle this, the kernel provides an emulation function that converts SMBus ioctl data into I2C messages before passing them to the driver. 
+Let's consider an example with len=I2C_SMBUS_BLOCK_DATA and read_write=write:
+
+1. The application initially calls a library API with command, length, and data arguments.
+2. The library inserts the length at the beginning of the data and prepares the SMBus ioctl structure accordingly.
+3. The len field in the structure is then set to I2C_SMBUS_BLOCK_DATA instead of the actual size.
+4. During the structure conversion, the kernel adds the command byte to the data.
+5. The data stream for I2C and SMBus differs, especially with the presence of the command byte and sometimes the length byte. 
+   Therefore, it may be helpful to know the type of devices being used before selecting the transaction type in ioctl. 
+   Note that outside this section, I continue to use the term 'I2C device' for convenience.
+
 <p align="center"><img src="images/i2c/i2c-and-smbus.png" /></p>
   
 <details><summary> More Details </summary>
@@ -564,28 +563,32 @@ Please note that I don't distinguish them outside this section and continue to u
   
 ## <a name="mux"></a> Mux
   
-Sometimes I2C devices come with no or little configurable address, thus limiting the number of the same devices on a bus. 
-Mux is a particular I2C device that branches a bus into multiple channels, and the I2C controller can only see one channel at a time. 
-The benefit is that the address space behind the mux is independent of each other; therefore, the identical components can live on separate channels.
-  
-The mux mechanism is centered around adapters that transfer data for connected devices. 
-A controller is an adapter, and so is each channel of a mux, but the mux itself is not. 
-Analogous to the hardware layout, adapter hierarchy starts from the controller as root, first-level channels, second-level channels, and so on. 
-A different kind of transfer function is installed on the channel-type adapters.
+When dealing with I2C devices that have limited or non-configurable addresses, the number of such devices on a bus is restricted. 
+In such cases, a multiplexer (mux) can be used. 
+A mux is a specialized I2C device that splits a bus into multiple channels, allowing the I2C controller to access one channel at a time. 
+The advantage is that the address space behind the mux is independent, enabling identical components to be placed on separate channels.
 
-- transfer logic of a controller-type adaptor
-  - call I2C driver, e.g., aspeed_i2c_master_xfer()
-- transfer logic of a channel-type adaptor
-  - call parent adapter's transfer() for channel selection
-  - call parent adapter's transfer() for data transaction
-  - call parent adapter's transfer() for channel deselection if needed
+The mux mechanism revolves around adapters responsible for data transfer to connected devices. 
+Both the controller and each channel of the mux serve as adapters, but the mux itself does not. 
+The adapter hierarchy follows the hardware layout, with the controller as the root, followed by first-level channels, second-level channels, and so on. 
+Each type of adapter has a different transfer function.
+
+- Transfer logic of a controller-type adapter:
+  - Calls the I2C driver, such as `aspeed_i2c_master_xfer()`, to perform the data transfer.
+- Transfer logic of a channel-type adapter:
+  - Calls the transfer() function of the parent adapter to select the desired channel.
+  - Calls the transfer() function of the parent adapter to perform the data transaction.
+  - Calls the transfer() function of the parent adapter to deselect the channel if necessary.
   
-The channel-type transfer logic implements a capability of recursively switching mux channels before the actual data transaction. 
-Since our studying case doesn't have the mux setting specified in DTS, the below example is taken from `aspeed-bmc-ampere-mtjade.dts`. 
-We can see that the root adapter connects to two I2C devices: mux 0x70 and mux 0x71. 
-Mux 0x71 is split into eight channels, and two of them further connect mux 0x75 and mux 0x75. 
-When we try to communicate the endpoint on a channel, the demand of channel selection is recursively sent to the root and fulfilled in reverse order. 
-The subsequent data transaction behaves similarly, and in the end, the root adapter helps forward the I2C messages to the driver for processing.
+In the case where a channel-type adapter is used with a mux, the transfer logic allows for recursively switching between mux channels before the actual data transaction. 
+Let's take an example from the `aspeed-bmc-ampere-mtjade.dts` file where the mux settings are specified. 
+In this example, the root adapter is connected to two I2C devices: mux 0x70 and mux 0x71. 
+Mux 0x71 is further divided into eight channels, and two of those channels are connected to mux 0x75.
+
+When we want to communicate with an endpoint on a specific channel, the request for channel selection is sent recursively to the root adapter and fulfilled in reverse order. 
+This means that the necessary channel switches are made starting from the top and going down the hierarchy. 
+Similarly, the subsequent data transaction follows a similar recursive process. 
+Finally, the root adapter forwards the I2C messages to the driver for processing.
   
 <p align="center"><img src="images/i2c/mux.png" /></p>
   
@@ -1171,17 +1174,17 @@ ssifbridged.cpp
   
 ## <a name="system-startup"></a> System Startup
   
-During the kernel startup, a few functions build the I2C framework and let's introduce the log a little bit.
+During kernel startup, functions build the I2C framework and log relevant information.
   
 - `aspeed_i2c_ic_of_init`
-  - All the I2C buses are designed to share one interrupt line, and the parent ISR is made ready here.
-  - Every time an interrupt arrives, the parent ISR reads from the hardware and switches to that specific bus handler accordingly.
+  - I2C buses share a single interrupt line, with the parent interrupt service routine (ISR) being prepared.
+  - Upon receiving an interrupt, the parent ISR reads from the hardware and switches to the corresponding bus handler.
 - `i2c_dev_init`
-  - It reserves a range of device numbers for I2C character devices (cdev) and hooks a callback.
-  - Whenever an adapter presents, that callback helps add its cdev to the object map.
+  - A range of device numbers is reserved for I2C character devices (cdev), with a callback function being attached.
+  - When an adapter is detected, the callback function assists in adding its cdev to the object map.
 - `aspeed_i2c_probe_bus`
-  - Each I2C bus registration from DTB eventually triggers the probing function, which prepares an adapter to the I2C framework.
-  - We don't see bus 0 and bus 13 because they are disabled in the device tree and thus left out.
+  - I2C bus registrations from the device tree eventually invoke the probing function, which sets up an adapter within the I2C framework.
+  - Bus 0 and bus 13 are not visible as they are disabled in the device tree and excluded from the process.
   
 ```
 [    0.000000] i2c controller registered, irq 17                               <---- aspeed_i2c_ic_of_init()
