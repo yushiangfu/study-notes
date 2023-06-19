@@ -15,10 +15,12 @@
 
 ## <a name="gpio-chip"></a> GPIO Chip
 
-Generic purpose input-output (GPIO) is the hardware pin through which we can send hardware signals to or receive from an external component. 
-Given that the GPIO chip in AST2500 provides 29 groups (A, B, ... AB, AC), and each group contains 8 pins, there are 232 GPIO lines that we can control. 
-Hardware designers decide where these lines connect; thus, the same pin might serve different purposes on different products. 
-Information such as offset (index) or name is necessary to find the target line, but note that not all lines are configured with an identifier in DTS.
+GPIO (General Purpose Input-Output) is a hardware pin used for sending or receiving hardware signals with external components. 
+In the AST2500 GPIO chip, there are 29 groups (A, B, ... AB, AC), each containing 8 pins. 
+This provides a total of 232 GPIO lines that can be controlled. 
+The actual functionality of these lines is determined by hardware designers, meaning that the same pin can serve different purposes in different products. 
+To identify a specific GPIO line, information such as the offset (index) or name is necessary. 
+However, it's important to note that not all lines are configured with an identifier in the Device Tree Source (DTS).
 
 ```
 E.g., arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts
@@ -33,15 +35,14 @@ E.g., arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts
 ....
 ```
 
-Once we acquire the line handle, we specify flags later converted to value or event requests by the GPIO library internally. 
-As for the event, a kernel thread is created to monitor and wake up the stalled task in response to the event (rising or falling edge, or both).
+After obtaining the line handle for a GPIO, we can specify flags that are internally converted to value or event requests by the GPIO library.
 
-- value setting
-  - output high
-  - output low
-  - input
-- event waiting
-  - input + register interrupt handler
+- For value setting, we can configure the following options:
+  - Set the GPIO output to high.
+  - Set the GPIO output to low.
+  - Set the GPIO as an input.
+- For event waiting, we can configure the following options:
+  - Set the GPIO as an input and register an interrupt handler to monitor events such as rising or falling edges, or both.
 
 <p align="center"><img src="images/gpio/chip.png" /></p>
 
@@ -849,14 +850,14 @@ arch/arm/boot/dts/aspeed-bmc-vegman-sx20.dts
 
 ## <a name="pin-control"></a> Pin Control
 
-Chips communicate with external hardware modules through pins, such as the I2C bus (2 pins), GPIO line (1 pin), or UART bus (8 pins). 
-Modern chips aggregate multiple functions into one pin, e.g., through proper settings, a pin can be part of a UART or I2C bus or a simple GPIO line. 
-If device functionality is achieved by these multi-functional pins, each must be correctly configured before the device can perform jobs. 
-Kernel introduces pin control so users can specify the pin configs, and the driver mechanism manipulates the pin mux accordingly. 
-Note that chip designers decide whether a pin is dedicated to one specific goal or is part of different purposes.
+In chip-to-hardware module communication, pins play a crucial role, such as the I2C bus (2 pins), GPIO line (1 pin), or UART bus (8 pins). 
+Modern chips often combine multiple functions into a single pin, allowing it to be part of a UART or I2C bus, as well as serve as a simple GPIO line. 
+To enable device functionality through these multi-functional pins, proper pin configurations must be set before the device can perform its intended tasks. 
+The kernel introduces pin control, enabling users to specify pin configurations, while the driver mechanism handles the manipulation of pin muxing accordingly. 
+It's important to note that chip designers determine whether a pin is dedicated to a specific function or serves multiple purposes.
 
-Let's look at the example of UART1 and UART5; the former needs the help of pin control to behave, while the latter is pretty straightforward. 
-Property `pinctrl-0` specifies all the required pin configs; each contains the `group` and `function` that are later in use.
+Let's take the example of UART1 and UART5. UART1 requires the assistance of pin control to operate correctly, while UART5 follows a more straightforward configuration. 
+The `pinctrl-0` property specifies all the necessary pin configurations, each containing the respective pin `group` and `function` that will be utilized later in the process.
 
 ```
  uart1                                                               uart5                        
@@ -892,17 +893,17 @@ Property `pinctrl-0` specifies all the required pin configs; each contains the `
      +----------------------+      +----------------------+                                       
 ```
 
-Like the GPIO chip manages lines, the pin control device manipulates pin function through the information (pin/function/group) it keeps around. 
-When performing the device and driver match flow, the pin control mechanism takes effect before the driver probing:
+Similar to how the GPIO chip manages lines, the pin control device is responsible for manipulating pin functions based on the pin-to-function mapping it maintains. 
+During the device and driver matching process, the pin control mechanism comes into play before the driver probing occurs:
 
-1. for each pin config in the current device node, find the `group` saved in the pin control device
-2. for each pin in the `group`
-    - disable any higher-priority function of that pin
-    - enable target `function`
-    
-The UART1 has its 8-pin bus ready and available for drivers to probe and see if there's a successful match. 
-Among all functions on a pin, GPIO has the lowest priority; this fact applies to not only multi-functional bus also single-purpose pins. 
-When we operate on those simple GPIO lines, the underlying GPIO chip implicitly requests the GPIO function from the pin control device.
+1. For each pin configuration specified in the current device node, the pin control device looks up the corresponding pin `group` it has stored.
+2. For each pin within the `group`:
+  - Any higher-priority functions of that pin are disabled.
+  - The target `function` for the pin is enabled.
+
+In the case of UART1, its 8-pin bus is prepared and made available for drivers to probe, allowing them to check for a successful match. 
+Among all the functions associated with a pin, GPIO has the lowest priority. This applies to both multi-functional buses and single-purpose pins. 
+When working with simple GPIO lines, the underlying GPIO chip implicitly requests the GPIO function from the pin control device.
 
 <p align="center"><img src="images/gpio/pin-control.png" /></p>
 
@@ -1204,32 +1205,50 @@ drivers/pinctrl/aspeed/pinctrl-aspeed.c
 
 ## <a name="system-startup"></a> System Startup
 
-Let's introduce GPIO-related functions that print logs during system startup:
+During system startup, several GPIO-related functions play a role in initializing and configuring GPIO functionality. 
+These functions are accompanied by corresponding log messages to provide insight into the process. Here are some of these functions:
 
-- pinctrl_init
-    - creates the debug files under /sys/kernel/debug/pinctrl
-- aspeed_gpio_probe
-    - prepares GPIO chip struct of Aspeed operations and registers descriptors of each GPIO pin
-- fsi_master_acf_init
-    - (skip, it's a GPIO user)
-- gpio_keys_probe
-    - (skip, it's a GPIO user)
-- systemd
-    - (skip, it's a GPIO user)
+- `pinctrl_init`: 
+  - This function creates debug files under the directory `/sys/kernel/debug/pinctrl`. 
+  - These files serve as a debugging interface for GPIO-related operations.
+- `aspeed_gpio_probe`: 
+  - This function is responsible for preparing the GPIO chip structure specific to Aspeed operations. 
+  - It also registers descriptors for each GPIO pin, allowing for their configuration and control.
+- `fsi_master_acf_init`: 
+  - This function, which is related to GPIO usage, is skipped in this context and does not generate relevant log messages.
+- `gpio_keys_probe`: 
+  - Similarly, this function, related to GPIO usage for handling GPIO keys, is skipped here and does not generate relevant log messages.
+- `systemd`: 
+  - This function, also related to GPIO usage, is skipped and does not generate relevant log messages.
 
 ```
-[    0.112641] pinctrl core: initialized pinctrl subsystem                                          <---- pinctrl_init
-...
-[    0.383292] gpio-819 (nic_func_mode0): hogged as output/low                                      <---- aspeed_gpio_probe
-[    0.383562] gpio-820 (nic_func_mode1): hogged as output/low                                      <---- aspeed_gpio_probe
-[    0.383777] gpio-943 (seq_cont): hogged as output/low                                            <---- aspeed_gpio_probe
-...
-[    2.207040] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled) <---- fsi_master_acf_init
-[    2.501380] fsi-master-acf gpio-fsi: Coprocessor startup timeout !                               <---- fsi_master_acf_init
-...
-[    2.553890] input: gpio-keys as /devices/platform/gpio-keys/input/input0                         <---- gpio_keys_probe
-...
-[   17.143708] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.                       <---- systemd
+kernel_init
+-
++--> kernel_init_freeable
+     -
+     +--> do_basic_setup
+          -
+          +--> do_initcalls
+               |
+               |--> pinctrl_init               [    0.112641] pinctrl core: initialized pinctrl subsystem
+               |
+               |--> aspeed_gpio_driver_init
+               |    |
+               |    |--> aspeed_gpio_probe     [    0.383292] gpio-819 (nic_func_mode0): hogged as output/low
+               |    |--> aspeed_gpio_probe     [    0.383562] gpio-820 (nic_func_mode1): hogged as output/low
+               |    +--> aspeed_gpio_probe     [    0.383777] gpio-943 (seq_cont): hogged as output/low
+               |
+               |--> fsi_master_acf_init
+               |    -
+               |    +--> fsi_master_acf_probe  [    2.207040] fsi-master-acf gpio-fsi: ColdFire initialized, firmware v4 API v2.1 (trace disabled)
+               |                               [    2.501380] fsi-master-acf gpio-fsi: Coprocessor startup timeout !
+               |
+               +--> gpio_keys_init
+                    -
+                    +--> gpio_keys_probe       [    2.553890] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+
+
+systemd                                        [   17.143708] systemd[1]: Created slice Slice /system/phosphor-gpio-monitor.
 ```
 
 <details><summary> More Details </summary>
