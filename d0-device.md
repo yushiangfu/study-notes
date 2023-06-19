@@ -16,9 +16,11 @@
 
 ## <a name="character-device"></a> Character Device
 
-The virtual filesystem supports a few file types, two of which are character and block devices that behave as interfaces exported to user space.
-Traditionally we place all device files under `/dev/`; list the files it contains, and we can see each file's type, major, and minor number. 
-We can also create a device file elsewhere through `mknod`; as long as we specify the above three attributes correctly, they work no differently.
+The virtual filesystem encompasses various file types, including character and block devices that serve as interfaces exposed to user space. 
+Typically, these device files are organized under the `/dev/` directory. 
+By listing the files in this directory, we can observe the type, major number, and minor number associated with each file. 
+Alternatively, we can create device files in different locations using the mknod command, as long as we accurately specify the aforementioned attributes. 
+The behavior of these device files remains consistent regardless of their location.
 
 ```
 root@romulus:~# ls -l /dev/
@@ -35,21 +37,24 @@ v                                    v    v
 file type                         major  minor
 ```
 
-Roughly speaking, not strictly correct, character files can be any non-storage devices such as I2C, SPI, TTY, and so on. 
-Though the underlying devices vary, the applications work on them through typical file operations like handling regular files. 
-On the kernel side, no uniform functions are provided since only the specific driver knows how to manage its hardware. 
-Therefore, the kernel solely offers the `open`, which locates the corresponding driver and switches to it.
+Character files encompass a wide range of non-storage devices such as I2C, SPI, TTY, and more. 
+While the underlying devices may differ, applications interact with them using standard file operations similar to regular files. 
+However, the kernel does not provide uniform functions for managing these devices, as each driver has specific knowledge of how to handle its hardware. 
+Therefore, the kernel primarily offers the `open` function, which locates the corresponding driver based on the type, major, and minor numbers of the device.
 
-- `open`
-    - The virtual filesystem generates a `file` structure in kernel space accessible by file identifier from user space.
-    - Given a type, major, and minor number, it finds the target `cdev` from the related table and fetches the file operations (fops) from it.
-    - Immediately attaches the specific file operations, the replacement for default ones, to the opened `file`.
-- `read`
-    - No default function is available.
-- `write`
-    - No default function is available.
-- `ioctl`
-    - No default function is available.
+- `open`:
+  - The virtual filesystem creates a `file` structure in kernel space, accessible through a file identifier from user space. 
+  - It identifies the target character device (`cdev`) based on the provided type, major, and minor numbers, and retrieves the associated file operations (fops) from the corresponding device's table. 
+  - The specific file operations, which replace the default ones, are immediately attached to the opened file.
+
+- `read`:
+  - No default function is available for reading from character devices.
+
+- `write`:
+  - No default function is available for writing to character devices.
+
+- `ioctl`:
+  - No default function is available for performing ioctl operations on character devices.
 
 <p align="center"><img src="images/device/character-device.png" /></p>
 
@@ -112,30 +117,30 @@ struct cdev {
     unsigned int count;                 // range of minor
 } __randomize_layout;
 ```
-    
+
 </details>
 
 ## <a name="block-device"></a> Block Device
 
-Block device files uniformly represent storage such as hard drive, pen drive, NVMe, and non-persistent storage like ramdisk. 
-Besides the difference in medium and transfer protocol complexity, they are merely used as spaces from which we save files and read. 
-Commonly speaking, drive data operation is slow, especially compared to processor cache and memory. 
-Such drawback indicates that optimizations are necessary and have been made between application and driver layers.
+Block device files serve as uniform representations of storage devices such as hard drives, pen drives, NVMe drives, and non-persistent storage like ramdisks. 
+Despite variations in medium and transfer protocols, they are primarily used for storing and retrieving files. 
+However, accessing data from storage devices can be relatively slow compared to processor cache and memory. 
+To address this limitation, optimizations have been implemented between the application and driver layers.
 
-- VFS Layer
-    - Given the type, major, and minor numbers, it grabs the corresponding block device (bdev) and saves it in the `file` for the following use.
-    - Default operations are ready for `open`, `read`, `write`, and `ioctl`.
-- Address Space
-    - A file duplication, a.k.a. page cache, is kept in memory for faster operation while retaining interfaces toward the actual file in storage.
-    - Reads from disk if the file doesn't exist in memory yet.
-    - Writes the file to disk periodically or on demand.
-    - (will be covered on another page)
-- Block Layer
-    - A per-bdev queue holds requests for a while, giving the IO scheduler a chance to do its job before consigning them to the driver.
-    - (will be covered on another page)
-- Driver
-    - Drops the command to the hardware controller for actual read and write actions.
-    - (will be covered on another page)
+- VFS Layer:
+  - Upon receiving the type, major, and minor numbers, the Virtual Filesystem (VFS) layer identifies the corresponding block device (bdev) and associates it with the `file` for subsequent operations. 
+  - Default operations, including `open`, `read`, `write`, and `ioctl`, are readily available at this layer.
+
+- Address Space:
+  - A file duplication, known as the page cache, is maintained in memory to facilitate faster operations while maintaining interfaces with the actual file stored on the storage medium. 
+  - If the file does not exist in memory, it is read from the disk. 
+  - Periodic or on-demand writes ensure that the file is eventually persisted on the disk.
+
+- Block Layer:
+  - The block layer includes a per-block device (bdev) queue, which temporarily holds requests, allowing the I/O scheduler to optimize their ordering before forwarding them to the driver.
+
+- Driver:
+  - The driver is responsible for transmitting the commands to the hardware controller, triggering the actual read and write actions on the storage device.
 
 <p align="center"><img src="images/device/block-device.png" /></p>
 
@@ -149,24 +154,29 @@ Surprise! Nothing is here; please refer to another page that hasn't existed!
 
 ## <a name="device-tree"></a> Device Tree
 
-Kernel features a significantly tremendous collection of drivers, which users can configure before the image is built. 
-We can enable a decent number of built-in drivers or standalone modules to support the chip, such as AST2500. 
-However, hardware configurations inevitably differ, like adding mux on motherboard A or disabling unused SPI controller on motherboard B. 
-Instead of having device info fixed inside the kernel and building images for each kind, the developers come up with the idea: device tree. 
-The parent-children hierarchy starts with the root `/`, and nodes are mostly descriptors of devices and come with generic or driver-specific properties. 
-We select a device tree of a hardware configuration for the kernel before startup; later kernel parses the input and matches the drivers accordingly. 
-Here are the typical terms related to the device tree and the corresponding files in our study case:
+The kernel encompasses a vast collection of drivers, which can be configured by users before building the kernel image. 
+Various drivers, whether built-in or standalone modules, can be enabled to support specific hardware, such as the AST2500 chip. 
+However, hardware configurations often differ, requiring flexibility in device support. 
+To address this, developers introduced the concept of a device tree.
 
-- Device Tree Source (DTS)
-    - for human to write and configure
-    - e.g., `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts`
-- Device Tree Source Include Files (DTSI)
-    - for DTS to use as the base and later overwrite specific nodes if necessary.
-    - e.g., `arch/arm/boot/dts/aspeed-g5.dtsi`
-    - e.g., `arch/arm/boot/dts/openbmc-flash-layout.dtsi`
-- Device Tree Blob (DTB)
-    - for kernel to parse
-    - e.g., `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb`
+The device tree serves as a hierarchical structure, starting with the root node ("/"), where each node represents a device and includes generic or driver-specific properties. 
+Instead of hard-coding device information into the kernel and building separate images for each hardware variant, device trees allow for dynamic configuration. 
+Before booting the kernel, a specific device tree for the hardware configuration is selected. 
+The kernel then parses the device tree and matches the drivers accordingly.
+
+In our study case, the following terms are commonly associated with the device tree, along with their corresponding files:
+
+- Device Tree Source (DTS):
+  - A human-readable file used for writing and configuring the device tree.
+  - Example: `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dts`
+
+- Device Tree Source Include Files (DTSI):
+  - Files used by the DTS as a base, which can be included and overwritten as needed for specific nodes.
+  - Examples: `arch/arm/boot/dts/aspeed-g5.dtsi`, `arch/arm/boot/dts/openbmc-flash-layout.dtsi`
+
+- Device Tree Blob (DTB):
+  - The binary representation of the device tree used by the kernel for parsing and device driver matching.
+  - Example: `arch/arm/boot/dts/aspeed-bmc-opp-romulus.dtb`
 
 <p align="center"><img src="images/device/device-tree.png" /></p>
 
@@ -291,7 +301,7 @@ drivers/core/root.c
   +--> | dm_scan_other | (skip)                                                                           
        +---------------+                                                                                  
 ```
-    
+
 ```
 drivers/core/root.c                                                     
 +---------+                                                              
@@ -373,31 +383,30 @@ drivers/core/lists.c
 </details>
     
 ## <a name="system-startup"></a> System Startup
-    
-When power is on, the kernel starts initializing fundamental subsystems like process and memory management. 
-Quite a series of relatively less critical routines follow; these init calls are grouped at the build stage into any of the below categories:
-    
+
+During the kernel initialization process, after the basic subsystems like process and memory management are set up, there are several categories of initialization calls that occur. 
+These initialization calls are organized into different sections at the build stage, including:
+
 - console_initcall
 - early_initcall
 - pure_initcall
 - core_initcall
 - postcore_initcall
-- arch_initcall
-    - the device tree parsing function belongs here
+- arch_initcall (includes device tree parsing function)
 - subsys_initcall
 - fs_initcall
 - rootfs_initcall
-- device_initcall   
+- device_initcall
 - late_initcall
     
-The import from the device tree happens in arch_initcall, while driver registrations happen in all the sections. 
-It doesn't matter whether a device or driver registers first because the framework operates as below:
+The device tree parsing function is typically invoked during the arch_initcall section. 
+Driver registrations, on the other hand, can happen in any of the sections. 
+The order in which devices or drivers register is not crucial because the framework operates as follows:
 
-1. Whenever a device is added, it traverses the drivers on the same bus hoping to find the match and vice versa for drivers.
-2. Once found, the driver starts probing: initializing the software infrastructure of the device by information fetched from its DT node.
-3. If that driver intends to export the probed device to user space further:
-    1. It requests a specific or dynamic-selected range of device numbers.
-    2. Ready cdev or bdev, and insert to the corresponding table for later lookup from syscall `open`.
+1. When a device is added, the framework searches for a matching driver by traversing the drivers on the same bus.
+2. Once a matching driver is found, it begins the probing process, initializing the software infrastructure of the device using information obtained from the corresponding device tree node.
+3. If the driver intends to make the probed device accessible to user space, it requests a specific or dynamically allocated range of device numbers. 
+   It prepares the character device (cdev) or block device (bdev) and inserts it into the appropriate table for later lookup by the open syscall.
    
 <p align="center"><img src="images/device/probe.png" /></p>
     
@@ -854,9 +863,7 @@ struct device_driver {
     
 ### Device File Generation
     
-In OpenBmc, it seems different from the udev framework that creates the device file, and I'd like to check the devtmpfs some other day.
-    
-(TBD)
+(devtmpfs, TBD)
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
