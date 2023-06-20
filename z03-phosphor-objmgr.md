@@ -8,13 +8,17 @@
 
 ## <a name="introduction"></a> Introduction
 
-The main components of D-Bus are service, object, and interface; the object mapper helps collect much of the lengthy information and respond. 
-The query is object-oriented and relies on the database, a two-level data structure built and maintained by the mapper.
+The D-Bus system relies on three main components: services, objects, and interfaces. 
+The object mapper plays a crucial role in managing and providing access to this information. 
+The mapper maintains a two-level data structure, known as the database, to facilitate efficient querying and retrieval of information.
 
-- object-to-services map
-   - Since the service can be used as a namespace, there's no rule preventing multiple services from potentially creating the same object path.
-- service-to-interfaces map
-   - Because of the database design, the way we locate interfaces of a target object is impacted, and service becomes the input instead.
+The two main maps within the database are:
+
+1. Object-to-services map:
+   - This map associates objects with the services that provide them. Since services can act as namespaces, it is possible for multiple services to create objects with the same path.
+
+2. Service-to-interfaces map:
+   - This map enables the retrieval of interfaces associated with a specific service. Due to the design of the database, the search for interfaces of a target object is influenced by the service as the input.
 
 <p align="center"><img src="images/openbmc/phosphor-objmgr.png" /></p>
 
@@ -35,7 +39,8 @@ We use `/xyz/openbmc_project/software` as an example to illustrate and distingui
 
 ### GetAncestors
 
-Instead of a generic description, let's take the below example for introduction, and our target is `/xyz/openbmc_project/software/10e36fd2`.
+In the context of the D-Bus system, let's consider a specific example to illustrate its functionality. 
+Our focus will be on the object path `/xyz/openbmc_project/software/10e36fd2`.
 
 ```
 busctl call --verbose \
@@ -54,8 +59,9 @@ With the help of the last argument: interface(s), we can limit the output to ser
 
 ### GetObject
 
-Given the argument object, we can query the mapper about the service that implements the object path; multiple services in the output list is possible. 
-Like `GetAncestors`, it's optional to provide interfaces as the last argument, but it's rarely necessary for a practical scenario.
+The object mapper provides a list of services that implement a specific object path. 
+It's worth noting that shorter object paths tend to have a higher number of associated services. 
+By utilizing the last argument, which specifies the desired interface(s), we can narrow down the output to only include services that have interfaces intersecting with our selection. 
 
 ```
 busctl call --verbose \
@@ -70,7 +76,7 @@ busctl call --verbose \
 
 ### GetSubTree
 
-Based on the argument object, e.g., `/`, the method traverses every child object path starting with it and adds to the output.
+The method traverses each child object path starting from the specified argument object, such as `/`, and includes them in the output. 
 
 ```
 busctl call --verbose \
@@ -87,7 +93,7 @@ busctl call --verbose \
 
 ### GetSubTreePaths
 
-It's pretty much `GetSubTree` in every perspective, except the output is limited to the object path and has no service or interface information.
+`GetSubTree` function operates similarly in all aspects, except that the output is restricted to the object paths only, without including any service or interface information.
 
 ```
 busctl call --verbose \
