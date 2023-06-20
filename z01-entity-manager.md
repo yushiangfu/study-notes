@@ -11,12 +11,17 @@
 
 ## <a name="sensor-detection"></a> Sensor Detection
 
-An `entity` is physically detachable devices such as backplanes, PSUs, PCIe cards, etc. 
-Taking PCIe cards as an example, they can plug in any slot; therefore, we have to dynamically detect what kind of device is installed in which place. 
-Based on the assumption that entities are equipped with valid FRU, finding an FRU means an entity exists in the system. 
-The misleading-named daemon `fru-device`, which isn't a device, is responsible for doing the scanning work, and folder `/dev/` is a good starting place. 
-For each I2C file, `fru-device` communicates to almost every potential slave device and reads data from it if feasible. 
-After performing FRU format parsing, the valid devices are further published to D-Bus, as shown below.
+In the context of physically detachable devices, such as backplanes, power supply units (PSUs), and PCIe cards, these devices are referred to as "entities." 
+One of the challenges with entities, specifically PCIe cards, is that they can be plugged into any available slot, requiring dynamic detection and identification.
+
+To identify the installed devices, the system relies on the presence of a Field Replaceable Unit (FRU) that contains relevant information. 
+Detecting the presence of an FRU indicates the existence of an entity in the system. 
+This detection process is handled by a daemon called "fru-device," despite not being an actual device itself. 
+The scanning process begins in the "/dev/" folder, where various I2C files are located.
+
+The "fru-device" daemon communicates with potential slave devices through the I2C interface, attempting to read data from each device. 
+If successful, it performs parsing of the FRU format to extract relevant information. 
+Valid devices are then published to the D-Bus, a message bus system, allowing other components of the system to access and utilize this device information.
 
 ```
 # example from reference 'Entity Manager'
@@ -450,11 +455,15 @@ fru_device.cpp
   
 </details>
 
-The daemon `entity-manager` has registered callbacks to interface addition and removal, so it's closely tied to events such as FRU device addition. 
-It then elegantly takes over the work and reads in files under `/usr/share/entity-manager/configurations/`. 
-Followed by comparing FRU information on D-Bus with the specified `Probe` rules from each configuration, like product name and/or part number. 
-The intent is to check if we can find a supported entity; if found, the `entity-manager` adds the corresponding `Exposes` to the D-Bus hierarchy. 
-It's sufficed to regard the `Exposes` as attributes of an entity, e.g., name, type, controller bus, and address.
+The "entity-manager" daemon plays a crucial role in handling events related to entity addition and removal. 
+It registers callbacks to respond to these events, particularly when FRU devices are added to the system. Once an event occurs, the daemon takes charge and reads configuration files located in "/usr/share/entity-manager/configurations/".
+
+By comparing the FRU information available on the D-Bus with the specified "Probe" rules outlined in each configuration, such as product name and/or part number, the daemon determines if a supported entity is present. 
+When a supported entity is found, the "entity-manager" adds corresponding "Exposes" attributes to the D-Bus hierarchy.
+
+The "Exposes" attributes can be thought of as additional information associated with an entity. 
+These attributes include details such as the entity's name, type, controller bus, and address. 
+By exposing this information through the D-Bus hierarchy, other components and services in the system can access and utilize these attributes as needed.
 
 ```
 # example from reference 'Entity Manager'
