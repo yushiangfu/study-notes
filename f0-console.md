@@ -11,28 +11,25 @@
 
 ## <a name="introduction"></a> Introduction
 
-I hadn't been through any evolvement of the teletype, terminal, or its pseudo replacement, but merely trying to summarize what I have learned.
-First is teletype, which has nothing to do with the computer; people press a button, and the device prints that character onto the paper accordingly.
-Afterward, computers were invented, and teletypes were adopted as input and output devices because of their readiness and capabilities.
-Teletype then wasn't part of the computer but worked as a terminal, along with others, connected to a computer to share the expensive resource.
-Gradually personal computers became much more affordable, and the terminal/computer model was further simplified and incorporated into one PC.
-The terminal was first emulated in the kernel but later moved to userspace considering flexibility, thus the pseudo terminal design (master/slave).
+The teletype, initially unrelated to computers, allowed users to input characters that were printed onto paper. 
+As computers emerged, teletypes were repurposed as input and output devices due to their suitability. 
+While not an integral part of the computer, teletypes functioned as terminals connected to computers, enabling users to interact with the shared resource. 
+Over time, as personal computers became more affordable, the terminal/computer model was simplified, and terminals were integrated into a single PC. 
+Initially emulated in the kernel, terminal functionality eventually transitioned to userspace, resulting in the design of pseudo terminals with master and slave components for enhanced flexibility.
 
 ## <a name="tty-and-pty"></a> TTY & PTY
 
 ### TTY
 
-
-Whether it's a traditional hardware terminal or modern software PuTTY, they're other entities accessing the target machine through the UART cable. 
-For example, starting from PuTTY, the data traverse through hardware, UART driver, line discipline, TTY driver, and eventually the shell. 
-After the command interpretation and processing, the output tracks the same way (data path) back and displays at the endpoint.
+Whether it's a traditional hardware terminal or a modern software application like PuTTY, both serve as interfaces to access a target machine via a UART cable. 
+When using PuTTY as an example, data passes through various components before reaching the shell, and the same path is taken for output display:
 
 - TTY driver
-    - manage session IO
-- line discipline
-    - handle character echo, ^C, line editing, ...
+  - Manages session input and output.
+- Line discipline
+  - Handles tasks such as character echo, ^C interrupts, line editing, and more.
 - UART driver
-    - control hardware component
+  - Controls the hardware component responsible for UART communication.
 
 <p align="center"><img src="images/console/tty.png" /></p>
 
@@ -701,12 +698,17 @@ drivers/tty/tty_io.c
 
 ### PTY
 
-In the PTY design, a pair of master and slave TTY devices are bound to each other; output from the master is input to the slave and vice versa. 
-For example, when we start the GUI terminal, that application opens `/dev/ptmx` to get the file descriptor of the pseudo-terminal master (ptm). 
-Simultaneously, a pseudo-terminal slave (pts) file is generated, e.g., `/dev/pts/0`, and we expect a newly forked shell attached to it. 
-Anything we input on the master side goes through its TTY driver and line discipline.
-When the enter key is pressed, data delivers to the slave side: from the slave's line discipline, the TTY driver up to the shell for command processing. 
-As you can imagine, the output follows the same logic going back to the master side for display, locally or remotely (e.g., ssh server case).
+
+In the PTY (pseudo-terminal) design, a master and slave TTY device are paired together, creating a bidirectional connection. 
+The master's output is redirected to the slave, and vice versa.
+
+For instance, when launching a GUI terminal application, it opens /dev/ptmx to obtain the file descriptor of the pseudo-terminal master (ptm). 
+Simultaneously, a pseudo-terminal slave (pts) file is generated, such as /dev/pts/0, and a newly forked shell is attached to it.
+
+Any input provided on the master side undergoes processing by its TTY driver and line discipline. 
+When the enter key is pressed, the data is transmitted to the slave side, passing through the slave's line discipline, TTY driver, and ultimately reaching the shell for command processing.
+
+Likewise, output from the shell follows a similar path back to the master side for display, whether it is local or remote (e.g., in the case of an SSH server).
 
 <p align="center"><img src="images/console/pty.png" /></p>
 
@@ -847,8 +849,9 @@ drivers/tty/pty.c
 
 ## <a name="console"></a> Console
 
-The TTY and PTY are IO devices for user space applications but not for the kernel, which outputs its log through the console device. 
-The below setting in DTS configures both the early and preferred consoles through which the kernel prints the message.
+
+The TTY and PTY devices serve as input/output devices for user space applications, while the kernel utilizes the console device to output its logs. 
+The device tree source (DTS) configuration allows for the setup of both the early console and the preferred console, which serve as channels for the kernel to display its messages.
 
 ```
 chosen {
@@ -857,7 +860,8 @@ chosen {
 };
 ```
 
-The attribute `earlycon` instructs the kernel to prepare an early console, a.k.a. boot console, based on property `ns16550a` in node `serial@1e784000`.
+The earlycon attribute in the device tree configuration instructs the kernel to set up an early console, also known as a boot console. 
+It uses the ns16550a property in the serial@1e784000 node to configure the console device.
 
 ```
 serial@1e784000 {
@@ -871,17 +875,21 @@ serial@1e784000 {
 };
 ```
 
-Later enabled serial devices from DTS are sequentially added and matched, but only the preferred one becomes the formal console device for the kernel.
+Once the serial devices specified in the device tree are enabled, they are sequentially added and matched. 
+However, only the preferred console becomes the formal console device for the kernel.
 
-- 1e787000.serial: ttyS5
-    - virtual uart, no idea yet
-- 1e783000.serial: ttyS0
-    - regular uart
-- 1e784000.serial: ttyS4
-    - regular uart, and is specified as the preferred console in boot arguments
+In our case, we have the following enabled serial devices:
 
-The function `printk` and its variants commit the argument string to the ring buffer, and another function, `console_unlock`, flush them to the console. That said, before the boot or preferred console is registered, `printk` can still put logs into that ring buffer, except we don't see them. 
-At any point when we have a ready console, all the stacked logs, if they are not overwritten, are flushed out to console(s) at once.
+- 1e787000.serial: ttyS5 (virtual uart)
+- 1e783000.serial: ttyS0 (regular uart)
+- 1e784000.serial: ttyS4 (regular uart and specified as the preferred console)
+
+During the boot process, the kernel uses functions like `printk` to commit log messages to the ring buffer. 
+These log messages remain in the buffer until a console is registered. 
+Although we cannot see them before the console is available, they are stored in the buffer.
+
+Once a console is ready, the `console_unlock` function is called, which flushes the stacked logs from the ring buffer to the console(s) simultaneously. 
+However, if the log messages in the buffer are not overwritten, they will be flushed out to the console(s) when the console becomes available.
 
 <p align="center"><img src="images/console/console.png" /></p>
 
@@ -963,37 +971,59 @@ kernel/printk/printk.c
 
 ## <a name="system-startup"></a> System Startup
 
-Let's introduce console-related functions that print logs during system startup:
+Certainly! Here are some console-related functions that print logs during system startup:
 
-- param_setup_earlycon
-    - parse kernel command and set up the early console
-- aspeed_uart_routing_driver_init
-    - AST2500 supports UART routing, and this driver implements interfaces for users to config
-- serial8250_init
-    - init six (specified in the config file) serial 8250 ports
-- aspeed_vuart_probe
-    - (skip)
-- of_platform_serial_probe
-    - match and probe enabled serial devices from DTS, and overwrite the default setting in corresponding 8250 ports
-- init_netconsole
-    - (skip)
+- `param_setup_earlycon`: 
+  - This function parses the kernel command and sets up the early console, which serves as the boot console for printing early-stage logs.
+- `aspeed_uart_routing_driver_init`: 
+  - This function initializes the UART routing driver for AST2500, allowing users to configure the routing of UART signals.
+- `serial8250_init`: 
+  - This function initializes six serial 8250 ports as specified in the configuration file. These ports are commonly used for regular UART communication.
+- `aspeed_vuart_probe`: 
+  - This function is responsible for probing the Aspeed virtual UART (vUART) and handling any necessary initialization. (Skipping details as per request)
+- `of_platform_serial_probe`: 
+  - This function matches and probes enabled serial devices specified in the device tree (DTS). It overwrites the default settings in the corresponding 8250 ports with the configuration from the DTS.
+- `init_netconsole`: 
+  - This function initializes the netconsole, which allows logging messages to be sent over the network. (Skipping details as per request)
 
 ```
-[    0.000000] earlycon: ns16550a0 at MMIO 0x1e784000 (options '')                                          <---- param_setup_earlycon
-[    0.000000] printk: bootconsole [ns16550a0] enabled                                                      <
-...
-[    0.000000] Kernel command line: console=ttyS4,115200 earlycon
-...
-[    0.399431] aspeed-uart-routing 1e78909c.uart-routing: module loaded                                     <---- aspeed_uart_routing_driver_init
-[    0.401357] Serial: 8250/16550 driver, 6 ports, IRQ sharing enabled                                      <---- serial8250_init
-[    0.410609] 1e787000.serial: ttyS5 at MMIO 0x1e787000 (irq = 34, base_baud = 1546875) is a ASPEED VUART  <---- aspeed_vuart_probe
-[    0.424438] 1e783000.serial: ttyS0 at MMIO 0x1e783000 (irq = 32, base_baud = 1500000) is a 16550A        <---- of_platform_serial_probe
-[    0.429486] 1e784000.serial: ttyS4 at MMIO 0x1e784000 (irq = 33, base_baud = 1500000) is a 16550A        <---- of_platform_serial_probe
-[    0.430992] printk: console [ttyS4] enabled                                                              <
-[    0.431583] printk: bootconsole [ns16550a0] disabled                                                     <
-...
-[    2.159554] printk: console [netcon0] enabled                                                            <---- init_netconsole
-[    2.159703] netconsole: network logging started                                                          <
+start_kernel
+|
+|--> setup_arch
+|    -
+|    +--> parse_early_param
+|         -
+|         +--> param_setup_earlycon                  [    0.000000] earlycon: ns16550a0 at MMIO 0x1e784000 (options '')
+|                                                    [    0.000000] printk: bootconsole [ns16550a0] enabled
+|
++--> print                                           [    0.000000] Kernel command line: console=ttyS4,115200 earlycon
+
+
+kernel_init
+-
++--> kernel_init_freeable
+     -
+     +--> do_basic_setup
+          -
+          +--> do_initcalls
+               |
+               |--> aspeed_uart_routing_driver_init  [    0.399431] aspeed-uart-routing 1e78909c.uart-routing: module loaded
+               |
+               |--> serial8250_init                  [    0.401357] Serial: 8250/16550 driver, 6 ports, IRQ sharing enabled
+               |
+               |--> aspeed_vuart_driver_init
+               |    -
+               |    +--> aspeed_vuart_probe          [    0.410609] 1e787000.serial: ttyS5 at MMIO 0x1e787000 (irq = 34, base_baud = 1546875) is a ASPEED VUART
+               |
+               |--> of_platform_serial_driver_init
+               |    |
+               |    |--> of_platform_serial_probe    [    0.424438] 1e783000.serial: ttyS0 at MMIO 0x1e783000 (irq = 32, base_baud = 1500000) is a 16550A
+               |    +--> of_platform_serial_probe    [    0.429486] 1e784000.serial: ttyS4 at MMIO 0x1e784000 (irq = 33, base_baud = 1500000) is a 16550A
+               |                                     [    0.430992] printk: console [ttyS4] enabled
+               |                                     [    0.431583] printk: bootconsole [ns16550a0] disabled
+               |
+               +--> init_netconsole                  [    2.159554] printk: console [netcon0] enabled
+                                                     [    2.159703] netconsole: network logging started
 ```
 
 <details><summary> More Details </summary>
