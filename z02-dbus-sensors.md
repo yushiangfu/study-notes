@@ -13,14 +13,13 @@
 
 ## adcsensor
 
-An analog-to-digital converter (ADC) is a component that transfers analog signals, such as voltage or sound, into a digital value. 
-The ADC sensor task is a daemon running in the background firmly and following the below steps:
+The ADC sensor task is a background daemon responsible for converting analog signals into digital values. It performs the following steps:
 
-- requests the service `xyz.openbmc_project.ADCSensor`
-- obtains ADC descriptors from `xyz.openbmc_project.ObjectMapper`
-- finds existing ADC hardware under `/sys/class/hwmon/`
-- sets up an ADC sensor for each matched pair of (descriptor, component)
-- sensors read values and update to DBus periodically
+1. Requests the service `xyz.openbmc_project.ADCSensor` to establish communication.
+2. Retrieves ADC descriptors from `xyz.openbmc_project.ObjectMapper` to obtain information about available ADC hardware.
+3. Searches for existing ADC hardware located in the `/sys/class/hwmon/` directory.
+4. Sets up an ADC sensor for each matched pair of (descriptor, component) found during the search.
+5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
 
 <p align="center"><img src="images/openbmc/dbus-sensors.png" /></p>
 
@@ -262,15 +261,14 @@ from dbus perspective
 </details>
 
 ## cpusensor
+  
+The CPU sensor task is responsible for monitoring properties such as temperature, power, and energy of the CPU and DIMM. It performs the following steps:
 
-The CPU sensor task is responsible for reading and updating properties like temperature, power, and energy of the CPU and DIMM.
-It follows the below steps:
-
-- requests the service `xyz.openbmc_project.CPUSensor`
-- obtains ADC descriptors from `xyz.openbmc_project.EntityManager`
-- finds existing ADC hardware under `/sys/bus/peci/devices/`
-- sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM
-- sensors read values and update to DBus periodically
+1. Requests the service `xyz.openbmc_project.CPUSensor` to establish communication.
+2. Retrieves ADC descriptors from `xyz.openbmc_project.EntityManager` to obtain information about the available ADC hardware.
+3. Locates existing ADC hardware located in the `/sys/bus/peci/devices/` directory.
+4. Sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM.
+5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
   
 <details><summary> More Details </summary>  
   
@@ -931,13 +929,13 @@ ExternalSensorMain.cpp
 
 ## fansensor
 
-The fan sensor the below steps to prepare both PWM and TACH sensors:
+The fan sensor task is responsible for managing PWM and TACH sensors associated with the fan components. It follows the following steps:
 
-- requests the service `xyz.openbmc_project.FanSensor`
-- obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
-- finds existing PWM and TACH components under `/sys/class/hwmon/` like the ADC sensor task does
-- sets up a PWM or TACH sensor for each matched pair of (descriptor, component)
-- sensors read values and update to DBus periodically
+1. Requests the service `xyz.openbmc_project.FanSensor` to establish communication.
+2. Retrieves fan descriptors from `xyz.openbmc_project.ObjectMapper` to obtain information about the available fan components.
+3. Locates existing PWM and TACH components in the `/sys/class/hwmon/` directory, similar to the ADC sensor task.
+4. Sets up a PWM or TACH sensor for each matched pair of (descriptor, component), based on the type of sensor required.
+5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
   
 <details><summary> More Details </summary>  
   
@@ -1109,11 +1107,13 @@ FanMain.cpp
   
 ## hwmontempsensor
 
-- requests the service `xyz.openbmc_project.HwmonTempSensor`
-- obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
-- finds existing components under `/sys/bus/iio/devices` and `/sys/class/hwmon/`
-- sets up a HwmonTemp sensor for each matched pair of (descriptor, component)
-- sensors read values and update to DBus periodically
+The HwmonTemp sensor task is responsible for managing temperature sensors associated with hardware components. It follows the following steps:
+
+1. Requests the service `xyz.openbmc_project.HwmonTempSensor` to establish communication.
+2. Retrieves temperature sensor descriptors from `xyz.openbmc_project.ObjectMapper` to obtain information about the available temperature sensor components.
+3. Locates existing temperature sensor components in the `/sys/bus/iio/devices` and `/sys/class/hwmon/` directories.
+4. Sets up a HwmonTemp sensor for each matched pair of (descriptor, component).
+5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest temperature values are accessible to other components and services.
   
 <details><summary> More Details </summary>  
   
@@ -1265,10 +1265,13 @@ HwmonTempMain.cpp
   
 ## intrusionsensor
 
-- requests the service `xyz.openbmc_project.IntrusionSensor`
-- sets up a Intrusion sensor
-- obtains fan descriptors from `xyz.openbmc_project.EntityManager`
-- sensor reads values and updates to DBus periodically
+The Intrusion sensor task is responsible for monitoring and reporting intrusion events. It follows the following steps:
+
+1. Requests the service `xyz.openbmc_project.IntrusionSensor` to establish communication.
+2. Sets up an Intrusion sensor to detect intrusion events.
+3. Obtains fan descriptors from `xyz.openbmc_project.EntityManager` to gather information about the associated fan components.
+4. The sensor periodically reads values related to intrusion events.
+5. Updates the intrusion status to the D-Bus periodically, ensuring that the latest information about intrusion events is available to other components and services.
   
 <details><summary> More Details </summary>  
   
@@ -1519,10 +1522,13 @@ src/IntrusionSensorMain.cpp
 
 ## ipmbsensor
 
-- requests the service `xyz.openbmc_project.IpmbSensor`
-- obtains fan descriptors from `xyz.openbmc_project.EntityManager`
-- sets up an Ipmb sensor
-- sensors read values and update to DBus periodically
+The Ipmb sensor task is responsible for monitoring and reporting IPMB (Intelligent Platform Management Bus) sensor values. It follows the following steps:
+
+1. Requests the service `xyz.openbmc_project.IpmbSensor` to establish communication.
+2. Obtains fan descriptors from `xyz.openbmc_project.EntityManager` to gather information about the associated fan components.
+3. Sets up an Ipmb sensor to monitor IPMB sensor values.
+4. The sensor periodically reads values from the IPMB sensors.
+5. Updates the IPMB sensor values to the D-Bus periodically, ensuring that the latest information is available to other components and services.
   
 <details><summary> More Details </summary>  
   
@@ -2084,11 +2090,14 @@ src/IpmbSensor.cpp
 
 ## psusensor
   
-- requests the service `xyz.openbmc_project.PSUSensor`
-- obtains fan descriptors from `xyz.openbmc_project.ObjectMapper`
-- finds existing hardware under `/sys/class/hwmon/`
-- sets up a PSU sensor for each matched pair of (descriptor, component)
-- sensors read values and update to DBus periodically
+The PSU sensor task is responsible for monitoring and reporting PSU (Power Supply Unit) sensor values. It follows the following steps:
+
+1. Requests the service `xyz.openbmc_project.PSUSensor` to establish communication.
+2. Obtains fan descriptors from `xyz.openbmc_project.ObjectMapper` to gather information about the associated fan components.
+3. Finds existing hardware under `/sys/class/hwmon/` related to PSU sensors.
+4. Sets up a PSU sensor for each matched pair of (descriptor, component).
+5. The sensors periodically read values from the PSU sensors.
+6. Updates the PSU sensor values to the D-Bus periodically, ensuring that the latest information is available to other components and services.
 
 <details><summary> More Details </summary>  
   
