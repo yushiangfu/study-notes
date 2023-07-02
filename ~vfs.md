@@ -139,7 +139,7 @@ When tasks access **/run/initramfs/rw/abc.txt**, the VFS generates temporary **f
   
 ## <a name="vfs-operations"></a> VFS Operations
 
-### Change working directory
+### Working Directory Change
 
 The **cd** command, used for changing directories in the command-line interface of Linux, is a commonly used command. 
 It is a built-in shell function and does not have its own standalone binary. 
@@ -440,8 +440,8 @@ fs/namei.c
 
 ### File Creation
 
-We can use the utility **touch**, **echo**, or a formal editor like **vim** and **nano** for file creation. 
-Here's the strace of **touch**, and it's the flag O_CREAT that instructs the kernel to create the file if it's not there.
+For file creation, we have options such as the utility **touch**, **echo**, or formal editors like **vim** and **nano**. 
+The **strace** log of **touch** reveals that the **O_CREAT** flag is used to instruct the kernel to create the file if it doesn't already exist.
 
 ```
 root@romulus:~# strace touch /run/zzz-file
@@ -451,11 +451,11 @@ close(3)                                = 0
 ...
 ```
 
-So the operational flow is like this:
+The operational flow is as follows:
 
-- It's an absolute path, and we start from the dentry **root**.
-- Look up till the last component, **zzz-file**, but it's not there.
-- Since the utility has specified flag **O_CREAT**, then parent inode, **run** in the example, creates the file.
+- Since it's an absolute path, the process begins with the **root** dentry.
+- It performs a lookup until the last component, **zzz-file**, but does not find it.
+- Since the utility has specified the **O_CREAT** flag, the parent inode (e.g., **run** in the example) creates the file.
 
 <p align="center"><img src="images/vfs/file-creation.png" /></p>
 
@@ -502,7 +502,8 @@ fs/namei.c
 </details>      
 
 ### File Removal
-We use the utility **rm** to remove the target file, and here's the strace log.
+
+We can use the utility **rm** to remove the target file. Here's the **strace** log for reference.
 
 ```
 root@romulus:~# strace rm /run/zzz-file
@@ -512,11 +513,11 @@ unlink("/run/zzz-file")                 = 0
 ...
 ```
 
-So the operational flow is like this:
+The operational flow is as follows:
 
-- It's an absolute path, and we start from the dentry **root**.
-- Look up till the parent of the last component.
-- Ask that parent to unlink the child **zzz-file**, which means releasing the inode and dentry of it.
+- Since it's an absolute path, the process begins with the **root** dentry.
+- It performs a lookup until reaching the parent of the last component.
+- It asks the parent to unlink the child **zzz-file**, which involves releasing the inode and dentry associated with it.
 
 <p align="center"><img src="images/vfs/file-removal.png" /></p>
 
@@ -592,7 +593,7 @@ fs/namei.c
 
 ### Directory Creation
 
-We use the utility mkdir to create a folder, and it eventually calls the same-name syscall.
+To create a folder, we can use the utility **mkdir**. The **mkdir** utility internally invokes the syscall with the same name.
 
 ```
 root@romulus:~# strace mkdir /run/zzz-dir
@@ -601,11 +602,11 @@ mkdir("/run/zzz-dir", 0777)             = 0
 ...
 ```
 
-So the operational flow is like this:
-  
-- It's an absolute path, and we start from the dentry **root**.
-- Look up till the parent of the last component.
-- Ask the parent to create the child folder **zzz-dir** and install operation sets of directory type.
+The operational flow is as follows:
+
+- Since it's an absolute path, the process begins with the **root** dentry.
+- It performs a lookup until reaching the parent of the last component.
+- It asks the parent to create the child folder **zzz-dir** and install operation sets specific to directory type.
   
 <p align="center"><img src="images/vfs/dir-creation.png" /></p>
 
@@ -674,7 +675,7 @@ fs/namei.c
 
 ### Directory Removal
 
-We can utilize the command **rmdir** to remove the folder for an empty folder, and here's the strace log.
+We can use the command **rmdir** to remove an empty folder. Here's the **strace** log for reference.
 
 ```
   
@@ -684,11 +685,11 @@ rmdir("/run/zzz-dir")                   = 0
 ...
 ```
 
-So the operational flow is like this:
+The operational flow is as follows:
 
-- It's an absolute path, and we start from the dentry **root**.
-- Look up till the parent of the last component.
-- Ask the parent to remove the child folder **/run/zzz-dir**, releasing the inode and dentry.
+- Since it's an absolute path, the process begins with the **root** dentry.
+- It performs a lookup until reaching the parent of the last component.
+- It asks the parent to remove the child folder **/run/zzz-dir**, which involves releasing the inode and dentry associated with it.
 
 <p align="center"><img src="images/vfs/dir-removal.png" /></p>
 
@@ -761,11 +762,13 @@ fs/namei.c
       
 ### Copy
 
-When we have to copy a file or a folder, utility **cp** does the job, and here's the strace log.
+The `cp` utility is a commonly used tool for copying files or folders. Its operational flow typically involves the following steps:
 
-- It opens both the source and destination files.
-- Start to read from the source and write to the destination till there's no more data.
-- Close both file descriptors.
+- Open both the source and destination files.
+- Start reading from the source file and writing to the destination file until all the data is copied.
+- Close both file descriptors once the copying process is complete.
+
+Here's the strace log for file copying.
 
 ```
 root@romulus:~# echo abc > /run/zzz-file1 
@@ -780,7 +783,7 @@ close(3)                                = 0
 ...
 ```
 
-Here's the strace log for copying a folder.
+Here's the strace log for folder copying.
 
 ```
 root@romulus:~# mkdir /run/zzz-dir1
@@ -824,19 +827,10 @@ chmod("/run/zzz-dir2", 040755)          = 0
   
 ### Mount
 
-- What does mount do?
-  - To connect the file tree to another one.
-- Why do we need to mount?
-  - To make the isolated file tree visible.
-- Why do Windows users not have to mount?
-  - Automatic mount
-
-The kernel will prepare the below structures for the source tree: **mount**, **dentry**, **inode**. 
-The **mount** doesn't connect to anything yet and isn't visible to the users.
-
-Later the kernel mounts the source tree onto the dentry of the destination folder, which is also known as the mount point. 
-Also, the mount structure of the mount point acts as the parent mount, and the **mnt_parent** points to the right place. 
-That's how we make the source tree of a specific disk partition visible to us, and now the **lookup** can traverse into it.
+The **mount** operation allows us to connect a file tree within a specific space to another file tree, making it visible to users. 
+When performing a mount, the kernel prepares structures such as **mount**, **dentry**, and **inode** for the source tree. 
+Subsequently, the kernel mounts the source tree onto the dentry of the destination folder, known as the mount point. 
+This process enables us to make the source tree of a specific disk partition visible, allowing the **lookup** operation to traverse into it.
 
 <p align="center"><img src="images/vfs/mount.png" /></p>
   
@@ -1043,31 +1037,25 @@ fs/notify/inotify/inotify_user.c
                                               [    1.771220]     TERM=linux                                                          
 ```
   
-Kernel prepares the data structures for any mount attempt, and the root filesystem has no exception. 
-We can see that there's only one pair of dentry and inode, which represents the well-known '/' entry. 
-After letting tasks know where the **mount** and **dentry** are, the file tree becomes visible to them.
+During any mount attempt, the kernel prepares the necessary data structures, including for the root filesystem. 
+In the case of the root filesystem, there is a single pair of dentry and inode representing the well-known '/' component, which is the root of the file system.
+By informing tasks about the location of the mount and dentry, the file tree becomes visible to them. 
+When constructing the kernel image, the data under the **usr/** directory becomes the initramfs included in the generated kernel image. 
+This initramfs provides the minimal root filesystem, which typically includes directories such as **/dev**, **/dev/console**, and **/root**.
+The complete root filesystem can be obtained from various sources, including:
 
-When building the kernel image, data under **usr/** will become the initramfs included in the generated kernel image, and it contributes the very minimum rootfs:
+- Initrd:
+  - In this case, it is initramfs-romulus, and the naming is not significant as it may have historical reasons.
 
-- /dev
-- /dev/console
-- /root
+- NFS:
+  - The root filesystem is sourced from an NFS server.
 
-After unpacking the initramfs, the file tree is like this:
+- CIFS:
+  - The root filesystem is sourced from a Samba server.
 
-And then the complete rootfs either comes from initrd or other mediums:
-
-- Initrd
-  - It's initramfs-romulus in our case. Don't be bothered by its naming since there might be some historical factors.
-- NFS
-  - The source is from an NFS server.
-- CIFS
-  - The source if from a Samba server.
-- Block
-  - The source is from a drive partition, another common case in practical usage.
-
-After unpacking the initrd, the file tree is like this, which doesn't display them all:
-  
+- Block:
+  - The root filesystem is sourced from a drive partition, which is a common scenario in practical usage.
+ 
 <p align="center"><img src="images/vfs/rootfs.png" /></p>
   
 <details><summary> More Details </summary>
@@ -1621,6 +1609,8 @@ fs/open.c
                             name                                 
  (skip the remaining entries ...)
 ```
+
+After unpacking the initramfs, the file tree is like this:
 
 ```
 dir /dev 0755 0 0
