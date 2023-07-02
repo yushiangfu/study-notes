@@ -12,16 +12,17 @@
 
 ## <a name="introduction"></a> Introduction
 
-A file system is a format managing file metadata and data. E.g., NTFS from Windows and EXT family from Linux are well-known examples. 
-The virtual file system (VFS) is the unified interface that allows users to operate the files using the same method, like read() and write(). 
-It significantly abstracts the sophisticated design and complicated implementation; therefore, we don't have to know the details before using any file system.
+A file system manages file metadata and data, such as NTFS in Windows and the EXT family in Linux. 
+The virtual file system (VFS) provides a unified interface for users to interact with files using methods like read() and write(). 
+It simplifies the complexity of file system design and implementation, allowing us to use any file system without needing to understand its specific details.
 
 ## <a name="file-types"></a> File Types
 
-Including the well-known regular files and folders that we are familiar with, the VFS supports up to seven file types, equipped with the corresponding inode and file operations for meta and data handling separately.
+The VFS supports seven file types, including regular files and folders. 
+Each file type is associated with its corresponding inode and file operations, allowing for separate handling of metadata and data.
 
-- Regular file
-  - Most files, e.g., jpg, png, mp4, fall into this category. They share the same file type but compose in a different format.
+- regular file
+  - Files like jpg, png, and mp4 belong to the category of regular files. While they share the same file type, each file format represents a distinct composition and structure.
 
 ```
 inode->i_op = &shmem_inode_operations;
@@ -29,7 +30,7 @@ inode->i_fop = &shmem_file_operations;
 ```
 
 - Directory
-  - It's a collection of files and folders, e.g., /, /home/, /tmp/.
+  - A folder is a container that holds files and other folders within a file system. Examples of folders include "/", "/home/", and "/tmp/".
 
 ```
 inode->i_op = &shmem_dir_inode_operations;
@@ -37,8 +38,7 @@ inode->i_fop = &simple_dir_operations;
 ```
 
 - Link
-  - A **symbolic** or **soft** link, not the **hard** one.
-  - Shortcut to another destination.
+  - A symbolic or soft link is a type of link, distinct from a hard link. It serves as a shortcut to another destination.
 
 ```
 inode->i_op = &empty_iops;
@@ -46,7 +46,7 @@ inode->i_fop = &no_open_fops;
 ```
 
 - Character device
-  - Please refer to the driver framework for further introduction.
+  - Please refer to my other page for information on this topic.
 
 ```
 inode->i_op = &shmem_special_inode_operations;
@@ -54,7 +54,7 @@ inode->i_fop = &def_chr_fops;
 ```
 
 - Block device
-  - Please refer to the driver framework for further introduction.
+  - Please refer to my other page for information on this topic.
 
 ```
 inode->i_op = &shmem_special_inode_operations;
@@ -62,7 +62,7 @@ inode->i_fop = &def_blk_fops;
 ```
 
 - Pipe
-  - I have yet to study it.
+  - I haven't studied this part yet.
 
 ```
 inode->i_op = &shmem_special_inode_operations;
@@ -70,35 +70,35 @@ inode->i_fop = &pipefifo_fops;
 ```
 
 - Socket
-  - It's only there once any task opens it with specified arguments; therefore, file operation here is unnecessary to socket type.
+  - File operations are unnecessary for the socket type since it only becomes available when a task opens it with specified arguments.
 
 ```
 inode->i_op = &shmem_special_inode_operations;
 inode->i_fop = &no_open_fops;
 ```
 
-Our example shows how filesystem **shmem** implements it, but please note that each file system has its own implementation for the seven file types.
+In our example, the filesystem **shmem** demonstrates its implementation. 
+However, it's important to note that each file system has its own unique implementation for the seven file types.
 
 ## <a name="vfs-structures"></a> VFS Structures
 
 - struct **inode**
-    - What we think of like a file is represented by a struct inode in VFS.
-    - It stores the metadata of a file and knows where and how to access the file data
+    - The struct inode stores file metadata and provides information on accessing the file data.
 - struct **dentry**
-    - Usually, one **inode** pairs with one **dentry** (hard link is the exception).
-    - VFS places the file name here.
-    - It establishes the folder and file hierarchy and works as a cache to speed up the lookup.
+    - Typically, one **inode** is associated with one **dentry** (excluding hard links).
+    - The **dentry** in VFS holds the file name.
+    - It establishes the hierarchy of folders and files, serving as a cache to optimize lookup operations.
 - struct **file**
-    - Temporary component when a task opens a file, and it's process-specific.
+    - The struct **file** is a temporary, process-specific component created when a task opens a file.
 - struct **mount**
-    - Folders and files build up the tree within an area, e.g., partition, and each has its filesystem and tree.
-    - We must mount them onto the root hierarchy before accessing them, and struct mount manages the action.
+    - Folders and files form a hierarchical tree structure within a designated area, such as a partition, with each having its own filesystem and tree.
+    - Prior to accessing them, we need to mount them onto the root hierarchy, which is managed by the struct **mount**.
+
+In the diagram below, we can observe the root mount along with two other mounted trees: **/run/initramfs/ro** and **/run/initramfs/rw**. 
+Within the root mount, the dentry of each inode is responsible for maintaining the file hierarchy. 
+When tasks access **/run/initramfs/rw/abc.txt**, the VFS generates temporary **file** structures for each access individually.
 
 <p align="center"><img src="images/vfs/hierarchy.png" /></p>
-
-So in the above diagram, we can see the root mount and two other trees mounted onto **/home** and **/var/more**. 
-Inside the root mount, the dentry of each inode maintains the file hierarchy. 
-When tasks access the **/var/log.txt**, the VFS generates temporary file structures for each separately.
 
 <details><summary> More Details </summary>
 
@@ -141,40 +141,45 @@ When tasks access the **/var/log.txt**, the VFS generates temporary file structu
 
 ### Change working directory
 
-Command **cd** (change directory) is one of the most used commands for command-line Linux users. 
-It's a built-in shell function and therefore has no independent binary. 
-The **cd** function eventually calls to syscall **chdir**, and the kernel starts to look up the target of the path string. 
-Before we show how the kernel interprets the path, let's introduce some related fields in the data structure. 
-The **task_struct** has an **fs** pointer pointing to **fs_struct**, which contains the **root** and **path**.
+The **cd** command, used for changing directories in the command-line interface of Linux, is a commonly used command. 
+It is a built-in shell function and does not have its own standalone binary. 
+The **cd** function internally calls the **chdir** system call, and the kernel begins the process of interpreting the target path string. 
+Before delving into how the kernel interprets the path, let's introduce some relevant fields in the data structure. 
+The **task_struct** includes an **fs** pointer that points to **fs_struct**, which holds the **root** and **path** information.
 
-- root
-  - mnt: which mount the dentry belongs to, e.g., root mount
-  - dentry: dentry of **/**.
-- pwd
-  - mnt: which mount the dentry belongs to, e.g., root mount or /dev/mtdblock4
-  - dentry: e.g., dentry of **penguin**.
+- **root**:
+  - **dentry**: The dentry of the root directory ("/").
+  - **mnt**: The mount to which the paired dentry belongs, such as the root mount.
 
-When parsing the path, we must start with one dentry, either from the **root** or **pwd**. 
-As you might already think, those correspond to two types of the path:
+- **pwd**:
+  - **dentry**: The dentry of the current folder/directory.
+  - **mnt**: The mount to which the paired dentry belongs, such as the root mount or /dev/mtdblock4.
 
-- Absolute path
-  - The path has a leading /, and the kernel starts the lookup with the dentry of the root folder.
-- Relative path
-  - Anything else, and dentry from **pwd** field is where our journey begins.
+When parsing a path, we need to start with a specific dentry, which can either come from the **root** or **pwd** fields. 
+These correspond to two types of paths:
 
-Taking the below command as an example, it's a downward lookup and consists of five components.
+- Absolute path:
+  - An absolute path starts with a leading '/', and the kernel initiates the lookup process using the dentry of the root folder.
+
+- Relative path:
+  - A relative path does not have a leading '/', and the dentry from the **pwd** field becomes the starting point for the lookup process.
+
+A path consists of several components divided by '/', where the leading slash, if present, is considered a component as well.
 
 <p align="center"><img src="images/vfs/path.png" /></p>
 
-When doing a lookup downwardly, we use the dentry of the current folder and the name string of the following component to find the next dentry from the hash table.
+During a path lookup, the process starts with the leading component, where its dentry is obtained either from **root** or **pwd**, depending on the type of path. 
+Each component of the path, except for '.', involves either an upward (..) or downward (other names) lookup.
+In an iterative manner, after each upward or downward lookup, we acquire the dentry of the next component, continuing until we reach the final component or the second-to-last component, depending on the objective. 
+For a downward lookup, we utilize the dentry of the current component and the name string of the next component to search for the corresponding dentry in the hash table.
 
-- dentry of / + name string 'usr' --> dentry of **usr**
-- dentry of usr + name string 'sbin' --> dentry of **sbin**
+Example:
+- dentry of '/' + name string 'run' -> dentry of **run**
+- dentry of 'run' + name string 'initramfs' -> dentry of **initramfs**
 
 <p align="center"><img src="images/vfs/downward-lookup.png" /></p>
 
-What's the case if our current working directory is at 'sbin' and we'd like to lookup upward, e.g., '../../'? 
-It's relatively simple because each dentry has a pointer pointing to its parent, and that's how we follow the path.
+Performing an upward lookup, such as '../..', is relatively simple because each dentry has a direct pointer to its parent. 
 
 <p align="center"><img src="images/vfs/upward-lookup.png" /></p>
 
