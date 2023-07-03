@@ -174,8 +174,8 @@ In an iterative manner, after each upward or downward lookup, we acquire the den
 For a downward lookup, we utilize the dentry of the current component and the name string of the next component to search for the corresponding dentry in the hash table.
 
 Example:
-- dentry of '/' + name string 'run' -> dentry of **run**
 - dentry of 'run' + name string 'initramfs' -> dentry of **initramfs**
+- dentry of 'initramfs' + name string 'rw' -> dentry of **rw**
 
 <p align="center"><img src="images/vfs/downward-lookup.png" /></p>
 
