@@ -783,6 +783,8 @@ close(3)                                = 0
 ...
 ```
 
+<p align="center"><img src="images/vfs/file-copy.png" /></p>
+
 Here's the strace log for folder copying.
 
 ```
@@ -823,7 +825,7 @@ chmod("/run/zzz-dir2", 040755)          = 0
 ...
 ```
 
-<p align="center"><img src="images/vfs/copy.png" /></p>
+<p align="center"><img src="images/vfs/dir-copy.png" /></p>
   
 ### Mount
 
