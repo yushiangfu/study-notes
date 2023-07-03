@@ -1058,8 +1058,6 @@ The complete root filesystem can be obtained from various sources, including:
 - Block:
   - The root filesystem is sourced from a drive partition, which is a common scenario in practical usage.
  
-<p align="center"><img src="images/vfs/rootfs.png" /></p>
-  
 <details><summary> More Details </summary>
   
 ```
