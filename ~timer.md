@@ -1,4 +1,11 @@
 ```
+init_timers
+hrtimers_init
+timekeeping_init
+```
+
+
+```
 kernel/time/timer.c                                                                 
 +-------------+                                                                      
 | init_timers | : init percpu timer bases, register softirq action                   
@@ -186,4 +193,32 @@ kernel/time/hrtimer.c
        |    +-----------------+                                                                
        +--> | enqueue_hrtimer | add hrtimer back to base->active                               
             +-----------------+                                                                
+```
+
+```
+kernel/time/timekeeping.c                                             
++------------------+                                                   
+| timekeeping_init |                                                   
++-|----------------+                                                   
+  |    +--------------------------------------+                        
+  |--> | read_persistent_wall_and_boot_offset |                        
+  |    +--------------------------------------+                        
+  |    +----------+                                                    
+  |--> | ntp_init | (skip)                                             
+  |    +----------+                                                    
+  |    +---------------------------+                                   
+  |--> | clocksource_default_clock | get 'clocksource_jiffies'         
+  |    +---------------------------+                                   
+  |                                                                    
+  |--> if it has ->enable(), call it (not our case)                    
+  |                                                                    
+  |    +--------------------+                                          
+  |--> | tk_setup_internals | set up internals to use clocksource clock
+  |    +--------------------+                                          
+  |                                                                    
+  |--> set walltime to 'tk_core'                                       
+  |                                                                    
+  |    +--------------------+                                          
+  +--> | timekeeping_update |                                          
+       +--------------------+                                          
 ```
