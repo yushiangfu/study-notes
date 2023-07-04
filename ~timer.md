@@ -121,3 +121,69 @@ kernel/time/timer.c
        +--> | call_timer_fn |                                          
             +---------------+                                          
 ```
+
+```
+kernel/time/hrtimer.c                                                                      
++---------------+                                                                           
+| hrtimers_init | : init hrtimer bases, register softirq action                             
++-|-------------+                                                                           
+  |    +----------------------+                                                             
+  |--> | hrtimers_prepare_cpu | init hrtimer bases for the current cpu                      
+  |    +----------------------+                                                             
+  |    +--------------+                                                                     
+  +--> | open_softirq | register softirq action                                             
+       +--------------+ +---------------------+                                             
+                        | hrtimer_run_softirq | run expired hrtimers of percpu hrtimer bases
+                        +---------------------+                                             
+```
+
+```
+kernel/time/hrtimer.c                                                                    
++---------------------+                                                                   
+| hrtimer_run_softirq | : run expired hrtimers of percpu hrtimer bases                    
++-|-------------------+                                                                   
+  |                                                                                       
+  |--> get percpu hrtimer base                                                            
+  |                                                                                       
+  |    +---------------------+                                                            
+  |--> | hrtimer_update_base | given hrtimer abse, update its realtime/boottime/tai offset
+  |    +---------------------+                                                            
+  |    +----------------------+                                                           
+  +--> | __hrtimer_run_queues | for each base, run expired hrtimers                       
+       +----------------------+                                                           
+```
+
+```
+kernel/time/hrtimer.c                                                                 
++----------------------+                                                               
+| __hrtimer_run_queues | : for each base, run expired hrtimers                         
++-|--------------------+                                                               
+  |                                                                                    
+  +--> for each base in hrtimer_bases                                                  
+       -                                                                               
+       +--> while we can still get active hrtimer from base                            
+            |                                                                          
+            |--> if it's not expired, break                                            
+            |                                                                          
+            |    +---------------+                                                     
+            +--> | __run_hrtimer | detach hrtimer, call function, attach back if needed
+                 +---------------+                                                     
+```
+
+```
+kernel/time/hrtimer.c                                                                         
++---------------+                                                                              
+| __run_hrtimer | : detach hrtimer, call function, attach back if needed                       
++-|-------------+                                                                              
+  |    +------------------+                                                                    
+  |--> | __remove_hrtimer | detach hrtimer from queue, if queue becomes empty, clear bit@bitmap
+  |    +------------------+                                                                    
+  |                                                                                            
+  |--> call timer's function                                                                   
+  |                                                                                            
+  +--> if need restart                                                                         
+       |                                                                                       
+       |    +-----------------+                                                                
+       +--> | enqueue_hrtimer | add hrtimer back to base->active                               
+            +-----------------+                                                                
+```
