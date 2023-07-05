@@ -1,8 +1,26 @@
+> Study case: ASPEED Linux version 5.15.41
+
+## Index
+
+- [Introduction](#introduction)
+- [System Startup](#system-startup)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+## <a name="system-startup"></a> System Startup
+
 ```
 init_timers
 hrtimers_init
 timekeeping_init
 time_init
+dummy_timer_starting_cpu: register dummy evtdev
+init_timer_list_procfs: create '/proc/timer_list' with 'timer_list_sops' installed
+alarmtimer_init: (skip, it matches no device)
+init_posix_timers: create kmem cache for 'k_itimer'
+timeriomem_rng_driver_init: (skip, random# related)
+timer_led_trigger_init: (skip)
 ```
 
 
@@ -598,3 +616,22 @@ arch/arm/lib/delay.c
   |                                                                    
   +--> print "Switching to timer-based delay loop, resolution %lluns\n"
 ```
+
+```
+kernel/time/timer_list.c                                                              
++------------------------+                                                             
+| init_timer_list_procfs | ： create '/proc/timer_list' with 'timer_list_sops' installed
++-|----------------------+                                                             
+  |                                                                                    
+  +--> create '/proc/timer_list' with 'timer_list_sops' installed                      
+                                                                                       
+                                                                                       
+       static const struct seq_operations timer_list_sops = {                          
+           .start = timer_list_start,                                                  
+           .next = timer_list_next,                                                    
+           .stop = timer_list_stop,                                                    
+           .show = timer_list_show,                                                    
+       };                                                                              
+```
+
+## <a name="reference"></a> Reference
