@@ -1489,6 +1489,505 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 +-------------+            +---------------+           
 ```
 
+<details>
+  <summary> Code Trace </summary>
+
+```
+drivers/net/ethernet/faraday/ftgmac100.c                                                                                                                      
++-----------------+                                                                                                                                            
+| ftgmac100_probe | : prepare net_dev, init reset work, determine mac, handle ncsi or phy, register net_dev                                                    
++-|---------------+                                                                                                                                            
+  |    +------------------+                                                                                                                                    
+  |--> | platform_get_irq |                                                                                                                                    
+  |    +------------------+                                                                                                                                    
+  |    +----------------+                                                                                                                                      
+  |--> | alloc_etherdev | alloc net_device + priv, alloc tx/rx queues, install basic ops                                                                       
+  |    +----------------+                                                                                                                                      
+  |              +----------------------+                                                                                                                      
+  |--> init work | ftgmac100_reset_task | reset hw, reset sw (all desc/skb)                                                                                    
+  |              +----------------------+                                                                                                                      
+  |    +---------+                                                                                                                                             
+  +--> | ioremap | map hw reg                                                                                                                                  
+  |    +---------+                                                                                                                                             
+  |    +-----------------------+                                                                                      net_device                               
+  |--> | ftgmac100_initial_mac | determine mac and write to reg                                                     +-------------+                            
+  |    +-----------------------+                                                                                    | .header_ops |---->  eth_header_ops       
+  |                                                                                                                 |.ethtool_ops |--\    default_ethtool_ops- 
+  |--> if property has specified 'use-ncsi'                                                                         |             |   ->  ftgmac100_ethtool_ops
+  |    |                                                                                                            |             |                            
+  |    |--> print "Using NCSI interface\n"                                                                          |  netdev_ops |       ftgmac100_netdev_ops 
+  |--> |                                                                                                            |             |                            
+  |    |    +-------------------+                                                                                   |             |                            
+  |    +--> | ncsi_register_dev | (skip for now)                                                                    |             |                            
+  |         +-------------------+                                                                                   +-------------+                            
+  |                                                                                                                                                            
+  |--> elif property has specified 'phy-handle'                                                                                                                
+  |    |                                                                                                                                                       
+  |    |    +------------------------+                                                                                                                         
+  |    |--> | of_phy_get_and_connect | get phy-mode from dt, bind phy dev/drv, install handler to adjust link                                                  
+  |    |    +------------------------+                                                                                                                         
+  |    |    +-------------------+                                                                                                                              
+  |    +--> | phy_attached_info | print phy info                                                                                                               
+  |         +-------------------+                                                                                                                              
+  |                                                                                                                                                            
+  |--> elif it's aspeed old-style device tree (skip)                                                                                                           
+  |                                                                                                                                                            
+  |--> if aspeed, setup clk                                                                                                                                    
+  |                                                                                                                                                            
+  |--> set tx/rx entry#, base feature,                                                                                                                         
+  |                                                                                                                                                            
+  |    +-----------------+                                                                                                                                     
+  +--> | register_netdev | determine name/idx, config features, add dev, label 'present', apply noop_qdisc, setup watchdog                                     
+       +-----------------+                                                                                                                                     
+```
+
+```
+include/linux/etherdevice.h                                                           
++----------------+                                                                     
+| alloc_etherdev | : alloc net_device + priv, alloc tx/rx queues, install basic ops    
++-------------------+                                                                  
+| alloc_etherdev_mq | : alloc net_device + priv, alloc tx/rx queues, install basic ops 
++--------------------+                                                                 
+| alloc_etherdev_mqs | : alloc net_device + priv, alloc tx/rx queues, install basic ops
++------------------+-+                                                                 
+| alloc_netdev_mqs | : alloc net_device + priv, alloc tx/rx queues, install basic ops  
++-|----------------+                                                                   
+  |                                                                                    
+  |--> alloc 'net_device' + 'priv' combined                                            
+  |                                                                                    
+  |    +---------------+                                                               
+  |--> | dev_addr_init | init dev addr list and creat the first node                   
+  |    +---------------+                                                               
+  |    +-------------+                                                                 
+  |--> | dev_net_set | set dev's network namespace                                     
+  |    +-------------+                                                                 
+  |                                                                                    
+  |--> call ->setup, e.g.,                                                             
+  |    +-------------+                                                                 
+  |    | ether_setup | init with ethernet-generic values                               
+  |    +-------------+                                                                 
+  |                                                                                    
+  |    +---------------------------+                                                   
+  |--> | netif_alloc_netdev_queues | alloc and init tx queue                           
+  |    +---------------------------+                                                   
+  |    +-----------------------+                                                       
+  |--> | netif_alloc_rx_queues | alloc and init rx queue                               
+  |    +-----------------------+                                                       
+  |                                                                                    
+  +--> ensure dev has its ethtool_ops installed                                        
+```
+
+```
+net/core/dev_addr_lists.c                                     
++---------------+                                              
+| dev_addr_init | : init dev addr list and creat the first node
++-|-------------+                                              
+  |    +---------------+                                       
+  |--> | __hw_addr_add | add addr to dev                       
+  |    +---------------+                                       
+  |                                                            
+  +--> have dev addr point to the one just created             
+```
+
+```
+drivers/net/ethernet/faraday/ftgmac100.c                                                                      
++----------------------+                                                                                       
+| ftgmac100_reset_task | : reset hw, reset sw (all desc/skb)                                                   
++-|--------------------+                                                                                       
+  |                                                                                                            
+  |--> if the interface isn't running, return                                                                  
+  |                                                                                                            
+  |    +--------------+                                                                                        
+  |--> | napi_disable | disable napi                                                                           
+  |    +--------------+                                                                                        
+  |    +------------------+                                                                                    
+  |--> | netif_tx_disable | disable tx queue                                                                   
+  |    +------------------+                                                                                    
+  |    +-------------------+                                                                                   
+  |--> | ftgmac100_stop_hw | stop hw                                                                           
+  |    +-------------------+                                                                                   
+  |    +--------------------------------+                                                                      
+  |--> | ftgmac100_reset_and_config_mac | reset hw reg                                                         
+  |    +--------------------------------+                                                                      
+  |    +------------------------+                                                                              
+  |--> | ftgmac100_free_buffers | free all packets in rx/tx queues                                             
+  |    +------------------------+                                                                              
+  |    +--------------------+                                                                                  
+  +--> | ftgmac100_init_all | init desc & alloc skb for rx/tx queues, start hw, enable napi/tx_queue/interrupts
+       +--------------------+                                                                                  
+```
+
+```
+drivers/net/ethernet/faraday/ftgmac100.c                                                                 
++--------------------+                                                                                    
+| ftgmac100_init_all | : init desc & alloc skb for rx/tx queues, start hw, enable napi/tx_queue/interrupts
++-|------------------+                                                                                    
+  |    +----------------------+                                                                           
+  |--> | ftgmac100_init_rings | init all desc on rx/tx queues                                             
+  |    +----------------------+                                                                           
+  |    +----------------------------+                                                                     
+  |--> | ftgmac100_alloc_rx_buffers | alloc skb for each desc on rx queue                                 
+  |    +----------------------------+                                                                     
+  |    +-------------------+                                                                              
+  |--> | ftgmac100_init_hw | (rw)init hw (e.g., clear interrupts, write mac addr, ...)                    
+  |    +-------------------+                                                                              
+  |    +------------------------+                                                                         
+  |--> | ftgmac100_config_pause |                                                                         
+  |    +------------------------+                                                                         
+  |    +--------------------+                                                                             
+  |--> | ftgmac100_start_hw | start hw                                                                    
+  |    +--------------------+                                                                             
+  |    +-------------+                                                                                    
+  |--> | napi_enable | enable napi                                                                        
+  |    +-------------+                                                                                    
+  |    +-------------------+                                                                              
+  |--> | netif_start_queue | enable tx queue (allow transmit)                                             
+  |    +-------------------+                                                                              
+  |                                                                                                       
+  +--> enable itnerrupts                                                                                  
+```
+
+```
+drivers/of/of_mdio.c                                                                              
++------------------------+                                                                         
+| of_phy_get_and_connect | : get phy-mode from dt, bind phy dev/drv, install handler to adjust link
++-|----------------------+                                                                         
+  |                                                                                                
+  |--> get property 'phy-mode' as interface                                                        
+  |                                                                                                
+  |--> if it's a fixed link (not the case of aspeed-ast2600-ncsi.dts)                              
+  |    -                                                                                           
+  |    +--> (skip)                                                                                 
+  |                                                                                                
+  |--> else                                                                                        
+  |    |                                                                                           
+  |    |    +------------------+                                                                   
+  |    +--> | of_parse_phandle | get dt node of "phy-handle"                                       
+  |         +------------------+                                                                   
+  |    +----------------+                                                                          
+  +--> | of_phy_connect | given phy dt_node, bind its dev/drv, install handler to adjust link      
+       +----------------+                                                                          
+```
+
+```
+drivers/of/of_mdio.c                                                                   
++----------------+                                                                      
+| of_phy_connect | : given phy dt_node, bind its dev/drv, install handler to adjust link
++-|--------------+                                                                      
+  |    +--------------------+                                                           
+  |--> | of_phy_find_device | given phy dt_node, get its mdio_dev                       
+  |    +--------------------+                                                           
+  |    +--------------------+                                                           
+  +--> | phy_connect_direct | bind phy dev/drv, install handler to adjust link          
+       +--------------------+                                                           
+```
+
+```
+drivers/net/phy/phy_device.c                                                             
++--------------------+                                                                    
+| phy_connect_direct | : bind phy dev/drv, install handler to adjust link                 
++-|------------------+                                                                    
+  |    +-------------------+                                                              
+  |--> | phy_attach_direct | ensure dev/drv of phy is bound, adjust carrier/link, init phy
+  |    +-------------------+                                                              
+  |    +------------------+                                                               
+  |--> | phy_prepare_link | install handler to phy_dev                                    
+  |    +------------------+ +-----------------------+                                     
+  |                         | ftgmac100_adjust_link | reset hw, reset sw (all desc/skb)   
+  |                         +-----------------------+                                     
+  |                                                                                       
+  +--> if phy_dev has valid interrupt (probably not our case)                             
+       |                                                                                  
+       |    +-----------------------+                                                     
+       +--> | phy_request_interrupt | (skip)                                              
+            +-----------------------+                                                     
+```
+
+```
+drivers/net/phy/phy_device.c                                                        
++-------------------+                                                                
+| phy_attach_direct | : ensure dev/drv of phy is bound, adjust carrier/link, init phy
++-|-----------------+                                                                
+  |                                                                                  
+  |--> if the phy_dev has no driver yet                                              
+  |    -                                                                             
+  |    +--> use the generic phy driver                                               
+  |                                                                                  
+  |--> if we use the generic phy driver                                              
+  |    |                                                                             
+  |    |--> call ->probe(), e.g.,                                                    
+  |    |    +-----+                                                                  
+  |    |    | ??? |                                                                  
+  |    |    +-----+                                                                  
+  |    |                                                                             
+  |    |    +--------------------+                                                   
+  |    +--> | device_bind_driver |                                                   
+  |         +--------------------+                                                   
+  |                                                                                  
+  |--> install phy_link_change handler                                               
+  |    +-----------------+                                                           
+  |    | phy_link_change | enable/disable carrier, adjust link (reset hw/sw)         
+  |    +-----------------+                                                           
+  |                                                                                  
+  |    +------------------------+                                                    
+  |--> | phy_sysfs_create_links |                                                    
+  |    +------------------------+                                                    
+  |                                                                                  
+  |--> if arg netdev is given                                                        
+  |    |                                                                             
+  |    |    +-------------------+                                                    
+  |    +--> | netif_carrier_off | label 'off' on netdev                              
+  |         +-------------------+                                                    
+  |    +-------------+                                                               
+  |--> | phy_init_hw | reset phy dev, init config                                    
+  |    +-------------+                                                               
+  |    +------------+                                                                
+  |--> | phy_resume |                                                                
+  |    +------------+                                                                
+  |    +---------------------------+                                                 
+  +--> | phy_led_triggers_register | do nothing bc of disabled config                
+       +---------------------------+                                                 
+```
+
+```
+drivers/net/phy/phy_device.c                                                                  
++-----------------+                                                                            
+| phy_link_change | : enable/disable carrier, adjust link (reset hw/sw)                        
++-|---------------+                                                                            
+  |                                                                                            
+  |--> if arg 'do_carrier' is set                                                              
+  |    |                                                                                       
+  |    |--> if up                                                                              
+  |    |    |                                                                                  
+  |    |    |    +------------------+                                                          
+  |    |    +--> | netif_carrier_on | clear 'no carrier' flag, enable watchdog timer for netdev
+  |    |         +------------------+                                                          
+  |    |                                                                                       
+  |    +--> else                                                                               
+  |         |                                                                                  
+  |         |    +-------------------+                                                         
+  |         +--> | netif_carrier_off | label 'no carrier' on netdev                            
+  |              +-------------------+                                                         
+  |                                                                                            
+  +--> call ->adjust_link(), e.g.,                                                             
+       +-----------------------+                                                               
+       | ftgmac100_adjust_link | save new attributes in priv, reset hw/sw                      
+       +-----------------------+                                                               
+```
+
+```
+                                                                                
+ net/sched/sch_generic.c                                                        
++------------------+                                                            
+| netif_carrier_on | : clear 'no carrier' flag, enable watchdog timer for netdev
++-|----------------+                                                            
+  |                                                                             
+  |--> clear 'no carrier' flag from netdev                                      
+  |                                                                             
+  |    +----------------------+                                                 
+  |--> | linkwatch_fire_event | (skip)                                          
+  |    +----------------------+                                                 
+  |                                                                             
+  +--> if netdev is running                                                     
+       |                                                                        
+       |    +----------------------+                                            
+       +--> | __netdev_watchdog_up | enable watchdog timer for netdev           
+            +----------------------+                                            
+```
+
+```
+net/sched/sch_generic.c                                   
++----------------------+                                   
+| __netdev_watchdog_up | : enable watchdog timer for netdev
++-|--------------------+                                   
+  |                                                        
+  +--> if ->ndo_tx_timeout() exists                        
+       |                                                   
+       |    +-----------+                                  
+       +--> | mod_timer | watchdog timer                   
+            +-----------+                                  
+```
+
+```
+net/sched/sch_generic.c
++-------------------+                               
+| netif_carrier_off | : label 'no carrier' on netdev
++-|-----------------+                               
+  |                                                 
+  |--> label 'no carrier' on netdev                 
+  |                                                 
+  |    +----------------------+                     
+  +--> | linkwatch_fire_event | (skip)              
+       +----------------------+                     
+```
+
+```
+drivers/net/phy/phy_device.c                                                      
++-----------------------+                                                          
+| ftgmac100_adjust_link | : save new attributes in priv, reset hw/sw               
++-|---------------------+                                                          
+  |                                                                                
+  |--> if everything (speed/duplex/pause) is the same, return                      
+  |                                                                                
+  |--> if link status changes                                                      
+  |    |                                                                           
+  |    |    +------------------+                                                   
+  |    +--> | phy_print_status | print link status (up or down)                    
+  |         +------------------+                                                   
+  |                                                                                
+  |--> save new attributes (speed/duplex/pause) in private                         
+  |                                                                                
+  |--> if link is down, return                                                     
+  |                                                                                
+  |--> write hw reg to disable interrupts                                          
+  |                                                                                
+  |    +---------------+                                                           
+  +--> | schedule_work | place work to global queue                                
+       +---------------+ +----------------------+                                  
+                         | ftgmac100_reset_task | reset hw, reset sw (all desc/skb)
+                         +----------------------+                                  
+```
+
+```
+drivers/net/phy/phy.c                                    
++------------------+                                      
+| phy_print_status | : print link status (up or down)     
++-|----------------+                                      
+  |                                                       
+  |--> if phy_dev has link                                
+  |    -                                                  
+  |    +--> print "Link is Up - %s/%s - flow control %s\n"
+  |                                                       
+  +--> else                                               
+       -                                                  
+       +--> print "Link is Down\n"                        
+```
+
+```
+drivers/net/phy/phy_device.c               
++-------------+                             
+| phy_init_hw | : reset phy dev, init config
++-|-----------+                             
+  |    +------------------+                 
+  |--> | phy_device_reset |                 
+  |    +------------------+                 
+  |                                         
+  |--> if ->soft_reset() exists             
+  |    -                                    
+  |    +--> call it                         
+  |                                         
+  |    +-----------------+                  
+  |--> | phy_scan_fixups | (skip)           
+  |    +-----------------+                  
+  |                                         
+  +--> if ->config_init() exists            
+       -                                    
+       +--> call it                         
+```
+
+```
+drivers/net/phy/phy_device.c                                        
++-------------------+                                                
+| phy_attached_info | : print phy info                               
++--------------------+                                               
+| phy_attached_print | : print phy info                              
++-|------------------+                                               
+  |                                                                  
+  +--> print "attached PHY driver [%s] (mii_bus:phy_addr=%s, irq=%s)"
+```
+
+```
+net/core/dev.c
++-----------------+
+| register_netdev | : determine name/idx, config features, add dev, label 'present', apply noop_qdisc, setup watchdog
++--------------------+
+| register_netdevice | : determine name/idx, config features, add dev, label 'present', apply noop_qdisc, setup watchdog
++-|------------------+
+  |    +--------------------+
+  |--> | dev_get_valid_name | determine name
+  |    +--------------------+
+  |
+  |--> if ->ndo_init() exists, call it (not our case)
+  |
+  |--> determine index
+  |
+  |--> config features
+  |
+  |    +--------------------------+
+  |--> | call_netdevice_notifiers | 'post init'
+  |    +--------------------------+
+  |    +-------------------------+
+  |--> | netdev_register_kobject | set dev name and add dev to framework
+  |    +-------------------------+
+  |    +--------------------------+
+  |--> | __netdev_update_features | (skip)
+  |    +--------------------------+
+  |
+  |--> label 'present' on net_dev
+  |
+  |    +--------------------+
+  |--> | linkwatch_init_dev | (skip)
+  |    +--------------------+
+  |    +--------------------+
+  |--> | dev_init_scheduler | apply noop_qdisc, setup timer of watchdog monitoring device
+  |    +--------------------+
+  |    +----------------+
+  |--> | list_netdevice | add to net namespace and hashtables
+  |    +----------------+
+  |    +--------------------------+
+  +--> | call_netdevice_notifiers | 'netdev register'
+       +--------------------------+
+```
+
+```
+net/sched/sch_generic.c                                                              
++--------------------+                                                                
+| dev_init_scheduler |  : apply noop_qdisc, setup timer of watchdog monitoring device 
++-|------------------+                                                                
+  |                                                                                   
+  |--> apply 'noop_qdisc' to net_dev and its tx queues                                
+  |                                                                                   
+  |    +-------------+                                                                
+  +--> | timer_setup | setup a timer with function                                    
+       +-------------+ +--------------+                                               
+                       | dev_watchdog | show warning if it expires, update next expiry
+                       +--------------+                                               
+```
+
+```
+net/sched/sch_generic.c                                                                            
++--------------+                                                                                    
+| dev_watchdog | : show warning if it expires, update next expiry                                   
++-|------------+                                                                                    
+  |                                                                                                 
+  +--> get related net_dev                                                                          
+  |                                                                                                 
+  +--> if its qdisc != noop                                                                         
+       -                                                                                            
+       +--> if the net_dev is present && running && carrier ok                                      
+            |                                                                                       
+            |--> for each tx queue                                                                  
+            |    -                                                                                  
+            |    +--> if transmit is off and it expires                                             
+            |         |                                                                             
+            |         |--> update timeout statistics                                                
+            |         |                                                                             
+            |         +--> break (to warn immediatly)                                               
+            |                                                                                       
+            |--> if timeout was detected                                                            
+            |    |                                                                                  
+            |    |--> warn "NETDEV WATCHDOG: %s (%s): transmit queue %u timed out\n"                
+            |    |                                                                                  
+            |    +--> call ->ndo_tx_timeout(), e.g.,                                                
+            |         +----------------------+                                                      
+            |         | ftgmac100_tx_timeout | disable interrupts, reset hw, reset sw (all desc/skb)
+            |         +----------------------+                                                      
+            |                                                                                       
+            +--> update next expiry of watchdog                                                     
+```
+
+</details>
+
 ## <a name="reference"></a> Reference
 
 - [TCP Server-Client implementation in C](https://www.geeksforgeeks.org/tcp-server-client-implementation-in-c/)
