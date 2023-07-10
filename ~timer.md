@@ -8,6 +8,461 @@
 
 ## <a name="introduction"></a> Introduction
 
+```
+kernel/time/tick-common.c                                                                                    
++----------------------+                                                                                      
+| tick_handle_periodic | : update jiffies/wall_time, run expired hrtimers/timers/posix_timers, update rq clock
++-|--------------------+                                                                                      
+  |    +---------------+                                                                                      
+  |--> | tick_periodic | update jiffies/wall_time, run expired hrtimers/timers/posix_timers, update rq clock  
+  |    +---------------+                                                                                      
+  |                                                                                                           
+  |--> if event handler is overwritten (not tick_handle_periodic anymore), return                             
+  |                                                                                                           
+  +--> if state isn't oneshot, return                                                                         
+       |                                                                                                      
+       |    +---------------------------+                                                                     
+       +--> | clockevents_program_event | program next event                                                  
+            +---------------------------+                                                                     
+```
+
+```
+kernel/time/tick-common.c                                                                             
++---------------+                                                                                      
+| tick_periodic | : update jiffies/wall_time, run expired hrtimers/timers/posix_timers, update rq clock
++-|-------------+                                                                                      
+  |                                                                                                    
+  |--> if current cpu is owner of the action                                                           
+  |    |                                                                                               
+  |    |--> update 'tick_next_period' (next event)                                                     
+  |    |                                                                                               
+  |    |    +----------+                                                                               
+  |    |--> | do_timer | update 'jiffies_64' and global loads                                          
+  |    |    +----------+                                                                               
+  |    |    +------------------+                                                                       
+  |    +--> | update_wall_time | update wall time                                                      
+  |         +------------------+                                                                       
+  |    +----------------------+                                                                        
+  |--> | update_process_times | run hrtimers/timers, update rq clock, run posix timers                 
+  |    +----------------------+                                                                        
+  |    +--------------+                                                                                
+  +--> | profile_tick | do nothing bc of disabled config                                               
+       +--------------+                                                                                
+```
+
+```
+kernel/time/timer.c                                                                         
++----------------------+                                                                     
+| update_process_times | : run hrtimers/timers, update rq clock, run posix timers            
++-|--------------------+                                                                     
+  |    +------------------+                                                                  
+  |--> | run_local_timers | run expired hrtimers and timers                                  
+  |    +------------------+                                                                  
+  |                                                                                          
+  |--> if it's in irq                                                                        
+  |    |                                                                                     
+  |    |    +---------------+                                                                
+  |    +--> | irq_work_tick | (skip)                                                         
+  |         +---------------+                                                                
+  |                                                                                          
+  |    +----------------+                                                                    
+  |--> | scheduler_tick | update rq clock, call ->task_tick(), balance runqueues if necessary
+  |    +----------------+                                                                    
+  |                                                                                          
+  +--> if CONFIG_POSIX_TIMERS                                                                
+       |                                                                                     
+       |    +----------------------+                                                         
+       +--> | run_posix_cpu_timers | collect expired timers from task/group, trigger them    
+            +----------------------+                                                         
+```
+
+```
+kernel/time/timer.c                                                                       
++------------------+                                                                       
+| run_local_timers | : switch to hrtimer mechanism, or run expired hrtimers                
++-|----------------+                                                                       
+  |                                                                                        
+  |--> get percpu timer base (std)                                                         
+  |                                                                                        
+  |    +--------------------+                                                              
+  |--> | hrtimer_run_queues | switch to hrtimer mechanism, or run expired hrtimers         
+  |    +--------------------+                                                              
+  |                                                                                        
+  +--> if 'jiffies' exceeds expire time                                                    
+       |                                                                                   
+       |    +---------------+                                                              
+       +--> | raise_softirq | timer                                                        
+            +---------------+ +-------------------+                                        
+                              | run_timer_softirq | run each expired timer of timer base(s)
+                              +-------------------+                                        
+```
+
+```
+kernel/time/hrtimer.c                                                                       
++--------------------+                                                                       
+| hrtimer_run_queues | : switch to hrtimer mechanism, or run expired hrtimers                
++-|------------------+                                                                       
+  |                                                                                          
+  |--> get percpu hrtimer base                                                               
+  |                                                                                          
+  |--> if hrtimer mechanism isn't active, return                                             
+  |                                                                                          
+  |--> if we are to to switch to hrtimer mechanism                                           
+  |    |                                                                                     
+  |    |    +------------------------+                                                       
+  |    |--> | hrtimer_switch_to_hres | overwrite handler for hrtimer, switch to oneshot mode,
+  |    |    +------------------------+ lable 'hres_active', setup sched hrtimer              
+  |    |                                                                                     
+  |    +--> return                                                                           
+  |                                                                                          
+  |--> if at lease one timer expires                                                         
+  |    |                                                                                     
+  |    |    +----------------------++---------------------+                                  
+  |    +--> | raise_softirq_irqoff || hrtimer_run_softirq |                                  
+  |         +----------------------++---------------------+                                  
+  |                                 run expired hrtimers of percpu hrtimer bases             
+  |                                                                                          
+  |    +----------------------+                                                              
+  +--> | __hrtimer_run_queues | for each base, run expired hrtimers                          
+       +----------------------+                                                              
+```
+
+```
+kernel/time/hrtimer.c                                                                                                      
++------------------------+                                                                                                  
+| hrtimer_switch_to_hres | : overwrite handler for hrtimer, switch to oneshot mode, lable 'hres_active', setup sched hrtimer
++-|----------------------+                                                                                                  
+  |    +-------------------+                                                                                                
+  |--> | tick_init_highres | overwrite evtdev handler for hrtimer, switch to state/mode to oneshot                          
+  |    +-------------------+                                                                                                
+  |                                                                                                                         
+  |--> label hres_active in base                                                                                            
+  |                                                                                                                         
+  |    +------------------------+                                                                                           
+  |--> | tick_setup_sched_timer | setup a sched hrtimer                                                                     
+  |    +------------------------+                                                                                           
+  |    +----------------------+                                                                                             
+  +--> | retrigger_next_event | retrigger the interrupt to get things going?                                                
+       +----------------------+                                                                                             
+```
+
+```
+kernel/time/tick-oneshot.c                                                                       
++-------------------+                                                                             
+| tick_init_highres | : overwrite evtdev handler for hrtimer, switch to state/mode to oneshot     
++------------------------+                                                                        
+| tick_switch_to_oneshot | : overwrite evtdev handler for hrtimer, switch to state/mode to oneshot
++-|----------------------+                                                                        
+  |                                                                                               
+  |--> if evtdev doesn't support one shot, return error                                           
+  |                                                                                               
+  |--> tick_dev mode = oneshot                                                                    
+  |                                                                                               
+  |--> install arg handler, e.g.,                                                                 
+  |    +-------------------+                                                                      
+  |    | hrtimer_interrupt | for each base: run expired hrtimers, program next event              
+  |    +-------------------+                                                                      
+  |                                                                                               
+  |    +--------------------------+                                                               
+  |--> | clockevents_switch_state | oneshot                                                       
+  |    +--------------------------+                                                               
+  |    +----------------------------------+                                                       
+  +--> | tick_broadcast_switch_to_oneshot | (skip)                                                
+       +----------------------------------+                                                       
+```
+
+```
+kernel/time/hrtimer.c                                                                       
++-------------------+                                                                        
+| hrtimer_interrupt | : for each base: run expired hrtimers, program next event              
++-|-----------------+                                                                        
+  |                                                                                          
+  |--> get percpu hrtimer base                                                               
+  |                                                                                          
+  |    +---------------------+                                                               
+  |--> | hrtimer_update_base | update boot/real/tai offset of arg base                       
+  |    +---------------------+                                                               
+  |                                                                                          
+  |--> if softriq expires                                                                    
+  |    |                                                                                     
+  |    |    +----------------------+                                                         
+  |    +--> | raise_softirq_irqoff | raise the corresponding flag (hrtimer) in softirq bitmap
+  |         +----------------------+                                                         
+  |    +----------------------+                                                              
+  |--> | __hrtimer_run_queues | for each base, run expired hrtimers                          
+  |    +----------------------+                                                              
+  |    +---------------------------+                                                         
+  |--> | hrtimer_update_next_event | calculate next expire time                              
+  |    +---------------------------+                                                         
+  |    +--------------------+                                                                
+  +--> | tick_program_event | given next expire time, program evtdev event                   
+       +--------------------+                                                                
+```
+
+```
+kernel/time/tick-sched.c                                                                                                     
++------------------------+                                                                                                    
+| tick_setup_sched_timer | : setup a sched hrtimer                                                                            
++-|----------------------+                                                                                                    
+  |    +--------------+                                                                                                       
+  |--> | hrtimer_init | init hrtimer                                                                                          
+  |    +--------------+                                                                                                       
+  |                                                                                                                           
+  |--> install function                                                                                                       
+  |    +------------------+                                                                                                   
+  |    | tick_sched_timer | update jiffies/wall_time, run hrtimers/timers/posix_timers, update rq clock, forward hrtimer      
+  |    +------------------+                                                                                                   
+  |                                                                                                                           
+  |    +---------------------+                                                                                                
+  |--> | hrtimer_set_expires | set next expiry                                                                                
+  |    +---------------------+                                                                                                
+  |                                                                                                                           
+  |--> if 'sched_skew_tick' is set (probably not our case), blabla                                                            
+  |                                                                                                                           
+  |    +-----------------+                                                                                                    
+  |--> | hrtimer_forward | forward hrtimer                                                                                    
+  |    +-----------------+                                                                                                    
+  |    +-----------------------+                                                                                              
+  |--> | hrtimer_start_expires | dequeue hrtimer, set next expiry, switch base and enqueue, re-program next event is necessary
+  |    +-----------------------+                                                                                              
+  |    +--------------------+                                                                                                 
+  +--> | tick_nohz_activate | (skip)                                                                                          
+       +--------------------+                                                                                                 
+```
+
+```
+kernel/time/tick-sched.c                                                                                          
++------------------+                                                                                               
+| tick_sched_timer | : update jiffies/wall_time, run hrtimers/timers/posix_timers, update rq clock, forward hrtimer
++-|----------------+                                                                                               
+  |    +---------------------+                                                                                     
+  |--> | tick_sched_do_timer | update jiffies/global_load/wall_time                                                
+  |    +---------------------+                                                                                     
+  |                                                                                                                
+  |--> if we're in irq context                                                                                     
+  |    |                                                                                                           
+  |    |    +-------------------+                                                                                  
+  |    +--> | tick_sched_handle | run hrtimers/timers, update rq clock, run posix timers                           
+  |         +-------------------+                                                                                  
+  |    +-----------------+                                                                                         
+  +--> | hrtimer_forward | updatre next expiry of hrtimer                                                          
+       +-----------------+                                                                                         
+```
+
+```
+kernel/time/tick-sched.c                                                    
++---------------------+                                                      
+| tick_sched_do_timer | : update jiffies/global_load/wall_time               
++-|-------------------+                                                      
+  |                                                                          
+  +--> if current cpu is the one                                             
+       |                                                                     
+       |    +--------------------------+                                     
+       +--> | tick_do_update_jiffies64 | update jiffies/global_load/wall_time
+            +--------------------------+                                     
+```
+
+```
+kernel/time/tick-sched.c                                          
++--------------------------+                                       
+| tick_do_update_jiffies64 | : update jiffies/global_load/wall_time
++-|------------------------+                                       
+  |                                                                
+  |--> get 'tick_next_period'                                      
+  |                                                                
+  |--> if 'now' doesn't reach next expire, return                  
+  |                                                                
+  |--> update 'jiffies_64'                                         
+  |                                                                
+  |--> update 'tick_next_period'                                   
+  |                                                                
+  |    +------------------+                                        
+  |--> | calc_global_load |                                        
+  |    +------------------+                                        
+  |    +------------------+                                        
+  +--> | update_wall_time |                                        
+       +------------------+                                        
+```
+
+```
+kernel/time/tick-sched.c                                                             
++-------------------+                                                                 
+| tick_sched_handle | : run hrtimers/timers, update rq clock, run posix timers        
++-|-----------------+                                                                 
+  |    +----------------------+                                                       
+  |--> | update_process_times | run hrtimers/timers, update rq clock, run posix timers
+  |    +----------------------+                                                       
+  |    +--------------+                                                               
+  +--> | profile_tick | do nothing bc of disabled config                              
+       +--------------+                                                               
+```
+
+```
+kernel/time/tick-sched.c                                                                                                        
++-----------------------+                                                                                                        
+| hrtimer_start_expires | : dequeue hrtimer, set next expiry, switch base and enqueue, re-program next event is necessary        
++------------------------+                                                                                                       
+| hrtimer_start_range_ns | : dequeue hrtimer, set next expiry, switch base and enqueue, re-program next event is necessary       
++-|----------------------+                                                                                                       
+  |    +--------------------------+                                                                                              
+  |--> | __hrtimer_start_range_ns | dequeue hrtimer, set next expiry, switch base and enqueue, re-program next event is necessary
+  |    +--------------------------+                                                                                              
+  |                                                                                                                              
+  +--> if need reprogram                                                                                                         
+       |                                                                                                                         
+       |    +-------------------+                                                                                                
+       +--> | hrtimer_reprogram | re-program next event                                                                          
+            +-------------------+                                                                                                
+```
+
+```
+kernel/time/hrtimer.c                                                                                                      
++--------------------------+                                                                                                
+| __hrtimer_start_range_ns | : dequeue hrtimer, set next expiry, switch base and enqueue, re-program next event is necessary
++-|------------------------+                                                                                                
+  |    +----------------+                                                                                                   
+  |--> | remove_hrtimer | remove hrtimer, might reprogram next event accordingly                                            
+  |    +----------------+                                                                                                   
+  |    +------------------------------+                                                                                     
+  |--> | hrtimer_set_expires_range_ns | set next expiry                                                                     
+  |    +------------------------------+                                                                                     
+  |                                                                                                                         
+  |--> if no force_local                                                                                                    
+  |    |                                                                                                                    
+  |    |    +---------------------+                                                                                         
+  |    +--> | switch_hrtimer_base | save target base in hrtimer                                                             
+  |         +---------------------+                                                                                         
+  |    +-----------------+                                                                                                  
+  |--> | enqueue_hrtimer | add hrtimer to target base                                                                       
+  |    +-----------------+                                                                                                  
+  |                                                                                                                         
+  |--> if no force_local, return                                                                                            
+  |                                                                                                                         
+  |    +-------------------------+                                                                                          
+  +--> | hrtimer_force_reprogram | program next event                                                                       
+       +-------------------------+                                                                                          
+```
+
+```
+kernel/time/posix-cpu-timers.c                                                       
++----------------------+                                                              
+| run_posix_cpu_timers | : collect expired timers from task/group, trigger them       
++-|--------------------+                                                              
+  |    +----------------------+                                                       
+  |--> | fastpath_timer_check | check if there's expired timer                        
+  |    +----------------------+                                                       
+  |                                                                                   
+  |--> if no, return                                                                  
+  |                                                                                   
+  |    +------------------------+                                                     
+  +--> | __run_posix_cpu_timers | collect expired timers from task/group, trigger them
+       +------------------------+                                                     
+```
+
+```
+kernel/time/posix-cpu-timers.c                                                       
++------------------------+                                                            
+| __run_posix_cpu_timers | : collect expired timers from task/group, trigger them     
++-------------------------+                                                           
+| handle_posix_cpu_timers | : collect expired timers from task/group, trigger them    
++-|-----------------------+                                                           
+  |    +---------------------+                                                        
+  |--> | check_thread_timers | move expired timers of given task to arg list          
+  |    +---------------------+                                                        
+  |    +----------------------+                                                       
+  |--> | check_process_timers | move expired timers of given task's signal to arg list
+  |    +----------------------+                                                       
+  |                                                                                   
+  +--> for each expired timer in list                                                 
+       |                                                                              
+       |--> remove it from list                                                       
+       |                                                                              
+       |    +----------------+                                                        
+       +--> | cpu_timer_fire | determine pid type and send signal to target pid       
+            +----------------+                                                        
+```
+
+```
+kernel/time/posix-cpu-timers.c
++---------------------+                                                        
+| check_thread_timers | : move expired timers of given task to arg list        
++-|-------------------+                                                        
+  |                                                                            
+  +--> get cpu timers from task                                                
+  |                                                                            
+  |    +---------------------+                                                 
+  |--> | task_sample_cputime | take utime/stime from task and save in samples  
+  |    +---------------------+                                                 
+  |    +-------------------------+                                             
+  +--> | collect_posix_cputimers | move expired timers of all bases to arg list
+       +-------------------------+                                             
+```
+
+```
+kernel/time/posix-cpu-timers.c                                           
++-------------------------+                                               
+| collect_posix_cputimers | : move expired timers of all bases to arg list
++-|-----------------------+                                               
+  |                                                                       
+  +--> for each clock base                                                
+       |                                                                  
+       |    +--------------------+                                        
+       +--> | collect_timerqueue | move expired timers to arg list        
+            +--------------------+                                        
+```
+
+```
+kernel/time/posix-cpu-timers.c                                
++--------------------+                                         
+| collect_timerqueue | : move expired timers to arg list       
++-|------------------+                                         
+  |                                                            
+  +--> while time queue has next entry                         
+       |                                                       
+       |--> if the timer hans't expired, return                
+       |                                                       
+       |    +-------------------+                              
+       |--> | cpu_timer_dequeue | remove timer from where it is
+       |    +-------------------+                              
+       |    +---------------+                                  
+       +--> | list_add_tail | add to arg list                  
+            +---------------+                                  
+```
+
+```
+kernel/time/posix-cpu-timers.c                                                  
++----------------------+                                                         
+| check_process_timers | : move expired timers of given task's signal to arg list
++-|--------------------+                                                         
+  |                                                                              
+  |--> get timer base(s) from signal                                             
+  |                                                                              
+  |    +-------------------------+                                               
+  +--> | collect_posix_cputimers | move expired timers of all bases to arg list  
+       +-------------------------+                                               
+```
+
+```
+kernel/time/posix-cpu-timers.c                                                   
++----------------+                                                                
+| cpu_timer_fire | : determine pid type and send signal to target pid             
++-|--------------+                                                                
+  |                                                                               
+  |--> if it's a oneshot timer                                                    
+  |    |                                                                          
+  |    |    +-------------------+                                                 
+  |    |--> | posix_timer_event | determine pid type and send signal to target pid
+  |    |    +-------------------+                                                 
+  |    |                                                                          
+  |    +--> clear expiry                                                          
+  |                                                                               
+  +--> else                                                                       
+       |                                                                          
+       |    +-------------------+                                                 
+       +--> | posix_timer_event | determine pid type and send signal to target pid
+            +-------------------+                                                 
+```
+
 ## <a name="system-startup"></a> System Startup
 
 ```
