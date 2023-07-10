@@ -3,7 +3,6 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Network Layers & Families](#network-layers-and-families)
 - [Application Layer](#application-layer)
 - [Transport Layer](#transport-layer)
 - [Internet Layer](#internet-layer)
@@ -12,6 +11,13 @@
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
+
+The network stack, originally consisting of seven layers in the OSI model, is typically streamlined to four layers in kernel implementations. 
+Despite this simplification, tracing network functions remains challenging due to the abundant use of function pointers resulting from the rigid layer design.
+
+Common protocols like TCP, UDP, IP, ARP, and ICMP belong to the INET family, which is a group within the network stack. 
+The INET6 family comprises their IPv6 counterparts. 
+Additionally, there are other notable families in the network stack, including UNIX, NETLINK, and PACKET.
 
 ```          
                OSI Model            TCP/IP Model  
@@ -33,26 +39,6 @@
            +--------------+       +--------------+
 ```
 
-## <a name="network-layers-and-families"></a> Network Layers & Families
-
-The server and client models are the most common in our daily network environment. 
-The providers build a machine, or a bunch of them, to wait for the client-side requests and either serve or drop it. 
-The service type defines the system as a file server, web server, DHCP server, etc. 
-Let's start from the server-side and break the network stack into four implementation layers.
-- Application layer
-  - Determine how to service the request, e.g., to transmit the video content back
-- Transport layer
-  - Improve transmission robustness, e.g., re-sending the packet if the recipient complains about getting nothing.
-- Internet protocol layer
-  - Route a packet to the destination, or split a packet into smaller sizes if necessary.
-- Physical layer
-  - Works on the data sending and receiving without any idea of the big picture.
-
-The four-layers framework kernel implementation can accommodate the most common protocols in our daily lives. 
-Well-known protocols such as TCP, UDP, IP, ICMP come from the same network family. 
-Their IPv6 versions get grouped in another family. 
-Netlink, a message exchange method between user and kernel space, is also a network family.
-
 ```
 # Check how many network families the kernel supports
 root@romulus:~# dmesg | grep family
@@ -68,13 +54,20 @@ We will introduce how the network works in Linux based on the below combination 
 
 ## <a name="application-layer"></a> Application Layer
 
-The kernel provides a few network-related syscalls to userspace, and whichever requests the services through those functions belongs to the application layer.
-Both the client and server sides call **socket()** to get the handle. 
-The server calls **bind()** to relate the socket handle to its network address and then calls **listen()** to standby. 
-Anytime the client can **connect()** to the server, wait for its **accept()**, and advance to the real deal. 
-Data operation can be as simple as combining a few **read()** and **write()**. 
-Since kernel conceals the most complicated part, users can operate socket data like handling a file. 
-Either side can **close()** this connection, and the other side will process the termination appropriately.
+In network programming, machines offering services are called servers, while those making requests are called clients. 
+The kernel provides a set of syscalls that both clients and servers utilize to achieve their respective goals of requesting and fulfilling services.
+
+To begin, both sides use the `socket()` syscall to create a socket, which serves as a handle for subsequent operations like connection establishment, reading, and writing.
+
+A server may have multiple network interfaces and corresponding addresses. It uses `bind()` to associate the socket with a specific address. 
+The server then invokes `listen()` to enter a state of readiness for incoming connections.
+
+On the client side, calling `connect()` is sufficient to inform the server about the intent to establish a connection. 
+The server, in turn, employs `accept()` to formally establish the connection.
+
+At this point, both sides can perform read and write operations akin to typical file operations, with the interaction taking place over the network.
+
+Either or both sides can use `close()` to terminate the communication, marking the end of the interaction.
 
 ```                                 
      client                 server                                           
