@@ -54,20 +54,21 @@ We will introduce how the network works in Linux based on the below combination 
 
 ## <a name="application-layer"></a> Application Layer
 
-In network programming, machines offering services are called servers, while those making requests are called clients. 
-The kernel provides a set of syscalls that both clients and servers utilize to achieve their respective goals of requesting and fulfilling services.
+To avoid confusion, this illustration is based on the TCP/IP model, as evident in the code trace and packet header analysis. 
+In network programming, machines that provide services are referred to as servers, while those making requests are called clients.
 
-To begin, both sides use the `socket()` syscall to create a socket, which serves as a handle for subsequent operations like connection establishment, reading, and writing.
+The kernel offers a set of syscalls that both clients and servers utilize to achieve their respective objectives of requesting and fulfilling services. 
+The process begins with both sides utilizing the socket() syscall to create a socket, which acts as a handle for subsequent operations such as establishing connections, reading, and writing.
 
-A server may have multiple network interfaces and corresponding addresses. It uses `bind()` to associate the socket with a specific address. 
-The server then invokes `listen()` to enter a state of readiness for incoming connections.
+A server may possess multiple network interfaces with corresponding addresses. 
+It utilizes bind() to associate the socket with a specific address and subsequently employs listen() to enter a state of readiness for incoming connections.
 
-On the client side, calling `connect()` is sufficient to inform the server about the intent to establish a connection. 
-The server, in turn, employs `accept()` to formally establish the connection.
+On the client side, initiating a connect() syscall is sufficient to notify the server of the intention to establish a connection. 
+The server, in response, employs accept() to formally establish the connection.
 
-At this point, both sides can perform read and write operations akin to typical file operations, with the interaction taking place over the network.
+Once the connection is established, both sides can engage in read and write operations, similar to typical file operations, with the communication taking place over the network.
 
-Either or both sides can use `close()` to terminate the communication, marking the end of the interaction.
+To conclude the interaction, either or both sides can employ the close() syscall to terminate the communication, signaling the end of the interaction.
 
 ```                                 
      client                 server                                           
@@ -93,10 +94,15 @@ Either or both sides can use `close()` to terminate the communication, marking t
 
 ## <a name="transport-layer"></a> Transport Layer
 
-The transport layer provides reliable transmission, flow control, connection concepts. 
-Transmission Control Protocol (TCP) consists of the above features, while User 
-Datagram Protocol (UDP) provides a simplified method for another transmission. 
-Let's inspect how the TCP layer works behind each syscall to serve the request from the application layer.
+The transport layer handles the following tasks:
+
+1. Multiplexing and demultiplexing packets from/to multiple applications.
+2. Segmenting and reassembling data from/to applications.
+3. Connection establishment and termination.
+4. Error detection and correction.
+5. Quality of service.
+
+Now, let's focus on TCP and explore its underlying functionality through each syscall to serve the application layer.
 
 ### socket()
 
