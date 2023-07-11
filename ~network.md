@@ -111,25 +111,25 @@ prototype:
 SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 ```
 
-- **family**
-  - It's the network family we mentioned above, and it will be PF_INET in our study case.
-- **type**
-  - Once specifying the family as PF_INET, we have to select a type from the below list, and it will be SOCK_STREAM (TCP) in our case.
+- `family`
+  - In our study case, the network family being used is PF_INET, which refers to the IPv4 protocol family.
+- `type`
+  - When selecting the PF_INET family, the next step is to choose a type from the following list, and in our case, it is SOCK_STREAM (TCP).
   ```
-  SOCK_STREAM = 1,  <========== TCP
-  SOCK_DGRAM  = 2,  <========== UDP
+  SOCK_STREAM = 1,  <-- TCP
+  SOCK_DGRAM  = 2,
   SOCK_RAW    = 3,
   SOCK_RDM    = 4,
   SOCK_SEQPACKET  = 5,
   SOCK_DCCP   = 6,
   SOCK_PACKET = 10, 
   ```
-- **protocol**
-  - With the family PF_INET and type TCP or UDP selected, this field can only be IP.
+- `protocol`
+  - When the family is set to PF_INET and the type is specified as TCP, the only valid option for this field is IP.
 
-This syscall allocates a socket and installs corresponding operations based on the specified arguments. 
-These operations determine how the application layer connects the transport layer and the internet layer. 
-Later it prepares a file representing the socket so the users can operate it by general file operations.
+This syscall allocates a socket and sets up the appropriate operations based on the provided arguments. 
+These operations define the interface between the application layer, transport layer, and internet layer. 
+The syscall also prepares a file that represents the socket, enabling users to interact with it using general file operations.
 
 ```
   server
@@ -144,8 +144,7 @@ Later it prepares a file representing the socket so the users can operate it by 
 +--------+ proto = tcp_prot
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +------------+
@@ -187,14 +186,14 @@ Later it prepares a file representing the socket so the users can operate it by 
             +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
                  +-------------+                                                                        
 ```
+
 </details>
   
 ### setsockopt()
 
-It's optional.
+(TBD)
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +----------------+                                     
@@ -222,10 +221,10 @@ It's optional.
   
 ### bind()
 
-TCP and UDP protocols introduce the port concept in the transport layer, different from the physical port that connects to the network cable. 
-Every service occupies at least one port when it sets up the server with the help of **bind()**. 
-The common TCP ports are 80 (HTTP), 8080 (HTTPS), 22 (SSH), 53 (DNS), etc. 
-The caller can opt not to provide the port, and **bind()** will prepare a valid one in that case.
+TCP and UDP protocols introduce ports in the transport layer, separate from physical network ports. 
+When setting up a server, each service occupies at least one port using the `bind()` function. 
+Common TCP ports include 80 (HTTP), 8080 (HTTPS), 22 (SSH), 53 (DNS), and more. 
+If the caller does not specify a port, `bind()` will assign a valid port automatically.
 
 ```
   server
@@ -245,8 +244,7 @@ The caller can opt not to provide the port, and **bind()** will prepare a valid 
  +------+                  
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +----------+
@@ -287,9 +285,9 @@ The caller can opt not to provide the port, and **bind()** will prepare a valid 
 
 ### listen()
 
-In TCP design, the socket has different states indicating its current status. 
-The function **listen** will change the socket state accordingly and add it to the hash table, waiting for the client to connect. 
-We can use the utility **netstat** to display system socket status, and I guess the information comes from the hash table.
+In TCP, sockets have various states that indicate their current status. 
+The `listen()` function alters the socket state and adds it to the hash table, where it waits for a client to connect. 
+The system socket status can be viewed using the `netstat` utility, which likely retrieves information from the hash table.
 
 ```
                      server
@@ -312,8 +310,7 @@ We can use the utility **netstat** to display system socket status, and I guess 
 +-+--------+
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +------------+
@@ -351,11 +348,11 @@ We can use the utility **netstat** to display system socket status, and I guess 
   
 ### connect()
 
-Clients call this function with server address and port information to build the packet and send it to the destination. 
-Client port is required for the connection establishment, though it could be random. 
-In TCP design, re-sending is possible if the sender receives no response from the target in a specified interval. 
-The server side will receive the packet and locate the corresponding socket by server address and port through the hash table. 
-The client socket will change the socket state to CONNECTED after learning the acceptance from the server.
+Clients use this function to send packets by providing the server's address and port. 
+The goal is to establish a successful external connection. Unlike servers, clients can use a random port for their communication needs. 
+In TCP, if a sender does not receive a response from the receiver within a predefined interval, retransmission occurs.
+
+On the server side, the operating system receives the packet and identifies the appropriate socket for the target service from a hash table, using the combination of address and port as the key. 
 
 ```
   client                                                    server
@@ -378,8 +375,7 @@ The client socket will change the socket state to CONNECTED after learning the a
                                        +-+--------+
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
  +-------------+
@@ -450,9 +446,10 @@ The client socket will change the socket state to CONNECTED after learning the a
   
 ### accept()
 
-After the client connects to the server, it waits for acceptance.
-Once server decides to accept the request, it prepares another pair of socket and file for real data transmission.
-Till this stage, both sides have been through the famous three-way handshake of TCP and officially establish the connection.
+After the client invokes connect() to connect to the server, it waits for acceptance. 
+When the server decides to accept the request, a socket and file pair are prepared on the server side for actual data transmission. 
+Simultaneously, the client side updates its socket state to CONNECTED. 
+At this stage, both sides have completed the well-known three-way handshake of TCP and officially established the connection.
 
 ```
   client                                                    server
@@ -475,8 +472,7 @@ Till this stage, both sides have been through the famous three-way handshake of 
                                        +-+--------+
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +------------+
