@@ -446,7 +446,7 @@ On the server side, the operating system receives the packet and identifies the 
   
 ### accept()
 
-After the client invokes connect() to connect to the server, it waits for acceptance. 
+After the client invokes `connect()` to connect to the server, it waits for acceptance. 
 When the server decides to accept the request, a socket and file pair are prepared on the server side for actual data transmission. 
 Simultaneously, the client side updates its socket state to CONNECTED. 
 At this stage, both sides have completed the well-known three-way handshake of TCP and officially established the connection.
@@ -529,8 +529,8 @@ At this stage, both sides have completed the well-known three-way handshake of T
   
 ### write()
 
-Each side is free to write data to its socket, and the data goes through the normal flow of 'file write' before reaching the transport layer. 
-TCP then prepares the socket buffer (SKB), copies data onto it, builds the TCP header in SKB, and sends it to the Internet layer.
+Each side can freely write data to its respective socket, and this data follows the standard "file write" flow before reaching the transport layer. 
+TCP prepares the socket buffer (SKB), copies the data onto it, including the TCP header, and then transmits it to the Internet layer.
 
 ```
                      client                                                    server
@@ -563,8 +563,7 @@ from app layer |   | tcp hdr |
                v   +---------+
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 VFS layer
 
@@ -683,9 +682,9 @@ TCP layer
   
 ### read()
 
-The driver triggers the NAPI mechanism whenever the network interface hardware receives the packet. 
-That mechanism eventually places the partially stripped packet onto the receive queue in the TCP layer. 
-Every time users read, it triggers **tcp_recvmsg** and picks up the packet. 
+The driver activates the NAPI mechanism when the network interface hardware receives a packet. 
+This mechanism subsequently places the partially stripped packet onto the receive queue in the TCP layer. 
+Each time users read, the `tcp_recvmsg` function is triggered to retrieve the packet.
 
 ```
                      client                                                    server
@@ -718,8 +717,7 @@ from app layer |   | tcp hdr |                                               | t
                v   +---------+                                               +---------+   |
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 VFS layer
 
@@ -851,11 +849,12 @@ Function **tcp_v4_rcv** is responsible for placing data onto the receive queue, 
 
 ## <a name="internet-layer"></a> Internet Layer
 
-If we specify TCP as our transport layer, it must be Internet Protocol (IP) as the network layer whether we set it. 
-This layer dictates the direction of packets:
-- output: send to network interface layer for packet transmission
-- input: send transport layer
-- forward: this is probably the pervasive situation for those middle stops on the route
+When TCP is selected as the transport layer, Internet Protocol (IP) serves as the network layer by default, regardless of our explicit configuration. 
+The network layer determines the packet's direction:
+
+- Output: The packet is sent to the network interface layer for transmission.
+- Input: The packet is sent to the transport layer.
+- Forward: This is typically the case for intermediate stops along the route.
 
 ```
  transport       |          ^                          
@@ -876,8 +875,8 @@ This layer dictates the direction of packets:
    layer         v          |          |   v           
 ```
 
-As we can observe from the above TCP layer, only **connect()** and **write()** involve the IP layer through **tcp_transmit_skb()** for sending the packet out. 
-For **read()** action, the IP layer triggers the TCP handler to place data on the socket's receive queue.
+In the TCP layer mentioned above, the IP layer is involved only in the `connect()` and `write()` operations, where the packet is sent out using `tcp_transmit_skb()`. 
+In the case of the `read()` action, the IP layer activates the TCP handler to place the data on the socket's receive queue.
 
 | TCP Layer                | IP Layer                         |
 | ---                      | ---                              |
@@ -885,9 +884,9 @@ For **read()** action, the IP layer triggers the TCP handler to place data on th
 | tcp_sendmsg              | ip_queue_xmit                    |
 | tcp_recvmsg & tcp_v4_rcv | ip_rcv                           |
 
-Once the kernel finishes the boot and transfers the control to the systemd, one of the userspace utility sets up the route information. 
-How it gets the data is another story I don't know yet. 
-The kernel knows which gateway's IP address to use when building the packet header with this knowledge.
+After the kernel completes the boot process and hands over control to systemd, a userspace utility is responsible for configuring the route information. 
+The specific method used to obtain this data remains unknown to me at this time. 
+However, the kernel possesses the necessary knowledge regarding which gateway's IP address to incorporate into the packet header during construction.
 
 ```
 root@romulus:~# cat /proc/net/route 
@@ -902,7 +901,7 @@ eth0    0302000A        00000000        0005    0       0       1024    FFFFFFFF
              
 ```
 
-We can also utilize the utility **route** to display the pretty format.
+We can use the `route` utility to display the route information in a user-friendly format.
 
 ```
 root@romulus:~# route
@@ -914,10 +913,9 @@ default         10.0.2.2        0.0.0.0         UG    1024   0        0 eth0
 10.0.2.3        *               255.255.255.255 UH    1024   0        0 eth0                                    
 ```
 
-The function **ip_route_connect** does the gateway IP address lookup, which is essential when building the IP header.
+The `ip_route_connect` function performs the crucial task of looking up the gateway IP address, which is necessary for constructing the IP header.
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +------------------+                                                                                               
@@ -1012,8 +1010,8 @@ The function **ip_route_connect** does the gateway IP address lookup, which is e
 
 </details>
   
-For transmit, **ip_queue_xmit** is the entry point from the TCP layer. 
-It builds the packet's IP header, performs fragmentation if the size exceeds MTU, and transfers the packet to the network device driver.
+During the transmit process, `ip_queue_xmit()` serves as the entry point from the TCP layer. 
+It constructs the IP header for the packet, handles fragmentation if the packet size exceeds the Maximum Transmission Unit (MTU), and then forwards the packet to the network device driver.
 
 ```
 output packet:
@@ -1029,8 +1027,7 @@ output packet:
 +---------+                                    
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +---------------+
@@ -1089,8 +1086,8 @@ output packet:
   
 </details>
 
-Coming from the NAPI mechanism, **ip_rcv** analyzes the IP header and knows which handler to call by inspecting field **protocol**.
-By adjusting the skb pointers, the higher layer has no clue about the IP header as if it's stripped.
+Upon arrival via the NAPI mechanism, `ip_rcv()` examines the IP header and determines the appropriate handler to invoke based on the `protocol` field. 
+Through manipulation of the skb pointers, the higher layer remains unaware of the IP header, creating the illusion that it has been stripped.
 
 ```
 input packet:
@@ -1160,7 +1157,7 @@ input packet:
 
 ## <a name="network-interface-layer"></a> Network Interface Layer
 
-After receiving skb from the Internet layer, the network device driver builds the MAC header, fills the TX descriptor(s) and ask hardware to take action.
+Upon receiving the skb from the Internet layer, the network device driver constructs the MAC header, populates the TX descriptor(s), and instructs the hardware to perform the necessary action.
 
 ```
 +---------+                                    
@@ -1176,8 +1173,7 @@ After receiving skb from the Internet layer, the network device driver builds th
 +---------+                                    
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +--------------+
@@ -1244,14 +1240,13 @@ After receiving skb from the Internet layer, the network device driver builds th
 
 </details>
 
-For packet receiving, the registered ISR schedules the NAPI struct of the driver to process the ingress packets. 
-Conventional interrupt mechanism is triggered by hardware components, notifying kernel some events happen and need the ISR to handle them. 
-This method saves more effort than the polling mechanism, which wastes the system resource if hardware event rarely shows. 
-However, modern network interface cards (NIC) support high-speed bandwidth and can quickly generate network interrupts storm. 
-NAPI is the mechanism introduced to solve this problem by mixing interrupt and polling methods. 
-Once a network interrupt happens, somewhere disables the NIC interrupt, and the polling method gets in the way. 
-The polling function registered by the NIC driver continues to receive the packet if there's any, hence saving the system from suffering high-frequency interrupt. 
-Once no more packets arrive, it switches back to the interrupt mechanism.
+To handle incoming packets, the registered Interrupt Service Routine (ISR) schedules the NAPI structure of the driver for processing. 
+Instead of relying solely on traditional interrupt mechanisms triggered by hardware events, NAPI combines interrupt and polling methods. 
+This approach is particularly beneficial for modern high-speed network interface cards (NICs) that generate a high volume of network interrupts.
+
+When a network interrupt occurs, the NIC interrupt is disabled, and the polling method takes over. 
+The polling function, registered by the NIC driver, continues to receive packets if any are available, effectively reducing the frequency of interrupts and alleviating the strain on the system. 
+Once no further packets arrive, the system reverts to using the interrupt mechanism.
 
 ```
                                                                                                 
@@ -1272,7 +1267,7 @@ Once no more packets arrive, it switches back to the interrupt mechanism.
                            (repeat)                                                             
 ```
 
-The **poll** function learns the packet type by inspecting the field **protocol**, and knows which handler will help transfer the packet to the higher layer.
+The `poll` function identifies the packet type by examining the `protocol` field and determines the appropriate handler for transferring the packet to the higher layer.
 
 ```
 +---------+                                     
@@ -1288,8 +1283,7 @@ The **poll** function learns the packet type by inspecting the field **protocol*
 +---------+  --+                                
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 +---------------------+
@@ -1429,7 +1423,7 @@ Function **net_rx_action** has its counterpart named **net_tx_action**, responsi
 
 </details>
                                              
-Let's summarize the read and write flow from the perspective of the network layer model.
+Summary of read and write flow in the network layer model.
 
 ```
                              write                         read                                             
@@ -1460,8 +1454,8 @@ Let's summarize the read and write flow from the perspective of the network laye
 
 ## <a name="boot-flow"></a> Boot Flow
 
-During boot up flow, a few init calls register the network family by function **sock_register()** to add the supported socket type on the system.
-Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
+During the boot-up process, several init calls utilize the `sock_register()` function to register the network family and add support for the specified socket type to the system. 
+It is worth noting that AF_OOO and PF_OOO are sometimes used interchangeably, although they represent the same concept.
 
 ```
 +--------------------+     +---------------+           
@@ -1484,8 +1478,7 @@ Sometimes we might see AF_OOO instead of PF_OOO, but they are the equivalent.
 +-------------+            +---------------+           
 ```
 
-<details>
-  <summary> Code Trace </summary>
+<details><summary> More Details </summary>
 
 ```
 drivers/net/ethernet/faraday/ftgmac100.c                                                                                                                      
