@@ -215,25 +215,25 @@ net/ipv4/af_inet.c
 <details><summary> More Details </summary>
 
 ```
-+----------------+                                     
-| sys_setsockopt |                                     
-+---|------------+                                     
-    |    +------------------+                          
-    +--> | __sys_setsockopt |                          
-         +----|-------------+                          
-              |                                        
-              |--> if level is SOL_SOCKET              
-              |                                        
-              |        +-----------------+             
-              |------> | sock_setsockopt |             
-              |        +-----------------+             
-              |                                        
-              |--> else                                
-              |                                        
-              +------> call ->setsockopt()             
-                             +------------------------+
-                       e.g., | sock_common_setsockopt |
-                             +------------------------+
+net/socket.c                            
++----------------+                       
+| sys_setsockopt | : set socket options  
++------------------+                     
+| __sys_setsockopt | : set socket options
++-|----------------+                     
+  |                                      
+  |--> if level is SOL_SOCKET            
+  |    |                                 
+  |    |    +-----------------+          
+  |    +--> | sock_setsockopt |          
+  |         +-----------------+          
+  |                                      
+  +--> else                              
+       -                                 
+       +--> call ->setsockopt(), e.g.,   
+            +------------------------+   
+            | sock_common_setsockopt |   
+            +------------------------+   
 ```
   
 </details>
@@ -266,38 +266,59 @@ If the caller does not specify a port, `bind()` will assign a valid port automat
 <details><summary> More Details </summary>
 
 ```
-+----------+
-| sys_bind |
-+--|-------+
-   |    +------------+
-   +--> | __sys_bind |
-        +--|---------+
-           |    +---------------------+
-           |--> | sockfd_lookup_light | get socket by file descriptor
-           |    +---------------------+
-           |    +---------------------+
-           |--> | move_addr_to_kernel | copy data from user to kernel space
-           |    +---------------------+
-           |
-           +--> call ->bind()
-                      +-----------+
-                e.g., | inet_bind | bind the given address to the socket
-                      +--|--------+
-                         |
-                         |--> call type->bind() if it exists (not our case)
-                         |
-                         |    +-------------+
-                         +--> | __inet_bind |
-                              +---|---------+
-                                  |
-                                  +--> call type->get_port()
-                                             +-------------------+
-                                       e.g., | inet_csk_get_port | 
-                                             +-------------------+
-                                                  |
-                                                  |--> if no given port, find a valid one and return
-                                                  |
-                                                  +--> check if given port is valid
+net/socket.c                                                     
++----------+                                                      
+| sys_bind | : ensure a valid port is ready                       
++----------+-+                                                    
+| __sys_bind | : ensure a valid port is ready                     
++-|----------+                                                    
+  |    +---------------------+                                    
+  |--> | sockfd_lookup_light | get socket by file descriptor      
+  |    +---------------------+                                    
+  |    +---------------------+                                    
+  |--> | move_addr_to_kernel | copy data from user to kernel space
+  |    +---------------------+                                    
+  |                                                               
+  +--> call ->bind(), e.g.,                                       
+       +-----------+                                              
+       | inet_bind | ensure a valid port is ready                 
+       +-----------+                                              
+```
+
+```
+net/ipv4/af_inet.c                                 
++-----------+                                       
+| inet_bind | : ensure a valid port is ready        
++-|---------+                                       
+  |                                                 
+  |--> call type->bind() if it exists (not our case)
+  |                                                 
+  |    +-------------+                              
+  +--> | __inet_bind | ensure a valid port is ready 
+       +-------------+                              
+```
+
+```
+net/ipv4/af_inet.c                                      
++-------------+                                          
+| __inet_bind | : ensure a valid port is ready           
++-|-----------+                                          
+  |                                                      
+  +--> call type->get_port(), e.g.,                      
+       +-------------------+                             
+       | inet_csk_get_port | ensure a valid port is ready
+       +-------------------+                             
+```
+
+```
+net/ipv4/inet_connection_sock.c                    
++-------------------+                               
+| inet_csk_get_port | : ensure a valid port is ready
++-|-----------------+                               
+  |                                                 
+  |--> if no given port, find a valid one and return
+  |                                                 
+  +--> check if given port is valid                 
 ```
   
 </details>
