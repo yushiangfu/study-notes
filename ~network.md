@@ -432,36 +432,40 @@ On the server side, the operating system receives the packet and identifies the 
 <details><summary> More Details </summary>
 
 ```
- +-------------+
- | sys_connect |
- +---|---------+
-     |    +---------------+
-     +--> | __sys_connect |
-          +---|-----------+
-              |    +---------------------+
-              |--> | move_addr_to_kernel | copy data from user to kernel space
-              |    +---------------------+
-              |    +--------------------+
-              +--> | __sys_connect_file |
-                   +----|---------------+
-                        |
-                        +--> call ->->connect()
-                                   +---------------------+
-                             e.g., | inet_stream_connect | build socket buffer, send out, wait for acception
-                                   +---------------------+
-                                         |    +-----------------------+
-                                         +--> | __inet_stream_connect |
-                                              +-----|-----------------+
-                                                    |
-                                                    +--> call ->connect()
-                                                               +----------------+
-                                                         e.g., | tcp_v4_connect | (refer to the below)
-                                                               +----------------+
+net/socket.c                                                                                        
++-------------+                                                                                      
+| sys_connect |                                                                                      
++-------------+-+                                                                                    
+| __sys_connect |                                                                                    
++-|-------------+                                                                                    
+  |    +---------------------+                                                                       
+  |--> | move_addr_to_kernel | copy data from user to kernel space                                   
+  |    +---------------------+                                                                       
+  |                                                                                                  
+  +--> call ->connect(), e.g.,                                                                       
+       +---------------------+                                                                       
+       | inet_stream_connect | set addr and port, allocate skb and build tcp header, send to ip layer
+       +---------------------+                                                                       
 ```
 
 ```
+net/ipv4/af_inet.c                                                                               
++---------------------+                                                                           
+| inet_stream_connect | : set addr and port, allocate skb and build tcp header, send to ip layer  
++-----------------------+                                                                         
+| __inet_stream_connect | : set addr and port, allocate skb and build tcp header, send to ip layer
++-|---------------------+                                                                         
+  |                                                                                               
+  +--> call ->connect(), e.g.,                                                                    
+       +----------------+                                                                         
+       | tcp_v4_connect | set addr and port, allocate skb and build tcp header, send to ip layer  
+       +----------------+                                                                         
+```
+
+```
+net/ipv4/tcp_ipv4.c
 +----------------+
-| tcp_v4_connect | set addr and port, allocate skb and build tcp header, send to ip layer
+| tcp_v4_connect | : set addr and port, allocate skb and build tcp header, send to ip layer
 +---|------------+
     |    +------------------+
     |--> | ip_route_connect | prepare routing table, and decide next hop
@@ -475,25 +479,38 @@ On the server side, the operating system receives the packet and identifies the 
     |--> | inet_hash_connect | bind a port to the socket and add to hash table
     |    +-------------------+
     |    +-------------+
-    +--> | tcp_connect |
-         +---|---------+
-             |    +---------------------+
-             |--> | sk_stream_alloc_skb | allocate socket buffer (skb)
-             |    +---------------------+
-             |    +------------------+
-             |--> | tcp_transmit_skb |
-             |    +----|-------------+
-             |         |    +--------------------+
-             |         +--> | __tcp_transmit_skb | build tcp header, send to ip layer for transmit
-             |              +----|---------------+
-             |                   |
-             |                   +--> call ->queue_xmit()
-             |                              +---------------+
-             |                        e.g., | ip_queue_xmit |
-             |                              +---------------+
-             |    +---------------------------+
-             +--> | inet_csk_reset_xmit_timer | re-send the packet if no response before timeout
-                  +---------------------------+
+    +--> | tcp_connect | alloc skb and pass to ip layer for transmit, re-send if no response before timeout
+         +-------------+
+```
+
+```
+net/ipv4/tcp_ipv4.c                                                                                
++-------------+                                                                                     
+| tcp_connect | : alloc skb and pass to ip layer for transmit, re-send if no response before timeout
++-|-----------+                                                                                     
+  |    +---------------------+                                                                      
+  |--> | sk_stream_alloc_skb | allocate socket buffer (skb)                                         
+  |    +---------------------+                                                                      
+  |    +------------------+                                                                         
+  |--> | tcp_transmit_skb | pass packekt to ip layer for transmit                                   
+  |    +------------------+                                                                         
+  |    +---------------------------+                                                                
+  +--> | inet_csk_reset_xmit_timer | re-send the packet if no response before timeout               
+       +---------------------------+                                                                
+```
+
+```
+net/ipv4/tcp_output.c                                        
++------------------+                                          
+| tcp_transmit_skb | : pass packekt to ip layer for transmit  
++--------------------+                                        
+| __tcp_transmit_skb | : pass packekt to ip layer for transmit
++-|------------------+                                        
+  |                                                           
+  +--> call ->queue_xmit(), e.g.,                             
+       +---------------+                                      
+       | ip_queue_xmit |                                      
+       +---------------+                                      
 ```
 
 </details>
