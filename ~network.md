@@ -546,54 +546,62 @@ At this stage, both sides have completed the well-known three-way handshake of T
 <details><summary> More Details </summary>
 
 ```
-+------------+
-| sys_accept |
-+--|---------+
-   |    +----------------+
-   +--> | __sys_accept4  |
-        +---|------------+
-            |    +--------------------+
-            +--> | __sys_accept4_file |
-                 +----|---------------+
-                      |    +-----------------------+
-                      +--> | __get_unused_fd_flags | get an valid file descriptor
-                      |    +-----------------------+
-                      |    +-----------+
-                      +--> | do_accept |
-                      |    +--|--------+
-                      |       |    +------------+
-                      |       +--> | sock_alloc | allocate socket for the connection
-                      |       |    +------------+
-                      |       |    +-----------------+
-                      |       +--> | sock_alloc_file | allocate file for the connection
-                      |       |    +-----------------+
-                      |       |
-                      |       +--> call ->accept()
-                      |       |          +-------------+
-                      |       |    e.g., | inet_accept | wait for connection, set socket state to CONNECTED
-                      |       |          +---|---------+
-                      |       |              |
-                      |       |              +--> call ->accept()
-                      |       |                         +-----------------+
-                      |       |                   e.g., | inet_csk_accept |
-                      |       |                         +----|------------+
-                      |       |                              |
-                      |       |                              +--> if no connection request in queue
-                      |       |                              |
-                      |       |                              |        +---------------------------+
-                      |       |                              +------> | inet_csk_wait_for_connect |
-                      |       |                              |        +---------------------------+
-                      |       |                              |    +--------------------+
-                      |       |                              +--> | reqsk_queue_remove | remove a request
-                      |       |                                   +--------------------+
-                      |       |
-                      |       +--> copy address info to userspace if asked to
-                      |       |
-                      |       +--> return allocated file
-                      |
-                      |    +------------+
-                      +--> | fd_install | install the file to allocated fd
-                           +------------+
+net/socket.c                                                                                                         
++------------+                                                                                                        
+| sys_accept | : alloc socket for connection, prepare valid fd/file, remove req from queue, install file, return fd   
++------------+--+                                                                                                     
+| __sys_accept4 | : alloc socket for connection, prepare valid fd/file, remove req from queue, install file, return fd
++-|-------------+                                                                                                     
+  |    +------------+                                                                                                 
+  +--> | sock_alloc | allocate socket for the connection                                                              
+  |    +------------+                                                                                                 
+  |    +---------------------+                                                                                        
+  |--> | get_unused_fd_flags | get an valid file descriptor                                                           
+  |    +---------------------+                                                                                        
+  |    +-----------------+                                                                                            
+  |--> | sock_alloc_file | allocate file for the connection                                                           
+  |    +-----------------+                                                                                            
+  |                                                                                                                   
+  |--> call ->accept(), e.g.,                                                                                         
+  |    +-------------+                                                                                                
+  |    | inet_accept | remove a request (if there's one) from queue                                                   
+  |    +-------------+                                                                                                
+  |                                                                                                                   
+  |--> copy address info to userspace if asked to                                                                     
+  |                                                                                                                   
+  |    +------------+                                                                                                 
+  |--> | fd_install | install the file to allocated fd                                                                
+  |    +------------+                                                                                                 
+  |                                                                                                                   
+  +--> return fd                                                                                                      
+```
+
+```
+net/ipv4/af_inet.c                                                    
++-------------+                                                        
+| inet_accept | : remove a request (if there's one) from queue         
++-|-----------+                                                        
+  |                                                                    
+  +--> call ->accept(), e.g.,                                          
+       +-----------------+                                             
+       | inet_csk_accept | remove a request (if there's one) from queue
+       +-----------------+                                             
+```
+
+```
+net/ipv4/inet_connection_sock.c                                  
++-----------------+                                               
+| inet_csk_accept | : remove a request (if there's one) from queue
++-|---------------+                                               
+  |                                                               
+  |--> if no connection request in queue                          
+  |    |                                                          
+  |    |    +---------------------------+                         
+  |    +--> | inet_csk_wait_for_connect |                         
+  |         +---------------------------+                         
+  |    +--------------------+                                     
+  +--> | reqsk_queue_remove | remove a request                    
+       +--------------------+                                     
 ```
   
 </details>
