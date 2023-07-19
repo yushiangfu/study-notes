@@ -466,6 +466,51 @@ kernel/time/posix-cpu-timers.c
 ## <a name="system-startup"></a> System Startup
 
 ```
+start_kernel
+|
+|--> time_init
+|    -
+|    +--> timer_probe
+|         -
+|         +--> aspeed_timer_init
+|              fttmr010_common_init
+|              |
+|              |--> clocksource_mmio_init
+|              |    -
+|              |    +--> clocksource_register_hz     [    0.000000] clocksource: FTTMR010-TIMER2: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 77222644334 ns
+|              |
+|              |--> sched_clock_register             [    0.000124] sched_clock: 32 bits at 24MHz, resolution 40ns, wraps every 86767015915ns
+|              |
+|              +--> register_current_timer_delay     [    0.001753] Switching to timer-based delay loop, resolution 40ns
+|
++--> calibrate_delay                                 [    0.005060] Calibrating delay loop (skipped), value calculated using timer frequency.. 49.50 BogoMIPS (lpj=247500)
+
+
+kernel_init
+-
++--> kernel_init_freeable
+     -
+     +--> do_basic_setup
+          |
+          |--> init_jiffies_clocksource
+          |    -
+          |    +--> __clocksource_register           [    0.081094] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+          |
+          |--> clocksource_done_booting
+          |    -
+          |    +--> clocksource_select               [    0.212355] clocksource: Switched to clocksource FTTMR010-TIMER2
+          |
+          +--> aspeed_i2c_bus_driver_init
+               -
+               +--> aspeed_i2c_probe_bus
+                    -
+                    +--> i2c_new_client_device
+                         -
+                         +--> rv8803_probe           [    1.722342] rtc-rv8803 11-0032: registered as rtc0
+                                                     [    1.723329] rtc-rv8803 11-0032: setting system clock to 2023-07-05T03:02:00 UTC (1688526120)
+```
+
+```
 init_timers
 hrtimers_init
 timekeeping_init
