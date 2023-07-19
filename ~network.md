@@ -147,44 +147,63 @@ The syscall also prepares a file that represents the socket, enabling users to i
 <details><summary> More Details </summary>
 
 ```
-+------------+
-| sys_socket |
-+--|---------+
-   |    +--------------+
-   +--> | __sys_socket |
-        +---|----------+
-            |    +-------------+
-            |--> | sock_create |
-            |    +---|---------+
-            |        |    +---------------+
-            |        +--> | __sock_create |
-            |             +---------------+
-            |                 |   +------------+
-            |                 |-->| sock_alloc | allocate socket
-            |                 |   +------------+
-            |                 |
-            |                 +--> call family->create()
-            |                            +-------------+
-            |                      e.g., | inet_create | install family operations to socket and call ->init()
-            |                            +---|---------+
-            |                                |
-            |                                |--> install family + type operations, e.g., inet_stream_ops
-            |                                |
-            |                                |--> allocate tcp socket (not the same socket created earlier)
-            |                                |
-            |                                +--> call ->init()
-            |                                           +------------------+
-            |                                     e.g., | tcp_v4_init_sock | init tcp socket
-            |                                           +------------------+
-            |                                                |    +---------------+
-            |                                                |--> | tcp_init_sock |
-            |                                                |    +---------------+
-            |                                                |
-            |                                                +--> install ipv4 operations 'ipv4_specific'
-            |
-            |    +-------------+
-            +--> | sock_map_fd | allocate a file handle for the socket, and install it to fd table
-                 +-------------+                                                                        
+net/socket.c                                                                                                           
++------------+                                                                                                          
+| sys_socket | : alloc socket pair (generic/specific), install family+type ops, prepare file of socket, install to fdt  
++--------------+                                                                                                        
+| __sys_socket | : alloc socket pair (generic/specific), install family+type ops, prepare file of socket, install to fdt
++-|------------+                                                                                                        
+  |    +-------------+                                                                                                  
+  |--> | sock_create | alloc gen/tcp sockets and relate them, install family+type ops                                   
+  |    +-------------+                                                                                                  
+  |    +-------------+                                                                                                  
+  +--> | sock_map_fd | alloc a file handle for the socket, and install it to fd table                                   
+       +-------------+                                                                                                  
+```
+
+```
+net/socket.c                                                                     
++-------------+                                                                   
+| sock_create | : alloc gen/tcp sockets and relate them, install family+type ops  
++---------------+                                                                 
+| __sock_create | : alloc gen/tcp sockets and relate them, install family+type ops
++-|-------------+                                                                 
+  |    +------------+                                                             
+  |--> | sock_alloc | allocate socket                                             
+  |    +------------+                                                             
+  |                                                                               
+  +--> call ->create(), e.g.,                                                     
+       +-------------+                                                            
+       | inet_create | install family+type ops, prepare tcp socket                
+       +-------------+                                                            
+```
+
+```
+net/ipv4/af_inet.c                                             
++-------------+                                                 
+| inet_create | : install family+type ops, prepare tcp socket   
++-|-----------+                                                 
+  |                                                             
+  |--> install family + type operations, e.g., inet_stream_ops  
+  |                                                             
+  |--> allocate tcp socket (not the same socket created earlier)
+  |                                                             
+  +--> call ->init(), e.g.,                                     
+       +------------------+                                     
+       | tcp_v4_init_sock | init tcp socket                     
+       +------------------+                                     
+```
+
+```
+net/ipv4/af_inet.c                           
++------------------+                          
+| tcp_v4_init_sock | : init tcp socket        
++-|----------------+                          
+  |    +---------------+                      
+  |--> | tcp_init_sock |                      
+  |    +---------------+                      
+  |                                           
+  +--> install ipv4 operations 'ipv4_specific'
 ```
 
 </details>
