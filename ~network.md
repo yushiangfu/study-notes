@@ -353,35 +353,49 @@ The system socket status can be viewed using the `netstat` utility, which likely
 <details><summary> More Details </summary>
 
 ```
-+------------+
-| sys_listen |
-+--|---------+
-   |    +--------------+
-   +--> | __sys_listen |
-        +---|----------+
-            |    +---------------------+
-            |--> | sockfd_lookup_light | get socket by file descriptor
-            |    +---------------------+
-            |
-            +--> call ->listen()
-                       +-------------+
-                 e.g., | inet_listen | set tcp state to 'LISTEN' and add to hash table wating for connection
-                       +---|---------+
-                           |    +-----------------------+
-                           +--> | inet_csk_listen_start |
-                                +-----|-----------------+
-                                      |
-                                      |--> set tcp state to LISTEN
-                                      |
-                                      |--> call type->get_port()
-                                      |          +-------------------+
-                                      |    e.g., | inet_csk_get_port | ensure we have a valid port
-                                      |          +-------------------+
-                                      |
-                                      +--> call type->hash()
-                                                 +-----------+
-                                           e.g., | inet_hash | add socket to hash table waiting for connection
-                                                 +-----------+ 
+net/socket.c                                                                                               
++------------+                                                                                              
+| sys_listen | : set tcp state to LISTEN, ensure a ready port, add socket to hash table for connection      
++--------------+                                                                                            
+| __sys_listen | : set tcp state to LISTEN, ensure a ready port, add socket to hash table for connection    
++-|------------+                                                                                            
+  |    +---------------------+                                                                              
+  |--> | sockfd_lookup_light |                                                                              
+  |    +---------------------+                                                                              
+  |                                                                                                         
+  +--> call ->listen(), e.g.,                                                                               
+       +-------------+                                                                                      
+       | inet_listen | set tcp state to LISTEN, ensure a ready port, add socket to hash table for connection
+       +-------------+                                                                                      
+```
+
+```
+net/socket.c                                                                                                         
++-------------+                                                                                                       
+| inet_listen | : set tcp state to LISTEN, ensure a ready port, add socket to hash table for connection               
++-|-----------+                                                                                                       
+  |    +-----------------------+                                                                                      
+  +--> | inet_csk_listen_start | set tcp state to LISTEN, ensure a ready port, add socket to hash table for connection
+       +-----------------------+                                                                                      
+```
+
+```
+net/ipv4/inet_connection_sock.c                                                                                 
++-----------------------+                                                                                        
+| inet_csk_listen_start | : set tcp state to LISTEN, ensure a ready port, add socket to hash table for connection
++-|---------------------+                                                                                        
+  |                                                                                                              
+  |--> set tcp state to LISTEN                                                                                   
+  |                                                                                                              
+  |--> call ->get_port(), e.g.,                                                                                  
+  |    +-------------------+                                                                                     
+  |    | inet_csk_get_port | ensure we have a valid port                                                         
+  |    +-------------------+                                                                                     
+  |                                                                                                              
+  +--> call ->hash(), e.g.,                                                                                      
+       +-----------+                                                                                             
+       | inet_hash | add socket to hash table waiting for connection                                             
+       +-----------+                                                                                             
 ```
 
 </details>
