@@ -790,126 +790,129 @@ from app layer |   | tcp hdr |                                               | t
 
 <details><summary> More Details </summary>
 
-VFS layer
-
 ```
-+----------+
-| sys_read |
-+--|-------+
-   |    +-----------+
-   +--> | ksys_read |
-        +--|--------+
-           |    +-----------+
-           +--> | file_ppos | get file offset
-           |    +-----------+
-           |    +----------+
-           +--> | vfs_read |
-           |    +--|-------+
-           |       |
-           |       +--> if ->read exists
-           |       |
-           |       |        call ->read()
-           |       |
-           |       +--> else if ->read_iter exists
-           |       |
-           |       |        +---------------+
-           |       +------> | new_sync_read |
-           |                +---|-----------+
-           |                    |    +----------------+
-           |                    +--> | call_read_iter |
-           |                         +---|------------+
-           |                             |
-           |                             +--> call ->read_iter()
-           |                                        +----------------+
-           |                                  e.g., | sock_read_iter | (refer to the below)
-           |                                        +----------------+
-           |
-           |
-           +--> update file offset
-```
-
-TCP layer
-
-```
-+----------------+                                              
-| sock_read_iter |                                              
-+---|------------+                                              
-    |    +--------------+                                       
-    +--> | sock_recvmsg |                                       
-         +---|----------+                                       
-             |    +--------------------+                        
-             +--> | sock_recvmsg_nosec |                        
-                  +----|---------------+                        
-                       |                                        
-                       +--> call ->recvmsg()                    
-                                  +--------------+              
-                            e.g., | inet_recvmsg |              
-                                  +---|----------+              
-                                      |                         
-                                      +--> call ->recvmsg()     
-                                                 +-------------+
-                                           e.g., | tcp_recvmsg | (refer to the below)
-                                                 +-------------+
+fs/read_write.c                                    
++----------+                                        
+| sys_read |                                        
++----------+                                        
+...                                                
++----------------+                                  
+| sock_read_iter | : transport-layer receive msg    
++--------------+-+                                  
+| sock_recvmsg | : transport-layer receive msg      
++--------------------+                              
+| sock_recvmsg_nosec | : transport-layer receive msg
++-|------------------+                              
+  |                                                 
+  +--> call ->recvmsg(), e.g.,                      
+       +--------------+                             
+       | inet_recvmsg | transport-layer receive msg 
+       +--------------+                                            
 ```
 
 ```
-+-------------+
-| tcp_recvmsg |
-+---|---------+
-    |    +--------------------+
-    +--> | tcp_recvmsg_locked |
-         +----|---------------+
-              |
-              +--> loop
-              |
-              +------> if receive queue has skb(s)                     --+
-              |                                                          |
-              |            +-----------------------+                     |
-              +----------> | skb_copy_datagram_msg |                     |
-              |            +-----------------------+                     |
-              |                                                          | extremely simplified logic
-              +------> else                                              |
-              |                                                          |
-              |            +--------------+                              |
-              +----------> | sk_wait_data | wait for data to arrive      |
-                           +--------------+                            --+                      
+net/ipv4/af_inet.c                           
++--------------+                              
+| inet_recvmsg | : transport-layer receive msg
++-|------------+                              
+  |                                           
+  +--> call ->recvmsg(), e.g.,                
+       +-------------+                        
+       | tcp_recvmsg | tcp receive message    
+       +-------------+                        
+```
+
+```
+net/ipv4/tcp.c                                                   
++-------------+                                                   
+| tcp_recvmsg | : tcp receive message                             
++-|-----------+                                                   
+  |                                                               
+  |--> while len > 0 (expect more to come)                        
+  |    |                                                          
+  |    |--> for each skb on receive_queue of socket               
+  |    |    -                                                     
+  |    |    +--> if offset < skb len                              
+  |    |         -                                                
+  |    |         +--> go to 'found_ok_skb'                        
+  |    |                                                          
+  |    |    +--------------+                                      
+  |    |--> | sk_wait_data | wait for more data to arrive         
+  |    |    +--------------+                                      
+  |    |                                                          
+  |    |--> continue                                              
+ found_ok_skb:                                                    
+  |    |    +-----------------------+                             
+  |    |--> | skb_copy_datagram_msg |                             
+  |    |    +-----------------------+                             
+  |    |                                                          
+  |    +--> update remaining 'len'                                
+  |                                                               
+  |    +------------------+                                       
+  +--> | tcp_cleanup_rbuf | clear receive buffer and send ack back
+       +------------------+                                       
 ```
 
 Function **tcp_v4_rcv** is responsible for placing data onto the receive queue, so **tcp_recvmsg** can later retrieve data or wait till there's something.
 
 ```
-+------------+                                                                                               
-| tcp_v4_rcv |                                                                                               
-+--|---------+                                                                                               
-   |    +-------------------+                                                                                
-   |--> | __inet_lookup_skb | lookup target socket through address information                               
-   |    +-------------------+                                                                                
-   |                                                                                                         
-   |--> if socket state is LISTEN                                                                            
-   |                                                                                                         
-   |        +---------------+                                                                                
-   +------> | tcp_v4_do_rcv |                                                                                
-            +---|-----------+                                                                                
-                |                                                                                            
-                |--> if state is ESTABLISHED                                                                 
-                |                                                                                            
-                |        +---------------------+                                                             
-                |------> | tcp_rcv_established |                                                             
-                |        +-----|---------------+                                                             
-                |              |    +---------------+                                                        
-                |              |--> | tcp_queue_rcv | add skb to the receive queue of the socket             
-                |              |    +---------------+                                                        
-                |              |    +----------------+                                                       
-                |              +--> | tcp_data_ready |                                                       
-                |                   +---|------------+                                                       
-                |                       |                                                                    
-                |                       +--> call ->sk_data_ready                                            
-                |                                  +-------------------+                                     
-                |                            e.g., | sock_def_readable | wake up the task waiting on the data
-                |                                  +-------------------+                                     
-                |    +-----------------------+                                                               
-                +--> | tcp_rcv_state_process | handle the tcp state change and packet reply                  
-                     +-----------------------+                                                               
+net/ipv4/tcp_ipv4.c                                                         
++------------+                                                               
+| tcp_v4_rcv | : lookup socket, handle the received skb                      
++-|----------+                                                               
+  |    +-------------------+                                                 
+  |--> | __inet_lookup_skb | lookup target socket through address information
+  |    +-------------------+                                                 
+  |                                                                          
+  +--> if socket state is LISTEN                                             
+       |                                                                     
+       |    +---------------+                                                
+       +--> | tcp_v4_do_rcv | handle the received skb                        
+            +---------------+                                                
+```
+
+```
+net/ipv4/tcp_ipv4.c                                                                       
++---------------+                                                                          
+| tcp_v4_do_rcv | : handle the received skb                                                
++-|-------------+                                                                          
+  |                                                                                        
+  |--> if state is ESTABLISHED                                                             
+  |    |                                                                                   
+  |    |    +---------------------+                                                        
+  |    |--> | tcp_rcv_established | add skb to socket's receive queue, wake up waiting task
+  |    |    +---------------------+                                                        
+  |    |                                                                                   
+  |    +--> return                                                                         
+  |                                                                                        
+  |    +-----------------------+                                                           
+  +--> | tcp_rcv_state_process | handle the tcp state change and packet reply              
+       +-----------------------+                                                           
+```
+
+```
+net/ipv4/tcp_input.c                                                            
++---------------------+                                                          
+| tcp_rcv_established | : add skb to socket's receive queue, wake up waiting task
++-|-------------------+                                                          
+  |    +---------------+                                                         
+  |--> | tcp_queue_rcv | add skb to the receive queue of the socket              
+  |    +---------------+                                                         
+  |    +----------------+                                                        
+  +--> | tcp_data_ready | wake up the task waiting on the data                   
+       +----------------+                                                        
+```
+
+```
+net/ipv4/tcp_input.c                                            
++----------------+                                               
+| tcp_data_ready | : wake up the task waiting on the data        
++-|--------------+                                               
+  |                                                              
+  +--> call ->sk_data_ready, e.g.,                               
+       +-------------------+                                     
+       | sock_def_readable | wake up the task waiting on the data
+       +-------------------+                                     
 ```
   
 </details>
