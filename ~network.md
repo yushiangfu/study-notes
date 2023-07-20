@@ -644,65 +644,36 @@ from app layer |   | tcp hdr |
 
 <details><summary> More Details </summary>
 
-VFS layer
-
 ```
-+-----------+                                                                                
-| sys_write |                                                                                
-+--|--------+                                                                                
-   |    +------------+                                                                       
-   +--> | ksys_write |                                                                       
-        +--|---------+                                                                       
-           |    +-----------+                                                                
-           |--> | file_ppos | get file offset                                                
-           |    +-----------+                                                                
-           |    +-----------+                                                                
-           |--> | vfs_write |                                                                
-           |    +--|--------+                                                                
-           |       |                                                                         
-           |       |--> if file has ->write                                                  
-           |       |                                                                         
-           |       |         call ->write()                                                  
-           |       |                                                                         
-           |       +--> else if file has ->write_iter                                        
-           |                                                                                 
-           |                +----------------+                                               
-           |                | new_sync_write |                                               
-           |                +---|------------+                                               
-           |                    |    +-----------------+                                     
-           |                    +--> | call_write_iter |                                     
-           |                         +----|------------+                                     
-           |                              |                                                  
-           |                              +--> call ->write_iter()                           
-           |                                         +-----------------+                     
-           |                                   e.g., | sock_write_iter | (refer to the below)
-           |                                         +-----------------+                     
-           |                                                                                 
-           +--> update file offset
+fs/read_write.c                                              
++-----------+                                                 
+| sys_write |                                                 
++-----------+                                                 
+...                                                          
++-----------------+                                           
+| sock_write_iter | : copy data to skb and send to ip layer   
++--------------+--+                                           
+| sock_sendmsg | : copy data to skb and send to ip layer      
++--------------------+                                        
+| sock_sendmsg_nosec | : copy data to skb and send to ip layer
++-|------------------+                                        
+  |                                                           
+  +--> call ->sendmsg()                                       
+       +--------------+                                       
+       | inet_sendmsg | copy data to skb and send to ip layer 
+       +--------------+                                       
 ```
 
-TCP layer
-
 ```
-+-----------------+                                              
-| sock_write_iter |                                              
-+----|------------+                                              
-     |    +--------------+                                       
-     +--> | sock_sendmsg |                                       
-          +---|----------+                                       
-              |    +--------------------+                        
-              +--> | sock_sendmsg_nosec |                        
-                   +----|---------------+                        
-                        |                                        
-                        +--> call ->sendmsg()                    
-                                   +--------------+              
-                             e.g., | inet_sendmsg |              
-                                   +---|----------+              
-                                       |                         
-                                       +--> call ->sendmsg()     
-                                                  +-------------+
-                                            e.g., | tcp_sendmsg | (refer to the below)
-                                                  +-------------+
+net/ipv4/af_inet.c                                         
++--------------+                                            
+| inet_sendmsg | : copy data to skb and send to ip layer    
++-|------------+                                            
+  |                                                         
+  +--> call ->sendmsg(), e.g.,                              
+       +-------------+                                      
+       | tcp_sendmsg | copy data to skb and send to ip layer
+       +-------------+                                      
 ```
 
 ```
@@ -730,31 +701,52 @@ TCP layer
     +--> if we did copy data to socket buffer
     |
     |        +----------+
-    +------> | tcp_push |
-             +--|-------+
-                |    +---------------------------+
-                +--> | __tcp_push_pending_frames |
-                     +------|--------------------+
-                            |    +----------------+
-                            +--> | tcp_write_xmit |
-                                 +---|------------+
-                                     |    +---------------+
-                                     |--> | tcp_mtu_probe | get MTU size
-                                     |    +---------------+
-                                     |
-                                     |--> while socket has buffer (one socket might have multiple skb)
-                                     |
-                                     |    +------------------+
-                                     +--> | tcp_transmit_skb |
-                                          +----|-------------+
-                                               |    +--------------------+
-                                               +--> | __tcp_transmit_skb | build tcp header and send to ip layer
-                                                    +----|---------------+
-                                                         |
-                                                         +--> call ->queue_xmit()
-                                                                    +---------------+
-                                                              e.g., | ip_queue_xmit |
-                                                                    +---------------+
+    +------> | tcp_push | for each skb of socket: build tcp header and send to ip layer
+             +----------+
+```
+
+```
+net/ipv4/tcp.c                                                                                   
++----------+                                                                                      
+| tcp_push | : for each skb of socket: build tcp header and send to ip layer                      
++-|--------+                                                                                      
+  |    +---------------------------+                                                              
+  +--> | __tcp_push_pending_frames | for each skb of socket: build tcp header and send to ip layer
+       +---------------------------+                                                              
+```
+
+```
+net/ipv4/tcp_output.c                                                                       
++---------------------------+                                                                
+| __tcp_push_pending_frames | : for each skb of socket: build tcp header and send to ip layer
++----------------+----------+                                                                
+| tcp_write_xmit | : for each skb of socket: build tcp header and send to ip layer           
++-|--------------+                                                                           
+  |    +---------------+                                                                     
+  |--> | tcp_mtu_probe | get MTU size                                                        
+  |    +---------------+                                                                     
+  |                                                                                          
+  +--> while socket has buffer (one socket might have multiple skb)                          
+       |                                                                                     
+       |    +------------------+                                                             
+       +--> | tcp_transmit_skb | build tcp header and send to ip layer                       
+            +------------------+                                                             
+```
+
+```
+net/ipv4/tcp_output.c                                        
++------------------+                                          
+| tcp_transmit_skb | : build tcp header and send to ip layer  
++--------------------+                                        
+| __tcp_transmit_skb | : build tcp header and send to ip layer
++-|------------------+                                        
+  |                                                           
+  |--> build tcp header                                       
+  |                                                           
+  +--> call ->queue_xmit(), e.g.,                             
+       +---------------+                                      
+       | ip_queue_xmit |                                      
+       +---------------+                                      
 ```
   
 </details>
