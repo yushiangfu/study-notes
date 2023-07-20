@@ -992,94 +992,120 @@ The `ip_route_connect` function performs the crucial task of looking up the gate
 <details><summary> More Details </summary>
 
 ```
-+------------------+                                                                                               
-| ip_route_connect |                                                                                               
-+----|-------------+                                                                                               
-     |    +-----------------------+                                                                                
-     |--> | ip_route_connect_init | init flowi4                                                                    
-     |    +-----------------------+                                                                                
-     |    +----------------------+                                                                                 
-     +--> | ip_route_output_flow |                                                                                 
-          +-----|----------------+                                                                                 
-                |    +-----------------------+                                                                     
-                +--> | __ip_route_output_key |                                                                     
-                     +-----|-----------------+                                                                     
-                           |    +--------------------------+                                                       
-                           +--> | ip_route_output_key_hash |                                                       
-                                +------|-------------------+                                                       
-                                       |    +------------------------------+                                       
-                                       +--> | ip_route_output_key_hash_rcu |                                       
-                                            +-------|----------------------+                                       
-                                                    |                                                              
-                                                    |--> try to determine output interface, src addr, dst addr     
-                                                    |                                                              
-                                                    |    +------------+                                            
-                                                    |--> | fib_lookup | lookup fib based on dst addr               
-                                                    |    +------------+                                            
-                                                    |    +------------------+                                      
-                                                    +--> | __mkroute_output |                                      
-                                                         +----|-------------+                                      
-                                                              |    +--------------+                                
-                                                              |--> | rt_dst_alloc | set up rtable and install ops  
-                                                              |    +--------------+ ->output(): ip_output            
-                                                              |                     ->input(): ip_local_deliver      
-                                                              |                                                    
-                                                              |    +----------------+                              
-                                                              +--> | rt_set_nexthop | save gw ip from fib to rtable
-                                                                   +----------------+
+include/net/route.h                                          
++------------------+                                          
+| ip_route_connect | : prepare info/rtable for output         
++-|----------------+                                          
+  |    +-----------------------+                              
+  |--> | ip_route_connect_init | init flowi4                  
+  |    +-----------------------+                              
+  |    +----------------------+                               
+  +--> | ip_route_output_flow | prepare info/rtable for output
+       +----------------------+                               
 ```
 
 ```
-+--------------------+
-| fib_inetaddr_event |
-+----|---------------+
-     |
-     |--> if event is NETDEV_UP
-     |
-     |        +----------------+
-     |        | fib_add_ifaddr |
-     |        +----------------+
-     |
-     +--> else if event if NETDEV_DOWN
-
-              +----------------+
-              | fib_del_ifaddr |
-              +----------------+
+net/ipv4/route.c                                                
++----------------------+                                         
+| ip_route_output_flow | : prepare info/rtable for output        
++-----------------------+                                        
+| __ip_route_output_key | : prepare info/rtable for output       
++--------------------------+                                     
+| ip_route_output_key_hash | : prepare info/rtable for output    
++------------------------------+                                 
+| ip_route_output_key_hash_rcu | : prepare info/rtable for output
++-|----------------------------+                                 
+  |                                                              
+  |--> try to determine output interface, src addr, dst addr     
+  |                                                              
+  |    +------------+                                            
+  |--> | fib_lookup | lookup fib based on dst addr               
+  |    +------------+                                            
+  |    +------------------+                                      
+  +--> | __mkroute_output | prepare rtable for output            
+       +------------------+                                      
 ```
 
 ```
-+----------------+                                                          
-| fib_add_ifaddr |                                                          
-+---|------------+                                                          
-    |    +-----------+                                                      
-    +--> | fib_magic |                                                      
-         +--|--------+                                                      
-            |    +---------------+                                          
-            |--> | fib_new_table |                                          
-            |    +---|-----------+                                          
-            |        |    +---------------+                                 
-            |        |--> | fib_get_table |                                 
-            |        |    +---------------+                                 
-            |        |                                                      
-            |        |--> return table if found                             
-            |        |                                                      
-            |        |    +----------------+                                
-            |        |--> | fib_trie_table | allocate and set up a fib table
-            |        |    +----------------+                                
-            |        |                                                      
-            |        +--> add to hash table for later search                
-            |                                                               
-            |--> if command is NEW_ROUTE                                    
-            |                                                               
-            |        +------------------+                                   
-            |        | fib_table_insert |                                   
-            |        +------------------+                                   
-            |                                                               
-            +--> else                                                       
-                                                                            
-                     +------------------+                                   
-                     | fib_table_delete |                                   
-                     +------------------+                                   
+net/ipv4/route.c                                                                                         
++------------------+                                                                                      
+| __mkroute_output | : prepare rtable for output                                                          
++-|----------------+                                                                                      
+  |    +--------------+                                                                                   
+  |--> | rt_dst_alloc | set up rtable and install ops (->output(): ip_output, ->input(): ip_local_deliver)
+  |    +--------------+                                                                                   
+  |    +----------------+                                                                                 
+  +--> | rt_set_nexthop | save gw ip from fib to rtable                                                   
+       +----------------+                                                                                 
+```
+
+```
+net/ipv4/fib_frontend.c           
++--------------------+             
+| fib_inetaddr_event |             
++-|------------------+             
+  |                                
+  |--> if event is NETDEV_UP       
+  |    |                           
+  |    |    +----------------+     
+  |    +--> | fib_add_ifaddr |     
+  |         +----------------+     
+  |                                
+  +--> else if event if NETDEV_DOWN
+       |                           
+       |    +----------------+     
+       +--> | fib_del_ifaddr |     
+            +----------------+     
+```
+
+```
+net/ipv4/fib_frontend.c                                                 
++----------------+                                                       
+| fib_add_ifaddr | : ready a fib table and insert it                     
++-|--------------+                                                       
+  |    +-----------+                                                     
+  +--> | fib_magic | get target fib table, insert or delete as requesteda
+       +-----------+                                                     
+```
+
+```
+net/ipv4/fib_frontend.c                                           
++-----------+                                                      
+| fib_magic | : get target fib table, insert or delete as requested
++-|---------+                                                      
+  |    +---------------+                                           
+  |--> | fib_new_table | ensure fib table is ready and return it   
+  |    +---------------+                                           
+  |                                                                
+  |--> if command is NEW_ROUTE                                     
+  |    |                                                           
+  |    |    +------------------+                                   
+  |    +--> | fib_table_insert |                                   
+  |         +------------------+                                   
+  |                                                                
+  +--> else                                                        
+       |                                                           
+       |    +------------------+                                   
+       +--> | fib_table_delete |                                   
+            +------------------+                                   
+```
+
+```
+net/ipv4/fib_frontend.c                                   
++---------------+                                          
+| fib_new_table | : ensure fib table is ready and return it
++-|-------------+                                          
+  |    +---------------+                                   
+  |--> | fib_get_table |                                   
+  |    +---------------+                                   
+  |                                                        
+  |--> return table if found                               
+  |                                                        
+  |    +----------------+                                  
+  |--> | fib_trie_table | allocate and set up a fib table  
+  |    +----------------+                                  
+  |                                                        
+  +--> add to hash table for later search                  
 ```
 
 </details>
