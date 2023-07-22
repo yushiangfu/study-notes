@@ -1130,58 +1130,92 @@ output packet:
 <details><summary> More Details </summary>
 
 ```
-+---------------+
-| ip_queue_xmit |
-+---|-----------+
-    |    +-----------------+
-    +--> | __ip_queue_xmit |
-         +----|------------+
-              |    +----------------+
-              |--> | __sk_dst_check |
-              |    +----------------+
-              |
-              |--> build ip header
-              |    1. set protocol to tcp
-              |    2. set src & dst addr
-              |
-              |    +--------------+
-              +--> | ip_local_out |
-                   +---|----------+
-                       |    +------------+
-                       +--> | dst_output |
-                            +--|---------+
-                               |
-                               +--> call ->output()
-                                          +-----------+
-                                    e.g., | ip_output |
-                                          +--|--------+
-                                             |    +------------------+
-                                             +--> | ip_finish_output |
-                                                  +----|-------------+
-                                                       |    +--------------------+
-                                                       +--> | __ip_finish_output |
-                                                            +----|---------------+
-                                                                 |    +----------------+
-                                                                 |--> | ip_skb_dst_mtu |
-                                                                 |    +----------------+
-                                                                 |
-                                                                 |--> fragment the packet if it's larger than mtu
-                                                                 |
-                                                                 |    +-------------------+
-                                                                 +--> | ip_finish_output2 |
-                                                                      +----|--------------+
-                                                                           |    +-----------------+
-                                                                           |--> | ip_neigh_for_gw |
-                                                                           |    +-----------------+
-                                                                           |    get 'neighbor' struct throug gw ip
-                                                                           |
-                                                                           |    +--------------+
-                                                                           +--> | neigh_output |
-                                                                                +---|----------+
-                                                                                    |    +----------------------+
-                                                                                    +--> | neigh_resolve_output | 
-                                                                                         +----------------------+
-                                                                                         connect to driver layer
+include/net/ip.h                                                            
++---------------+                                                            
+| ip_queue_xmit |                                                            
++-----------------+                                                          
+| __ip_queue_xmit |                                                          
++-|---------------+                                                          
+  |    +----------------+                                                    
+  |--> | __sk_dst_check |                                                    
+  |    +----------------+                                                    
+  |                                                                          
+  |--> build ip header: 1. set protocol to tcp                               
+  |                     2. set src & dst addr                                
+  |                                                                          
+  |    +--------------+                                                      
+  +--> | ip_local_out | fragment packet if necessary, pass it to driver layer
+       +--------------+                                                      
+```
+
+```
+net/ipv4/ip_output.c                                                     
++--------------+                                                          
+| ip_local_out | : fragment packet if necessary, pass it to driver layer  
++------------+-+                                                          
+| dst_output | : fragment packet if necessary, pass it to driver layer    
++-|----------+                                                            
+  |                                                                       
+  +--> call ->output(), e.g.,                                             
+       +-----------+                                                      
+       | ip_output | fragment packet if necessary, pass it to driver layer
+       +-----------+                                                      
+```
+
+```
+net/ipv4/ip_output.c                                                            
++-----------+                                                                    
+| ip_output | : fragment packet if necessary, pass it to driver layer            
++-|---------+                                                                    
+  |                                                                              
+  |--> skb->protocol = ip                                                        
+  |                                                                              
+  |    +------------------+                                                      
+  +--> | ip_finish_output | fragment packet if necessary, pass it to driver layer
+       +------------------+                                                      
+```
+
+```
+net/ipv4/ip_output.c                                                          
++------------------+                                                           
+| ip_finish_output | : fragment packet if necessary, pass it to driver layer   
++--------------------+                                                         
+| __ip_finish_output | : fragment packet if necessary, pass it to driver layer 
++-|------------------+                                                         
+  |    +----------------+                                                      
+  |--> | ip_skb_dst_mtu |                                                      
+  |    +----------------+                                                      
+  |                                                                            
+  |--> fragment the packet if it's larger than mtu                             
+  |                                                                            
+  |    +-------------------+                                                   
+  +--> | ip_finish_output2 | get 'neighbor' to set skb, pass it to driver layer
+       +-------------------+                                                   
+```
+
+```
+net/ipv4/ip_output.c                                                     
++-------------------+                                                     
+| ip_finish_output2 | : get 'neighbor' to set skb, pass it to driver layer
++-|-----------------+                                                     
+  |    +-----------------+                                                
+  |--> | ip_neigh_for_gw | get 'neighbor' struct throug gw ip             
+  |    +-----------------+                                                
+  |    +--------------+                                                   
+  +--> | neigh_output | pass skb to driver layer                          
+       +--------------+                                                   
+```
+
+```
+include/net/neighbour.h                               
++--------------+                                       
+| neigh_output | : pass skb to driver layer            
++-|------------+                                       
+  |                                                    
+  +--> call ->output(), e.g.,                          
+       +----------------------+                        
+       | neigh_resolve_output | connect to driver layer
+       +----------------------+                        
 ```
   
 </details>
