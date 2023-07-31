@@ -1241,50 +1241,92 @@ input packet:
   <summary> Code Trace </summary>
 
 ```
-+--------+
-| ip_rcv |
-+-|------+
-  |    +-------------+
-  +--> | ip_rcv_core |
-  |    +---|---------+
-  |        |
-  |        +--> drop packet if it's not for us
-  |        |
-  |        +--> locate transport header
-  |
-  |    +---------------+
-  +--> | ip_rcv_finish |
-       +---|-----------+
-           |    +--------------------+
-           +--> | ip_rcv_finish_core | determine packet direction (deliver to tcp layer or forward to other host)
-           |    +--------------------+
-           |    +-----------+
-           +--> | dst_input |
-                +--|--------+
-                   |
-                   +--> call ->input()
-                              +------------------+
-                        e.g., | ip_local_deliver | (if decided to deliver to tcp layer)
-                              +----|-------------+
-                                   |
-                                   +--> reassemble the ip fragments if necessary
-                                   |
-                                   |    +-------------------------+
-                                   +--> | ip_local_deliver_finish |
-                                        +------|------------------+
-                                               |
-                                               +--> adjust data ptr to tcp header (strip ip header)
-                                               |
-                                               +--> get next protocol (e.g., tcp) from packet
-                                               |
-                                               |    +-------------------------+
-                                               +--> | ip_protocol_deliver_rcu |
-                                                    +------|------------------+
-                                                           |
-                                                           +--> call ->handler()
-                                                                      +------------+
-                                                                e.g., | tcp_v4_rcv | change tcp state or queue skb
-                                                                      +------------+         
+net/ipv4/ip_input.c                                      
++--------+                                                
+| ip_rcv | : locate transport header, deliver to tcp layer
++|-------+                                                
+ |    +-------------+                                     
+ |--> | ip_rcv_core | locate transport header             
+ |    +-------------+                                     
+ |    +---------------+                                   
+ +--> | ip_rcv_finish | deliver to tcp layer              
+      +---------------+                                   
+```
+
+```
+net/ipv4/ip_input.c                     
++-------------+                          
+| ip_rcv_core | : locate transport header
++-|-----------+                          
+  |                                      
+  |--> drop packet if it's not for us    
+  |                                      
+  +--> locate transport header           
+```
+
+```
+net/ipv4/ip_input.c                                                                                    
++---------------+                                                                                       
+| ip_rcv_finish | : deliver to tcp layer                                                                
++-|-------------+                                                                                       
+  |    +--------------------+                                                                           
+  |--> | ip_rcv_finish_core | determine packet direction (deliver to tcp layer or forward to other host)
+  |    +--------------------+                                                                           
+  |    +-----------+                                                                                    
+  +--> | dst_input | deliver to tcp layer                                                               
+       +-----------+                                                                                    
+```
+
+```
+include/net/dst.h                              
++-----------+                                   
+| dst_input | : deliver to tcp layer            
++-|---------+                                   
+  |                                             
+  +--> call ->input(), e.g.,                    
+       +------------------+                     
+       | ip_local_deliver | deliver to tcp layer
+       +------------------+                     
+```
+
+```
+net/ipv4/ip_input.c                                                             
++------------------+                                                             
+| ip_local_deliver | : deliver to tcp layer                                      
++-|----------------+                                                             
+  |                                                                              
+  |--> reassemble the ip fragments if necessary                                  
+  |                                                                              
+  |    +-------------------------+                                               
+  +--> | ip_local_deliver_finish | strip ip header, change tcp state or queue skb
+       +-------------------------+                                               
+```
+
+```
+net/ipv4/ip_input.c                                                        
++-------------------------+                                                 
+| ip_local_deliver_finish | : strip ip header, change tcp state or queue skb
++-|-----------------------+                                                 
+  |                                                                         
+  |--> adjust data ptr to tcp header (strip ip header)                      
+  |                                                                         
+  |--> get next protocol (e.g., tcp) from packet                            
+  |                                                                         
+  |    +-------------------------+                                          
+  +--> | ip_protocol_deliver_rcu | change tcp state or queue skb            
+       +-------------------------+                                          
+```
+
+```
+net/ipv4/ip_input.c                                       
++-------------------------+                                
+| ip_protocol_deliver_rcu | : change tcp state or queue skb
++-|-----------------------+                                
+  |                                                        
+  +--> call ->handler(), e.g.,                             
+       +------------+                                      
+       | tcp_v4_rcv | change tcp state or queue skb        
+       +------------+                                      
 ```
   
 </details>
