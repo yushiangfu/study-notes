@@ -9,6 +9,125 @@
 ## <a name="introduction"></a> Introduction
 
 ```
+kernel/time/posix-timers.c                                                      
++----------------------------+                                                   
+| sys_clock_nanosleep_time32 | : set up hrtimer sleeper, sleep till condition met
++-|--------------------------+                                                   
+  |    +-------------------+                                                     
+  |--> | clockid_to_kclock | given clock id, get k_clock                         
+  |    +-------------------+                                                     
+  |                                                                              
+  +--> call ->nsleep(), e.g.,                                                    
+       +---------------+                                                         
+       | common_nsleep | set up hrtimer sleeper, sleep till condition met        
+       +---------------+                                                         
+```
+
+```
+kernel/time/posix-timers.c                                                  
++---------------+                                                            
+| common_nsleep | : set up hrtimer sleeper, sleep till condition met         
++-|-------------+                                                            
+  |    +---------------------+                                               
+  |--> | timespec64_to_ktime | convert timespec to ktime                     
+  |    +---------------------+                                               
+  |    +-------------------+                                                 
+  +--> | hrtimer_nanosleep | set up hrtimer sleeper, sleep till condition met
+       +-------------------+                                                 
+```
+
+```
+kernel/time/hrtimer.c                                                       
++-------------------+                                                        
+| hrtimer_nanosleep | : set up hrtimer sleeper, sleep till condition met     
++-|-----------------+                                                        
+  |    +-------------------------------+                                     
+  |--> | hrtimer_init_sleeper_on_stack | set up hrtimer sleeper for 'current'
+  |    +-------------------------------+                                     
+  |    +------------------------------+                                      
+  |--> | hrtimer_set_expires_range_ns | set timer expires                    
+  |    +------------------------------+                                      
+  |    +--------------+                                                      
+  |--> | do_nanosleep | task sleeps till condition met                       
+  |    +--------------+                                                      
+  |    +--------------------------+                                          
+  +--> | destroy_hrtimer_on_stack | do nothing bc of disabled config         
+       +--------------------------+                                          
+```
+
+```
+kernel/time/hrtimer.c                                                  
++-------------------------------+                                       
+| hrtimer_init_sleeper_on_stack | : set up hrtimer sleeper for 'current'
++----------------------+--------+                                       
+| hrtimer_init_sleeper | : set up hrtimer sleeper for 'current'         
++------------------------+                                              
+| __hrtimer_init_sleeper | : set up hrtimer sleeper for 'current'       
++-|----------------------+                                              
+  |    +----------------+                                               
+  |--> | __hrtimer_init | save base in hrtimer                          
+  |    +----------------+                                               
+  |                                                                     
+  |--> install function                                                 
+  |    +----------------+                                               
+  |    | hrtimer_wakeup | wake up task, return no-restart               
+  |    +----------------+                                               
+  |                                                                     
+  +--> save 'current' in sleeper                                        
+```
+
+```
+kernel/time/hrtimer.c                   
++----------------+                       
+| __hrtimer_init | : save base in hrtimer
++-|--------------+                       
+  |                                      
+  |--> get percpu hrtimer bases          
+  |                                      
+  +--> determine base and save in hrtimer
+```
+
+```
+kernel/time/hrtimer.c                              
++----------------+                                  
+| hrtimer_wakeup | : wake up task, return no-restart
++-|--------------+                                  
+  |                                                 
+  |--> if task                                      
+  |    |                                            
+  |    |    +-----------------+                     
+  |    +--> | wake_up_process |                     
+  |         +-----------------+                     
+  |                                                 
+  +--> return no-restart                            
+```
+
+```
+kernel/time/hrtimer.c                                              
++--------------+                                                    
+| do_nanosleep | : task sleeps till condition met                   
++|-------------+                                                    
+ |                                                                  
+ |--> while saved task isn't cleared && no signal pending           
+ |    |                                                             
+ |    |    +-------------------------------+                        
+ |    |--> | hrtimer_sleeper_start_expires | start a hrtimer sleeper
+ |    |    +-------------------------------+                        
+ |    |    +--------------------+                                   
+ |    |--> | freezable_schedule | schedule                          
+ |    |    +--------------------+                                   
+ |    |    +----------------+                                       
+ |    +--> | hrtimer_cancel | cancel a hrtimer                      
+ |         +----------------+                                       
+ |                                                                  
+ +--> if saved task info is cleared, return (normal path)           
+```
+
+
+
+
+
+```
 kernel/time/tick-common.c                                                                                    
 +----------------------+                                                                                      
 | tick_handle_periodic | : update jiffies/wall_time, run expired hrtimers/timers/posix_timers, update rq clock
