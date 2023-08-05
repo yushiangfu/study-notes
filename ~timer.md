@@ -3,10 +3,25 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Regular Timer Base](#regular-timer-base)
+- [High-Resolution Timer Base](#high-resolution-timer-base)
 - [System Startup](#system-startup)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
+
+In the kernel, two clock objects are essential for building the timer frameworks:
+
+1. Clock source: Provides the kernel with the ability to read the current time and update the internal wall time accordingly.
+2. Clock event device: Allows the kernel to configure hardware and issue interrupts at specific times.
+
+The configuration `CONFIG_HZ` determines the number of ticks per second, impacting the interrupt frequency of the clock event device. 
+This device can operate in either 'periodic' or 'oneshot' mode, with the latter configuring each interrupt based on the previous one.
+
+Achieving higher resolution in this framework involves handling additional ticks, which can burden the kernel with managing timer interrupts. 
+To address this, the high-resolution timer framework uses the 'oneshot' mode for precision while simulating routine timer events.
+
+For example, if the kernel ticks 100 times per second, the granularity is 10ms. See the picture below for a visual comparison.
 
 ```
 kernel/time/posix-timers.c                                                      
