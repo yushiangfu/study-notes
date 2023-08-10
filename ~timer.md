@@ -37,6 +37,15 @@ Consequently, this change leads to increased latency in higher granularity scena
 
 <p align="center"><img src="images/timer/regular-timer-base.png" /></p>
 
+## <a name="high-resolution-timer-base"></a> High-Resolution Timer Base
+
+In contrast to the bucket array in the regular timer base, the high-resolution timer employs a simpler and more recognizable method: the red-black tree.
+
+When the kernel transitions to the high-resolution timer mechanism, it's the hrtimer's responsibility to ascertain the next tick and configure the hardware timer accordingly. 
+Subsequently, each timer can independently decide whether to re-queue itself or not.
+
+<p align="center"><img src="images/timer/high-resolution-timer-base.png" /></p>
+
 ```
 kernel/time/posix-timers.c                                                      
 +----------------------------+                                                   
