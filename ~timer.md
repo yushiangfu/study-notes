@@ -668,16 +668,16 @@ kernel_init
 ```
 
 ```
-init_timers
-hrtimers_init
-timekeeping_init
-time_init
-dummy_timer_starting_cpu: register dummy evtdev
-init_timer_list_procfs: create '/proc/timer_list' with 'timer_list_sops' installed
-alarmtimer_init: (skip, it matches no device)
-init_posix_timers: create kmem cache for 'k_itimer'
-timeriomem_rng_driver_init: (skip, random# related)
-timer_led_trigger_init: (skip)
+init_timers:                 init percpu timer bases, register softirq action
+hrtimers_init:               init hrtimer bases, register softirq action
+timekeeping_init:            init timekeeping mechanism
+time_init:                   init clock, probe timer, setup broadcast
+dummy_timer_starting_cpu:    register dummy evtdev
+init_timer_list_procfs:      create '/proc/timer_list' with 'timer_list_sops' installed
+alarmtimer_init:             (skip, it matches no device)
+init_posix_timers:           create kmem cache for 'k_itimer'
+timeriomem_rng_driver_init:  (skip, random# related)
+timer_led_trigger_init:      (skip)
 ```
 
 
@@ -874,7 +874,7 @@ kernel/time/hrtimer.c
 ```
 kernel/time/timekeeping.c                                             
 +------------------+                                                   
-| timekeeping_init |                                                   
+| timekeeping_init | : init timekeeping mechanism
 +-|----------------+                                                   
   |    +--------------------------------------+                        
   |--> | read_persistent_wall_and_boot_offset |                        
