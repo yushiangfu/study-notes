@@ -23,6 +23,20 @@ To address this, the high-resolution timer framework uses the 'oneshot' mode for
 
 For example, if the kernel ticks 100 times per second, the granularity is 10ms. See the picture below for a visual comparison.
 
+<p align="center"><img src="images/timer/comparison.png" /></p>
+
+## <a name="regular-timer-base"></a> Regular Timer Base
+
+In the design of a regular-timer base, multiple granularity levels exist, each containing 64 buckets.
+When a regular timer is added, the kernel identifies the current CPU's base and selects an appropriate bucket based on the timer's expiration.
+
+During a timer interrupt, a routine task involves updating the timer base and executing functions within each expired timer, following detachment. 
+The previous 'cascade' action, which refilled lower levels from higher ones, has been replaced. 
+Instead, the kernel now waits until all timers of the same bucket expire before executing them collectively. 
+Consequently, this change leads to increased latency in higher granularity scenarios.
+
+<p align="center"><img src="images/timer/regular-timer-base.png" /></p>
+
 ```
 kernel/time/posix-timers.c                                                      
 +----------------------------+                                                   
