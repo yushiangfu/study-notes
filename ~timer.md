@@ -3,8 +3,9 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Regular Timer Base](#regular-timer-base)
-- [High-Resolution Timer Base](#high-resolution-timer-base)
+- [Regular Timer](#regular-timer)
+- [High Resolution Timer](#high-resolution-timer)
+- [Posix Timer](#posix-timer)
 - [System Startup](#system-startup)
 - [Reference](#reference)
 
@@ -25,7 +26,7 @@ For example, if the kernel ticks 100 times per second, the granularity is 10ms. 
 
 <p align="center"><img src="images/timer/comparison.png" /></p>
 
-## <a name="regular-timer-base"></a> Regular Timer Base
+## <a name="regular-timer"></a> Regular Timer
 
 In the design of a regular-timer base, multiple granularity levels exist, each containing 64 buckets.
 When a regular timer is added, the kernel identifies the current CPU's base and selects an appropriate bucket based on the timer's expiration.
@@ -37,7 +38,7 @@ Consequently, this change leads to increased latency in higher granularity scena
 
 <p align="center"><img src="images/timer/regular-timer-base.png" /></p>
 
-## <a name="high-resolution-timer-base"></a> High-Resolution Timer Base
+## <a name="high-resolution-timer"></a> High Resolution Timer
 
 In contrast to the bucket array in the regular timer base, the high-resolution timer employs a simpler and more recognizable method: the red-black tree.
 
@@ -45,6 +46,10 @@ When the kernel transitions to the high-resolution timer mechanism, it's the hrt
 Subsequently, each timer can independently decide whether to re-queue itself or not.
 
 <p align="center"><img src="images/timer/high-resolution-timer-base.png" /></p>
+
+## <a name="posix-timer"></a> Posix Timer
+
+(skip)
 
 ```
 kernel/time/posix-timers.c                                                      
@@ -262,7 +267,7 @@ kernel/time/hrtimer.c
   |                                                                                          
   |--> get percpu hrtimer base                                                               
   |                                                                                          
-  |--> if hrtimer mechanism isn't active, return                                             
+  |--> if hrtimer mechanism is active already, return                                             
   |                                                                                          
   |--> if we are to to switch to hrtimer mechanism                                           
   |    |                                                                                     
@@ -673,6 +678,8 @@ hrtimers_init:               init hrtimer bases, register softirq action
 timekeeping_init:            init timekeeping mechanism
 time_init:                   init clock, probe timer, setup broadcast
 dummy_timer_starting_cpu:    register dummy evtdev
+init_jiffies_clocksource:    register 'jiffies' clock source
+clocksource_done_booting:    update time keeper's clock source with the best one (fttmr010 in our case)
 init_timer_list_procfs:      create '/proc/timer_list' with 'timer_list_sops' installed
 alarmtimer_init:             (skip, it matches no device)
 init_posix_timers:           create kmem cache for 'k_itimer'
@@ -1000,47 +1007,51 @@ drivers/clocksource/timer-probe.c
 ```
 
 ```
-drivers/clocksource/timer-probe.c                                                                                    
-+-------------------+                                                                                                 
-| aspeed_timer_init | : register clocksource, register read() for sched, request timer irq, register clockevent_dev   
-+----------------------+                                                                                              
+drivers/clocksource/timer-probe.c
++-------------------+
+| aspeed_timer_init | : register clocksource, register read() for sched, request timer irq, register clockevent_dev
++----------------------+
 | fttmr010_common_init | : register clocksource, register read() for sched, request timer irq, register clockevent_dev
-+-|--------------------+                                                                                              
-  |                                                                                                                   
-  |--> alloc and setup 'fttmr010'                                                                                     
-  |                                                                                                                   
-  |    +----------+                                                                                                   
-  |--> | of_iomap |                                                                                                   
-  |    +----------+                                                                                                   
-  |    +----------------------+                                                                                       
-  |--> | irq_of_parse_and_map | get timer irq#                                                                        
-  |    +----------------------+                                                                                       
-  |                                                                                                                   
-  +--> write hw reg to get timer start and disable its interrupt                                                      
-  |                                                                                                                   
-  |    +-----------------------+                                                                                      
-  |--> | clocksource_mmio_init | prepare clocksource and register it, update 'curr_clocksource' is condition met      
-  |    +-----------------------+                                                                                      
-  |    +----------------------+                                                                                       
-  |--> | sched_clock_register | register read() function for sched clock                                              
-  |    +----------------------+                                                                                       
-  |                                                                                                                   
-  |--> write hw reg to set up clockevent timer (interrupt-driven)                                                     
-  |                                                                                                                   
-  |    +-------------+                                                                                                
-  |--> | request_irq | register isr for timer interrupt                                                               
-  |    +-------------+ +--------------------------+                                                                   
-  |                    | fttmr010_timer_interrupt | call clockevent_dev->event_handler()                              
-  |                    +--------------------------+                                                                   
-  |                                                                                                                   
-  |--> set up clockevent_dev (install ops)                                                                            
-  |                                                                                                                   
-  |    +---------------------------------+                                                                            
-  |--> | clockevents_config_and_register | register evtdev, install to tick_dev if preferred                          
-  |    +---------------------------------+                                                                            
-  |    +------------------------------+                                                                               
-  +--> | register_current_timer_delay | install delay timer                                                           
-       +------------------------------+                                                                               
++-|--------------------+
+  |
+  |--> alloc and setup 'fttmr010'
+  |
+  |    +----------+
+  |--> | of_iomap |
+  |    +----------+
+  |    +----------------------+
+  |--> | irq_of_parse_and_map | get timer irq#
+  |    +----------------------+
+  |
+  +--> write hw reg to get timer start and disable its interrupt
+  |
+  |    +-----------------------+
+  |--> | clocksource_mmio_init | prepare clocksource and register it, update 'curr_clocksource' is condition met
+  |    +-----------------------+
+  |    +----------------------+
+  |--> | sched_clock_register | register read() function for sched clock
+  |    +----------------------+
+  |
+  |--> write hw reg to set up clockevent timer (interrupt-driven)
+  |
+  |    +-------------+
+  |--> | request_irq | register isr for timer interrupt
+  |    +-------------+ +--------------------------+
+  |                    | fttmr010_timer_interrupt | call clockevent_dev->event_handler(), e.g.,
+  |                    +--------------------------+ +----------------------+
+  |                                                 | tick_handle_periodic | or
+  |                                                 +-------------------+--+
+  |                                                 | hrtimer_interrupt |
+  |                                                 +-------------------+
+  |
+  |--> set up clockevent_dev (install ops)
+  |
+  |    +---------------------------------+
+  |--> | clockevents_config_and_register | register evtdev, install to tick_dev if preferred
+  |    +---------------------------------+
+  |    +------------------------------+
+  +--> | register_current_timer_delay | install delay timer
+       +------------------------------+
 ```
 
 ```
@@ -1049,7 +1060,7 @@ drivers/clocksource/timer-fttmr010.c
 | clocksource_mmio_init | : prepare clocksource and register it, update 'curr_clocksource' is condition met
 +-|---------------------+                                                                                  
   |                                                                                                        
-  |--> alloc and setup 'cs' (clocksource)                                                                  
+  |--> alloc and setup 'cs' (clocksource), e.g., label 'CLOCK_SOURCE_IS_CONTINUOUS'                                                                  
   |                                                                                                        
   |    +-------------------------+                                                                         
   +--> | clocksource_register_hz | register clocksource, switch 'curr_clocksource' to it if it's better    
@@ -1073,7 +1084,7 @@ drivers/clocksource/mmio.c
   |--> | clocksource_enqueue | add to 'clocksource_list' ('rating' ascending list)                     
   |    +---------------------+                                                                         
   |    +------------------------------+                                                                
-  |--> | clocksource_enqueue_watchdog | (do nothing bc of disabled config)                             
+  |--> | clocksource_enqueue_watchdog | label 'CLOCK_SOURCE_VALID_FOR_HRES' if condition met
   |    +------------------------------+                                                                
   |    +--------------------+                                                                          
   |--> | clocksource_select | select the best clocksource and switch to it                             
