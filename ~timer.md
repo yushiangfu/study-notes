@@ -6,6 +6,7 @@
 - [Regular Timer](#regular-timer)
 - [High Resolution Timer](#high-resolution-timer)
 - [Posix Timer](#posix-timer)
+- [Mechanism Switch](#mechanism-switch)
 - [System Startup](#system-startup)
 - [Reference](#reference)
 
@@ -40,16 +41,57 @@ Consequently, this change leads to increased latency in higher granularity scena
 
 ## <a name="high-resolution-timer"></a> High Resolution Timer
 
-In contrast to the bucket array in the regular timer base, the high-resolution timer employs a simpler and more recognizable method: the red-black tree.
+In contrast to the regular timer base's bucket array, the high-resolution timer utilizes a simpler and more recognizable approach: the red-black tree.
 
-When the kernel transitions to the high-resolution timer mechanism, it's the hrtimer's responsibility to ascertain the next tick and configure the hardware timer accordingly. 
-Subsequently, each timer can independently decide whether to re-queue itself or not.
+When transitioning to the high-resolution timer mechanism, the hrtimer determines the next tick and configures the hardware timer. 
+Each timer can then autonomously decide whether to re-queue itself.
+
+It's important to note that regardless of the switch to the high-resolution timer mechanism, timers in both bases are always managed. 
+The distinction lies in the event of a switch failure, wherein the high-resolution timer mechanism remains in the low granularity mode similar to the regular timer mechanism.
 
 <p align="center"><img src="images/timer/high-resolution-timer-base.png" /></p>
 
 ## <a name="posix-timer"></a> Posix Timer
 
 (skip)
+
+## <a name="mechanism-switch"></a> Mechanism Switch
+
+In our case study, time initiates upon registering the first clock source, `fttmr010`, as part of the driver's probe process. 
+
+```
+[    0.000000] i2c controller registered, irq 17
+[    0.000000] clocksource: FTTMR010-TIMER2: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 77222644334 ns
+[    0.000142] sched_clock: 32 bits at 24MHz, resolution 40ns, wraps every 86767015915ns
+[    0.001900] Switching to timer-based delay loop, resolution 40ns
+```
+
+The driver also establishes an interrupt service routine for the hardware timer, enabling it to regularly execute the following actions (`tick_handle_periodic`):
+
+- Update jiffies and wall time.
+- Process expired high-resolution timers.
+  - Validate availability of a suitable hardware timer for the high-resolution framework.
+- Process expired regular timers.
+- Adjust the scheduler tick.
+  - Opportunity for context switching.
+- Handle expired posix timers.
+
+Subsequently, in the function `clocksource_done_booting`, `fttmr010` is stored in the time keeper.
+
+```
+[    0.238478] clocksource: Switched to clocksource FTTMR010-TIMER2
+```
+
+In the subsequent timer routine, upon recognizing the qualified hardware timer, the system transitions to the high-resolution mechanism by undertaking these steps:
+
+1. Prepare a hrtimer and add it to the hrtimer base. Within this function:
+   - Perform actions from the prior routine, excluding hrtimer execution (managed externally).
+   - Forward the hrtimer for future use.
+2. Replace `tick_handle_periodic` with `tick_sched_timer`, which manages expired hrtimers and schedules the next tick.
+
+
+
+
 
 ```
 kernel/time/posix-timers.c                                                      
