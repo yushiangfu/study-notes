@@ -3,8 +3,8 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Application Layer](#application-layer)
-- [Transport Layer](#transport-layer)
+- [User Space Flow](#user-space-flow)
+- [Kernel Space Work](#kernel-space-work)
 - [Internet Layer](#internet-layer)
 - [Network Interface Layer](#network-interface-layer)
 - [Boot Flow](#boot-flow)
@@ -52,7 +52,7 @@ root@romulus:~# dmesg | grep family
 
 We will introduce how the network works in Linux based on the below combination of TCP and IP (INET family), the so-called TCP/IP model.
 
-## <a name="application-layer"></a> Application Layer
+## <a name="user-space-flow"></a> User Space Flow
 
 To avoid confusion, this illustration is based on the TCP/IP model, as evident in the code trace and packet header analysis. 
 In network programming, machines that provide services are referred to as servers, while those making requests are called clients.
@@ -92,7 +92,7 @@ To conclude the interaction, either or both sides can employ the close() syscall
      close()                close()     close the connection                  
 ```
 
-## <a name="transport-layer"></a> Transport Layer
+## <a name="kernel-space-work"></a> Kernel Space Work
 
 The transport layer handles the following tasks:
 
