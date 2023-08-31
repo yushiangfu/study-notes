@@ -1207,15 +1207,15 @@ net/ipv4/ip_output.c
 ```
 
 ```
-include/net/neighbour.h                               
-+--------------+                                       
-| neigh_output | : pass skb to driver layer            
-+-|------------+                                       
-  |                                                    
-  +--> call ->output(), e.g.,                          
-       +----------------------+                        
-       | neigh_resolve_output | connect to driver layer
-       +----------------------+                        
+include/net/neighbour.h                                                  
++--------------+                                                          
+| neigh_output | : pass skb to driver layer                               
++-|------------+                                                          
+  |                                                                       
+  +--> call ->output(), e.g.,                                             
+       +----------------------+                                           
+       | neigh_resolve_output | build mac header, transmit all skb in list
+       +----------------------+                                           
 ```
   
 </details>
@@ -1352,66 +1352,117 @@ Upon receiving the skb from the Internet layer, the network device driver constr
 <details><summary> More Details </summary>
 
 ```
-+--------------+
-| neigh_output |
-+---|----------+
-    |
-    +--> call ->output()
-               +----------------------+
-         e.g., | neigh_resolve_output |
-               +-----|----------------+
-                     |    +-----------------+
-                     |--> | dev_hard_header |
-                     |    +----|------------+
-                     |         |
-                     |         +--> call ->create()
-                     |                    +------------+
-                     |              e.g., | eth_header | build mac header
-                     |                    +------------+
-                     |    +----------------+
-                     +--> | dev_queue_xmit |
-                          +----------------+
-                              |    +------------------+
-                              +--> | __dev_queue_xmit |
-                                   +----|-------------+
-                                        |    +---------------------+
-                                        |--> | netdev_core_pick_tx | select tx queue
-                                        |    +---------------------+
-                                        |    +---------------------+
-                                        +--> | dev_hard_start_xmit |
-                                             +-----|---------------+
-                                                   |
-                                                   +--> for each skb
-                                                   |
-                                                   |        +----------+
-                                                   +------> | xmit_one |
-                                                            +--|-------+
-                                                               |    +-------------------+
-                                                               +--> | netdev_start_xmit |
-                                                                    +----|--------------+
-                                                                         |    +---------------------+
-                                                                         +--> | __netdev_start_xmit |
-                                                                              +-----|---------------+
-                                                                                    |
-                                                                                    +--> call ->ndo_start_xmit(), e.g.,
-                                                                                         +---------------------------+
-                                                                                         | ftgmac100_hard_start_xmit |
-                                                                                         +---------------------------+
+include/net/neighbour.h                                                  
++--------------+                                                          
+| neigh_output | : pass skb to driver layer                               
++-|------------+                                                          
+  |                                                                       
+  +--> call ->output(), e.g.,                                             
+       +----------------------+                                           
+       | neigh_resolve_output | build mac header, transmit all skb in list
+       +----------------------+                                           
 ```
 
 ```
-+---------------------------+                                              
-| ftgmac100_hard_start_xmit |                                              
-+------|--------------------+                                              
-       |    +----------------+                                             
-       |--> | dma_map_single |  map the data so the hardware can access it?
-       |    +----------------+                                             
-       |                                                                   
-       |--> get the next available tx descriptor and set up it             
-       |                                                                   
-       |--> set up extra tx descriptors if skb has fragments               
-       |                                                                   
-       +--> trigger the hardware to read the updated tx descriptors        
+net/core/neighbour.c                                                
++----------------------+                                             
+| neigh_resolve_output | : build mac header, transmit all skb in list
++-|--------------------+                                             
+  |    +-----------------+                                           
+  +--> | dev_hard_header | build mac header                          
+  |    +-----------------+                                           
+  |    +----------------+                                            
+  +--> | dev_queue_xmit | select tx queue, transmit all skb in list  
+       +----------------+                                            
+```
+
+```
+net/core/neighbour.c                 
++-----------------+                   
+| dev_hard_header | : build mac header
++-|---------------+                   
+  |                                   
+  +--> call ->create(), e.g.,         
+       +------------+                 
+       | eth_header | build mac header
+       +------------+                 
+```
+
+```
+net/core/dev.c                                                                                   
++----------------+                                                                                
+| dev_queue_xmit | : select tx queue, transmit all skb in list                                    
++------------------+                                                                              
+| __dev_queue_xmit | : select tx queue, transmit all skb in list                                  
++-|----------------+                                                                              
+  |    +---------------------+                                                                    
+  |--> | netdev_core_pick_tx | select tx queue                                                    
+  |    +---------------------+                                                                    
+  |    +---------------------+                                                                    
+  |--> | dev_hard_start_xmit | for each skb in list, set up tx descriptors & trigger hw to process
+  |    +---------------------+                                                                    
+  |    +----------------+                                                                         
+  +--> | kfree_skb_list |                                                                         
+       +----------------+                                                                         
+```
+
+```
+net/core/dev.c                                                                              
++---------------------+                                                                      
+| dev_hard_start_xmit | : for each skb in list, set up tx descriptors & trigger hw to process
++-|-------------------+                                                                      
+  |                                                                                          
+  +--> while there's skb in list                                                             
+       |                                                                                     
+       |    +----------+                                                                     
+       |--> | xmit_one | set up tx descriptors, trigger hw to process them                   
+       |    +----------+                                                                     
+       |                                                                                     
+       +--> traverse to next skb                                                             
+```
+
+```
+net/core/dev.c                                                                       
++----------+                                                                          
+| xmit_one | : set up tx descriptors, trigger hw to process them                      
++-------------------+                                                                 
+| netdev_start_xmit | : set up tx descriptors, trigger hw to process them             
++---------------------+                                                               
+| __netdev_start_xmit | : set up tx descriptors, trigger hw to process them           
++-|-------------------+                                                               
+  |                                                                                   
+  +--> call ->ndo_start_xmit(), e.g.,                                                 
+       +---------------------------+                                                  
+       | ftgmac100_hard_start_xmit | set up tx descriptors, trigger hw to process them
+       +---------------------------+                                                  
+```
+
+```
+drivers/net/ethernet/faraday/ftgmac100.c                                                
++---------------------------+                                                            
+| ftgmac100_hard_start_xmit | : set up tx descriptors, trigger hw to process them        
++-|-------------------------+                                                            
+  |    +----------------+                                                                
+  |--> | dma_map_single |                                                                
+  |    +----------------+                                                                
+  |                                                                                      
+  |--> get next available tx descriptor, and set up                                      
+  |                                                                                      
+  |--> get its next descriptor                                                           
+  |                                                                                      
+  |--> for each fragment                                                                 
+  |    |                                                                                 
+  |    |    +------------------+                                                         
+  |    |--> | skb_frag_dma_map |                                                         
+  |    |    +------------------+                                                         
+  |    |                                                                                 
+  |    |--> set up that descriptor                                                       
+  |    |                                                                                 
+  |    +--> get its next descriptor (either it's used in next iteration or saved in priv)
+  |                                                                                      
+  |--> save next (available) descriptor in 'priv'                                        
+  |                                                                                      
+  +--> trigger hw to read the updated tx dscriptors                                      
 ```
 
 </details>
