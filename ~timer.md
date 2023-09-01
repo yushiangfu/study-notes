@@ -6,7 +6,6 @@
 - [Regular Timer](#regular-timer)
 - [High Resolution Timer](#high-resolution-timer)
 - [Posix Timer](#posix-timer)
-- [Mechanism Switch](#mechanism-switch)
 - [System Startup](#system-startup)
 - [Reference](#reference)
 
@@ -55,7 +54,7 @@ The distinction lies in the event of a switch failure, wherein the high-resoluti
 
 (skip)
 
-## <a name="mechanism-switch"></a> Mechanism Switch
+## <a name="system-startup"></a> System Startup
 
 In our case study, time initiates upon registering the first clock source, `fttmr010`, as part of the driver's probe process. 
 
@@ -89,9 +88,9 @@ In the subsequent timer routine, upon recognizing the qualified hardware timer, 
    - Forward the hrtimer for future use.
 2. Replace `tick_handle_periodic` with `tick_sched_timer`, which manages expired hrtimers and schedules the next tick.
 
+<p align="center"><img src="images/timer/base-switch.png" /></p>
 
-
-
+<details><summary> More Details </summary>
 
 ```
 kernel/time/posix-timers.c                                                      
@@ -207,10 +206,6 @@ kernel/time/hrtimer.c
  |                                                                  
  +--> if saved task info is cleared, return (normal path)           
 ```
-
-
-
-
 
 ```
 kernel/time/tick-common.c                                                                                    
@@ -1343,5 +1338,7 @@ kernel/time/timer_list.c
            .show = timer_list_show,                                                    
        };                                                                              
 ```
+
+</details>
 
 ## <a name="reference"></a> Reference
