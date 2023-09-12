@@ -1,3 +1,502 @@
+### mctpd from Code Construct
+
+```
+src/mctp-netlink.c                                                  
++-------------+                                                      
+| mctp_nl_new | : prepare netlink socket, set up entries and save eid
++-|-----------+                                                      
+  |                                                                  
+  |--> alloc 'mctp_nl' & set up                                      
+  |                                                                  
+  |    +----------------+                                            
+  |--> | open_nl_socket | open and set up netlink socket             
+  |    +----------------+                                            
+  |    +--------------+                                              
+  +--> | fill_linkmap | set up entries and save eid                  
+       +--------------+                                              
+```
+
+```
+src/mctp-netlink.c                                                                 
++--------------+                                                                    
+| fill_linkmap | : set up entries and save eid                                      
++-|------------+ (each entry represents an iface and contains a few eid)            
+  |                                                                                 
+  |--> set up msg of 'get link'                                                     
+  |                                                                                 
+  |    +--------------+                                                             
+  |--> | mctp_nl_send | send packet of netlink family                               
+  |    +--------------+                                                             
+  |                                                                                 
+  |--> endless loop                                                                 
+  |    |                                                                            
+  |    |    +----------+                                                            
+  |    |--> | recvfrom | (peek)                                                     
+  |    |    +----------+                                                            
+  |    |                                                                            
+  |    |--> prepare larger buffer is necessary                                      
+  |    |                                                                            
+  |    |    +----------+                                                            
+  |    |--> | recvfrom |                                                            
+  |    |    +----------+                                                            
+  |    |    +--------------------+                                                  
+  |    +--> | parse_getlink_dump | set up entry for each msg, add to map            
+  |         +--------------------+                                                  
+  |    +------------------+                                                         
+  |--> | fill_local_addrs | send packet to get all eid, save them all in one 'entry'
+  |    +------------------+                                                         
+  |    +--------------+                                                             
+  +--> | sort_linkmap | sort linkmap and eid                                        
+       +--------------+                                                             
+```
+
+```
+src/mctp-netlink.c                                                 
++--------------+                                                    
+| mctp_nl_send | : send packet of netlink family                    
++-|------------+                                                    
+  |                                                                 
+  |--> set up 'addr' and send                                       
+  |                                                                 
+  +--> if 'ack' is labled in flags                                  
+       |                                                            
+       |    +------------------+                                    
+       +--> | handle_nlmsg_ack | handle error or dump unexpected msg
+            +------------------+                                    
+```
+
+```
+src/mctp-netlink.c                                                       
++--------------------+                                                    
+| parse_getlink_dump | : set up entry for each msg, add to map            
++-|------------------+                                                    
+  |                                                                       
+  +--> for each msg in list                                               
+       |                                                                  
+       |    +-----------------------+                                     
+       |--> | mctp_get_rtnlmsg_attr | get attr of 'af spec'               
+       |    +-----------------------+                                     
+       |    +-----------------------+                                     
+       |--> | mctp_get_rtnlmsg_attr | get attr of 'mctp'                  
+       |    +-----------------------+                                     
+       |    +---------------------------+                                 
+       |--> | mctp_get_rtnlmsg_attr_u32 | get attr of 'mctp net'          
+       |    +---------------------------+                                 
+       |    +-----------------------+                                     
+       |--> | mctp_get_rtnlmsg_attr | get attr of 'interface name'        
+       |    +-----------------------+                                     
+       |    +-------------------+                                         
+       +--> | linkmap_add_entry | extend array and set up entry info there
+            +-------------------+                                         
+```
+
+```
+src/mctp-netlink.c                                                            
++------------------+                                                           
+| fill_local_addrs | : send packet to get all eid, save them all in one 'entry'
++-|----------------+                                                           
+  |                                                                            
+  |--> set up msg of 'get addr'                                                
+  |                                                                            
+  |    +---------------+                                                       
+  |--> | mctp_nl_query | send packet, assemble all responses into one buffer   
+  |    +---------------+                                                       
+  |                                                                            
+  +--> for each msg                                                            
+       |                                                                       
+       |    +--------------------------+                                       
+       |--> | mctp_get_rtnlmsg_attr_u8 | get attr of 'local (eid)'             
+       |    +--------------------------+                                       
+       |    +---------------+                                                  
+       +--> | entry_byindex | given idx, get target entry                      
+            +---------------+                                                  
+```
+
+```
+src/mctp-netlink.c                                                    
++---------------+                                                      
+| mctp_nl_query | : send packet, assemble all responses into one buffer
++-|-------------+                                                      
+  |    +--------------+                                                
+  |--> | mctp_nl_send | send packet of netlink family                  
+  |    +--------------+                                                
+  |    +------------------+                                            
+  +--> | mctp_nl_recv_all | receive all responses into one buffer      
+       +------------------+                                            
+```
+
+```
+src/mctp-netlink.c                                                
++------------------+                                               
+| mctp_nl_recv_all | : receive all responses into one buffer       
++-|----------------+                                               
+  |                                                                
+  +--> while not done                                              
+       |                                                           
+       |    +----------+                                           
+       |--> | recvfrom | (peek)                                    
+       |    +----------+                                           
+       |                                                           
+       |--> prepare larger buffer if necessary                     
+       |                                                           
+       |    +----------+                                           
+       |--> | recvfrom |                                           
+       |    +----------+                                           
+       |    +-----------------+                                    
+       +--> | nlmsgs_are_done | scan msg list to check if it's done
+            +-----------------+                                    
+```
+
+```
+src/mctpd.c                                                         
++----------------+                                                   
+| listen_monitor | : monitor netlink and refresh linkmap if necessary
++-|--------------+                                                   
+  |    +-----------------+                                           
+  |--> | mctp_nl_monitor | enable monitor                            
+  |    +-----------------+                                           
+  |    +-----------------+                                           
+  +--> | sd_event_add_io | register callback of monitor              
+       +-----------------+ +-------------------+                     
+                           | cb_listen_monitor | refresh linkmap     
+                           +-------------------+                     
+```
+
+```
+src/mctp-netlink.c                                                  
++-----------------+                                                  
+| mctp_nl_monitor | : enable or disable monitor                      
++-|---------------+                                                  
+  |                                                                  
+  |--> if arg 'enable' is set                                        
+  |    |                                                             
+  |    |--> if monitor already exists, return it                     
+  |    |                                                             
+  |    |    +----------------+                                       
+  |    +--> | open_nl_socket | open netlink socket, use it as monitor
+  |         +----------------+                                       
+  |                                                                  
+  +--> else                                                          
+       -                                                             
+       +--> close monitor (socket)                                   
+```
+
+```
+src/mctpd.c                                                                             
++-------------------+                                                                    
+| cb_listen_monitor | : refresh linkmap                                                  
++-|-----------------+                                                                    
+  |    +------------------------+                                                        
+  +--> | mctp_nl_handle_monitor | reset and re-fill new linkmap, compare with the old one
+  |    +------------------------+                                                        
+  |                                                                                      
+  +--> for each 'change'                                                                 
+       |                                                                                 
+       |--> swtich op                                                                    
+       |--> case 'add link'                                                              
+       |    -    +---------------------+                                                 
+       |    +--> | add_interface_local | add net/peer into ctx                           
+       |         +---------------------+                                                 
+       |--> case 'del link'                                                              
+       |    -    +---------------+                                                       
+       |    +--> | del_interface | remove peers of specified iface idx, prune unused nets
+       |         +---------------+                                                       
+       |--> case 'change net'                                                            
+       |    |    +---------------------+                                                 
+       |    |--> | add_interface_local | add net/peer into ctx                           
+       |    |    +---------------------+                                                 
+       |    |     +----------------------+                                               
+       |    +-->  | change_net_interface | move related peers from old net to new one    
+       |          +----------------------+                                               
+       |--> case 'add eid'                                                               
+       |    -    +---------------+                                                       
+       |    +--> | add_local_eid | ensure peer exists in ctx                             
+       |         +---------------+                                                       
+       |--> case 'del eid'                                                               
+       |    -    +---------------+                                                       
+       |    +--> | del_local_eid | peer refcnt--, if 0, remove it                        
+       |         +---------------+                                                       
+       +--> case 'change up'                                                             
+            ---> (do nothing)                                                            
+```
+
+```
+src/mctp-netlink.c                                                                 
++------------------------+                                                          
+| mctp_nl_handle_monitor | : reset and re-fill new linkmap, compare with the old one
++-|----------------------+                                                          
+  |                                                                                 
+  |--> drain the socket (continuously receive data till it's empty)                 
+  |                                                                                 
+  |--> reset 'nl'                                                                   
+  |                                                                                 
+  |    +--------------+                                                             
+  |--> | fill_linkmap | set up entries and save eid                                 
+  |    +--------------+                                                             
+  |    +-------------------+                                                        
+  |--> | fill_link_changes | compare old/new difference and fill up changes         
+  |    +-------------------+                                                        
+  |                                                                                 
+  +--> free old link map                                                            
+```
+
+```
+src/mctp-netlink.c                                                                    
++-------------------+                                                                  
+| fill_link_changes | : compare old/new difference and fill up changes                 
++-|-----------------+                                                                  
+  |                                                                                    
+  +--> while there's still something to compare                                        
+       |                                                                               
+       |--> get old/new entries separately                                             
+       |                                                                               
+       |--> if they share the same iface                                               
+       |    |                                                                          
+       |    |--> if they share the same net                                            
+       |    |    |                                                                     
+       |    |    |    +------------------+                                             
+       |    |    +--> | fill_eid_changes | compare old/new eid, save the change details
+       |    |         +------------------+                                             
+       |    |                                                                          
+       |    |--> else ('net' changes)                                                  
+       |    |    |                                                                     
+       |    |    |    +------------------+                                             
+       |    |    |--> | fill_eid_changes | bc of trick, here it saves all the old eid  
+       |    |    |    +------------------+                                             
+       |    |    |    +-------------+                                                  
+       |    |    |--> | push_change | extend array, return the last one                
+       |    |    |    +-------------+                                                  
+       |    |    |                                                                     
+       |    |    +--> specify 'op = change_net' in the last element                    
+       |    |                                                                          
+       |    +--> if old-up != new-up                                                   
+       |         |                                                                     
+       |         |    +-------------+                                                  
+       |         +--> | push_change | extend array, return the last one                
+       |         |    +-------------+                                                  
+       |         |                                                                     
+       |         +--> specify 'op = change_up' in the last element                     
+       |                                                                               
+       |--> if no old entry || new entry has smaller iface idx (case 'add link')       
+       |    |                                                                          
+       |    |    +-------------+                                                       
+       |    +--> | push_change | extend array, return the last one                     
+       |    |    +-------------+                                                       
+       |    |                                                                          
+       |    +--> specify 'op = add link' in the last element                           
+       |                                                                               
+       +--> if no new entry || old entry has smaller iface idx  (case 'del link')      
+            |                                                                          
+            |    +-------------+                                                       
+            +--> | push_change | extend array, return the last one                     
+            |    +-------------+                                                       
+            |                                                                          
+            +--> specify 'op = del link' in the last element                           
+```
+
+```
+src/mctp-netlink.c                                                
++------------------+                                               
+| fill_eid_changes | : compare old/new eid, save the change details
++-|----------------+                                               
+  |                                                                
+  |--> get old/new eid from pool separately                        
+  |                                                                
+  |--> if new eid is smaller (case 'add')                          
+  |    |                                                           
+  |    |    +-------------+                                        
+  |    |--> | push_change | extend array, return the last one      
+  |    |    +-------------+                                        
+  |    |                                                           
+  |    +--> save info                                              
+  |                                                                
+  +--> if old eid is smaller (case 'del')                          
+       |                                                           
+       |    +-------------+                                        
+       |--> | push_change | extend array, return the last one      
+       |    +-------------+                                        
+       |                                                           
+       +--> save info                                              
+```
+
+```
+src/mctpd.c                                                                
++---------------------+                                                     
+| add_interface_local | : add net/peer into ctx                             
++-|-------------------+                                                     
+  |    +---------------------+                                              
+  |--> | mctp_nl_net_byindex | given idx, get entry net                     
+  |    +---------------------+                                              
+  |                                                                         
+  |--> if it's not in ctx yet                                               
+  |    |                                                                    
+  |    |    +---------+                                                     
+  |    +--> | add_net | add to ctx and send dbus signal                     
+  |         +---------+                                                     
+  |    +-----------------------+                                            
+  |--> | mctp_nl_addrs_byindex | given idx, get duplicated eid pool of entry
+  |    +-----------------------+                                            
+  |                                                                         
+  |--> for each eid                                                         
+  |    |                                                                    
+  |    |    +---------------+                                               
+  |    +--> | add_local_eid | ensure peer exists in ctx                     
+  |         +---------------+                                               
+  |                                                                         
+  +--> free the duplicated eid pool                                         
+```
+
+```
+src/mctpd.c                                                   
++---------------+                                              
+| add_local_eid | : ensure peer exists in ctx                  
++-|-------------+                                              
+  |                                                            
+  |--> given net/eid, if peer exists already, ref cnt++, return
+  |                                                            
+  |    +----------+                                            
+  |--> | add_peer | ensure peer exists in ctx, return it       
+  |    +----------+                                            
+  |                                                            
+  |--> further set up peer                                     
+  |                                                            
+  |    +--------------+                                        
+  +--> | publish_peer | send dbus signal of 'endpoint added'   
+       +--------------+                                        
+```
+
+```
+src/mctpd.c                                       
++----------+                                       
+| add_peer | : ensure peer exists in ctx, return it
++-|--------+                                       
+  |                                                
+  |--> get net from ctx                            
+  |                                                
+  |--> given eid, get peer idx from net            
+  |                                                
+  |--> if peer idx >= 0                            
+  |    |                                           
+  |    |--> get peer from ctx                      
+  |    |                                           
+  |    +--> return this unused peer                
+  |                                                
+  |    (idx < 0, empty slot)                       
+  |                                                
+  |--> find an unused peer from ctx                
+  |                                                
+  |--> set up the peer from ctx                    
+  |                                                
+  +--> save idx in network                         
+```
+
+```
+src/mctpd.c                                                                  
++---------------+                                                             
+| del_interface | : remove peers of specified iface idx, prune unused nets    
++-|-------------+                                                             
+  |                                                                           
+  |--> for each peer in ctx                                                   
+  |    -                                                                      
+  |    +--> if it shares the specified iface idx                              
+  |         |                                                                 
+  |         |    +-------------+                                              
+  |         +--> | remove_peer | send signal of 'endpoint removed', reset peer
+  |              +-------------+                                              
+  |    +----------------+                                                     
+  +--> | prune_old_nets | remove unused nets in ctx                           
+       +----------------+                                                     
+```
+
+```
+src/mctpd.c                                                      
++----------------+                                                
+| prune_old_nets | : remove unused nets in ctx                    
++-|--------------+                                                
+  |    +------------------+                                       
+  |--> | mctp_nl_net_list | get (active) net list from ctx        
+  |    +------------------+                                       
+  |                                                               
+  +--> for each net in ctx (active + inactive)                    
+       |                                                          
+       |--> if it's active, adjust it's position in ctx           
+       |                                                          
+       +--> else                                                  
+            |                                                     
+            |    +------------------+                             
+            +--> | emit_net_removed | send signal of 'net removed'
+                 +------------------+                             
+```
+
+```
+src/mctpd.c                                                                         
++----------------------+                                                             
+| change_net_interface | : move related peers from old net to new one                
++-|--------------------+                                                             
+  |                                                                                  
+  |--> get old/new nets separately                                                   
+  |                                                                                  
+  |--> for each peer in ctx                                                          
+  |    |                                                                             
+  |    |--> if it's unrelated to new net (iface), continue                           
+  |    |                                                                             
+  |    |    +----------------+                                                       
+  |    |--> | unpublish_peer | delete the peer's neighbor and route, send dbus signal
+  |    |    +----------------+                                                       
+  |    |                                                                             
+  |    |--> copy peer idx from old to new, clear old                                 
+  |    |                                                                             
+  |    |--> save new net in peer                                                     
+  |    |                                                                             
+  |    |    +--------------+                                                         
+  |    +--> | publish_peer | add the peer's neighbor and route, send dbus signal     
+  |         +--------------+                                                         
+  |    +----------------+                                                            
+  +--> | prune_old_nets | remove unused nets in ctx                                  
+       +----------------+                                                            
+```
+
+```
+src/mctpd.c                                                               
++----------------+                                                         
+| unpublish_peer | : delete the peer's neighbor and route, send dbus signal
++-|--------------+                                                         
+  |                                                                        
+  |--> if the peer has neighbor                                            
+  |    |                                                                   
+  |    |    +-------------------+                                          
+  |    +--> | peer_neigh_update | send netlink packet of 'del neighbor'    
+  |         +-------------------+                                          
+  |                                                                        
+  |--> if the peer has route                                               
+  |    |                                                                   
+  |    |    +-------------------+                                          
+  |    +--> | peer_route_update | send netlink packet of 'del route'       
+  |         +-------------------+                                          
+  |                                                                        
+  +--> if the peer was published                                           
+       |                                                                   
+       |    +-----------------------+                                      
+       +--> | emit_endpoint_removed | send signal of 'endpoints removed'   
+            +-----------------------+                                      
+```
+
+```
+src/mctpd.c                                                    
++------------+                                                  
+| setup_nets | : for each iface idx in ctx, add net/peer to ctx 
++-|----------+                                                  
+  |    +-----------------+                                      
+  |--> | mctp_nl_if_list | duplicate array of iface idx from ctx
+  |    +-----------------+                                      
+  |                                                             
+  +--> for each iface idx                                       
+       |                                                        
+       |    +---------------------+                             
+       +--> | add_interface_local | add net/peer into ctx       
+            +---------------------+                             
+```
+
 ### mctp-demux-daemon
 
 ```
