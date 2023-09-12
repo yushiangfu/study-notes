@@ -1,6 +1,46 @@
 ### mctpd from Code Construct
 
 ```
+src/mctpd.c                                                              
++------+                                                                  
+| main |                                                                  
++-|----+                                                                  
+  |    +--------------+                                                   
+  |--> | setup_config | init ctx, set self-defined uuid                   
+  |    +--------------+                                                   
+  |    +------------+                                                     
+  |--> | parse_args |                                                     
+  |    +------------+                                                     
+  |    +-------------+                                                    
+  |--> | mctp_nl_new | prepare netlink socket, set up entries and save eid
+  |    +-------------+                                                    
+  |    +-------------+                                                    
+  |--> | mctp_nl_new | create another one for query                       
+  |    +-------------+                                                    
+  |    +-----------+                                                      
+  |--> | setup_bus | set up dbus paths and ifaces                         
+  |    +-----------+                                                      
+  |    +----------------+                                                 
+  |--> | listen_monitor | monitor netlink and refresh linkmap if necessary
+  |    +----------------+                                                 
+  |    +------------+                                                     
+  |--> | setup_nets | for each iface idx in ctx, add net/peer to ctx      
+  |    +------------+                                                     
+  |    +--------------------+                                             
+  |--> | listen_control_msg | register handler for incoming request       
+  |    +--------------------+                                             
+  |    +---------------+                                                  
+  |--> | setup_testing | (skip)                                           
+  |    +---------------+                                                  
+  |    +--------------+                                                   
+  |--> | request_dbus | request service name "xyz.openbmc_project.MCTP"   
+  |    +--------------+                                                   
+  |    +---------------+                                                  
+  +--> | sd_event_loop |                                                  
+       +---------------+                                                  
+```
+
+```
 src/mctp-netlink.c                                                  
 +-------------+                                                      
 | mctp_nl_new | : prepare netlink socket, set up entries and save eid
@@ -495,6 +535,78 @@ src/mctpd.c
        |    +---------------------+                             
        +--> | add_interface_local | add net/peer into ctx       
             +---------------------+                             
+```
+
+```
+src/mctpd.c                                                                      
++--------------------+                                                            
+| listen_control_msg | : register handler for incoming request                    
++-|------------------+                                                            
+  |                                                                               
+  |--> prepare a socker for receiving                                             
+  |                                                                               
+  |    +------+                                                                   
+  |--> | bind |                                                                   
+  |    +------+                                                                   
+  |    +-----------------+                                                        
+  +--> | sd_event_add_io | register callback for incoming data                    
+       +-----------------+ +-----------------------+                              
+                           | cb_listen_control_msg | receive request and handle it
+                           +-----------------------+                              
+```
+
+```
+src/mctpd.c                                             
++-----------------------+                                
+| cb_listen_control_msg | : receive request and handle it
++-|---------------------+                                
+  |    +--------------+                                  
+  |--> | read_message | alloc buffer, read in data       
+  |    +--------------+                                  
+  |                                                      
+  +--> switch cmd_code                                   
+       case 'get version support'                        
+       -    +------------------------------------+       
+       +--> | handle_control_get_version_support |       
+            +------------------------------------+       
+       case 'set eid'                                    
+       -    +--------------------------------+           
+       +--> | handle_control_set_endpoint_id |           
+            +--------------------------------+           
+       case 'get eid'                                    
+       -    +--------------------------------+           
+       +--> | handle_control_get_endpoint_id |           
+            +--------------------------------+           
+       case 'get ep uuid'                                
+       -    +----------------------------------+         
+       +--> | handle_control_get_endpoint_uuid |         
+            +----------------------------------+         
+       case 'get msg type support'                       
+       -    +-----------------------------------------+  
+       +--> | handle_control_get_message_type_support |  
+            +-----------------------------------------+  
+       case 'resolve eid'                                
+       -    +------------------------------------+       
+       +--> | handle_control_resolve_endpoint_id |       
+            +------------------------------------+       
+```
+
+```
+src/mctpd.c                                 
++--------------+                             
+| read_message | : alloc buffer, read in data
++-|------------+                             
+  |    +----------+                          
+  |--> | recvfrom | (peek)                   
+  |    +----------+                          
+  |                                          
+  |--> alloc buffer                          
+  |                                          
+  |    +----------+                          
+  |--> | recvfrom |                          
+  |    +----------+                          
+  |                                          
+  +--> return buf and size to caller         
 ```
 
 ### mctp-demux-daemon
