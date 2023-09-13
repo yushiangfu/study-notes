@@ -1738,3 +1738,73 @@ drivers/soc/aspeed/aspeed-mctp.c
   |                                                      
   +--> if there's data, label 'epoll_in'                 
 ```
+
+### Kernel Network Driver
+
+```
+net/mctp/device.c                                                                                        
++------------------+                                                                                      
+| mctp_device_init | : register callbacks for 'get addr', 'new addr', 'del addr', register af ops         
++-|----------------+                                                                                      
+  |    +-----------------------------+                                                                    
+  |--> | register_netdevice_notifier | register notifier                                                  
+  |    +-----------------------------+                                                                    
+  |    +----------------------+                                                                           
+  |--> | rtnl_register_module | register dump callback for 'get addr'                                     
+  |    +----------------------+ +--------------------+                                                    
+  |                             | mctp_dump_addrinfo | find iface idx matched mctp dev, dump info into skb
+  |                             +--------------------+                                                    
+  |    +----------------------+                                                                           
+  |--> | rtnl_register_module | register do callback for 'new addr'                                       
+  |    +----------------------+ +------------------+                                                      
+  |                             | mctp_rtm_newaddr | add new addr and routing info                        
+  |                             +------------------+                                                      
+  |    +----------------------+                                                                           
+  |--> | rtnl_register_module | register do callback for 'del addr'                                       
+  |    +----------------------+ +------------------+                                                      
+  |                             | mctp_rtm_deladdr | remove routing info and addr                         
+  |                             +------------------+                                                      
+  |                                                                                                       
+  |    +------------------+                                                                               
+  +--> | rtnl_af_register | register 'mctp_af_ops' to 'rtnl_af_ops'                                       
+       +------------------+                                                                               
+```
+
+```
+net/mctp/device.c                                            
++------------------+                                          
+| mctp_rtm_newaddr | : add new addr and routing info          
++-|----------------+                                          
+  |                                                           
+  |--> get iface idx from arg data, get it net_dev accordingly
+  |                                                           
+  |    +-------------------+                                  
+  |--> | mctp_dev_get_rtnl | get mctp_dev from net_dev        
+  |    +-------------------+                                  
+  |                                                           
+  |--> add new addr into mctp dev                             
+  |                                                           
+  |    +------------------+                                   
+  |--> | mctp_addr_notify | prepare socket to notify the event
+  |    +------------------+                                   
+  |    +----------------------+                               
+  +--> | mctp_route_add_local | add routing info              
+       +----------------------+                               
+```
+
+```
+net/mctp/device.c                                                                
++--------------------+                                                            
+| mctp_dump_addrinfo | : find iface idx matched mctp dev, dump info into skb      
++-|------------------+                                                            
+  |                                                                               
+  +--> for each hlist head                                                        
+       -                                                                          
+       +--> for each entry on hlist                                               
+            -                                                                     
+            +--> if iface idx matches                                             
+                 |                                                                
+                 |    +------------------------+                                  
+                 +--> | mctp_dump_dev_addrinfo | for each addr, fill info into skb
+                      +------------------------+                                  
+```
