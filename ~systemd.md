@@ -678,3 +678,1145 @@ src/libsystemd/sd-event/sd-event.c
   |                                                                                                 
   +--> save 'sleep time' value in clock data                                                        
 ```
+
+```
+src/libsystemd/sd-event/sd-event.c                                          
++-------------------+                                                        
+| sd_event_dispatch | : dispatch 1st source from event's pending queue       
++-|-----------------+                                                        
+  |                                                                          
+  |--> is exit_requested is set                                              
+  |    |                                                                     
+  |    |    +---------------+                                                
+  |    +--> | dispatch_exit | get 1st source from event, dispatch that source
+  |         +---------------+                                                
+  |    +--------------------+                                                
+  |--> | event_next_pending | get 1st source from event's pending queue      
+  |    +--------------------+                                                
+  |                                                                          
+  |--> set event state = running                                             
+  |                                                                          
+  |    +-----------------+                                                   
+  |--> | source_dispatch | given source type, call its callback accordingly  
+  |    +-----------------+                                                   
+  |                                                                          
+  +--> set event state = initial                                             
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                        
++---------------+                                                          
+| dispatch_exit | : get 1st source from event, dispatch that source        
++-|-------------+                                                          
+  |    +------------+                                                      
+  |--> | prioq_peek | get first source from event's exit queue             
+  |    +------------+                                                      
+  |                                                                        
+  |--> event iteration++                                                   
+  |                                                                        
+  |--> set event state = exiting                                           
+  |                                                                        
+  |    +-----------------+                                                 
+  |--> | source_dispatch | given source type, call its callback accordingly
+  |    +-----------------+                                                 
+  |                                                                        
+  +--> set event state = initial                                           
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                    
++-----------------+                                                                    
+| source_dispatch | : given source type, call its callback accordingly                 
++-|---------------+                                                                    
+  |                                                                                    
+  +--> switch source type                                                              
+       case io:                                                                        
+       +--> call ->callback(), e.g.,                                                   
+            +------------------+                                                       
+            | io_exit_callback | set event's exit fields                               
+            +------------------+                                                       
+       case time_xxx                                                                   
+       +--> call ->callback(), e.g.,                                                   
+            +--------------------+                                                     
+            | time_exit_callback | set event's exit fields                             
+            +--------------------+                                                     
+       case signal                                                                     
+       +--> call ->callback(), e.g.,                                                   
+            +----------------------+                                                   
+            | signal_exit_callback | set event's exit fields                           
+            +----------------------+                                                   
+       case child                                                                      
+       +--> call ->callback(), e.g.,                                                   
+            +---------------------+                                                    
+            | child_exit_callback | set event's exit fields                            
+            +---------------------+                                                    
+            if child is zombie, reap it                                                
+       case defer                                                                      
+       +--> call ->callback(), e.g.,                                                   
+            +-----------------------+                                                  
+            | generic_exit_callback | set event's exit fields                          
+            +-----------------------+                                                  
+       case post                                                                       
+       +--> call ->callback(), e.g.,                                                   
+            +-----------------------+                                                  
+            | generic_exit_callback | set event's exit fields                          
+            +-----------------------+                                                  
+       case exit                                                                       
+       +--> call ->callback(), e.g.,                                                   
+            +---------------+                                                          
+            | quit_callback | if 'close on exit' is set, flush bus wqueue and close bus
+            +---------------+                                                          
+       case inotify                                                                    
+       +--> call ->callback(), e.g.,                                                   
+            +-----------------------+                                                  
+            | inotify_exit_callback | set event's exit fields                          
+            +-----------------------+                                                  
+       case memory_pressure                                                            
+       +--> call ->callback(), e.g.,                                                   
+            +--------------------------+                                               
+            | memory_pressure_callback | (skip)                                        
+            +--------------------------+                                               
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                              
++---------------+                                                            
+| quit_callback | : if 'close on exit' is set, flush bus wqueue and close bus
++-|-------------+                                                            
+  |                                                                          
+  +--> if bus has set 'close on exit'                                        
+       |                                                                     
+       |    +--------------+                                                 
+       |--> | sd_bus_flush | ensure bus is running, flush bus wqueue         
+       |    +--------------+                                                 
+       |    +--------------+                                                 
+       +--> | sd_bus_close | (skip)                                          
+            +--------------+                                                 
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                      
++--------------+                                                                     
+| sd_bus_flush | : ensure bus is running, flush bus wqueue                           
++-|------------+                                                                     
+  |    +--------------------+                                                        
+  |--> | bus_ensure_running | ensure bus is running                                  
+  |    +--------------------+                                                        
+  |                                                                                  
+  +--> endless loop                                                                  
+       |                                                                             
+       |    +-----------------+                                                      
+       |--> | dispatch_wqueue | for each msg in write queue: write to bus's output fd
+       |    +-----------------+                                                      
+       |                                                                             
+       |--> if nothing left in wqueue, return                                        
+       |                                                                             
+       |    +----------+                                                             
+       +--> | bus_poll | (skip)                                                      
+            +----------+                                                             
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                      
++--------------------+                                               
+| bus_ensure_running | : ensure bus is running                       
++-|------------------+                                               
+  |                                                                  
+  |--> if it's already running, return                               
+  |                                                                  
+  +--> endless loop                                                  
+       |                                                             
+       |    +----------------+                                       
+       |--> | sd_bus_process | given bus state, handle it accordingly
+       |    +----------------+                                       
+       |                                                             
+       |--> if bus state == running, return                          
+       |                                                             
+       |--> if not running, but everything goes well, continue       
+       |                                                             
+       |    +-------------+                                          
+       +--> | sd_bus_wait | (skip)                                   
+            +-------------+                                          
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                                          
++----------------+                                                                                                                       
+| sd_bus_process | : given bus state, handle it accordingly                                                                              
++----------------------+                                                                                                                 
+| bus_process_internal | : given bus state, handle it accordingly                                                                        
++-|--------------------+                                                                                                                 
+  |                                                                                                                                      
+  +--> switch bus state                                                                                                                  
+       case watch_bind                                                                                                                   
+       -    +-------------------------------+                                                                                            
+       +--> | bus_socket_process_watch_bind | create socket for input/output, connect, prepare io/inotify sources, register them to epoll
+            +-------------------------------+                                                                                            
+       case opening                                                                                                                      
+       -    +----------------------------+                                                                                               
+       +--> | bus_socket_process_opening | given bus address, prepare socket & connect, register sources to epoll                        
+            +----------------------------+                                                                                               
+       case authenticating                                                                                                               
+       -    +-----------------------------------+                                                                                        
+       +--> | bus_socket_process_authenticating | (skip)                                                                                 
+            +-----------------------------------+                                                                                        
+       case running/hello                                                                                                                
+       -    +-----------------+                                                                                                          
+       +--> | process_running | handle timeout, dispatch write queue, receive msg and process it                                         
+            +-----------------+                                                                                                          
+       case closing                                                                                                                      
+       -    +-----------------+                                                                                                          
+       +--> | process_closing | prepare msg of 'disconnected', close bus and exit                                                        
+            +-----------------+                                                                                                          
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c                                                                                                      
++-------------------------------+                                                                                                        
+| bus_socket_process_watch_bind | : create socket for input/output, connect, prepare io source and inotify source, register them to epoll
++-|-----------------------------+                                                                                                        
+  |    +----------+                                                                                                                      
+  |--> | flush_fd | wait and read data to empty the queue                                                                                
+  |    +----------+                                                                                                                      
+  |    +--------------------+                                                                                                            
+  |--> | bus_socket_connect | create one socket for both input/output, connect, close inotify                                            
+  |    +--------------------+                                                                                                            
+  |    +----------------------+                                                                                                          
+  |--> | bus_attach_io_events | for input/output fd: prepare source and register to epoll & set source's priority/description            
+  |    +----------------------+                                                                                                          
+  |    +--------------------------+                                                                                                      
+  +--> | bus_attach_inotify_event | prepare source and register to epoll & set source's priority/description                             
+       +--------------------------+                                                                                                      
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c                                                     
++--------------------+                                                                  
+| bus_socket_connect | : create one socket for both input/output, connect, close inotify
++-|------------------+                                                                  
+  |                                                                                     
+  |--> endless loop                                                                     
+  |    |                                                                                
+  |    |--> create socket as input fd for bus                                           
+  |    |                                                                                
+  |    |    +------------------+                                                        
+  |    |--> | bind_description | prepare bind name and bind to sock fd                  
+  |    |    +------------------+                                                        
+  |    |                                                                                
+  |    |--> output fd = input fd                                                        
+  |    |                                                                                
+  |    |    +------------------+                                                        
+  |    |--> | bus_socket_setup | set input/output buffer size to 8mb separately         
+  |    |    +------------------+                                                        
+  |    |    +---------+                                                                 
+  |    |--> | connect |                                                                 
+  |    |    +---------+                                                                 
+  |    |                                                                                
+  |    +--> if everything goes well, break                                              
+  |                                                                                     
+  |    +----------------------+                                                         
+  +--> | bus_close_inotify_fd | we have socket now, don't need inotify anymore          
+       +----------------------+                                                         
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c                            
++------------------+                                           
+| bind_description | : prepare bind name and bind to sock fd   
++-|----------------+                                           
+  |    +------------------------+                              
+  |--> | sd_bus_get_description | get bus description          
+  |    +------------------------+                              
+  |    +------------------+                                    
+  |--> | get_process_comm | get process name                   
+  |    +------------------+                                    
+  |                                                            
+  |--> assemble bind_name = /bus/$process_name/$bus_description
+  |                                                            
+  |    +----------------------+                                
+  |--> | sockaddr_un_set_path | save bind_name in 'sock addr'  
+  |    +----------------------+                                
+  |    +------+                                                
+  +--> | bind | bind 'sock addr' to fd                         
+       +------+                                                
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                         
++----------------------+                                                                                                
+| bus_attach_io_events | : for input/output fd: prepare source and register to epoll & set source's priority/description
++-|--------------------+                                                                                                
+  |                                                                                                                     
+  |--> if bus has no event source of input                                                                              
+  |    |                                                                                                                
+  |    |    +-----------------+                                                                                         
+  |    +--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io                        
+  |    |    +-----------------+                                                                                         
+  |    |    +-----------------------------+                                                                             
+  |    |--> | sd_event_source_set_prepare | update s->callback, insert to or remove from queue accordingly              
+  |    |    +-----------------------------+                                                                             
+  |    |    +------------------------------+                                                                            
+  |    |--> | sd_event_source_set_priority | s->priority = priority, reposition source in data structure                
+  |    |    +------------------------------+                                                                            
+  |    |    +---------------------------------+                                                                         
+  |    +--> | sd_event_source_set_description | duplicate description into source                                       
+  |         +---------------------------------+                                                                         
+  |                                                                                                                     
+  |--> else                                                                                                             
+  |    |                                                                                                                
+  |    |    +---------------------------+                                                                               
+  |    +--> | sd_event_source_set_io_fd | add new fd to epoll, remove the old one                                       
+  |         +---------------------------+                                                                               
+  |                                                                                                                     
+  +--> if input fd != output fd                                                                                         
+       |                                                                                                                
+       |--> if bus has no event source of output                                                                        
+       |    |                                                                                                           
+       |    |    +-----------------+                                                                                    
+       |    +--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io                   
+       |    |    +-----------------+                                                                                    
+       |    |    +------------------------------+                                                                       
+       |    |--> | sd_event_source_set_priority | s->priority = priority, reposition source in data structure           
+       |    |    +------------------------------+                                                                       
+       |    |    +---------------------------------+                                                                    
+       |    +--> | sd_event_source_set_description | duplicate description into source                                  
+       |         +---------------------------------+                                                                    
+       |                                                                                                                
+       +--> else                                                                                                        
+            |                                                                                                           
+            |    +---------------------------+                                                                          
+            +--> | sd_event_source_set_io_fd | add new fd to epoll, remove the old one                                  
+                 +---------------------------+                                                                          
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                             
++-----------------------------+                                                                 
+| sd_event_source_set_prepare | : update s->callback, insert to or remove from queue accordingly
++-|---------------------------+                                                                 
+  |    +------------------------+                                                               
+  |--> | prioq_ensure_allocated | ensure 'prepare' queue exists                                 
+  |    +------------------------+                                                               
+  |                                                                                             
+  |--> install arg callback to source                                                           
+  |                                                                                             
+  |--> if callback is provided                                                                  
+  |    |                                                                                        
+  |    |    +-----------+                                                                       
+  |    +--> | prioq_put | insert source to 'prepare' queue                                      
+  |         +-----------+                                                                       
+  |                                                                                             
+  +--> else                                                                                     
+       |                                                                                        
+       |    +--------------+                                                                    
+       +--> | prioq_remove | remove source from 'prepare' queue                                 
+            +--------------+                                                                    
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                       
++------------------------------+                                                                          
+| sd_event_source_set_priority | : s->priority = priority, reposition source in data structure            
++-|----------------------------+                                                                          
+  |                                                                                                       
+  |--> if source type == inotify                                                                          
+  |    |                                                                                                  
+  |    |    +-------------------------+                                                                   
+  |    |--> | event_make_inotify_data | ensure inotify_data exists and registered to epoll                
+  |    |    +-------------------------+                                                                   
+  |    |    +-----------------------+                                                                     
+  |    |--> | event_make_inode_data | ensure inode_data in inotify_data's hashmap                         
+  |    |    +-----------------------+                                                                     
+  |    |                                                                                                  
+  |    |--> move source from old inode_data to new inode_data                                             
+  |    |                                                                                                  
+  |    |    +--------------------------+                                                                  
+  |    |--> | inode_data_realize_watch | add arg inode_data to inotify                                    
+  |    |    +--------------------------+                                                                  
+  |    |                                                                                                  
+  |    |--> s->priority = arg priority                                                                    
+  |    |                                                                                                  
+  |    |    +---------------------+                                                                       
+  |    +--> | event_gc_inode_data | garbage collect inode_data & inotify_data                             
+  |         +---------------------+                                                                       
+  |                                                                                                       
+  |--> else if source type == signal                                                                      
+  |    |                                                                                                  
+  |    |--> s->priority = arg priority                                                                    
+  |    |                                                                                                  
+  |    |    +------------------------+                                                                    
+  |    |--> | event_make_signal_data | ensure target signal is monitored by epoll                         
+  |    |    +------------------------+                                                                    
+  |    |    +--------------------------+                                                                  
+  |    +--> | event_unmask_signal_data | unset the bit in mask                                            
+  |         +--------------------------+                                                                  
+  |                                                                                                       
+  |--> else                                                                                               
+  |    -                                                                                                  
+  |    +--> s->priority = arg priority                                                                    
+  |                                                                                                       
+  |    +---------------------------------+                                                                
+  |--> | event_source_pp_prioq_reshuffle | reshuffle source's 'pending' and 'prepare' queues if they exist
+  |    +---------------------------------+                                                                
+  |                                                                                                       
+  +--> if source type == exit                                                                             
+       |                                                                                                  
+       |    +-----------------+                                                                           
+       +--> | prioq_reshuffle | reshuffle target node in queue (exit)                                     
+            +-----------------+                                                                           
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                             
++-------------------------+                                                     
+| event_make_inotify_data | : ensure inotify_data exists and registered to epoll
++-|-----------------------+                                                     
+  |    +-------------+                                                          
+  |--> | hashmap_get | given priority, get inotify_data from event hashmap      
+  |    +-------------+                                                          
+  |                                                                             
+  |--> if got, return                                                           
+  |                                                                             
+  |    +---------------+                                                        
+  |--> | inotify_init1 | get inotify fd                                         
+  |    +---------------+                                                        
+  |                                                                             
+  |--> alloc inotify_data & set up                                              
+  |                                                                             
+  |    +--------------------+                                                   
+  |--> | hashmap_ensure_put | insert inotify_data to event hashmap              
+  |    +--------------------+                                                   
+  |                                                                             
+  |--> set up epoll_eventz                                                      
+  |                                                                             
+  |    +-----------+                                                            
+  +--> | epoll_ctl | register fd to epoll                                       
+       +-----------+                                                            
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                         
++-----------------------+                                                   
+| event_make_inode_data | : ensure inode_data in inotify_data's hashmap     
++-|---------------------+                                                   
+  |                                                                         
+  |--> set up key                                                           
+  |                                                                         
+  |    +-------------+                                                      
+  |--> | hashmap_get | given key, get inode_data from inotify_data's hashmap
+  |    +-------------+                                                      
+  |                                                                         
+  |--> if found, return                                                     
+  |                                                                         
+  |    +--------------------------+                                         
+  |--> | hashmap_ensure_allocated | ensure inotify_data's hashmap exists    
+  |    +--------------------------+                                         
+  |                                                                         
+  |--> alloc inode_data & set up                                            
+  |                                                                         
+  |    +-------------+                                                      
+  +--> | hashmap_put | insert inode_data to inotify_data's hashmap          
+       +-------------+                                                      
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                     
++--------------------------+                                            
+| inode_data_realize_watch | : add arg inode_data to inotify            
++-|------------------------+                                            
+  |    +--------------------------+                                     
+  |--> | hashmap_ensure_allocated | ensure inotify_data's hashmap exists
+  |    +--------------------------+                                     
+  |    +----------------------+                                         
+  +--> | inotify_add_watch_fd | add arg inode_data to inotify           
+       +----------------------+                                         
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                               
++---------------------+                                                           
+| event_gc_inode_data | : garbage collect inode_data & inotify_data               
++-|-------------------+                                                           
+  |    +-----------------------+                                                  
+  |--> | event_free_inode_data | remove inode_data from event/inotify, and free it
+  |    +-----------------------+                                                  
+  |    +-----------------------+                                                  
+  +--> | event_gc_inotify_data | remove inotify_data from event, and free it      
+       +-----------------------+                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                         
++--------------------------+                                                                            
+| bus_attach_inotify_event | : prepare source and register to epoll & set source's priority/description 
++-|------------------------+                                                                            
+  |                                                                                                     
+  |--> if bus has no inotify event source                                                               
+  |    |                                                                                                
+  |    |    +-----------------+                                                                         
+  |    |--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io        
+  |    |    +-----------------+                                                                         
+  |    |    +------------------------------+                                                            
+  |    |--> | sd_event_source_set_priority | s->priority = priority, reposition source in data structure
+  |    |    +------------------------------+                                                            
+  |    |    +---------------------------------+                                                         
+  |    +--> | sd_event_source_set_description | duplicate description into source                       
+  |         +---------------------------------+                                                         
+  |                                                                                                     
+  +--> else                                                                                             
+       |                                                                                                
+       |    +---------------------------+                                                               
+       +--> | sd_event_source_set_io_fd | add new fd to epoll, remove the old one                       
+            +---------------------------+                                                               
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c                                                                                        
++----------------------------+                                                                                             
+| bus_socket_process_opening | : given bus address, prepare socket & connect, register sources to epoll                    
++-|--------------------------+                                                                                             
+  |    +-------------------+                                                                                               
+  |--> | fd_wait_for_event | poll (wait for event)                                                                         
+  |    +-------------------+                                                                                               
+  |    +-----------------------+                                                                                           
+  |--> | bus_socket_start_auth | (skip)                                                                                    
+  |    +-----------------------+                                                                                           
+  |    +------------------+                                                                                                
+  +--> | bus_next_address | given bus address, spawn child if required, prepare socket & connect, register sources to epoll
+       +------------------+                                                                                                
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                             
++------------------+                                                                                                        
+| bus_next_address | : given bus address, spawn child if required, prepare socket & connect, register sources to epoll      
++-|----------------+                                                                                                        
+  |    +--------------------------+                                                                                         
+  |--> | bus_reset_parsed_address | reset bus structure                                                                     
+  |    +--------------------------+                                                                                         
+  |    +-------------------+                                                                                                
+  +--> | bus_start_address | given bus address, spawn child if required, prepare socket & connect, register sources to epoll
+       +-------------------+                                                                                                
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                                   
++-------------------+                                                                                                             
+| bus_start_address | : given bus address, spawn child if required, prepare socket & connect, register sources to epoll           
++-|-----------------+                                                                                                             
+  |                                                                                                                               
+  +--> endless loop                                                                                                               
+       |                                                                                                                          
+       |    +------------------+                                                                                                  
+       |--> | bus_close_io_fds | detach event (source->enabled = off, ref--), close input/output fd                               
+       |    +------------------+                                                                                                  
+       |    +----------------------+                                                                                              
+       |--> | bus_close_inotify_fd | release inotify source, close fd                                                             
+       |    +----------------------+                                                                                              
+       |    +---------------+                                                                                                     
+       |--> | bus_kill_exec | send 'terminate' signal to target task, wait till it exits                                          
+       |    +---------------+                                                                                                     
+       |                                                                                                                          
+       |--> if exec path is provided                                                                                              
+       |    |                                                                                                                     
+       |    |    +-----------------+                                                                                              
+       |    +--> | bus_socket_exec | fork and exec child, set up input/output buffer size (8m)                                    
+       |         +-----------------+                                                                                              
+       |                                                                                                                          
+       |--> elif target is in another namespace (???)                                                                             
+       |    |                                                                                                                     
+       |    |    +------------------------------+                                                                                 
+       |    +--> | bus_container_connect_socket | (skip)                                                                          
+       |         +------------------------------+                                                                                 
+       |                                                                                                                          
+       |--> elif socket addr is specified                                                                                         
+       |    |                                                                                                                     
+       |    |    +--------------------+                                                                                           
+       |    +--> | bus_socket_connect | create one socket for both input/output, connect, close inotify                           
+       |         +--------------------+                                                                                           
+       |                                                                                                                          
+       |--> else, go to 'next'                                                                                                    
+       |                                                                                                                          
+       |    +----------------------+                                                                                              
+       |--> | bus_attach_io_events | for input/output fd: prepare source and register to epoll & set source's priority/description
+       |    +----------------------+                                                                                              
+       |    +--------------------------+                                                                                          
+       |--> | bus_attach_inotify_event | prepare source and register to epoll & set source's priority/description                 
+       |    +--------------------------+                                                                                          
+       |                                                                                                                          
+       |--> return                                                                                                                
+       |next:                                                                                                                     
+       |    +------------------------+                                                                                            
+       +--> | bus_parse_next_address | parse address, save to sock_addr in bus                                                    
+            +------------------------+                                                                                            
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c                                            
++-----------------+                                                            
+| bus_socket_exec | : fork and exec child, set up input/output buffer size (8m)
++-|---------------+                                                            
+  |    +------------+                                                          
+  |--> | socketpair | create socket pair that connect to each other            
+  |    +------------+                                                          
+  |    +----------------+                                                      
+  |--> | safe_fork_full | fork                                                 
+  |    +----------------+                                                      
+  |                                                                            
+  |--> if I'm the child                                                        
+  |    |                                                                       
+  |    |    +--------+    +--------+                                           
+  |    +--> | execvp | or | execvp |                                           
+  |         +--------+    +--------+                                           
+  |                                                                            
+  |--> if I'm the parent, close socket[1]                                      
+  |                                                                            
+  |    +------------------+                                                    
+  +--> | bus_socket_setup | set bus's input/output buffer to 8mb each          
+       +------------------+                                                    
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                     
++------------------------+                                          
+| bus_parse_next_address | : parse address, save to sock_addr in bus
++-|----------------------+                                          
+  |    +--------------------------+                                 
+  |--> | bus_reset_parsed_address | reset bus address               
+  |    +--------------------------+                                 
+  |                                                                 
+  |--> get first address                                            
+  |                                                                 
+  +--> while address is still valid                                 
+       |                                                            
+       |--> if it starts with 'unix:'                               
+       |    |                                                       
+       |    |    +--------------------+                             
+       |    |--> | parse_unix_address |                             
+       |    |    +--------------------+                             
+       |    +--> break                                              
+       |                                                            
+       |--> elif it starts with 'tcp:'                              
+       |    |                                                       
+       |    |    +-------------------+                              
+       |    |--> | parse_tcp_address |                              
+       |    |    +-------------------+                              
+       |    +--> break                                              
+       |                                                            
+       |--> elif it starts with 'unixexec:'                         
+       |    |                                                       
+       |    |    +--------------------+                             
+       |    |--> | parse_exec_address |                             
+       |    |    +--------------------+                             
+       |    +--> break                                              
+       |                                                            
+       |--> elif it starts with 'x-machine-unix:'                   
+       |    |                                                       
+       |    |    +------------------------------+                   
+       |    |--> | parse_container_unix_address |                   
+       |    |    +------------------------------+                   
+       |    +--> break                                              
+       |                                                            
+       +--> advance to next address                                 
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                             
++-----------------+                                                                                         
+| process_running | : handle timeout, dispatch write queue, receive msg and process it                      
++-|---------------+                                                                                         
+  |    +-----------------+                                                                                  
+  |--> | process_timeout | remove 1st reply_callback from bus, prepare msg and set sender, call ->callback()
+  |    +-----------------+                                                                                  
+  |    +-----------------+                                                                                  
+  |--> | dispatch_wqueue | for each msg in write queue: write to bus's output fd                            
+  |    +-----------------+                                                                                  
+  |    +----------------+                                                                                   
+  |--> | dispatch_track | (skip)                                                                            
+  |    +----------------+                                                                                   
+  |    +-----------------+                                                                                  
+  |--> | dispatch_rqueue | ensure rqueue has msg, get 1st msg and remove it from rqueue                     
+  |    +-----------------+                                                                                  
+  |    +-----------------+                                                                                  
+  +--> | process_message | process callbacks of reply/filter/match, process method                          
+       +-----------------+                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                        
++-----------------+                                                                                    
+| process_timeout | : remove 1st reply_callback from bus, prepare msg and set sender, call ->callback()
++-|---------------+                                                                                    
+  |    +------------+                                                                                  
+  |--> | prioq_peek | get first callback from bus prio queue                                           
+  |    +------------+                                                                                  
+  |    +---------------------------------+                                                             
+  |--> | bus_message_new_synthetic_error | prepare msg, append information, set msg sender             
+  |    +---------------------------------+                                                             
+  |    +----------------------------+                                                                  
+  |--> | bus_seal_synthetic_message | finish the msg build                                             
+  |    +----------------------------+                                                                  
+  |    +------------------------+                                                                      
+  |--> | ordered_hashmap_remove | remove callback from bus                                             
+  |    +------------------------+                                                                      
+  |                                                                                                    
+  |--> set up bus fields for callback                                                                  
+  |                                                                                                    
+  |--> call ->callback(), e.g.,                                                                        
+  |    +----------------+                                                                              
+  |    | hello_callback | read data from reply, change bus state from 'hello' to 'running'             
+  |    +--------------------+                                                                          
+  |    | add_match_callback | call ->install_callback()                                                
+  |    +--------------------+                                                                          
+  |                                                                                                    
+  +--> reset those bus fields                                                                          
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                 
++---------------------------------+                                                  
+| bus_message_new_synthetic_error | : prepare msg, append information, set msg sender
++-|-------------------------------+                                                  
+  |    +--------------------+                                                        
+  |--> | sd_bus_message_new | prepare msg                                            
+  |    +--------------------+                                                        
+  |    +-----------------------------+                                               
+  |--> | message_append_reply_cookie | append 'reply cookie' to msg                  
+  |    +-----------------------------+                                               
+  |                                                                                  
+  |--> if bus has unique name                                                        
+  |    |                                                                             
+  |    |    +-----------------------------+                                          
+  |    +--> | message_append_field_string | append 'unique name' to msg              
+  |         +-----------------------------+                                          
+  |    +-----------------------------+                                               
+  |--> | message_append_field_string | append 'error name' to msg                    
+  |    +-----------------------------+                                               
+  |                                                                                  
+  |--> if error has msg                                                              
+  |    |                                                                             
+  |    |    +-----------------------------+                                          
+  |    +--> | message_append_field_string | append 'error msg' to msg                
+  |         +-----------------------------+                                          
+  |    +-------------------------------+                                             
+  +--> | bus_message_set_sender_driver | set msg sender = "org.freedesktop.DBus"     
+       +-------------------------------+                                             
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                
++----------------+                                                                             
+| hello_callback | : read data from reply, change bus state from 'hello' to 'running'          
++-|--------------+                                                                             
+  |    +---------------------+                                                                 
+  |--> | sd_bus_message_read | read data (type = string) from reply                            
+  |    +---------------------+                                                                 
+  |                                                                                            
+  +--> if bus state == hello                                                                   
+       |                                                                                       
+       |    +---------------+                                                                  
+       |--> | bus_set_state | set state = arg running                                          
+       |    +---------------+                                                                  
+       |    +-----------------------------+                                                    
+       +--> | synthesize_connected_signal | prepare msg of signal type, insert to bus rqueue[0]
+            +-----------------------------+                                                    
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                   
++-----------------------------+                                                                   
+| synthesize_connected_signal | : prepare msg of signal type, insert to bus rqueue[0]             
++-|---------------------------+                                                                   
+  |    +---------------------------+                                                              
+  |--> | sd_bus_message_new_signal | prepare msg of signal type, append path/interface/member info
+  |    +---------------------------+                                                              
+  |    +------------------------------+                                                           
+  |--> | bus_message_set_sender_local | set msg sender = org.freedesktop.DBus.Local               
+  |    +------------------------------+                                                           
+  |    +----------------------------+                                                             
+  |--> | bus_seal_synthetic_message | finish msg build                                            
+  |    +----------------------------+                                                             
+  |    +----------------------+                                                                   
+  |--> | bus_rqueue_make_room | realloc bus rqueue (msg array)                                    
+  |    +----------------------+                                                                   
+  |                                                                                               
+  +--> insert msg to rqueue[0]                                                                    
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                            
++---------------------------+                                                                   
+| sd_bus_message_new_signal | : prepare msg of signal type, append path/interface/member info   
++------------------------------+                                                                
+| sd_bus_message_new_signal_to | : prepare msg of signal type, append path/interface/member info
++-|----------------------------+                                                                
+  |    +--------------------+                                                                   
+  |--> | sd_bus_message_new | prepare msg of signal type                                        
+  |    +--------------------+                                                                   
+  |    +-----------------------------+                                                          
+  |--> | message_append_field_string | append 'path' to msg                                     
+  |    +-----------------------------+                                                          
+  |    +-----------------------------+                                                          
+  |--> | message_append_field_string | append 'interface' to msg                                
+  |    +-----------------------------+                                                          
+  |    +-----------------------------+                                                          
+  |--> | message_append_field_string | append 'member' to msg                                   
+  |    +-----------------------------+                                                          
+  |                                                                                             
+  +--> if arg destination is provided                                                           
+       |                                                                                        
+       |    +-----------------------------+                                                     
+       +--> | message_append_field_string | append 'destination' to msg                         
+            +-----------------------------+                                                     
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                 
++-----------------+                                                             
+| dispatch_wqueue | : for each msg in write queue: write to bus's output fd     
++-|---------------+                                                             
+  |                                                                             
+  +--> while wqueue_size > 0                                                    
+       |                                                                        
+       |    +-------------------+                                               
+       |--> | bus_write_message | convert msg to iovec, write to bus's output fd
+       |    +-------------------+                                               
+       |                                                                        
+       +--> remove the msg rom bus write queue                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                              
++-------------------+                                                        
+| bus_write_message | : convert msg to iovec, write to bus's output fd       
++--------------------------+                                                 
+| bus_socket_write_message | : convert msg to iovec, write to bus's output fd
++-|------------------------+                                                 
+  |    +-------------------------+                                           
+  |--> | bus_message_setup_iovec | convert msg to iovec                      
+  |    +-------------------------+                                           
+  |                                                                          
+  +--> either writev() or sendmsg() to bus output fd                         
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c               
++-------------------------+                       
+| bus_message_setup_iovec | : convert msg to iovec
++-|-----------------------+                       
+  |                                               
+  |--> determine iovec buffer                     
+  |                                               
+  |    +--------------+                           
+  |--> | append_iovec | append one vector         
+  |    +--------------+                           
+  |                                               
+  +--> for each part in msg                       
+       |                                          
+       |    +-------------------+                 
+       |--> | bus_body_part_map | perform mmap    
+       |    +-------------------+                 
+       |    +--------------+                      
+       +--> | append_iovec | append one vector    
+            +--------------+                      
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                     
++-----------------+                                                                                                 
+| dispatch_rqueue | : ensure rqueue has msg, get 1st msg and remove it from rqueue                                  
++-|---------------+                                                                                                 
+  |                                                                                                                 
+  +--> endless loop                                                                                                 
+       |                                                                                                            
+       |--> if there's already something in rqueue                                                                  
+       |    |                                                                                                       
+       |    |--> get rqueue[0]                                                                                      
+       |    |                                                                                                       
+       |    |    +-----------------+                                                                                
+       |    |--> | rqueue_drop_one | remove target msg from rqueue                                                  
+       |    |    +-----------------+                                                                                
+       |    +--> return                                                                                             
+       |                                                                                                            
+       |    +------------------+                                                                                    
+       +--> | bus_read_message | prepare rbuffer, read data from bus's input fd, convert to msg and append to rqueue
+            +------------------+                                                                                    
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                  
++------------------+                                                                                             
+| bus_read_message | : prepare rbuffer, read data from bus's input fd, convert to msg and append to rqueue       
++-------------------------+                                                                                      
+| bus_socket_read_message | : prepare rbuffer, read data from bus's input fd, convert to msg and append to rqueue
++-|-----------------------+                                                                                      
+  |    +------------------------------+                                                                          
+  |--> | bus_socket_read_message_need | determine how much size is needed                                        
+  |    +------------------------------+                                                                          
+  |                                                                                                              
+  |--> if bus has enough size for msg                                                                            
+  |    |                                                                                                         
+  |    |    +-------------------------+                                                                          
+  |    |--> | bus_socket_make_message | alloc msg & parse buffer, append to bus rqueue                           
+  |    |    +-------------------------+                                                                          
+  |    +--> return                                                                                               
+  |                                                                                                              
+  |    +---------+                                                                                               
+  |--> | realloc | realloc bus rbuffer                                                                           
+  |    +---------+                                                                                               
+  |                                                                                                              
+  |--> either readv() or recvmsg_safe()                                                                          
+  |                                                                                                              
+  |    +------------------------------+                                                                          
+  |--> | bus_socket_read_message_need | determine how much size is needed                                        
+  |    +------------------------------+                                                                          
+  |                                                                                                              
+  +--> if bus has enough size for msg                                                                            
+       |                                                                                                         
+       |    +-------------------------+                                                                          
+       |--> | bus_socket_make_message | alloc msg & parse buffer, append to bus rqueue                           
+       |    +-------------------------+                                                                          
+       +--> return                                                                                               
+```
+
+```
+src/libsystemd/sd-bus/bus-socket.c                                         
++-------------------------+                                                 
+| bus_socket_make_message | : alloc msg & parse buffer, append to bus rqueue
++-|-----------------------+                                                 
+  |    +----------------------+                                             
+  |--> | bus_rqueue_make_room | realloc bus's rqueue                        
+  |    +----------------------+                                             
+  |    +-------------------------+                                          
+  |--> | bus_message_from_malloc | alloc msg, and parse buffer              
+  |    +-------------------------+                                          
+  |                                                                         
+  +--> add msg to the last position of bus rqueue                           
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                         
++-----------------+                                                                                     
+| process_message | : process callbacks of reply/filter/match, process method                           
++-|---------------+                                                                                     
+  |    +---------------+                                                                                
+  |--> | process_hello | simple check                                                                   
+  |    +---------------+                                                                                
+  |    +---------------+                                                                                
+  |--> | process_reply | given msg cookie, remove target 'reply callback' from bus and call ->callback()
+  |    +---------------+                                                                                
+  |    +------------------+                                                                             
+  |--> | process_fd_check | check fd                                                                    
+  |    +------------------+                                                                             
+  |    +----------------+                                                                               
+  |--> | process_filter | for each filter callback in bus: call ->callback()                            
+  |    +----------------+                                                                               
+  |    +---------------+                                                                                
+  |--> | process_match | recursively traverse children/sibling, if leaf: run ->callback()               
+  |    +---------------+                                                                                
+  |    +-----------------+                                                                              
+  |--> | process_builtin | if necessary, prepare msg and reply                                          
+  |    +-----------------+                                                                              
+  |    +--------------------+                                                                           
+  +--> | bus_process_object | handle method get/set/get_all/introspect/get_managed_objects              
+       +--------------------+                                                                           
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                    
++---------------+                                                                                  
+| process_reply | : given msg cookie, remove target 'reply callback' from bus and call ->callback()
++-|-------------+                                                                                  
+  |                                                                                                
+  |--> given msg cookie (key), remove 'reply callback' from bus hashmap                            
+  |                                                                                                
+  |--> given 'reply callback', get outer 'slot'                                                    
+  |                                                                                                
+  |    +-----------------------+                                                                   
+  |--> | sd_bus_message_rewind | (???)                                                             
+  |    +-----------------------+                                                                   
+  |                                                                                                
+  |--> call ->callback()                                                                           
+  |                                                                                                
+  +--> slot ref--                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                        
++----------------+                                                     
+| process_filter | : for each filter callback in bus: call ->callback()
++-|--------------+                                                     
+  |                                                                    
+  +--> for each filter callback in bus                                 
+       |                                                               
+       |    +-----------------------+                                  
+       |--> | sd_bus_message_rewind |                                  
+       |    +-----------------------+                                  
+       |                                                               
+       +--> call ->callback()                                          
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                     
++---------------+                                                                   
+| process_match | : recursively traverse children/sibling, if leaf: run ->callback()
++---------------+                                                                   
+| bus_match_run | : recursively traverse children/sibling, if leaf: run ->callback()
++-|-------------+                                                                   
+  |                                                                                 
+  |--> switch node type                                                             
+  |--> case root/value                                                              
+  |    -    +---------------+                                                       
+  |    +--> | bus_match_run | recursively apply to child                            
+  |         +---------------+                                                       
+  |--> case leaf                                                                    
+  |    |--> run ->callback()                                                        
+  |    |    +---------------+                                                       
+  |    +--> | bus_match_run | recursively apply to sibling (next)                   
+  |         +---------------+                                                       
+  |--> case type/sender/destination/...                                             
+  |    +--> get info from header                                                    
+  |--> case args_xxx                                                                
+  |    -    +---------------------+                                                 
+  |    +--> | bus_message_get_arg |                                                 
+  |         +---------------------+                                                 
+  |                                                                                 
+  |--> if node type is in hash table                                                
+  |    |                                                                            
+  |    |    +-------------+                                                         
+  |    |--> | hashmap_get |                                                         
+  |    |    +-------------+                                                         
+  |    |    +---------------+                                                       
+  |    +--> | bus_match_run | recursively apply to value found from hash table      
+  |         +---------------+                                                       
+  |                                                                                 
+  |--> for each child of current node                                               
+  |    |                                                                            
+  |    |    +---------------+                                                       
+  |    +--> | bus_match_run | recursively apply to current child                    
+  |         +---------------+                                                       
+  |    +---------------+                                                            
+  +--> | bus_match_run | recursively apply to sibling (next)                        
+       +---------------+                                                            
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                            
++--------------------+                                                                          
+| bus_process_object | ： handle method get/set/get_all/introspect/get_managed_objects           
++-|------------------+                                                                          
+  |                                                                                             
+  |--> if it's broadcast msg, return (ignore)                                                   
+  |                                                                                             
+  |--> alloc buffer for prefix                                                                  
+  |                                                                                             
+  |    +---------------------+                                                                  
+  |--> | object_find_and_run | handle method get/set/get_all/introspect/get_managed_objects     
+  |    +---------------------+                                                                  
+  |                                                                                             
+  +--> for each prefix in msg path                                                              
+       |                                                                                        
+       |    +---------------------+                                                             
+       +--> | object_find_and_run | handle method get/set/get_all/introspect/get_managed_objects
+            +---------------------+                                                             
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                        
++---------------------+                                                                     
+| object_find_and_run | : handle method get/set/get_all/introspect/get_managed_objects      
++-|-------------------+                                                                     
+  |                                                                                         
+  |--> given arg key, get node from bus's hashmap                                           
+  |                                                                                         
+  |    +--------------------+                                                               
+  |--> | node_callbacks_run | for each callback in node, call ->callback()                  
+  |    +--------------------+                                                               
+  |                                                                                         
+  |--> set up vtable key, get method from bus's another hashmap                             
+  |                                                                                         
+  |    +----------------------+                                                             
+  |--> | method_callbacks_run | get user data and signature, call method.handler()          
+  |    +----------------------+                                                             
+  |                                                                                         
+  |--> if interface == org.freedesktop.DBus.Properties                                      
+  |    |                                                                                    
+  |    |--> if member is 'get' or 'set'                                                     
+  |    |    |                                                                               
+  |    |    |    +---------------------+                                                    
+  |    |    |--> | sd_bus_message_read | read interface/member from msg to set up vtable key
+  |    |    |    +---------------------+                                                    
+  |    |    |                                                                               
+  |    |    |--> given key, get properties from bus's hashmap                               
+  |    |    |                                                                               
+  |    |    |    +--------------------------------+                                         
+  |    |    +--> | property_get_set_callbacks_run | (skip)                                  
+  |    |         +--------------------------------+                                         
+  |    |                                                                                    
+  |    +--> elif member is 'get all'                                                        
+  |         |                                                                               
+  |         |    +---------------------+                                                    
+  |         |--> | sd_bus_message_read | read interface from msg                            
+  |         |    +---------------------+                                                    
+  |         |    +--------------------------------+                                         
+  |         +--> | property_get_all_callbacks_run | (skip)                                  
+  |              +--------------------------------+                                         
+  |                                                                                         
+  |--> elif method == 'introspect'                                                          
+  |    |                                                                                    
+  |    |    +--------------------+                                                          
+  |    +--> | process_introspect | (skip)                                                   
+  |         +--------------------+                                                          
+  |                                                                                         
+  +--> elif method == 'get managed objects'                                                 
+       |                                                                                    
+       |    +-----------------------------+                                                 
+       +--> | process_get_managed_objects | (skip)                                          
+            +-----------------------------+                                                 
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                              
++----------------------+                                                          
+| method_callbacks_run | : get user data and signature, call method.handler()     
++-|--------------------+                                                          
+  |    +--------------------------+                                               
+  |--> | node_vtable_get_userdata | call ->find() to get user data                
+  |    +--------------------------+                                               
+  |    +--------------------------------+                                         
+  |--> | vtable_method_convert_userdata | += offset                               
+  |    +--------------------------------+                                         
+  |    +------------------------------+                                           
+  |--> | sd_bus_message_get_signature | determine container, get signature from it
+  |    +------------------------------+                                           
+  |                                                                               
+  +--> call method.handler()                                                      
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                          
++-----------------+                                                                      
+| process_closing | : prepare msg of 'disconnected', close bus and exit                  
++-|---------------+                                                                      
+  |                                                                                      
+  |--> prepare msg of 'disconnected'                                                     
+  |                                                                                      
+  |    +------------------------------+                                                  
+  |--> | bus_message_set_sender_local | set sender = org.freedesktop.DBus.Local          
+  |    +------------------------------+                                                  
+  |    +----------------------------+                                                    
+  |--> | bus_seal_synthetic_message | set timestamp and seal msg                         
+  |    +----------------------------+                                                    
+  |    +--------------+                                                                  
+  |--> | sd_bus_close | (skip)                                                           
+  |    +--------------+                                                                  
+  |    +----------------+                                                                
+  |--> | process_filter | for each filter callback in bus: call ->callback()             
+  |    +----------------+                                                                
+  |    +---------------+                                                                 
+  |--> | process_match | recursively traverse children/sibling, if leaf: run ->callback()
+  |    +---------------+                                                                 
+  |    +--------------+                                                                  
+  +--> | bus_exit_now | (skip)                                                           
+       +--------------+                                                                  
+```
