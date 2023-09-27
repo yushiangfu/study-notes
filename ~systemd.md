@@ -680,6 +680,167 @@ src/libsystemd/sd-event/sd-event.c
 ```
 
 ```
+src/libsystemd/sd-event/sd-event.c                                                     
++---------------+                                                                       
+| sd_event_wait | : wait for each child finishes                                        
++-|-------------+                                                                       
+  |                                                                                     
+  |--> for each threshold (from max to min)                                             
+  |    |                                                                                
+  |    |    +---------------+                                                           
+  |    |--> | process_epoll | wait for data and read it, set source pending = true      
+  |    |    +---------------+                                                           
+  |    |    +---------------+                                                           
+  |    |--> | process_child | wait till child finishes, set pending = true              
+  |    |    +---------------+                                                           
+  |    |                                                                                
+  |    +--> if no new child event, break early                                          
+  |                                                                                     
+  |    +------------------+                                                             
+  |--> | process_watchdog | arm a watchdog                                              
+  |    +------------------+                                                             
+  |    +-----------------+                                                              
+  |--> | process_inotify | for each source has interest in the event, set pending = true
+  |    +-----------------+                                                              
+  |    +---------------+                                                                
+  |--> | process_timer | find the earliest timer, set pending = true                    
+  |    +---------------+ (for realtime)                                                 
+  |    +---------------+                                                                
+  |--> | process_timer | for boottime                                                   
+  |    +---------------+                                                                
+  |    +---------------+                                                                
+  |--> | process_timer | for realtime_alarm                                             
+  |    +---------------+                                                                
+  |    +---------------+                                                                
+  |--> | process_timer | for boottime_alarm                                             
+  |    +---------------+                                                                
+  |    +---------------+                                                                
+  |--> | process_timer | for monotonic                                                  
+  |    +---------------+                                                                
+  |                                                                                     
+  |--> if there's still source in event's pending queue                                 
+  |    |                                                                                
+  |    |--> set event state = pending                                                   
+  |    +--> return                                                                      
+  |                                                                                     
+  +--> set event state = initial                                                        
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                                   
++---------------+                                                                                                     
+| process_epoll | : wait for data and read it, set source pending = true                                              
++---------------+                                                                                                     
+  |--> adjust event's queue size                                                                                      
+  |--> endless loop                                                                                                   
+  |    |    +-----------------+                                                                                       
+  |    |--> | epoll_wait_usec |                                                                                       
+  |    |    +-----------------+                                                                                       
+  |    +--> if condition met, break                                                                                   
+  |--> if it's called first time                                                                                      
+  |    -    +----------------------+                                                                                  
+  |    +--> | triple_timestamp_get | get current time of three bases                                                  
+  |         +----------------------+                                                                                  
+  +--> for each node in event queue                                                                                   
+       |--> if source type is 'watchdog'                                                                              
+       |    -    +-------------+                                                                                      
+       |    +--> | flush_timer | read data from fd (unused), set next = infinity                                      
+       |         +-------------+                                                                                      
+       +--> else                                                                                                      
+            +--> switch wakeup type                                                                                   
+                 case event_source                                                                                    
+                 +--> switch source_type                                                                              
+                      case io                                                                                         
+                      -    +------------+                                                                             
+                      +--> | process_io | save event in source, set pending = true                                    
+                           +------------+                                                                             
+                      case pidfd                                                                                      
+                      -    +---------------+                                                                          
+                      +--> | process_pidfd | wait till child exits                                                    
+                           +---------------+                                                                          
+                      case memory pressure                                                                            
+                      -    +-------------------------+                                                                
+                      +--> | process_memory_pressure | save event in source, set pending = true                       
+                           +-------------------------+                                                                
+                 case clock data                                                                                      
+                 -    +-------------+                                                                                 
+                 +--> | flush_timer | read data from fd (unused), set next = infinity                                 
+                      +-------------+                                                                                 
+                 case signal data                                                                                     
+                 -    +----------------+                                                                              
+                 +--> | process_signal | read signal to get target source, save it in signal_data, set pending = true 
+                      +----------------+                                                                              
+                 case inotify data                                                                                    
+                 -    +-------------------------+                                                                     
+                 +--> | event_inotify_data_read | given inotify_data, read data, prepend inotify_data to event's queue
+                      +-------------------------+                                                                     
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                              
++----------------+                                                                               
+| process_signal | : read signal to get target source, save it in signal_data, set pending = true
++-|--------------+                                                                               
+  |                                                                                              
+  |--> is signal_data->current exists (got somethign to do), return                              
+  |                                                                                              
+  |--> read signal info                                                                          
+  |                                                                                              
+  |--> given signal, get source                                                                  
+  |                                                                                              
+  |--> signal_data->current = source                                                             
+  |                                                                                              
+  |--> set pending = true                                                                        
+  |                                                                                              
+  +--> if the priority is smaller, update to min_priority                                        
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                             
++---------------+                                               
+| process_child | : wait till child finishes, set pending = true
++-|-------------+                                               
+  |                                                             
+  +--> for each child source                                    
+       |                                                        
+       |    +--------+                                          
+       |--> | waitid | wait till child finishes                 
+       |    +--------+                                          
+       |                                                        
+       +--> if we got something                                 
+            |                                                   
+            |--> set pending = true                             
+            |                                                   
+            +--> update min_priority                            
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                  
++------------------+                                                 
+| process_watchdog | : arm a watchdog                                
++-|----------------+                                                 
+  |    +-----------+                                                 
+  |--> | sd_notify | (skip)                                          
+  |    +-----------+                                                 
+  |    +--------------+                                              
+  +--> | arm_watchdog | calculate wait interval, set thru watchdog fd
+       +--------------+                                              
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                                       
++-----------------+                                                                                                       
+| process_inotify | : for each source has interest in the event, set pending = true                                       
++-|---------------+                                                                                                       
+  |                                                                                                                       
+  +--> for each inotify_data in event                                                                                     
+       |                                                                                                                  
+       |    +----------------------------+                                                                                
+       +--> | event_inotify_data_process | for each source has interest in the inotify_data: set pending = true (trigger?)
+            +----------------------------+                                                                                
+```
+
+```
 src/libsystemd/sd-event/sd-event.c                                          
 +-------------------+                                                        
 | sd_event_dispatch | : dispatch 1st source from event's pending queue       
