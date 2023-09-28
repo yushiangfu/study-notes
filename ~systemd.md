@@ -935,7 +935,7 @@ src/libsystemd/sd-event/sd-event.c
        case memory_pressure                                                            
        +--> call ->callback(), e.g.,                                                   
             +--------------------------+                                               
-            | memory_pressure_callback | (skip)                                        
+            | memory_pressure_callback | free unused hash maps, return unused memory to kernel
             +--------------------------+                                               
 ```
 
@@ -951,7 +951,7 @@ src/libsystemd/sd-bus/sd-bus.c
        |--> | sd_bus_flush | ensure bus is running, flush bus wqueue         
        |    +--------------+                                                 
        |    +--------------+                                                 
-       +--> | sd_bus_close | (skip)                                          
+       +--> | sd_bus_close | release sources/event/fd of bus
             +--------------+                                                 
 ```
 
@@ -1980,4 +1980,149 @@ src/libsystemd/sd-bus/sd-bus.c
   |    +--------------+                                                                  
   +--> | bus_exit_now | (skip)                                                           
        +--------------+                                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                    
++--------------+                                                                   
+| sd_bus_close | : release sources/event/fd of bus                                 
++-|------------+                                                                   
+  |    +---------------+                                                           
+  |--> | bus_kill_exec | kill task of bus                                          
+  |    +---------------+                                                           
+  |    +---------------+                                                           
+  |--> | bus_set_state | set bus state = closed                                    
+  |    +---------------+                                                           
+  |    +---------------------+                                                     
+  |--> | sd_bus_detach_event | unref sources, unref event                          
+  |    +---------------------+                                                     
+  |    +------------------+                                                        
+  |--> | bus_reset_queues | for bus rqueue/wqueue: empty messages and release queue
+  |    +------------------+                                                        
+  |    +------------------+                                                        
+  |--> | bus_close_io_fds | close bus input/output fd                              
+  |    +------------------+                                                        
+  |    +----------------------+                                                    
+  +--> | bus_close_inotify_fd | close inotify fd                                   
+       +----------------------+                                                    
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                       
++---------------------+                                                               
+| sd_bus_detach_event | : unref sources, unref event                                  
++-|-------------------+                                                               
+  |    +----------------------+                                                       
+  |--> | bus_detach_io_events | for io input/output sources: set enabled = off & ref--
+  |    +----------------------+                                                       
+  |                                                                                   
+  +--> for inotify/time/quite event source: set enabled = off & ref--                 
+  |                                                                                   
+  |    +----------------+                                                             
+  +--> | sd_event_unref | event ref--, release if nobody needs it                     
+       +----------------+                                                             
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                
++----------------+                                                                                 
+| sd_event_unref | : event ref--, release if nobody needs it                                       
++-|--------------+                                                                                 
+  |                                                                                                
+  |--> event ref--                                                                                 
+  |                                                                                                
+  +--> if ref > 0, return null                                                                     
+       |                                                                                           
+       |    +------------+                                                                         
+       +--> | event_free | disconnect all sources from event, free other resources and event itself
+            +------------+                                                                         
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                  
++------------+                                                                                       
+| event_free | : disconnect all sources from event, free other resources and event itself            
++-|----------+                                                                                       
+  |                                                                                                  
+  |--> for each source in event                                                                      
+  |    |                                                                                             
+  |    |    +-------------------+                                                                    
+  |    +--> | source_disconnect | given source type, disconnect source properly, remove it from event
+  |         +-------------------+                                                                    
+  |                                                                                                  
+  |--> close epoll/watchdog fd                                                                       
+  |                                                                                                  
+  |--> free clock data of realtime/boottime/monotonic/realtime_alarm/boottime_alarm                  
+  |                                                                                                  
+  |--> free event's pending/prepare/exit queue                                                       
+  |                                                                                                  
+  |--> free signal_sources and other hash maps                                                       
+  |                                                                                                  
+  +--> blabla, eventually free event itself                                                          
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                         
++-------------------+                                                                       
+| source_disconnect | : given source type, disconnect source properly, remove it from event 
++-|-----------------+                                                                       
+  |                                                                                         
+  |--> switch source type                                                                   
+  |--> case io                                                                              
+  |    -    +----------------------+                                                        
+  |    +--> | source_io_unregister | unregister from epoll                                  
+  |         +----------------------+                                                        
+  |--> case realtime/boottime/monotonic/realtime_alarm/boottime_alarm                       
+  |    -    +--------------------------------+                                              
+  |    +--> | event_source_time_prioq_remove | remove source from earliest/latest prio queue
+  |         +--------------------------------+                                              
+  |--> case signal                                                                          
+  |    -    +----------------------+                                                        
+  |    +--> | event_gc_signal_data | unset signal bit from all three possible masks         
+  |         +----------------------+                                                        
+  |--> case child                                                                           
+  |    |    +----------------+                                                              
+  |    |--> | hashmap_remove | remove source from event                                     
+  |    |    +----------------+                                                              
+  |    |    +-------------------------------+                                               
+  |    +--> | source_child_pidfd_unregister | unregister source from epoll                  
+  |         +-------------------------------+                                               
+  |--> case post                                                                            
+  |    -    +------------+                                                                  
+  |    +--> | set_remove | remove source from event                                         
+  |         +------------+                                                                  
+  |--> case exit                                                                            
+  |    -    +--------------+                                                                
+  |    +--> | prioq_remove | remove source from event                                       
+  |         +--------------+                                                                
+  |--> case inotify                                                                         
+  |    |    +-------------+                                                                 
+  |    |--> | LIST_REMOVE | remove souroce from inode                                       
+  |    |    +-------------+                                                                 
+  |    |    +---------------------+                                                         
+  |    +--> | event_gc_inode_data | garbage collect inode_data & inotify_data               
+  |         +---------------------+                                                         
+  |--> case memory_pressure                                                                 
+  |    +--> remove source from event, from epoll                                            
+  |                                                                                         
+  |--> remove source from event pending/prepare prio queue                                  
+  |                                                                                         
+  |--> remove source from signal data's earliest/latest queue                               
+  |                                                                                         
+  +--> remove source from event, event source num--                                         
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                 
++--------------------------+                                                        
+| memory_pressure_callback | : free unused hash maps, return unused memory to kernel
++----------------------+---+                                                        
+| sd_event_trim_memory | : free unused hash maps, return unused memory to kernel    
++-|--------------------+                                                            
+  |    +--------------------+                                                       
+  |--> | hashmap_trim_pools | free unused hash maps                                 
+  |    +--------------------+                                                       
+  |    +-------------+                                                              
+  +--> | malloc_trim | return unused memory to kernel                               
+       +-------------+                                                              
 ```
