@@ -820,11 +820,54 @@ src/libsystemd/sd-event/sd-event.c
 | process_watchdog | : arm a watchdog                                
 +-|----------------+                                                 
   |    +-----------+                                                 
-  |--> | sd_notify | (skip)                                          
+  |--> | sd_notify | get addr from env 'NOTIFY_SOCKET', create socket and connect, send msg
   |    +-----------+                                                 
   |    +--------------+                                              
   +--> | arm_watchdog | calculate wait interval, set thru watchdog fd
        +--------------+                                              
+```
+
+```
+src/libsystemd/sd-daemon/sd-daemon.c                                                                         
++-----------+                                                                                                 
+| sd_notify | : get addr from env 'NOTIFY_SOCKET', create socket and connect, send msg                        
++------------------------+                                                                                    
+| sd_pid_notify_with_fds | : get addr from env 'NOTIFY_SOCKET', create socket and connect, send msg           
++-|----------------------+                                                                                    
+  |    +------------------------------+                                                                       
+  |--> | pid_notify_with_fds_internal | get addr from env 'NOTIFY_SOCKET', create socket and connect, send msg
+  |    +------------------------------+                                                                       
+  |                                                                                                           
+  +--> if arg unset_environment is set                                                                        
+       -                                                                                                      
+       +--> unset 'NOTIFY_SOCKET'                                                                             
+```
+
+```
+src/libsystemd/sd-daemon/sd-daemon.c                                                                    
++------------------------------+                                                                         
+| pid_notify_with_fds_internal | : get addr from env 'NOTIFY_SOCKET', create socket and connect, send msg
++-|----------------------------+                                                                         
+  |                                                                                                      
+  |--> get env 'NOTIFY_SOCKET'                                                                           
+  |                                                                                                      
+  |--> parse env string into address                                                                     
+  |                                                                                                      
+  |    +--------+                                                                                        
+  |--> | socket | create socket                                                                          
+  |    +--------+                                                                                        
+  |    +---------+                                                                                       
+  |--> | connect |                                                                                       
+  |    +---------+                                                                                       
+  |    +---------------+                                                                                 
+  |--> | fd_inc_sndbuf | config send buffer                                                              
+  |    +---------------+                                                                                 
+  |                                                                                                      
+  |--> alloc msg                                                                                         
+  |                                                                                                      
+  |    +---------+                                                                                       
+  +--> | sendmsg |                                                                                       
+       +---------+                                                                                       
 ```
 
 ```
@@ -973,7 +1016,7 @@ src/libsystemd/sd-bus/sd-bus.c
        |--> if nothing left in wqueue, return                                        
        |                                                                             
        |    +----------+                                                             
-       +--> | bus_poll | (skip)                                                      
+       +--> | bus_poll | determine flags and timeout, then poll
             +----------+                                                             
 ```
 
@@ -1387,7 +1430,7 @@ src/libsystemd/sd-bus/sd-bus.c
        |--> elif target is in another namespace (???)                                                                             
        |    |                                                                                                                     
        |    |    +------------------------------+                                                                                 
-       |    +--> | bus_container_connect_socket | (skip)                                                                          
+       |    +--> | bus_container_connect_socket | fork a task into target namespace, have it connect to bus's input fd
        |         +------------------------------+                                                                                 
        |                                                                                                                          
        |--> elif socket addr is specified                                                                                         
@@ -1435,6 +1478,125 @@ src/libsystemd/sd-bus/bus-socket.c
   |    +------------------+                                                    
   +--> | bus_socket_setup | set bus's input/output buffer to 8mb each          
        +------------------+                                                    
+```
+
+```
+src/libsystemd/sd-bus/bus-container.c                                                                        
++------------------------------+                                                                              
+| bus_container_connect_socket | : fork a task into target namespace, have it connect to bus's input fd       
++-|----------------------------+                                                                              
+  |    +----------------+                                                                                     
+  |--> | namespace_open |                                                                                     
+  |    +----------------+                                                                                     
+  |                                                                                                           
+  |--> create socket for input fd                                                                             
+  |                                                                                                           
+  |--> output fd = input fd                                                                                   
+  |                                                                                                           
+  |    +------------------+                                                                                   
+  |--> | bus_socket_setup | config send/receive buffer size                                                   
+  |    +------------------+                                                                                   
+  |    +------------+                                                                                         
+  |--> | socketpair |                                                                                         
+  |    +------------+                                                                                         
+  |    +----------------+                                                                                     
+  |--> | namespace_fork | parent forks child, child enters target ns & forks grandchild & waits for its finish
+  |    +----------------+                                                                                     
+  |                                                                                                           
+  |--> if we are the grandchild                                                                               
+  |    |                                                                                                      
+  |    |--> close socker pair[0]                                                                              
+  |    |                                                                                                      
+  |    +--> connect bus's input fd and exit (why?)                                                            
+  |                                                                                                           
+  |    (parent reaches here)                                                                                  
+  |                                                                                                           
+  |--> close socket pair[1]                                                                                   
+  |                                                                                                           
+  |    +------------------------------+                                                                       
+  |--> | wait_for_terminate_and_check | wait till grandchild finishes                                         
+  |    +------------------------------+                                                                       
+  |    +-----------------------+                                                                              
+  +--> | bus_socket_start_auth | (skip)                                                                       
+       +-----------------------+                                                                              
+```
+
+```
+src/libsystemd/sd-bus/bus-container.c                                                                   
++----------------+                                                                                       
+| namespace_fork | : parent forks child, child enters target ns & forks grandchild & waits for its finish
++-|--------------+                                                                                       
+  |    +----------------+                                                                                
+  |--> | safe_fork_full | fork, parent returns immediatly, child handles flags properly                  
+  |    +----------------+                                                                                
+  |                                                                                                      
+  +--> if we are the forked child                                                                        
+       |                                                                                                 
+       |    +----------------+                                                                           
+       +--> | safe_fork_full | fork, parent returns immediatly, child handles flags properly             
+       |    +----------------+                                                                           
+       |                                                                                                 
+       |--> if we are the forked grandchild                                                              
+       |    -                                                                                            
+       |    +--> return pid thru arg, return                                                             
+       |                                                                                                 
+       |    (child reaches here)                                                                         
+       |                                                                                                 
+       |    +------------------------------+                                                             
+       +--> | wait_for_terminate_and_check | grandchild exits                                            
+       |    +------------------------------+                                                             
+       |    +-------+                                                                                    
+       +--> | _exit | child exits                                                                        
+            +-------+                                                                                    
+```
+
+```
+src/basic/process-util.c                                                         
++----------------+                                                                
+| safe_fork_full | : fork, parent returns immediatly, child handles flags properly
++-|--------------+                                                                
+  |                                                                               
+  |--> given flags, determine signal mask for block                               
+  |                                                                               
+  |    +-------------+                                                            
+  |--> | sigprocmask | block                                                      
+  |    +-------------+                                                            
+  |                                                                               
+  |--> if flag has 'detach'                                                       
+  |    |                                                                          
+  |    |    +-------------------+                                                 
+  |    |--> | is_reaper_process | check if we are reaper task (pid = 1)           
+  |    |    +-------------------+                                                 
+  |    |                                                                          
+  |    +--> if we are not the reaper                                              
+  |         |                                                                     
+  |         |    +------+                                                         
+  |         |--> | fork |                                                         
+  |         |    +------+                                                         
+  |         |                                                                     
+  |         +--> if we are the parent return                                      
+  |                                                                               
+  |    +------+                                                                   
+  |--> | fork |                                                                   
+  |    +------+                                                                   
+  |                                                                               
+  |--> if we are child && the middle task                                         
+  |    -                                                                          
+  |    +--> exit to let the grandchild be reaped                                  
+  |                                                                               
+  |--> if we are the parent                                                       
+  |    -                                                                          
+  |    +--> if flag has 'wait'                                                    
+  |    |    |                                                                     
+  |    |    |    +------------------------------+                                 
+  |    |    +--> | wait_for_terminate_and_check | wait for child to terminate     
+  |    |         +------------------------------+                                 
+  |    |                                                                          
+  |    +--> return                                                                
+  |                                                                               
+  |--> (only child task reaches here)                                             
+  |                                                                               
+  +--> handle flags accordingly                                                   
 ```
 
 ```
@@ -1969,7 +2131,7 @@ src/libsystemd/sd-bus/sd-bus.c
   |--> | bus_seal_synthetic_message | set timestamp and seal msg                         
   |    +----------------------------+                                                    
   |    +--------------+                                                                  
-  |--> | sd_bus_close | (skip)                                                           
+  |--> | sd_bus_close | release sources/event/fd of bus
   |    +--------------+                                                                  
   |    +----------------+                                                                
   |--> | process_filter | for each filter callback in bus: call ->callback()             
@@ -2110,6 +2272,32 @@ src/libsystemd/sd-event/sd-event.c
   |--> remove source from signal data's earliest/latest queue                               
   |                                                                                         
   +--> remove source from event, event source num--                                         
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c
++----------+                                                               
+| bus_poll | : determine flags and timeout, then poll                      
++-|--------+                                                               
+  |                                                                        
+  |--> if bus state == watch_bind                                          
+  |    -                                                                   
+  |    +--> set up pollfd from inotify fd                                  
+  |                                                                        
+  +--> else                                                                
+       |                                                                   
+       |    +-------------------+                                          
+       |--> | sd_bus_get_events | determine flags (e.g., poll in, poll out)
+       |    +-------------------+                                          
+       |    +--------------------+                                         
+       |--> | sd_bus_get_timeout | given bus state, determine timeout      
+       |    +--------------------+                                         
+       |                                                                   
+       |--> set up pollfd                                                  
+       |                                                                   
+       |    +------------+                                                 
+       +--> | ppoll_usec |                                                 
+            +------------+                                                 
 ```
 
 ```
