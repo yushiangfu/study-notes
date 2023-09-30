@@ -2426,6 +2426,107 @@ src/libsystemd/sd-bus/bus-message.c
 ```
 
 ```
+src/libsystemd/sd-bus/bus-objects.c                                                                                            
++--------------------------------+                                                                                              
+| property_get_all_callbacks_run | ：prepare msg of type 'method return' (method is get_all), append all properties, send msg out
++-|------------------------------+                                                                                              
+  |    +----------------------------------+                                                                                     
+  |--> | sd_bus_message_new_method_return | prepare msg (type is 'method return')                                               
+  |    +----------------------------------+                                                                                     
+  |    +-------------------------------+                                                                                        
+  |--> | sd_bus_message_open_container | given arg type, interpret container, extend msg and append container                   
+  |    +-------------------------------+                                                                                        
+  |                                                                                                                             
+  |--> for each vtable                                                                                                          
+  |    |                                                                                                                        
+  |    |    +--------------------------+                                                                                        
+  |    |--> | node_vtable_get_userdata | call ->find() to get user data                                                         
+  |    |    +--------------------------+                                                                                        
+  |    |                                                                                                                        
+  |    |--> if found no obj, continue                                                                                           
+  |    |                                                                                                                        
+  |    |--> found_obj = true                                                                                                    
+  |    |                                                                                                                        
+  |    |--> if found no iface, continue                                                                                         
+  |    |                                                                                                                        
+  |    |--> found_iface = true                                                                                                  
+  |    |                                                                                                                        
+  |    |    +------------------------------+                                                                                    
+  |    +--> | vtable_append_all_properties | given node, append all properties (name/value) to msg                              
+  |         +------------------------------+                                                                                    
+  |                                                                                                                             
+  |--> if found_obj == false, return                                                                                            
+  |                                                                                                                             
+  |--> if found_iface == false, return error                                                                                    
+  |                                                                                                                             
+  |    +--------------------------------+                                                                                       
+  |--> | sd_bus_message_close_container |                                                                                       
+  |    +--------------------------------+                                                                                       
+  |    +-------------+                                                                                                          
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                                   
+       +-------------+                                                                                                          
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                    
++------------------------------+                                                        
+| vtable_append_all_properties | : given node, append all properties (name/value) to msg
++-|----------------------------+                                                        
+  |                                                                                     
+  +--> for each vtable in node                                                          
+       |                                                                                
+       |    +----------------------------+                                              
+       +--> | vtable_append_one_property | append property name/value to msg            
+            +----------------------------+                                              
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                      
++----------------------------+                                                                                            
+| vtable_append_one_property | : append property name/value to msg                                                        
++-|--------------------------+                                                                                            
+  |    +-------------------------------+                                                                                  
+  |--> | sd_bus_message_open_container | given arg type (dict entry), interpret container, extend msg and append container
+  |    +-------------------------------+                                                                                  
+  |    +-----------------------+                                                                                          
+  +--> | sd_bus_message_append | append property (type = string) to msg                                                   
+  |    +-----------------------+                                                                                          
+  |    +-------------------------------+                                                                                  
+  |--> | sd_bus_message_open_container | given arg type (variant), interpret container, extend msg and append container   
+  |    +-------------------------------+                                                                                  
+  |                                                                                                                       
+  |--> given node, get outer slot                                                                                         
+  |                                                                                                                       
+  |    +---------------------+                                                                                            
+  |--> | invoke_property_get | append property to msg                                                                     
+  |    +---------------------+                                                                                            
+  |    +--------------------------------+                                                                                 
+  |--> | sd_bus_message_close_container | close container and free signature                                              
+  |    +--------------------------------+                                                                                 
+  |    +--------------------------------+                                                                                 
+  +--> | sd_bus_message_close_container | (bc we opened the container twice)                                              
+       +--------------------------------+                                                                                 
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                          
++---------------------+                                       
+| invoke_property_get | : append property to msg              
++-|-------------------+                                       
+  |                                                           
+  |--> if property.get exists                                 
+  |    |                                                      
+  |    |--> call property.get()                               
+  |    +--> return                                            
+  |                                                           
+  |--> get user data                                          
+  |                                                           
+  |    +-----------------------------+                        
+  +--> | sd_bus_message_append_basic | append user data to msg
+       +-----------------------------+                        
+```
+
+```
 src/libsystemd/sd-bus/sd-bus.c                                                          
 +-----------------+                                                                      
 | process_closing | : prepare msg of 'disconnected', close bus and exit                  
