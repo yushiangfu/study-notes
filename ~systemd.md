@@ -2117,6 +2117,315 @@ src/libsystemd/sd-bus/bus-objects.c
 ```
 
 ```
+src/libsystemd/sd-bus/bus-objects.c                                                                              
++--------------------------------+                                                                                
+| property_get_set_callbacks_run | : prepare msg of 'method return' (method is get or set), send msg out          
++-|------------------------------+                                                                                
+  |    +------------------------------+                                                                           
+  |--> | vtable_property_get_userdata | call ->find() to get user data                                            
+  |    +------------------------------+                                                                           
+  |                                                                                                               
+  |--> given vtable parent, get outer slot                                                                        
+  |                                                                                                               
+  |    +----------------------------------+                                                                       
+  |--> | sd_bus_message_new_method_return | prepare msg of 'method return'                                        
+  |    +----------------------------------+                                                                       
+  |                                                                                                               
+  |--> if arg is_get == 1                                                                                         
+  |    |                                                                                                          
+  |    |    +-------------------------------+                                                                     
+  |    |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg
+  |    |    +-------------------------------+                                                                     
+  |    |    +---------------------+                                                                               
+  |    |--> | invoke_property_get | get property and append to msg                                                
+  |    |    +---------------------+                                                                               
+  |    |    +--------------------------------+                                                                    
+  |    +--> | sd_bus_message_close_container | close container and free signature                                 
+  |         +--------------------------------+                                                                    
+  |                                                                                                               
+  |--> else                                                                                                       
+  |    |                                                                                                          
+  |    |    +--------------------------+                                                                          
+  |    |--> | sd_bus_message_peek_type | peek type (and signature)                                                
+  |    |    +--------------------------+                                                                          
+  |    |    +--------------------------------+                                                                    
+  |    |--> | sd_bus_message_enter_container | enter container, set up another container in msg                   
+  |    |    +--------------------------------+                                                                    
+  |    |    +---------------------+                                                                               
+  |    |--> | invoke_property_set | read msg and return user data (where's the set action???)                     
+  |    |    +---------------------+                                                                               
+  |    |    +-------------------------------+                                                                     
+  |    +--> | sd_bus_message_exit_container | free last container in msg                                          
+  |         +-------------------------------+                                                                     
+  |    +-------------+                                                                                            
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                     
+       +-------------+                                                                                            
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                       
++----------------------------------+                                       
+| sd_bus_message_new_method_return | : prepare msg of 'method return'      
++-------------------+--------------+                                       
+| message_new_reply | : prepare msg of arg type                            
++-|-----------------+                                                      
+  |    +--------------------+                                              
+  |--> | sd_bus_message_new | prepare msg of arg type (e.g., method_return)
+  |    +--------------------+                                              
+  |    +-----------------------------+                                     
+  |--> | message_append_reply_cookie | append 'reply cookie' to msg        
+  |    +-----------------------------+                                     
+  |                                                                        
+  +--> if call sender is set                                               
+       |                                                                   
+       |    +-----------------------------+                                
+       +--> | message_append_field_string | append 'destination' to msg    
+            +-----------------------------+                                
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                                    
++-------------------------------+                                                                       
+| sd_bus_message_open_container | : ensure contents in signature, set up container for it and add to msg
++-|-----------------------------+                                                                       
+  |                                                                                                     
+  |--> increase container array size                                                                    
+  |                                                                                                     
+  |    +----------------------------+                                                                   
+  |--> | message_get_last_container | get last container from msg                                       
+  |    +----------------------------+                                                                   
+  |                                                                                                     
+  |--> if type == array                                                                                 
+  |    |                                                                                                
+  |    |    +------------------------+                                                                  
+  |    +--> | bus_message_open_array | ensure signature contains contents                               
+  |         +------------------------+                                                                  
+  |                                                                                                     
+  |--> elif itype == variant                                                                            
+  |    |                                                                                                
+  |    |    +--------------------------+                                                                
+  |    +--> | bus_message_open_variant | extend msg body and copy contents to it                        
+  |         +--------------------------+                                                                
+  |                                                                                                     
+  |--> elif itype == struct                                                                             
+  |    |                                                                                                
+  |    |    +-------------------------+                                                                 
+  |    +--> | bus_message_open_struct | ensure signature contains contents                              
+  |         +-------------------------+                                                                 
+  |                                                                                                     
+  |--> elif itype == dict entry                                                                         
+  |    |                                                                                                
+  |    |    +-----------------------------+                                                             
+  |    +--> | bus_message_open_dict_entry | (expect that signature contains contents already)           
+  |         +-----------------------------+                                                             
+  |                                                                                                     
+  +--> prepare a container of the contents and add to msg (end of container array)                      
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                              
++------------------------+                                        
+| bus_message_open_array | : ensure signature contains contents   
++-|----------------------+                                        
+  |                                                               
+  |--> if signature contains contents already, update end index   
+  |                                                               
+  |                                                               
+  +--> else                                                       
+  |    |                                                          
+  |    |    +-----------+                                         
+  |    +--> | strextend | extend signature and copy contents to it
+  |         +-----------+                                         
+  |    +---------------------+                                    
+  |    | message_extend_body | extend msg body                    
+  |    +---------------------+                                    
+  |                                                               
+  +--> if contaoiner enclosing != array                           
+       -                                                          
+       +--> save end index in container                           
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                  
++--------------------------+                                          
+| bus_message_open_variant | : extend msg body and copy contents to it
++-|------------------------+                                          
+  |    +--------------------+                                         
+  |--> | message_extend_body|                                         
+  |    +--------------------+                                         
+  |    +--------+                                                     
+  +--> | memcpy | copy contents to msg body                           
+       +--------+                                                     
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                             
++-------------------------+                                      
+| bus_message_open_struct | : ensure signature contains contents 
++-|-----------------------+                                      
+  |                                                              
+  |--> if signature already contains contents, update end index  
+  |                                                              
+  |--> else                                                      
+  |    |                                                         
+  |    |    +-----------+                                        
+  |    +--> | strextend | extend signatue and copy contents to it
+  |         +-----------+                                        
+  |                                                              
+  +--> if container enclosing != array                           
+       -                                                         
+       +--> save end index in container                          
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                            
++--------------------------+                                    
+| sd_bus_message_peek_type | : peek type (and signature)        
++-|------------------------+                                    
+  |    +----------------------------+                           
+  +--> | message_get_last_container | get msg's last container  
+  |    +----------------------------+                           
+  |                                                             
+  |--> peek signature, if it's basic type, return type to caller
+  |                                                             
+  |--> peek signature, if it's array                            
+  |    -                                                        
+  |    +--> peek further, return type/content to caller         
+  |                                                             
+  |--> peek signature, if it's part of struct or dict           
+  |    -                                                        
+  |    +--> peek further, return type/content to caller         
+  |                                                             
+  +--> peek signature, if it's variant                          
+       -                                                        
+       +--> peek msg body, return type/content to caller        
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                 
++--------------------------------+                                                   
+| sd_bus_message_enter_container | : enter container, set up another container in msg
++-|------------------------------+                                                   
+  |    +----------------------------+                                                
+  |--> | message_get_last_container |                                                
+  |    +----------------------------+                                                
+  |                                                                                  
+  |--> if type == array                                                              
+  |    |                                                                             
+  |    |    +-------------------------+                                              
+  |    +--> | bus_message_enter_array | peek msg body to get rindex and array size   
+  |         +-------------------------+                                              
+  |                                                                                  
+  |--> elif type == variant                                                          
+  |    |                                                                             
+  |    |    +---------------------------+                                            
+  |    +--> | bus_message_enter_variant | peek msg body to get rindex                
+  |         +---------------------------+                                            
+  |                                                                                  
+  |--> elif type == struct                                                           
+  |    |                                                                             
+  |    |    +--------------------------+                                             
+  |    +--> | bus_message_enter_struct | peek msg body to get rindex                 
+  |         +--------------------------+                                             
+  |                                                                                  
+  |--> elif type == dict entry                                                       
+  |    |                                                                             
+  |    |    +------------------------------+                                         
+  |    +--> | bus_message_enter_dict_entry | peek msg body to get rindex             
+  |         +------------------------------+                                         
+  |                                                                                  
+  +--> set up container in msg (end of container array)                              
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                 
++-------------+                                                                 
+| sd_bus_send | : seal, send msg out or append to wqueue                        
++-|-----------+                                                                 
+  |    +------------------+                                                     
+  |--> | bus_seal_message |                                                     
+  |    +------------------+                                                     
+  |    +-----------------------+                                                
+  |--> | bus_remarshal_message | if necessary, remarshal msg                    
+  |    +-----------------------+                                                
+  |                                                                             
+  |--> if no reply is required, return                                          
+  |                                                                             
+  |--> if bus state is hello or running && wqueue is empty                      
+  |    |                                                                        
+  |    |    +-------------------+                                               
+  |    +--> | bus_write_message | convert msg to iovec, write to bus's output fd
+  |         +-------------------+                                               
+  |                                                                             
+  +--> else                                                                     
+       -                                                                        
+       +--> append msg to wqueue                                                
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c
++-----------------------+                                                  
+| bus_remarshal_message | : if necessary, remarshal msg                    
++-|---------------------+                                                  
+  |                                                                        
+  |--> check if wee need remarshal                                         
+  |                                                                        
+  +--> if we do                                                            
+       |                                                                   
+       |    +-----------------------+                                      
+       +--> | bus_message_remarshal | alloc new msg, copy data from old one
+            +-----------------------+                                      
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                                                         
++-----------------------+                                                                                                    
+| bus_message_remarshal | : alloc new msg, copy data from old one                                                            
++-|---------------------+                                                                                                    
+  |                                                                                                                          
+  |--> switch header type                                                                                                    
+  |--> case signal                                                                                                           
+  |    -    +---------------------------+                                                                                    
+  |    +--> | sd_bus_message_new_signal | prepare msg of signal type, append path/interface/member info                      
+  |         +---------------------------+                                                                                    
+  |--> case method_call                                                                                                      
+  |    -    +--------------------------------+                                                                               
+  |    +--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |         +--------------------------------+                                                                               
+  |--> case method_return/method_error                                                                                       
+  |    |    +--------------------+                                                                                           
+  |    |--> | sd_bus_message_new | prepare msg                                                                               
+  |    |    +--------------------+                                                                                           
+  |    |    +-----------------------------+                                                                                  
+  |    |--> | message_append_reply_cookie | append reply_cookie to msg                                                       
+  |    |    +-----------------------------+                                                                                  
+  |    |                                                                                                                     
+  |    +--> if it's method_error                                                                                             
+  |         |                                                                                                                
+  |         |    +-----------------------------+                                                                             
+  |         +--> | message_append_field_string | append error name to msg                                                    
+  |              +-----------------------------+                                                                             
+  |                                                                                                                          
+  |--> if orig msg has destination                                                                                           
+  |    |                                                                                                                     
+  |    |    +-----------------------------+                                                                                  
+  |    +--> | message_append_field_string | append destination to msg                                                        
+  |         +-----------------------------+                                                                                  
+  |                                                                                                                          
+  |--> if orig msg has sender                                                                                                
+  |    |                                                                                                                     
+  |    |    +-----------------------------+                                                                                  
+  |    +--> | message_append_field_string |                                                                                  
+  |         +-----------------------------+                                                                                  
+  |    +---------------------+                                                                                               
+  |--> | sd_bus_message_copy | copy data from old msg to new one                                                             
+  |    +---------------------+                                                                                               
+  |    +---------------------+                                                                                               
+  +--> | sd_bus_message_seal |                                                                                               
+       +---------------------+                                                                                               
+```
+
+```
 src/libsystemd/sd-bus/sd-bus.c                                                          
 +-----------------+                                                                      
 | process_closing | : prepare msg of 'disconnected', close bus and exit                  
