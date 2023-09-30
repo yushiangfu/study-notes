@@ -1039,7 +1039,7 @@ src/libsystemd/sd-bus/sd-bus.c
        |--> if not running, but everything goes well, continue       
        |                                                             
        |    +-------------+                                          
-       +--> | sd_bus_wait | (skip)                                   
+       +--> | sd_bus_wait | determine flags and timeout, then poll
             +-------------+                                          
 ```
 
@@ -2073,7 +2073,7 @@ src/libsystemd/sd-bus/bus-objects.c
   |    |    |--> given key, get properties from bus's hashmap                               
   |    |    |                                                                               
   |    |    |    +--------------------------------+                                         
-  |    |    +--> | property_get_set_callbacks_run | (skip)                                  
+  |    |    +--> | property_get_set_callbacks_run | prepare msg of 'method return' (method is get or set), send msg out
   |    |         +--------------------------------+                                         
   |    |                                                                                    
   |    +--> elif member is 'get all'                                                        
@@ -2082,7 +2082,7 @@ src/libsystemd/sd-bus/bus-objects.c
   |         |--> | sd_bus_message_read | read interface from msg                            
   |         |    +---------------------+                                                    
   |         |    +--------------------------------+                                         
-  |         +--> | property_get_all_callbacks_run | (skip)                                  
+  |         +--> | property_get_all_callbacks_run | prepare msg of type 'method return' (method is get_all), append all properties, send msg out
   |              +--------------------------------+                                         
   |                                                                                         
   |--> elif method == 'introspect'                                                          
