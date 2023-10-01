@@ -2088,7 +2088,7 @@ src/libsystemd/sd-bus/bus-objects.c
   |--> elif method == 'introspect'                                                          
   |    |                                                                                    
   |    |    +--------------------+                                                          
-  |    +--> | process_introspect | (skip)                                                   
+  |    +--> | process_introspect | prepare msg of 'method return', append introspect info to msg, send out
   |         +--------------------+                                                          
   |                                                                                         
   +--> elif method == 'get managed objects'                                                 
@@ -2676,7 +2676,7 @@ src/libsystemd/sd-bus/sd-bus.c
   |--> | process_match | recursively traverse children/sibling, if leaf: run ->callback()
   |    +---------------+                                                                 
   |    +--------------+                                                                  
-  +--> | bus_exit_now | (skip)                                                           
+  +--> | bus_exit_now | bus exits
        +--------------+                                                                  
 ```
 
@@ -2808,6 +2808,25 @@ src/libsystemd/sd-event/sd-event.c
   |--> remove source from signal data's earliest/latest queue                               
   |                                                                                         
   +--> remove source from event, event source num--                                         
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c              
++--------------+                             
+| bus_exit_now | : bus exits                 
++-|------------+                             
+  |                                          
+  |--> set bus exited = true                 
+  |                                          
+  |--> if bus->event exists                  
+  |    |                                     
+  |    |    +---------------+                
+  |    +--> | sd_event_exit | set exit fields
+  |         +---------------+                
+  |                                          
+  +--> else                                  
+       -                                     
+       +--> exit task                        
 ```
 
 ```
