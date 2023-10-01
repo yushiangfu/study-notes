@@ -2527,6 +2527,132 @@ src/libsystemd/sd-bus/bus-objects.c
 ```
 
 ```
+src/libsystemd/sd-bus/bus-objects.c                                                            
++--------------------+                                                                          
+| process_introspect | : prepare msg of 'method return', append introspect info to msg, send out
++-|------------------+                                                                          
+  |    +-----------------+                                                                      
+  |--> | introspect_path | write interfacess (and method/property/signal), write each child node
+  |    +-----------------+                                                                      
+  |    +----------------------------------+                                                     
+  |--> | sd_bus_message_new_method_return | prepare msg of 'method return'                      
+  |    +----------------------------------+                                                     
+  |    +-----------------------+                                                                
+  |--> | sd_bus_message_append | append introspect info to msg                                  
+  |    +-----------------------+                                                                
+  |    +-------------+                                                                          
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                   
+       +-------------+                                                                          
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                          
++-----------------+                                                                                           
+| introspect_path | : write interfacess (and method/property/signal), write each child node                   
++-|---------------+                                                                                           
+  |                                                                                                           
+  |--> if arg node isn't provided, get one ourselves                                                          
+  |                                                                                                           
+  |    +-----------------+                                                                                    
+  |--> | get_child_nodes | create a set, add subtree to it                                                    
+  |    +-----------------+                                                                                    
+  |    +------------------+                                                                                   
+  |--> | introspect_begin | init mem stream, write doctype to fd                                              
+  |    +------------------+                                                                                   
+  |    +-------------------------------------+                                                                
+  |--> | introspect_write_default_interfaces | write default interfaces (peer/introspectable/properties) to fd
+  |    +-------------------------------------+                                                                
+  |                                                                                                           
+  |--> for each vtable in node                                                                                
+  |    |                                                                                                      
+  |    |    +--------------------------+                                                                      
+  |    |--> | node_vtable_get_userdata | get user data                                                        
+  |    |    +--------------------------+                                                                      
+  |    |    +----------------------------+                                                                    
+  |    +--> | introspect_write_interface | write interface and its method/property/signal to fd               
+  |         +----------------------------+                                                                    
+  |    +------------------------------+                                                                       
+  |--> | introspect_write_child_nodes | write child nodes to fd                                               
+  |    +------------------------------+                                                                       
+  |    +-------------------+                                                                                  
+  +--> | introspect_finish | write </node> to fd, fininalize mem stream                                       
+       +-------------------+                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                      
++-----------------+                                       
+| get_child_nodes | : create a set, add subtree to it     
++-|---------------+                                       
+  |    +-----------------+                                
+  |--> | ordered_set_new | ceate a hashmap                
+  |    +-----------------+                                
+  |    +--------------------+                             
+  +--> | add_subtree_to_set | add the whole subtree to set
+       +--------------------+                             
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                 
++--------------------+                               
+| add_subtree_to_set | : add the whole subtree to set
++-|------------------+                               
+  |    +-----------------------+                     
+  |--> | add_enumerated_to_set | add node to set     
+  |    +-----------------------+                     
+  |                                                  
+  +--> for each child of node                        
+       |                                             
+       |    +---------------------+                  
+       +--> | ordered_set_consume | add to set       
+            +---------------------+                  
+```
+
+```
+src/libsystemd/sd-bus/bus-introspect.c                                              
++----------------------------+                                                       
+| introspect_write_interface | : write interface and its method/property/signal to fd
++-|--------------------------+                                                       
+  |    +--------------------+                                                        
+  |--> | set_interface_name | write interface name to fd                             
+  |    +--------------------+                                                        
+  |                                                                                  
+  +--> for each vtable                                                               
+       -                                                                             
+       +--> switch type                                                              
+            case start                                                               
+            +--> write annotation to fd                                              
+            case method                                                              
+            +--> write method to fd                                                  
+            case property                                                            
+            +--> write property to fd                                                
+            case signal                                                              
+            +--> write signal to fd                                                  
+```
+
+```
+src/libsystemd/sd-bus/bus-introspect.c                           
++------------------------------+                                  
+| introspect_write_child_nodes | : write child nodes to fd        
++-|----------------------------+                                  
+  |                                                               
+  +--> while set isn't empty                                      
+       |                                                          
+       |    +-------------------------+                           
+       |--> | ordered_set_steal_first | remove first node from set
+       |    +-------------------------+                           
+       |    +------------------------+                            
+       |--> | object_path_startswith | skip prefix and get data   
+       |    +------------------------+                            
+       |                                                          
+       |--> if got                                                
+       |    -                                                     
+       |    +--> write node info to fd                            
+       |                                                          
+       +--> free node                                             
+```
+
+```
 src/libsystemd/sd-bus/sd-bus.c                                                          
 +-----------------+                                                                      
 | process_closing | : prepare msg of 'disconnected', close bus and exit                  
