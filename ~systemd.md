@@ -2961,3 +2961,123 @@ src/libsystemd/sd-event/sd-event.c
   +--> | malloc_trim | return unused memory to kernel                               
        +-------------+                                                              
 ```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                      
++--------------+                                                                                         
+| sd_event_run | : register event (sources) to epoll, wait till there's pending source, dispatch it      
++-|------------+                                                                                         
+  |    +------------------+                                                                              
+  |--> | sd_event_prepare | register event's sources to epoll, arm all kinds of timers, set state = armed
+  |    +------------------+                                                                              
+  |                                                                                                      
+  |--> if nothing happened                                                                               
+  |    |                                                                                                 
+  |    |    +---------------+                                                                            
+  |    +--> | sd_event_wait | wait for each child finishes                                               
+  |         +---------------+                                                                            
+  |                                                                                                      
+  +--> if something is pending                                                                           
+       |                                                                                                 
+       |    +-------------------+                                                                        
+       +--> | sd_event_dispatch | dispatch 1st source from event's pending queue                         
+            +-------------------+                                                                        
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                          
++---------------+                                                                                            
+| sd_event_loop | loop: register event to epoll & wait & dispatch it                                         
++-|-------------+                                                                                            
+  |                                                                                                          
+  |--> when event state!= finished                                                                           
+  |    |                                                                                                     
+  |    |    +--------------+                                                                                 
+  |    +--> | sd_event_run | register event (sources) to epoll, wait till there's pending source, dispatch it
+  |         +--------------+                                                                                 
+  |                                                                                                          
+  +--> return event's exit_code                                                                              
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                             
++-----------------------+                                                                       
+| sd_event_set_watchdog | : given arg b, arm or unarm watchdog of event                         
++-|---------------------+                                                                       
+  |                                                                                             
+  |--> if arg b is provided                                                                     
+  |    |                                                                                        
+  |    |    +---------------------+                                                             
+  |    |--> | sd_watchdog_enabled | if WATCHDOG_PID shows our pid, return 1                     
+  |    |    +---------------------+                                                             
+  |    |    +-----------+                                                                       
+  |    |--> | sd_notify | get addr from env 'NOTIFY_SOCKET', create socket and connect, send msg
+  |    |    +-----------+ (WATCHDOG=1)                                                          
+  |    |    +----------------+                                                                  
+  |    |--> | timerfd_create | create timer fd, save to watchdog                                
+  |    |    +----------------+                                                                  
+  |    |    +--------------+                                                                    
+  |    |--> | arm_watchdog | calculate wait interval, set thru watchdog fd                      
+  |    |    +--------------+                                                                    
+  |    |                                                                                        
+  |    |--> set up epoll event                                                                  
+  |    |                                                                                        
+  |    |    +-----------+                                                                       
+  |    +--> | epoll_ctl | register to epoll                                                     
+  |         +-----------+                                                                       
+  |                                                                                             
+  +--> else                                                                                     
+       |                                                                                        
+       |    +-----------+                                                                       
+       |--> | epoll_ctl | unregister from epoll                                                 
+       |    +-----------+                                                                       
+       |    +------------+                                                                      
+       +--> | safe_close | close the timer fd saved in watchdog                                 
+            +------------+                                                                      
+```
+
+```
+src/libsystemd/sd-daemon/sd-daemon.c                            
++---------------------+                                          
+| sd_watchdog_enabled | : if WATCHDOG_PID shows our pid, return 1
++-|-------------------+                                          
+  |                                                              
+  |--> get env 'WATCHDOG_USEC'                                   
+  |                                                              
+  |    +-------------+                                           
+  +--> | safe_atou64 | convert                                   
+  |    +-------------+                                           
+  |                                                              
+  |--> get env 'WATCHDOG_PID'                                    
+  |                                                              
+  |    +-----------+                                             
+  |--> | parse_pid | convert                                     
+  |    +-----------+                                             
+  |                                                              
+  +--> if pid isn't for us, go to finish                         
+  |                                                              
+  |--> r = 1                                                     
+  |                                                              
+  |    +----------+                                              
+  |--> | unsetenv | 'WATCHDOG_USEC'                              
+  |    +----------+                                              
+  |    +----------+                                              
+  +--> | unsetenv | 'WATCHDOG_PID'                               
+       +----------+                                              
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                                                            
++-----------------------------------+                                                                          
+| sd_event_source_set_time_accuracy | : set source's time accuracy                                             
++-|---------------------------------+                                                                          
+  |    +--------------------+                                                                                  
+  |--> | source_set_pending | set pending = false                                                              
+  |    +--------------------+                                                                                  
+  |                                                                                                            
+  |--> save arg accuracy in source                                                                             
+  |                                                                                                            
+  |    +-----------------------------------+                                                                   
+  +--> | event_source_time_prioq_reshuffle | reshuffle target source in event's both queues (earliest & latest)
+       +-----------------------------------+                                                                   
+```
