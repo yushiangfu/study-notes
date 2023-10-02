@@ -3081,3 +3081,323 @@ src/libsystemd/sd-event/sd-event.c
   +--> | event_source_time_prioq_reshuffle | reshuffle target source in event's both queues (earliest & latest)
        +-----------------------------------+                                                                   
 ```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                      
++---------------------------+                                                             
+| sd_bus_add_object_manager | : prepare node of path, prepare slot and add to node        
++-|-------------------------+                                                             
+  |    +-------------------+                                                              
+  |--> | bus_node_allocate | ensure path and all ancestors have their nodes in bus hashmap
+  |    +-------------------+                                                              
+  |    +-------------------+                                                              
+  |--> | bus_slot_allocate |  prepapre slot and prepend to bus->slots                     
+  |    +-------------------+                                                              
+  |                                                                                       
+  |--> prepent slot to node->object_managers                                              
+  |                                                                                       
+  +--> bus->nodes_modified = true                                                         
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                         
++-------------------+                                                                        
+| bus_node_allocate |    : ensure path and all ancestors have their nodes in bus hashmap     
++-|-----------------+                                                                        
+  |    +-------------+                                                                       
+  |--> | hashmap_get | given path, get target node from hashmap                              
+  |    +-------------+                                                                       
+  |                                                                                          
+  |--> if got, return node                                                                   
+  |                                                                                          
+  |    +--------------------------+                                                          
+  +--> | hashmap_ensure_allocated | ensure bus hashmap exists                                
+  |    +--------------------------+                                                          
+  |                                                                                          
+  |    if path is /, parent = null                                                           
+  |                                                                                          
+  |--> else                                                                                  
+  |    |                                                                                     
+  |    |    +--------------+                                                                 
+  |    +--> |strndupa_safe | partially duplicate path for parent (parent path = path - child)
+  |    |    +--------------+                                                                 
+  |    |    +-------------------+                                                            
+  |    +--> | bus_node_allocate | recursively allocate node till '/'                         
+  |         +-------------------+                                                            
+  |                                                                                          
+  |--> alloc node and set up (parent, path)                                                  
+  |                                                                                          
+  |    +-------------+                                                                       
+  |--> | hashmap_put | add node to bus hashmap                                               
+  |    +-------------+                                                                       
+  |                                                                                          
+  +--> if parent node exists                                                                 
+       -                                                                                     
+       +--> prepend node to parent->child                                                    
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                               
++--------------------------+                                                                                       
+| sd_bus_add_object_vtable | : prepare node of path, add each vtable to bus hashmap, prepare slot and add to node  
++----------------------------+                                                                                     
+| add_object_vtable_internal | : prepare node of path, add each vtable to bus hashmap, prepare slot and add to node
++-|--------------------------+                                                                                     
+  |    +--------------------------+                                                                                
+  +--> | hashmap_ensure_allocated | ensure hashmap (bus->vtable_methods) exists                                    
+  |    +--------------------------+                                                                                
+  |    +--------------------------+                                                                                
+  |--> | hashmap_ensure_allocated | ensure hashmap (bus->vtable_properties) exists                                 
+  |    +--------------------------+                                                                                
+  |    +-------------------+                                                                                       
+  |--> | bus_node_allocate | ensure path and all ancestors have their nodes in bus hashmap                         
+  |    +-------------------+                                                                                       
+  |                                                                                                                
+  |--> for each vtable in node                                                                                     
+  |    -                                                                                                           
+  |    +--> check if there's existing interface(s)                                                                 
+  |                                                                                                                
+  |    +-------------------+                                                                                       
+  |--> | bus_slot_allocate | prepapre slot and prepend to bus->slots                                               
+  |    +-------------------+                                                                                       
+  |                                                                                                                
+  |--> set up slot (fallback/vtable/find/interface)                                                                
+  |                                                                                                                
+  |--> for each vtable in array                                                                                    
+  |    |                                                                                                           
+  |    |--> switch vtable type                                                                                     
+  |    |--> case method                                                                                            
+  |    |    +--> prepare member and add to bus->vtable_methods                                                     
+  |    |--> case writable_property/property                                                                        
+  |    |    +--> prepare member and add to bus->vtable_properties                                                  
+  |    +--> case signal                                                                                            
+  |         +--> check if valid                                                                                    
+  |                                                                                                                
+  |--> insert slot to node                                                                                         
+  |                                                                                                                
+  +--> bus->nodes_modified = true                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                      
++------------------+                                                                                                 
+| sd_bus_add_match | : send msg ('add match' method) to bus clients, add match rule to bus                           
++--------------------+                                                                                               
+| bus_add_match_full | : send msg ('add match' method) to bus clients, add match rule to bus                         
++-|------------------+                                                                                               
+  |    +-----------------+                                                                                           
+  |--> | bus_match_parse | parse match fule                                                                          
+  |    +-----------------+                                                                                           
+  |    +-------------------+                                                                                         
+  |--> | bus_slot_allocate | prepare slot                                                                            
+  |    +-------------------+                                                                                         
+  |                                                                                                                  
+  |--> install arg callbacks to slot                                                                                 
+  |                                                                                                                  
+  |--> if bus has client                                                                                             
+  |    |                                                                                                             
+  |    |    +---------------------+                                                                                  
+  |    |--> | bus_match_get_scope | traverse components to determine scope (local, driver, or generic)               
+  |    |    +---------------------+                                                                                  
+  |    |                                                                                                             
+  |    +--> if scope != local                                                                                        
+  |         |                                                                                                        
+  |         |--> if arg async is true                                                                                
+  |         |    |                                                                                                   
+  |         |    |    +------------------------------+                                                               
+  |         |    |--> | bus_add_match_internal_async | prepare msg to call 'add match', prepare slot and send msg out
+  |         |    |    +------------------------------+                                                               
+  |         |    |    +--------------------------+                                                                   
+  |         |    +--> | sd_bus_slot_set_floating | set slot floating = true                                          
+  |         |         +--------------------------+                                                                   
+  |         |                                                                                                        
+  |         +--> else                                                                                                
+  |              |                                                                                                   
+  |              |    +------------------------+                                                                     
+  |              +--> | bus_add_match_internal | prepare msg to call 'add match', send msg out, wait for reply       
+  |                   +------------------------+                                                                     
+  |    +---------------+                                                                                             
+  +--> | bus_match_add | add match rule (leaf + several values)                                                      
+       +---------------+                                                                                             
+```
+
+```
+src/libsystemd/sd-bus/bus-match.c                                                          
++---------------------+                                                                     
+| bus_match_get_scope | : traverse components to determine scope (local, driver, or generic)
++-|-------------------+                                                                     
+  |                                                                                         
+  +--> for each component                                                                   
+       |                                                                                    
+       |--> get current component                                                           
+       |                                                                                    
+       |--> if component type is 'sender'                                                   
+       |    -                                                                               
+       |    +--> compare component value with "org.freedesktop.DBus.Local"                  
+       |                                                                                    
+       |--> if component type is 'interface'                                                
+       |    -                                                                               
+       |    +--> compare component value with "org.freedesktop.DBus.Local"                  
+       |                                                                                    
+       +--> if component type is 'path'                                                     
+            -                                                                               
+            +--> compare component value with "/org/freedesktop/DBus/Local"                 
+```
+
+```
+src/libsystemd/sd-bus/bus-control.c                                                                                    
++------------------------------+                                                                                        
+| bus_add_match_internal_async | : prepare msg to call 'add match', prepare slot and send msg out                       
++-|----------------------------+                                                                                        
+  |    +------------------+                                                                                             
+  |--> | append_eavesdrop | determine eavesdrop string                                                                  
+  |    +------------------+                                                                                             
+  |    +--------------------------------+                                                                               
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |    +--------------------------------+                                                                               
+  |    +-----------------------+                                                                                        
+  |--> | sd_bus_message_append | append eavesdrop string to msg                                                         
+  |    +-----------------------+                                                                                        
+  |    +-------------------+                                                                                            
+  +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                     
+       +-------------------+                                                                                            
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                               
++-------------------+                                                                         
+| sd_bus_call_async | : prepare slot (install callback, insert to hashmap/prioq), send msg out
++-|-----------------+                                                                         
+  |    +----------------------------------+                                                   
+  |--> | ordered_hashmap_ensure_allocated | ensure hashmap (bus->reply_callbacks) exists      
+  |    +----------------------------------+                                                   
+  |    +------------------------+                                                             
+  |--> | prioq_ensure_allocated | ensure prioq (bus->reply_callbacks_prioq) exists            
+  |    +------------------------+                                                             
+  |    +------------------+                                                                   
+  |--> | bus_seal_message |                                                                   
+  |    +------------------+                                                                   
+  |    +-----------------------+                                                              
+  |--> | bus_remarshal_message | if necessary, remarshal msg                                  
+  |    +-----------------------+                                                              
+  |                                                                                           
+  |--> if slot or callback is provided                                                        
+  |    |                                                                                      
+  |    |    +-------------------+                                                             
+  |    |--> | bus_slot_allocate | prepare slot                                                
+  |    |    +-------------------+                                                             
+  |    |                                                                                      
+  |    |--> install arg callback to slot                                                      
+  |    |                                                                                      
+  |    |--> insert slot to hashmap (bus->reply_callbacks)                                     
+  |    |                                                                                      
+  |    +--> insert slot to prioq (bus->reply_callbacks_prioq)                                 
+  |                                                                                           
+  |    +-------------+                                                                        
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                 
+       +-------------+                                                                        
+```
+
+```
+src/libsystemd/sd-bus/bus-control.c                                                                                    
++------------------------+                                                                                              
+| bus_add_match_internal | : prepare msg to call 'add match', send msg out, wait for reply                              
++-|----------------------+                                                                                              
+  |    +------------------+                                                                                             
+  |--> | append_eavesdrop | determine eavesdrop string                                                                  
+  |    +------------------+                                                                                             
+  |    +--------------------------------+                                                                               
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |    +--------------------------------+                                                                               
+  |    +-----------------------+                                                                                        
+  |--> | sd_bus_message_append | append eavesdrop string to msg                                                         
+  |    +-----------------------+                                                                                        
+  |    +-------------+                                                                                                  
+  +--> | sd_bus_call | send msg out, wait for reply                                                                     
+       +-------------+                                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                     
++-------------+                                                                                                     
+| sd_bus_call | : send msg out, wait for reply                                                                      
++-|-----------+                                                                                                     
+  |    +--------------------+                                                                                       
+  |--> | bus_ensure_running | ensure bus is running                                                                 
+  |    +--------------------+                                                                                       
+  |    +------------------+                                                                                         
+  |--> | bus_seal_message |                                                                                         
+  |    +------------------+                                                                                         
+  |    +-----------------------+                                                                                    
+  |--> | bus_remarshal_message | if necessary, remarshal msg                                                        
+  |    +-----------------------+                                                                                    
+  |    +-------------+                                                                                              
+  |--> | sd_bus_send | seal, send msg out or append to wqueue                                                       
+  |    +-------------+                                                                                              
+  |                                                                                                                 
+  +--> endless loop                                                                                                 
+       |                                                                                                            
+       |--> while i < rqueue size                                                                                   
+       |    |                                                                                                       
+       |    |--> if cookie matches                                                                                  
+       |    |    |                                                                                                  
+       |    |    |    +-----------------+                                                                           
+       |    |    |--> | rqueue_drop_one | remove msg from rqueue                                                    
+       |    |    |    +-----------------+                                                                           
+       |    |    |                                                                                                  
+       |    |    +--> if arg reply is prvided, reutrn reply, and return                                             
+       |    |                                                                                                       
+       |    +--> i++                                                                                                
+       |                                                                                                            
+       |    +------------------+                                                                                    
+       |--> | bus_read_message | prepare rbuffer, read data from bus's input fd, convert to msg and append to rqueue
+       |    +------------------+                                                                                    
+       |                                                                                                            
+       |--> if read something, continue                                                                             
+       |                                                                                                            
+       |    +----------+                                                                                            
+       |--> | bus_poll | determine flags and timeout, then poll                                                     
+       |    +----------+                                                                                            
+       |    +-----------------+                                                                                     
+       +--> | dispatch_wqueue | for each msg in write queue: write to bus's output fd                               
+            +-----------------+                                                                                     
+```
+
+```
+src/libsystemd/sd-bus/bus-match.c                                                                  
++---------------+                                                                                   
+| bus_match_add | : add match rule (leaf + several values)                                          
++-|-------------+                                                                                   
+  |                                                                                                 
+  |--> for each component                                                                           
+  |    |                                                                                            
+  |    |    +-----------------------------+                                                         
+  |    +--> | bus_match_add_compare_value | ensure the node (type = match value) exists             
+  |         +-----------------------------+                                                         
+  |    +--------------------+                                                                       
+  +--> | bus_match_add_leaf | alooc node (type = match leaf), add it between arg where and its child
+       +--------------------+                                                                       
+```
+
+```
+src/libsystemd/sd-bus/bus-match.c                                           
++-----------------------------+                                              
+| bus_match_add_compare_value | : ensure the node (type = match value) exists
++-|---------------------------+                                              
+  |                                                                          
+  |--> find node that matches the arg type                                   
+  |                                                                          
+  |--> if found                                                              
+  |    -                                                                     
+  |    +--> get node and return it, return                                   
+  |                                                                          
+  |--> else                                                                  
+  |    |                                                                     
+  |    |--> alloc node and set up                                            
+  |    |                                                                     
+  |    +--> create hashmap (c->compare.children)                             
+  |                                                                          
+  |--> alloc node and set up                                                 
+  |                                                                          
+  +--> add to the newly created hashmap                                      
+```
