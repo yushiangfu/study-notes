@@ -2094,7 +2094,7 @@ src/libsystemd/sd-bus/bus-objects.c
   +--> elif method == 'get managed objects'                                                 
        |                                                                                    
        |    +-----------------------------+                                                 
-       +--> | process_get_managed_objects | (skip)                                          
+       +--> | process_get_managed_objects | prepare msg of 'method return', add all vtables of path/prefix, send msg out
             +-----------------------------+                                                 
 ```
 
@@ -2650,6 +2650,98 @@ src/libsystemd/sd-bus/bus-introspect.c
        |    +--> write node info to fd                            
        |                                                          
        +--> free node                                             
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                              
++-----------------------------+                                                                                   
+| process_get_managed_objects | : prepare msg of 'method return', add all vtables of path/prefix, send msg out    
++-|---------------------------+                                                                                   
+  |    +-----------------+                                                                                        
+  |--> | get_child_nodes | create a set, add subtree to it                                                        
+  |    +-----------------+                                                                                        
+  |    +----------------------------------+                                                                       
+  |--> | sd_bus_message_new_method_return | prepare msg of 'method return'                                        
+  |    +----------------------------------+                                                                       
+  |    +-------------------------------+                                                                          
+  |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg     
+  |    +-------------------------------+                                                                          
+  |                                                                                                               
+  |--> for each item in set (?)                                                                                   
+  |    |                                                                                                          
+  |    |    +---------------------------------------------+                                                       
+  |    +--> | object_manager_serialize_path_and_fallbacks | add all vtables registered for the path and its prefix
+  |         +---------------------------------------------+                                                       
+  |    +--------------------------------+                                                                         
+  |--> | sd_bus_message_close_container | close container and free signature                                      
+  |    +--------------------------------+                                                                         
+  |    +-------------+                                                                                            
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                     
+       +-------------+                                                                                            
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                           
++---------------------------------------------+                                                                                
+| object_manager_serialize_path_and_fallbacks | : add all vtables registered for the path and its prefix                       
++-|-------------------------------------------+                                                                                
+  |    +-------------------------------+                                                                                       
+  |--> | object_manager_serialize_path | get node of prefix, for each vtable in node: append interfaces and properties to reply
+  |    +-------------------------------+                                                                                       
+  |                                                                                                                            
+  |--> alloc buffer for prefix iterator                                                                                        
+  |                                                                                                                            
+  +--> for each possible prefix                                                                                                
+       |                                                                                                                       
+       |    +-------------------------------+                                                                                  
+       +--> | object_manager_serialize_path | this time, add fallback vtables for any of the prefix                            
+            +-------------------------------+                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                      
++-------------------------------+                                                                                         
+| object_manager_serialize_path | : get node of prefix, for each vtable in node: append interfaces and properties to reply
++-|-----------------------------+                                                                                         
+  |    +-------------+                                                                                                    
+  |--> | hashmap_get | given key (prefix), get node from hashmap                                                          
+  |    +-------------+                                                                                                    
+  |                                                                                                                       
+  +--> for each vtable in node                                                                                            
+       |                                                                                                                  
+       |    +--------------------------+                                                                                  
+       |--> | node_vtable_get_userdata | get user data                                                                    
+       |    +--------------------------+                                                                                  
+       |                                                                                                                  
+       |--> if we haven't found something                                                                                 
+       |    |                                                                                                             
+       |    |    +-------------------------------+                                                                        
+       |    |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg   
+       |    |    +-------------------------------+                                                                        
+       |    |    +-----------------------+                                                                                
+       |    |--> | sd_bus_message_append | append path to reply                                                           
+       |    |    +-----------------------+                                                                                
+       |    |    +-------------------------------+                                                                        
+       |    |--> | sd_bus_message_open_container |                                                                        
+       |    |    +-------------------------------+                                                                        
+       |    |    +-----------------------+                                                                                
+       |    |--> | sd_bus_message_append | append org.freedesktop.DBus.Peer to reply                                      
+       |    |    +-----------------------+                                                                                
+       |    |    +-----------------------+                                                                                
+       |    |--> | sd_bus_message_append | append org.freedesktop.DBus.Introspectable to reply                            
+       |    |    +-----------------------+                                                                                
+       |    |    +-----------------------+                                                                                
+       |    |--> | sd_bus_message_append | append org.freedesktop.DBus.Properties to reply                                
+       |    |    +-----------------------+                                                                                
+       |    |                                                                                                             
+       |    +--> found_something = true                                                                                   
+       |                                                                                                                  
+       |    +-----------------------+                                                                                     
+       |--> | sd_bus_message_append | append interface to reply                                                           
+       |    +-----------------------+                                                                                     
+       |    +------------------------------+                                                                              
+       +--> | vtable_append_all_properties | given node, append all properties (name/value) to msg                        
+            +------------------------------+                                                                              
 ```
 
 ```
