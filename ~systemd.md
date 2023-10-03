@@ -3403,6 +3403,34 @@ src/libsystemd/sd-bus/bus-match.c
 ```
 
 ```
+src/libsystemd/sd-bus/sd-bus.c                                                                                              
++---------------------+                                                                                                      
+| sd_bus_attach_event | : prepare all kinds of sources for event                                                             
++-|-------------------+                                                                                                      
+  |    +-------------------+                                                                                                 
+  |--> | sd_event_add_time | set up timer fields of event (fd/queues), prepare 'source' and add to those queues              
+  |    +-------------------+                                                                                                 
+  |    +------------------------------+                                                                                      
+  |--> | sd_event_source_set_priority | s->priority = priority, reposition source in data structure                          
+  |    +------------------------------+                                                                                      
+  |    +---------------------------------+                                                                                   
+  |--> | sd_event_source_set_description | duplicate description into source                                                 
+  |    +---------------------------------+                                                                                   
+  |    +-------------------+                                                                                                 
+  |--> | sd_event_add_exit | prepare 'source' for exit and add to even'ts exit queue                                         
+  |    +-------------------+                                                                                                 
+  |    +---------------------------------+                                                                                   
+  |--> | sd_event_source_set_description | (the above is for time source, this one is for quit source)                       
+  |    +---------------------------------+                                                                                   
+  |    +----------------------+                                                                                              
+  |--> | bus_attach_io_events | for input/output fd: prepare source and register to epoll & set source's priority/description
+  |    +----------------------+                                                                                              
+  |    +--------------------------+                                                                                          
+  +--> | bus_attach_inotify_event | prepare source and register to epoll & set source's priority/description                 
+       +--------------------------+                                                                                          
+```
+
+```
 src/libsystemd/sd-bus/bus-objects.c                                                                                 
 +-----------------------------------+                                                                                
 | sd_bus_emit_interfaces_added_strv | : prepare msg (signal type), append path/interfaces/properties to msg, send out
@@ -3724,4 +3752,75 @@ src/libsystemd/sd-bus/bus-objects.c
        |    +-----------------------+                                                  
        |                                                                               
        +--> previous_interface = current one                                           
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                                                     
++-------------------------------------+                                                                                                                  
+| sd_bus_emit_properties_changed_strv | : prepare msg of signal (PropertiesChanged), append changed/invalidated properties to msg, send it out           
++-|-----------------------------------+                                                                                                                  
+  |                                                                                                                                                      
+  |--> alloc buf for prefix                                                                                                                              
+  |                                                                                                                                                      
+  |    +--------------------------------------+                                                                                                          
+  |--> | emit_properties_changed_on_interface | prepare msg of signal (PropertiesChanged), append changed/invalidated properties to msg, send it out     
+  |    +--------------------------------------+                                                                                                          
+  |                                                                                                                                                      
+  |--> if did something, return                                                                                                                          
+  |                                                                                                                                                      
+  +--> for each ancestor of path                                                                                                                         
+       |                                                                                                                                                 
+       |    +--------------------------------------+                                                                                                     
+       +--> | emit_properties_changed_on_interface | prepare msg of signal (PropertiesChanged), append changed/invalidated properties to msg, send it out
+            +--------------------------------------+                                                                                                     
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                                           
++--------------------------------------+                                                                                                       
+| emit_properties_changed_on_interface | : prepare msg of signal (PropertiesChanged), append changed/invalidated properties to msg, send it out
++-|------------------------------------+                                                                                                       
+  |                                                                                                                                            
+  |--> given prefix, get node from hashmap                                                                                                     
+  |                                                                                                                                            
+  |    +---------------------------+                                                                                                           
+  |--> | sd_bus_message_new_signal | prepare msg of signal (PropertiesChanged) type, append path/interface/member info                         
+  |    +---------------------------+                                                                                                           
+  |    +-----------------------+                                                                                                               
+  |--> | sd_bus_message_append | append interface to msg                                                                                       
+  |    +-----------------------+                                                                                                               
+  |                                                                                                                                            
+  |--> for each vtable in node                                                                                                                 
+  |    |                                                                                                                                       
+  |    |--> if it's not our target interface, continue                                                                                         
+  |    |                                                                                                                                       
+  |    |    +--------------------------+                                                                                                       
+  |    |--> | node_vtable_get_userdata | get user data                                                                                         
+  |    |    +--------------------------+                                                                                                       
+  |    |                                                                                                                                       
+  |    |--> if property name list is provided                                                                                                  
+  |    |    -                                                                                                                                  
+  |    |    +--> for each property name                                                                                                        
+  |    |         -                                                                                                                             
+  |    |         +--> get property from bus hashmap                                                                                            
+  |    |         |                                                                                                                             
+  |    |         |    +----------------------------+                                                                                           
+  |    |         +--> | vtable_append_one_property | append property name/value to msg                                                         
+  |    |              +----------------------------+                                                                                           
+  |    |                                                                                                                                       
+  |    +--> else                                                                                                                               
+  |         -                                                                                                                                  
+  |         +--> for each member in vtable                                                                                                     
+  |              |                                                                                                                             
+  |              |    +----------------------------+                                                                                           
+  |              +--> | vtable_append_one_property | append property name/value to msg                                                         
+  |                   +----------------------------+                                                                                           
+  |                                                                                                                                            
+  |--> if any member is invalidating                                                                                                           
+  |    -                                                                                                                                       
+  |    +--> append those members to msg                                                                                                        
+  |                                                                                                                                            
+  |    +-------------+                                                                                                                         
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                                                  
+       +-------------+                                                                                                                         
 ```
