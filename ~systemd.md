@@ -3401,3 +3401,327 @@ src/libsystemd/sd-bus/bus-match.c
   |                                                                          
   +--> add to the newly created hashmap                                      
 ```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                 
++-----------------------------------+                                                                                
+| sd_bus_emit_interfaces_added_strv | : prepare msg (signal type), append path/interfaces/properties to msg, send out
++-|---------------------------------+                                                                                
+  |    +--------------------------------+                                                                            
+  |--> | bus_find_parent_object_manager | find parent object manager                                                 
+  |    +--------------------------------+                                                                            
+  |    +---------------------------+                                                                                 
+  |--> | sd_bus_message_new_signal | prepare msg of signal type, append path/interface/member info                   
+  |    +---------------------------+                                                                                 
+  |    +-----------------------------+                                                                               
+  |--> | sd_bus_message_append_basic | append path to msg                                                            
+  |    +-----------------------------+                                                                               
+  |    +-------------------------------+                                                                             
+  |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg        
+  |    +-------------------------------+                                                                             
+  |                                                                                                                  
+  |--> for each interfaces                                                                                           
+  |    |                                                                                                             
+  |    |    +-------------------------------+                                                                        
+  |    |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg   
+  |    |    +-------------------------------+                                                                        
+  |    |    +-----------------------------+                                                                          
+  |    |--> | interfaces_added_append_one | append target interface and its properties to msg                        
+  |    |    +-----------------------------+                                                                          
+  |    |    +--------------------------------+                                                                       
+  |    +--> | sd_bus_message_close_container | close container and free signature                                    
+  |         +--------------------------------+                                                                       
+  |    +--------------------------------+                                                                            
+  |--> | sd_bus_message_close_container | close container and free signature                                         
+  |    +--------------------------------+                                                                            
+  |    +-------------+                                                                                               
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                        
+       +-------------+                                                                                               
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                              
++--------------------------------+                                
+| bus_find_parent_object_manager | : find parent object manager   
++-|------------------------------+                                
+  |    +-------------+                                            
+  |--> | hashmap_get | given path, get node from hashmap          
+  |    +-------------+                                            
+  |                                                               
+  |--> if not found                                               
+  |    |                                                          
+  |    |--> alloc buffer for prefix                               
+  |    |                                                          
+  |    +--> for each ancestor of path                             
+  |         |                                                     
+  |         |    +-------------+                                  
+  |         |--> | hashmap_get | given path, get node from hashmap
+  |         |    +-------------+                                  
+  |         |                                                     
+  |         +--> if found, break                                  
+  |                                                               
+  +--> while node has no object_managers                          
+       -                                                          
+       +--> node = node->parent                                   
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                
++-----------------------------+                                                                     
+| interfaces_added_append_one | : append target interface and its properties to msg                 
++-|---------------------------+                                                                     
+  |    +------------------------------------+                                                       
+  |--> | interfaces_added_append_one_prefix | append target interface and its properties to msg     
+  |    +------------------------------------+                                                       
+  |                                                                                                 
+  |--> if append something, return                                                                  
+  |                                                                                                 
+  +--> alloc buf for prefix                                                                         
+                                                                                                    
+       for each ancestor of path                                                                    
+       |                                                                                            
+       |    +------------------------------------+                                                  
+       |--> | interfaces_added_append_one_prefix | append target interface and its properties to msg
+       |    +------------------------------------+                                                  
+       |                                                                                            
+       +--> if append something, return                                                             
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                   
++------------------------------------+                                                                                 
+| interfaces_added_append_one_prefix | : append target interface and its properties to msg                             
++-|----------------------------------+                                                                                 
+  |    +-------------+                                                                                                 
+  |--> | hashmap_get | given path, get node from hashmap                                                               
+  |    +-------------+                                                                                                 
+  |                                                                                                                    
+  |--> for each vtable in node                                                                                         
+  |    |                                                                                                               
+  |    |--> if it doesn't match arg interface, continue                                                                
+  |    |                                                                                                               
+  |    |    +--------------------------+                                                                               
+  |    |--> | node_vtable_get_userdata | get user data                                                                 
+  |    |    +--------------------------+                                                                               
+  |    |                                                                                                               
+  |    |--> if found_interface == false                                                                                
+  |    |    |                                                                                                          
+  |    |    |    +-----------------------------+                                                                       
+  |    |    |--> | sd_bus_message_append_basic | append interface to msg                                               
+  |    |    |    +-----------------------------+                                                                       
+  |    |    |    +-------------------------------+                                                                     
+  |    |    |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg
+  |    |    |    +-------------------------------+                                                                     
+  |    |    |                                                                                                          
+  |    |    +--> found_interface = true                                                                                
+  |    |                                                                                                               
+  |    |    +------------------------------+                                                                           
+  |    +--> | vtable_append_all_properties | given node, append all properties (name/value) to msg                     
+  |         +------------------------------+                                                                           
+  |                                                                                                                    
+  +--> if found_interface                                                                                              
+       |                                                                                                               
+       |    +--------------------------------+                                                                         
+       +--> | sd_bus_message_close_container | close container and free signature                                      
+            +--------------------------------+                                                                         
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                  
++-------------------------------------+                                                                               
+| sd_bus_emit_interfaces_removed_strv | : prepare msg (signal type), append path/interfaces to msg, send out          
++-|-----------------------------------+                                                                               
+  |    +--------------------------------+                                                                             
+  |--> | bus_find_parent_object_manager | find parent object manager                                                  
+  |    +--------------------------------+                                                                             
+  |    +---------------------------+                                                                                  
+  |--> | sd_bus_message_new_signal | prepare msg of signal (InterfacesRemoved) type, append path/interface/member info
+  |    +---------------------------+                                                                                  
+  |    +-----------------------------+                                                                                
+  |--> | sd_bus_message_append_basic | append path to msg                                                             
+  |    +-----------------------------+                                                                                
+  |    +----------------------------+                                                                                 
+  |--> | sd_bus_message_append_strv | append each interface to msg                                                    
+  |    +----------------------------+                                                                                 
+  |    +-------------+                                                                                                
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                         
+       +-------------+                                                                                                
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                        
++--------------------------+                                                                                                
+| sd_bus_emit_object_added | : prepare signal (InterfacesAdded) msg, append all interfaces of all ancestors to msg, send out
++-|------------------------+                                                                                                
+  |    +--------------------------------+                                                                                   
+  |--> | bus_find_parent_object_manager | find parent object manager                                                        
+  |    +--------------------------------+                                                                                   
+  |    +---------------------------+                                                                                        
+  |--> | sd_bus_message_new_signal | prepare msg of signal (InterfacesAdded) type, append path/interface/member info        
+  |    +---------------------------+                                                                                        
+  |    +-----------------------------+                                                                                      
+  |--> | sd_bus_message_append_basic | append path to msg                                                                   
+  |    +-----------------------------+                                                                                      
+  |    +-------------------------------+                                                                                    
+  |--> | sd_bus_message_open_container | ensure contents in signature, set up container for it and add to msg               
+  |    +-------------------------------+                                                                                    
+  |    +-------------------------+                                                                                          
+  |--> | object_added_append_all | for all ancestors of path: append each interfaces to msg                                 
+  |    +-------------------------+                                                                                          
+  |    +--------------------------------+                                                                                   
+  |--> | sd_bus_message_close_container | close container and free signature                                                
+  |    +--------------------------------+                                                                                   
+  |    +-------------+                                                                                                      
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                               
+       +-------------+                                                                                                      
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                   
++-------------------------+                                                                            
+| object_added_append_all | for all ancestors of path: append each interfaces to msg                   
++-|-----------------------+                                                                            
+  |    +-----------------+                                                                             
+  |--> | ordered_set_new | create ordered set                                                          
+  |    +-----------------+                                                                             
+  |    +-----------------------+                                                                       
+  |--> | sd_bus_message_append | append 'org.freedesktop.DBus.Peer' to msg                             
+  |    +-----------------------+                                                                       
+  |    +-----------------------+                                                                       
+  |--> | sd_bus_message_append | append 'org.freedesktop.DBus.Introspectable' to msg                   
+  |    +-----------------------+                                                                       
+  |    +-----------------------+                                                                       
+  |--> | sd_bus_message_append | append 'org.freedesktop.DBus.Properties' to msg                       
+  |    +-----------------------+                                                                       
+  |                                                                                                    
+  |--> if path has object manager                                                                      
+  |    |                                                                                               
+  |    |    +-----------------------+                                                                  
+  |    +--> | sd_bus_message_append | append 'org.freedesktop.DBus.ObjectManager' to msg               
+  |         +-----------------------+                                                                  
+  |    +--------------------------------+                                                              
+  |--> | object_added_append_all_prefix | for each interface in node, add to set and append to msg     
+  |    +--------------------------------+                                                              
+  |                                                                                                    
+  |--> alloc buf for prefix                                                                            
+  |                                                                                                    
+  +--> for each ancestor of path                                                                       
+       |                                                                                               
+       |    +--------------------------------+                                                         
+       +--> | object_added_append_all_prefix | for each interface in node, add to set and append to msg
+            +--------------------------------+                                                         
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                         
++--------------------------------+                                                           
+| object_added_append_all_prefix | : for each interface in node, add to set and append to msg
++-|------------------------------+                                                           
+  |                                                                                          
+  |--> given prefix, get node from hashmap                                                   
+  |                                                                                          
+  +--> for each vtable in node                                                               
+       |                                                                                     
+       |    +--------------------------+                                                     
+       |--> | node_vtable_get_userdata | get user data                                       
+       |    +--------------------------+                                                     
+       |                                                                                     
+       +--> if current interface != previous_interface                                       
+            |                                                                                
+            |--> get interface from set                                                      
+            |                                                                                
+            |--> if got, continue                                                            
+            |                                                                                
+            |--> add interface to set                                                        
+            |                                                                                
+            |    +-----------------------+                                                   
+            |--> | sd_bus_message_append | append interface to msg                           
+            |    +-----------------------+                                                   
+            |                                                                                
+            +--> previous_interface = current one                                            
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                                                            
++----------------------------+                                                                                                  
+| sd_bus_emit_object_removed | : prepare signal (InterfacesRemoved) msg, append all interfaces of all ancestors to msg, send out
++-|--------------------------+                                                                                                  
+  |    +--------------------------------+                                                                                       
+  |--> | bus_find_parent_object_manager | find parent object manager                                                            
+  |    +--------------------------------+                                                                                       
+  |    +---------------------------+                                                                                            
+  |--> | sd_bus_message_new_signal | prepare msg of signal (InterfacesRemoved) type, append path/interface/member info          
+  |    +---------------------------+                                                                                            
+  |    +-----------------------------+                                                                                          
+  |--> | sd_bus_message_append_basic | append path to msg                                                                       
+  |    +-----------------------------+                                                                                          
+  |    +---------------------------+                                                                                            
+  |--> | object_removed_append_all | for all ancestors, append each interface to msg                                            
+  |    +---------------------------+                                                                                            
+  |    +-------------+                                                                                                          
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                                                   
+       +-------------+                                                                                                          
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                             
++---------------------------+                                                                    
+| object_removed_append_all | : for all ancestors, append each interface to msg                  
++-|-------------------------+                                                                    
+  |    +-----------------+                                                                       
+  |--> | ordered_set_new | create ordered set                                                    
+  |    +-----------------+                                                                       
+  |    +-----------------------+                                                                 
+  |--> | sd_bus_message_append | append 'org.freedesktop.DBus.Peer' to msg                       
+  |    +-----------------------+                                                                 
+  |    +-----------------------+                                                                 
+  |--> | sd_bus_message_append | append 'org.freedesktop.DBus.Introspectable' to msg             
+  |    +-----------------------+                                                                 
+  |    +-----------------------+                                                                 
+  |--> | sd_bus_message_append | append 'org.freedesktop.DBus.Properties' to msg                 
+  |    +-----------------------+                                                                 
+  |                                                                                              
+  |--> if path has object manager                                                                
+  |    |                                                                                         
+  |    |    +-----------------------+                                                            
+  |    +--> | sd_bus_message_append | append 'org.freedesktop.DBus.ObjectManager' to msg         
+  |         +-----------------------+                                                            
+  |    +----------------------------------+                                                      
+  |--> | object_removed_append_all_prefix | for each vtable in node, append interface to msg     
+  |    +----------------------------------+                                                      
+  |                                                                                              
+  |--> alloc buf for prefix                                                                      
+  |                                                                                              
+  +--> for each ancestor of path                                                                 
+       |                                                                                         
+       |    +----------------------------------+                                                 
+       +--> | object_removed_append_all_prefix | for each vtable in node, append interface to msg
+            +----------------------------------+                                                 
+```
+
+```
+src/libsystemd/sd-bus/bus-objects.c                                                   
++----------------------------------+                                                   
+| object_removed_append_all_prefix | : for each vtable in node, append interface to msg
++-|--------------------------------+                                                   
+  |                                                                                    
+  |--> given prefix, get node from hashmap                                             
+  |                                                                                    
+  +--> for each vtable in node                                                         
+       |                                                                               
+       |--> if current interface == previous_interface, continue                       
+       |                                                                               
+       |--> if we can get interface from ordered set, continue                         
+       |                                                                               
+       |    +--------------------------+                                               
+       |--> | node_vtable_get_userdata | get user data                                 
+       |    +--------------------------+                                               
+       |    +-----------------+                                                        
+       |--> | ordered_set_put | add interface to ordered set                           
+       |    +-----------------+                                                        
+       |    +-----------------------+                                                  
+       |--> | sd_bus_message_append | append interface to msg                          
+       |    +-----------------------+                                                  
+       |                                                                               
+       +--> previous_interface = current one                                           
+```
