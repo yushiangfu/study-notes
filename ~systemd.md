@@ -3824,3 +3824,128 @@ src/libsystemd/sd-bus/bus-objects.c
   +--> | sd_bus_send | seal, send msg out or append to wqueue                                                                                  
        +-------------+                                                                                                                         
 ```
+
+```
+src/libsystemd/sd-bus/bus-control.c                                                                                                 
++-------------------+                                                                                                                
+| sd_bus_list_names | : prepare msg of 'method call' for ListNames and ListActivatableNames separately, return reply                 
++-|-----------------+                                                                                                                
+  |                                                                                                                                  
+  |--> if arg acquired is provided                                                                                                   
+  |    |                                                                                                                             
+  |    |    +--------------------+                                                                                                   
+  |    |--> | sd_bus_call_method | prepare msg of 'method call' (ListNames), append types to msg, send out, wait for reply           
+  |    |    +--------------------+                                                                                                   
+  |    |    +--------------------------+                                                                                             
+  |    +--> | sd_bus_message_read_strv | peek type, read data of that type from msg                                                  
+  |         +--------------------------+                                                                                             
+  |                                                                                                                                  
+  +--> if arg activatable is provided                                                                                                
+       |                                                                                                                             
+       |    +--------------------+                                                                                                   
+       |--> | sd_bus_call_method | prepare msg of 'method call' (ListActivatableNames), append types to msg, send out, wait for reply
+       |    +--------------------+                                                                                                   
+       |    +--------------------------+                                                                                             
+       +--> | sd_bus_message_read_strv | peek type, read data of that type from msg                                                  
+            +--------------------------+                                                                                             
+```
+
+```
+src/libsystemd/sd-bus/bus-convenience.c                                                                                
++--------------------+                                                                                                  
+| sd_bus_call_method | : prepare msg of 'method call', append types to msg, send out, wait for reply                    
++---------------------+                                                                                                 
+| sd_bus_call_methodv | : prepare msg of 'method call', append types to msg, send out, wait for reply                   
++-|-------------------+                                                                                                 
+  |    +--------------------------------+                                                                               
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |    +--------------------------------+                                                                               
+  |                                                                                                                     
+  |--> if arg type is valid                                                                                             
+  |    |                                                                                                                
+  |    |    +------------------------+                                                                                  
+  |    +--> | sd_bus_message_appendv | append types to msg                                                              
+  |         +------------------------+                                                                                  
+  |    +-------------+                                                                                                  
+  +--> | sd_bus_call | send msg out, wait for reply                                                                     
+       +-------------+                                                                                                  
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                            
++--------------------------+                                                    
+| sd_bus_message_read_strv | : peek type, read data of that type from msg       
++---------------------------------+                                             
+| sd_bus_message_read_strv_extend | : peek type, read data of that type from msg
++-|-------------------------------+                                             
+  |    +--------------------------+                                             
+  |--> | sd_bus_message_peek_type | peek type (and signature)                   
+  |    +--------------------------+                                             
+  |    +---------------------------+                                            
+  +--> | sd_bus_message_read_basic | read data of type from msg                 
+       +---------------------------+                                            
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                          
++------------------------------------+                                                        
+| sd_bus_message_append_string_iovec |                                                        
++-|----------------------------------+                                                        
+  |    +------------------------------------+                                                 
+  |--> | sd_bus_message_append_string_space | append type string to signature, extend msg body
+  |    +------------------------------------+                                                 
+  |                                                                                           
+  +--> copy io vectors to the extended msg body                                               
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                     
++------------------------------------+                                                   
+| sd_bus_message_append_string_space | : append type string to signature, extend msg body
++-|----------------------------------+                                                   
+  |    +----------------------------+                                                    
+  |--> | message_get_last_container | get last container from msg                        
+  |    +----------------------------+                                                    
+  |                                                                                      
+  |--> ensure type string is in signature                                                
+  |                                                                                      
+  |    +---------------------+                                                           
+  +--> | message_extend_body | extend msg body                                           
+       +---------------------+                                                           
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                                                        
++---------------------------------+                                                         
+| sd_bus_message_new_method_error | : prepare msg of 'method error', append error name to it
++-|-------------------------------+                                                         
+  |    +-------------------+                                                                
+  |--> | message_new_reply | prepare msg of arg type                                        
+  |    +-------------------+                                                                
+  |    +-----------------------------+                                                      
+  |--> | message_append_field_string | append error name to msg                             
+  |    +-----------------------------+                                                      
+  |                                                                                         
+  +--> if error has msg                                                                     
+       |                                                                                    
+       |    +----------------------+                                                        
+       +--> | message_append_basic | append type string to msg                              
+            +----------------------+                                                        
+```
+
+```
+src/libsystemd/sd-bus/bus-message.c                          
++---------------------+                                       
+| sd_bus_message_skip | : determine type, and skip accordingly
++-|-------------------+                                       
+  |                                                           
+  |--> if type isn't provided                                 
+  |    -                                                      
+  |    +--> determine type from container's signature         
+  |                                                           
+  +--> switch type                                            
+       |                                                      
+       |    +---------------------+                           
+       +--> | sd_bus_message_skip | (recursive call)          
+            +---------------------+                           
+```
