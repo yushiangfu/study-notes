@@ -3949,3 +3949,16 @@ src/libsystemd/sd-bus/bus-message.c
        +--> | sd_bus_message_skip | (recursive call)          
             +---------------------+                           
 ```
+
+```
+src/libsystemd/sd-bus/bus-control.c                                                                                   
++---------------------+                                                                                                
+| sd_bus_request_name | : prepare msg of 'method call' (RequestName), send out and wait for reply                      
++-|-------------------+                                                                                                
+  |    +--------------------+                                                                                          
+  |--> | sd_bus_call_method | prepare msg of 'method call' (RequestName), append types to msg, send out, wait for reply
+  |    +--------------------+                                                                                          
+  |    +---------------------+                                                                                         
+  +--> | sd_bus_message_read | read data (type = uint32) from reply                                                    
+       +---------------------+                                                                                         
+```
