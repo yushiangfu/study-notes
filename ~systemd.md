@@ -3962,3 +3962,63 @@ src/libsystemd/sd-bus/bus-control.c
   +--> | sd_bus_message_read | read data (type = uint32) from reply                                                    
        +---------------------+                                                                                         
 ```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                             
++-----------------------+                                                   
+| sd_bus_default_system | : ensue we have a default bus                     
++-------------+---------+                                                   
+| bus_default | : ensue we have a default bus                               
++-|-----------+                                                             
+  |                                                                         
+  |--> if the arg default_bus already exist                                 
+  |    -                                                                    
+  |    +--> ref++, return                                                   
+  |                                                                         
+  |--> call arg bus_open(), e.g.,                                           
+  |    +--------------------+                                               
+  |    | sd_bus_open_system | prepare bus, determine address and save in bus
+  |    +--------------------+                                               
+  |                                                                         
+  |--> bus->default_bus_ptr = arg default_bus                               
+  |                                                                         
+  +--> bus->tid = gettid()                                                  
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                            
++--------------------+                                                                     
+| sd_bus_open_system | : prepare bus, determine address and save in bus                    
++-------------------------------------+                                                    
+| sd_bus_open_system_with_description | : prepare bus, determine address and save in bus   
++-|-----------------------------------+                                                    
+  |    +------------+                                                                      
+  |--> | sd_bus_new | alloc and init bus                                                   
+  |    +------------+                                                                      
+  |                                                                                        
+  |--> if description is provided                                                          
+  |    |                                                                                   
+  |    |    +------------------------+                                                     
+  |    +--> | sd_bus_set_description | bus->description = description                      
+  |         +------------------------+                                                     
+  |    +------------------------+                                                          
+  +--> | bus_set_address_system | determine address and save in bus, set run_scope = system
+       +------------------------+                                                          
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                              
++------------------------+                                                                   
+| bus_set_address_system | : determine address and save in bus, set run_scope = system       
++-|----------------------+                                                                   
+  |                                                                                          
+  |--> get env 'DBUS_SYSTEM_BUS_ADDRESS'                                                     
+  |                                                                                          
+  |--> determine address, $DBUS_SYSTEM_BUS_ADDRESS or "unix:path=/run/dbus/system_bus_socket"
+  |                                                             (probably our case)          
+  |    +--------------------+                                                                
+  |--> | sd_bus_set_address | bus->address = address                                         
+  |    +--------------------+                                                                
+  |                                                                                          
+  +--> bus->runtime_scope = RUNTIME_SCOPE_SYSTEM                                             
+```
