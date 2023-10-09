@@ -4022,3 +4022,41 @@ src/libsystemd/sd-bus/sd-bus.c
   |                                                                                          
   +--> bus->runtime_scope = RUNTIME_SCOPE_SYSTEM                                             
 ```
+
+```
+src/libsystemd/sd-daemon/sd-daemon.c                                                                          
++---------------+                                                                                              
+| sd_listen_fds | : for fd in target range, set FD_CLOEXEC to flags                                            
++-|-------------+                                                                                              
+  |                                                                                                            
+  |--> get env "LISTEN_PID"                                                                                    
+  |                                                                                                            
+  |    +-----------+                                                                                           
+  |--> | parse_pid | parse string and convert to pid_t type                                                    
+  |    +-----------+                                                                                           
+  |                                                                                                            
+  |--> if the pid isn't for us, return                                                                         
+  |                                                                                                            
+  |--> get env "LISTEN_FDS" and convert to n                                                                   
+  |                                                                                                            
+  |--> for fd in range [3, 3 + n)                                                                              
+  |    |                                                                                                       
+  |    |    +------------+                                                                                     
+  |    +--> | fd_cloexec | set or unset FD_CLOEXEC                                                             
+  |         +------------+                                                                                     
+  |    +--------------+                                                                                        
+  +--> | unsetenv_all | if unset_environment is specified, clear env "LISTEN_PID"/"LISTEN_FDS"/"LISTEN_FDNAMES"
+       +--------------+                                                                                        
+```
+
+```
+src/libsystemd/sd-daemon/sd-daemon.c                                                                      
++--------------+                                                                                           
+| sd_is_socket | : check if fd meets args (e.g., sock? STREAM? listening? PF_UNIX?)                        
++-|------------+                                                                                           
+  |    +--------------------+                                                                              
+  |--> | is_socket_internal | check if fd meets our arguments (e.g., is sock, type is STREAM, is listening)
+  |    +--------------------+                                                                              
+  |                                                                                                        
+  +--> if arg family is specified, check it as well                                                        
+```
