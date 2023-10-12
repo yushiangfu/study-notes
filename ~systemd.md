@@ -4050,6 +4050,19 @@ src/libsystemd/sd-daemon/sd-daemon.c
 ```
 
 ```
+src/basic/fd-util.c                           
++------------+                                 
+| fd_cloexec | : set or unset FD_CLOEXEC       
++-|----------+                                 
+  |                                            
+  |--> given fd, get its flags                 
+  |                                            
+  |--> given cloexec, OR nad NOT-AND FD_CLOEXEC
+  |                                            
+  +--> set updated flags to fd                 
+```
+
+```
 src/libsystemd/sd-daemon/sd-daemon.c                                                                      
 +--------------+                                                                                           
 | sd_is_socket | : check if fd meets args (e.g., sock? STREAM? listening? PF_UNIX?)                        
@@ -4059,4 +4072,43 @@ src/libsystemd/sd-daemon/sd-daemon.c
   |    +--------------------+                                                                              
   |                                                                                                        
   +--> if arg family is specified, check it as well                                                        
+```
+
+```
+src/libsystemd/sd-event/sd-event.c                                         
++---------------------+                                                     
+| sd_event_add_signal | : add signal source for event                       
++-|-------------------+                                                     
+  |                                                                         
+  |--> if arg sig & SD_EVENT_SIGNAL_PROCMASK                                
+  |    -                                                                    
+  |    +--> block = true                                                    
+  |                                                                         
+  |--> else                                                                 
+  |    -                                                                    
+  |    +--> block = false                                                   
+  |                                                                         
+  |--> if arg callback isn't provided                                       
+  |    |                                                                    
+  |    |               +----------------------+                             
+  |    +--> callback = | signal_exit_callback |                             
+  |                    +----------------------+                             
+  |                                                                         
+  |--> ensure event has signal source                                       
+  |                                                                         
+  |    +------------+                                                       
+  |--> | source_new | prepare 'source' for event                            
+  |    +------------+                                                       
+  |                                                                         
+  |--> if block == true                                                     
+  |    |                                                                    
+  |    |    +-----------------+                                             
+  |    +--> | pthread_sigmask | block                                       
+  |         +-----------------+                                             
+  |    +------------------------+                                           
+  |--> | event_make_signal_data | ensure target signal is monitored by epoll
+  |    +------------------------+                                           
+  |    +---------------------------------+                                  
+  +--> | sd_event_source_set_description | duplicate description into source
+       +---------------------------------+                                  
 ```
