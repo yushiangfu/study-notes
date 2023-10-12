@@ -1,3 +1,5 @@
+### dbus-broker
+
 ```
 src/broker/main.c                                                                       
 +------+                                                                                 
@@ -415,3 +417,105 @@ src/bus/match.c
   +--> | match_registry_by_keys_unref | unlink and release key-registry                  
        +------------------------------+                                                  
 ```
+
+### dbus-broker-launch
+
+```
+src/launch/main.c                                                 
++------+                                                           
+| main |                                                           
++-|----+                                                           
+  |    +------------+                                              
+  |--> | parse_argv | parse argumetns, e.g., --scope system --audit
+  |    +------------+                                              
+  |    +-------------+                                             
+  |--> | inherit_fds | main_fd_listen = SD_LISTEN_FDS_START (3)    
+  |    +-------------+                                             
+  |                                                                
+  |--> have signal mask = (SIGCHLD | SIGTERM | SIGINT | SIGHUP)    
+  |                                                                
+  |    +-------------+                                             
+  |--> | sigprocmask | block them                                  
+  |    +-------------+                                             
+  |    +-----+                                                     
+  +--> | run |                                                     
+       +-----+                                                     
+```
+
+```
+src/launch/main.c                                                                      
++-------------+                                                                         
+| inherit_fds | : main_fd_listen = SD_LISTEN_FDS_START (3)                              
++-|-----------+                                                                         
+  |    +---------------+                                                                
+  |--> | sd_listen_fds | for fd in target range, set FD_CLOEXEC to flags                
+  |    +---------------+                                                                
+  |                                                                                     
+  |--> (we expect only 1 listener)                                                      
+  |                                                                                     
+  |    +--------------+                                                                 
+  |--> | sd_is_socket | check if fd meets args (e.g., sock? STREAM? listening? PF_UNIX?)
+  |    +--------------+                                                                 
+  |                                                                                     
+  |--> set NONBLOCK to fd flags                                                         
+  |                                                                                     
+  +--> main_fd_listen = SD_LISTEN_FDS_START (3)                                         
+```
+
+```
+src/launch/main.c                                                       
++-----+                                                                  
+| run |                                                                  
++-|---+                                                                  
+  |    +--------------+                                                  
+  +--> | launcher_new | prepare launcher (event with signal sources, bus)
+       +--------------+                                                  
+       +--------------+                                                  
+       | launcher_run |                                                  
+       +--------------+                                                  
+```
+
+```
+src/launch/launcher.c                                                                  
++--------------+                                                                        
+| launcher_new | : prepare launcher (event with signal sources, bus)                    
++-|------------+                                                                        
+  |                                                                                     
+  |--> alloc and init launcher                                                          
+  |                                                                                     
+  |    +-------------------+                                                            
+  |--> | launcher_open_log | create a socket connecting to "/run/systemd/journal/socket"
+  |    +-------------------+                                                            
+  |    +------------------+                                                             
+  |--> | sd_event_default | ensure we have a default event, return its address          
+  |    +------------------+                                                             
+  |    +---------------------+                                                          
+  |--> | sd_event_add_signal | add signal source for event                              
+  |    +---------------------+ (for SIGTERM)                                            
+  |    +---------------------+                                                          
+  |--> | sd_event_add_signal | for SIGINT                                               
+  |    +---------------------+                                                          
+  |    +---------------------+                                                          
+  |--> | sd_event_add_signal | for SIGHUP                                               
+  |    +---------------------+                                                          
+  |    +------------+                                                                   
+  +--> | sd_bus_new | alloc and init bus                                                
+       +------------+                                                                   
+```
+
+```
+src/launch/launcher.c                                                             
++-------------------+                                                              
+| launcher_open_log | : create a socket connecting to "/run/systemd/journal/socket"
++-|-----------------+                                                              
+  |    +--------+                                                                  
+  |--> | socket |                                                                  
+  |    +--------+                                                                  
+  |    +---------+                                                                 
+  |--> | connect | connect to "/run/systemd/journal/socket"                        
+  |    +---------+                                                                 
+  |    +--------------------------+                                                
+  +--> | log_init_journal_consume | init log with journal fd                       
+       +--------------------------+                                                
+```
+
