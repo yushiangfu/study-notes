@@ -418,6 +418,607 @@ src/bus/match.c
        +------------------------------+                                                  
 ```
 
+```
+src/broker/controller.c                                                                                           
++--------------------------------+                                                                                 
+| controller_dispatch_connection | : as controller, endlessly fetch msg & perform action & reply                   
++-|------------------------------+                                                                                 
+  |                                                                                                                
+  |--> given arg file, get outer controller                                                                        
+  |                                                                                                                
+  |    +---------------------+                                                                                     
+  +--> | connection_dispatch | handle arg events (in/out/hup) accordingly (read/write/discard)                     
+  |    +---------------------+                                                                                     
+  |                                                                                                                
+  +--> loop                                                                                                        
+       |                                                                                                           
+       |    +--------------------+                                                                                 
+       +--> | connection_dequeue | fetch msg from input buffer, return to caller                                   
+       |    +--------------------+                                                                                 
+       |    +--------------------------+                                                                           
+       +--> | controller_dbus_dispatch | given msg, perform action (method call or reply), prepare msg sending back
+            +--------------------------+                                                                           
+```
+
+```
+src/dbus/connection.c                                                                   
++---------------------+                                                                  
+| connection_dispatch | : handle arg events (in/out/hup) accordingly (read/write/discard)
++-|-------------------+                                                                  
+  |                                                                                      
+  +--> for event in [epoll-in, epoll-hup, epoll-out]                                     
+       -                                                                                 
+       +--> if it matches with arg event                                                 
+            |                                                                            
+            |    +-----------------+                                                     
+            |--> | socket_dispatch | given event (in/out/hup), handle it accordingly     
+            |    +-----------------+                                                     
+            |    +---------------------+                                                 
+            +--> | dispatch_file_clear | clear mask in file, unlink file if it's handled 
+                 +---------------------+                                                 
+```
+
+```
+src/dbus/socket.c                                                                                
++-----------------+                                                                               
+| socket_dispatch | : given event (in/out/hup), handle it accordingly                             
++-|---------------+                                                                               
+  |                                                                                               
+  |--> switch event                                                                               
+  |                                                                                               
+  |--> case epoll-in                                                                              
+  |    |                                                                                          
+  |    |    +----------------------+                                                              
+  |    +--> | socket_dispatch_read | read data from buffer, read socket to add more data to buffer
+  |         +----------------------+                                                              
+  |                                                                                               
+  |--> case epoll-out                                                                             
+  |    |                                                                                          
+  |    |    +-----------------------+                                                             
+  |    +--> | socket_dispatch_write | set up msg array, send msg                                  
+  |         +-----------------------+                                                             
+  |                                                                                               
+  +--> case epoll-hup                                                                             
+       |                                                                                          
+       |    +----------------------+                                                              
+       +--> | socket_hangup_output | discard output buffers                                       
+            +----------------------+                                                              
+```
+
+```
+src/dbus/socket.c                                                                                   
++----------------------+                                                                             
+| socket_dispatch_read | : read data from buffer, read socket to add more data to buffer             
++-|--------------------+                                                                             
+  |    +-------------------+                                                                         
+  |--> | iqueue_get_cursor | move data to buffer start, read data from pending buffer or input buffer
+  |    +-------------------+                                                                         
+  |    +----------------+                                                                            
+  +--> | socket_recvmsg | receive msg                                                                
+       +----------------+                                                                            
+```
+
+```
+src/dbus/queue.c                                                                               
++-------------------+                                                                           
+| iqueue_get_cursor | : move data to buffer start, read data from pending buffer or input buffer
++-|-----------------+                                                                           
+  |    +---------+                                                                              
+  |--> | memmove | move data to buffer start                                                    
+  |    +---------+                                                                              
+  |                                                                                             
+  |--> if there's pending buffer, read and return                                               
+  |                                                                                             
+  +--> read from input buffer, and return                                                       
+```
+
+```
+src/dbus/socket.c                           
++----------------+                           
+| socket_recvmsg | : receive msg             
++-|--------------+                           
+  |                                          
+  |--> set up msg header                     
+  |                                          
+  |    +---------+                           
+  |--> | recvmsg |                           
+  |    +---------+                           
+  |                                          
+  |--> for each cmsg-header in msg-header    
+  |    -                                     
+  |    +--> get fds and n_fd from cmsg-header
+  |                                          
+  +--> from += received_bytes                
+```
+
+```
+src/dbus/socket.c                                    
++-----------------------+                             
+| socket_dispatch_write | : set up msg array, send msg
++-|---------------------+                             
+  |                                                   
+  |--> if out-pending list isn't empty                
+  |    -                                              
+  |    +--> for each buffer in out-pending list       
+  |         |                                         
+  |         |    +--------------------+               
+  |         +--> | socket_buffer_free | release buffer
+  |              +--------------------+               
+  |                                                   
+  |--> for each buffer in out-queue list              
+  |    -                                              
+  |    +--> set up msg array                          
+  |                                                   
+  |    +----------+                                   
+  |--> | sendmmsg |                                   
+  |    +----------+                                   
+  |                                                   
+  +--> for each buffer in out-queue list              
+       |                                              
+       |    +-----------------------+                 
+       +--> | socket_buffer_consume |                 
+            +-----------------------+                 
+```
+
+```
+src/dbus/connection.c                                                
++--------------------+                                                
+| connection_dequeue | : fetch msg from input buffer, return to caller
++-|------------------+                                                
+  |    +----------------+                                             
+  |--> | socket_dequeue | fetch msg from input buffer (skip)          
+  |    +----------------+                                             
+  |                                                                   
+  +--> if no msg, return                                              
+```
+
+```
+src/broker/controller-dbus.c                                                                                             
++--------------------------+                                                                                              
+| controller_dbus_dispatch | : given msg, perform action (method call or reply), prepare msg sending back                 
++-|------------------------+                                                                                              
+  |    +------------------------+                                                                                         
+  |--> | message_parse_metadata | validate msg header & body, truncate extra fds                                          
+  |    +------------------------+                                                                                         
+  |                                                                                                                       
+  +--> switch header type                                                                                                 
+       case method_call                                                                                                   
+       -    +----------------------------+                                                                                
+       +--> | controller_dispatch_object | given object path, write reply header, call method->fn, prepare msg sending out
+            +----------------------------+                                                                                
+       case method_return                                                                                                 
+       -    +---------------------------+                                                                                 
+       +--> | controller_dispatch_reply | given sender id, find peer, prepare msg sending to it                           
+            +---------------------------+                                                                                 
+```
+
+```
+src/dbus/message.c                                                        
++------------------------+                                                 
+| message_parse_metadata | : validate msg header & body, truncate extra fds
++-|----------------------+                                                 
+  |    +----------------------+                                            
+  |--> | message_parse_header | (skip)                                     
+  |    +----------------------+                                            
+  |    +--------------------+                                              
+  |--> | message_parse_body | (skip)                                       
+  |    +--------------------+                                              
+  |                                                                        
+  +--> if message->fds exists                                              
+       |                                                                   
+       |    +-----------------+                                            
+       +--> | fdlist_truncate | truncate extra fds                         
+            +-----------------+                                            
+```
+
+```
+src/broker/controller-dbus.c                                                                                                   
++----------------------------+                                                                                                  
+| controller_dispatch_object | : given object path, write reply header, call method->fn, prepare msg sending out                
++-|--------------------------+                                                                                                  
+  |                                                                                                                             
+  |--> if path == /org/bus1/DBus/Broker                                                                                         
+  |    |                                                                                                                        
+  |    |    +--------------------------------+                                                                                  
+  |    +--> | controller_dispatch_controller | find matched method, write reply header, call method->fn, prepare msg sending out
+  |         +--------------------------------+ (for AddName or AddListener)                                                     
+  |                                                                                                                             
+  |--> elif path == /org/bus1/DBus/Name/                                                                                        
+  |    |                                                                                                                        
+  |    |    +--------------------------+                                                                                        
+  |    +--> | controller_dispatch_name | find matched method, write reply header, call method->fn, prepare msg sending out      
+  |         +--------------------------+ (for Reset or Release)                                                                 
+  |                                                                                                                             
+  +--> elif path == /org/bus1/DBus/Listener/                                                                                    
+       |                                                                                                                        
+       |    +------------------------------+                                                                                    
+       +--> | controller_dispatch_listener | find matched method, write reply header, call method->fn, prepare msg sending out  
+            +------------------------------+ (for Release or SetPolicy)                                                         
+```
+
+```
+src/broker/controller-dbus.c                                                                                                     
++--------------------------------+                                                                                                
+| controller_dispatch_controller | : find matched method, write reply header, call method->fn, prepare msg sending out            
++-|------------------------------+                                                                                                
+  |                                                                                                                               
+  +--> for each method in predefined array                                                                                        
+       -                                                                                                                          
+       +--> if arg method matches                                                                                                 
+            |                                                                                                                     
+            |    +--------------------------+                                                                                     
+            +--> | controller_handle_method | write generic reply header, call method->fn, prepare msg & add connection to context
+                 +--------------------------+                                                                                     
+```
+
+```
+src/broker/controller-dbus.c                                                                                      
++--------------------------+                                                                                       
+| controller_handle_method | : write generic reply header, call method->fn, prepare msg & add connection to context
++-|------------------------+                                                                                       
+  |    +-------------------------------------+                                                                     
+  |--> | controller_dvar_verify_signature_in | verify input signature                                              
+  |    +-------------------------------------+                                                                     
+  |    +-------------------+                                                                                       
+  |--> | c_dvar_begin_read | set up var_in                                                                         
+  |    +-------------------+                                                                                       
+  |    +--------------------+                                                                                      
+  |--> | c_dvar_begin_write | set up var_out                                                                       
+  |    +--------------------+                                                                                      
+  |    +-------------------------------+                                                                           
+  |--> | controller_write_reply_header | write generic reply header (skip)                                         
+  |    +-------------------------------+                                                                           
+  |                                                                                                                
+  |--> call method->fn(), e.g.,                                                                                    
+  |    +--------------------------------+                                                                          
+  |    | controller_method_add_listener | prepare registry & import policy, prepare listener & add to controller   
+  |    +--------------------------------+                                                                          
+  |                                                                                                                
+  |    +----------------------+                                                                                    
+  |--> | message_new_outgoing | prepare msg for sending out                                                        
+  |    +----------------------+                                                                                    
+  |    +------------------+                                                                                        
+  +--> | connection_queue | add msg to connection, add connnection to context                                      
+       +------------------+                                                                                        
+```
+
+```
+src/broker/controller-dbus.c                                                                               
++--------------------------------+                                                                          
+| controller_method_add_listener | : prepare registry & import policy, prepare listener & add to controller 
++-|------------------------------+                                                                          
+  |    +---------------------+                                                                              
+  |--> | policy_registry_new | prepare registry (apparmor/selinux/policy-batch)                             
+  |    +---------------------+                                                                              
+  |    +------------------------+                                                                           
+  |--> | policy_registry_import | import policy registry (?)                                                
+  |    +------------------------+                                                                           
+  |                                                                                                         
+  |--> get listener fd                                                                                      
+  |                                                                                                         
+  |    +-------------------------+                                                                          
+  |--> | controller_add_listener | prepare listener & add to controller, init dispatch-file & add to context
+  |    +-------------------------+                                                                          
+  |    +--------------+                                                                                     
+  +--> | fdlist_steal | drop listener fd from array                                                         
+       +--------------+                                                                                     
+```
+
+```
+src/bus/policy.c                                                         
++---------------------+                                                   
+| policy_registry_new | : prepare registry (apparmor/selinux/policy-batch)
++-|-------------------+                                                   
+  |                                                                       
+  |--> alloc registry                                                     
+  |                                                                       
+  |    +---------------------------+                                      
+  |--> | bus_apparmor_registry_new | prepare apparmor registry            
+  |    +---------------------------+                                      
+  |    +--------------------------+                                       
+  |--> | bus_selinux_registry_new | (skip)                                
+  |    +--------------------------+                                       
+  |    +------------------+                                               
+  +--> | policy_batch_new | prepare policy-batch                          
+       +------------------+                                               
+```
+
+```
+src/bus/policy.c                                                                                            
++------------------------+                                                                                   
+| policy_registry_import | : import policy registry (?)                                                      
++-|----------------------+                                                                                   
+  |                                                                                                          
+  |--> while there's more                                                                                    
+  |    |                                                                                                     
+  |    |--> read uid                                                                                         
+  |    |                                                                                                     
+  |    |--> if uid == -1                                                                                     
+  |    |    |                                                                                                
+  |    |    |    +------------------------------+                                                            
+  |    |    +--> | policy_registry_import_batch | prepare two xmit, add to send/recv lists of name separately
+  |    |         +------------------------------+                                                            
+  |    |                                                                                                     
+  |    +--> else                                                                                             
+  |         |                                                                                                
+  |         |    +------------------------+                                                                  
+  |         +--> | policy_registry_at_uid | (skip)                                                           
+  |         |    +------------------------+                                                                  
+  |         |    +------------------------------+                                                            
+  |         +--> | policy_registry_import_batch | prepare two xmit, add to send/recv lists of name separately
+  |              +------------------------------+                                                            
+  |                                                                                                          
+  +--> (skip)                                                                                                
+```
+
+```
+src/bus/policy.c                                                                             
++------------------------------+                                                              
+| policy_registry_import_batch | : prepare two xmit, add to send/recv lists of name separately
++-|----------------------------+                                                              
+  |                                                                                           
+  |--> read out verdict and priority                                                          
+  |                                                                                           
+  |--> while there's more                                                                     
+  |    |                                                                                      
+  |    |--> read out some data                                                                
+  |    |                                                                                      
+  |    |--> if is_prefix                                                                      
+  |    |    |                                                                                 
+  |    |    |    +-----------------------------+                                              
+  |    |    +--> | policy_batch_add_own_prefix | ensure name has higher priority              
+  |    |         +-----------------------------+                                              
+  |    |                                                                                      
+  |    +--> else                                                                              
+  |         |                                                                                 
+  |         |    +----------------------+                                                     
+  |         +--> | policy_batch_add_own | ensure name has higher priority                     
+  |              +----------------------+                                                     
+  |                                                                                           
+  |--> while there's more                                                                     
+  |    |                                                                                      
+  |    |--> read out some data                                                                
+  |    |                                                                                      
+  |    |    +-----------------------+                                                         
+  |    +--> | policy_batch_add_send | prepare xmit and insert to list end of name             
+  |         +-----------------------+                                                         
+  |                                                                                           
+  +--> while there's more                                                                     
+       |                                                                                      
+       |--> read out some data                                                                
+       |                                                                                      
+       |    +-----------------------+                                                         
+       +--> | policy_batch_add_recv | prepare xmit and insert to list end of name             
+            +-----------------------+                                                         
+```
+
+```
+src/bus/policy.c                                                
++-----------------------------+                                  
+| policy_batch_add_own_prefix | : ensure name has higher priority
++-|---------------------------+                                  
+  |    +----------------------+                                  
+  +--> | policy_batch_at_name | ensure name is in tree of batch  
+  |    +----------------------+                                  
+  |                                                              
+  +--> if name's priority is lower than arg verdict              
+       -                                                         
+       +--> save arg verdict to name                             
+```
+
+```
+src/bus/policy.c                                         
++----------------------+                                  
+| policy_batch_at_name | : ensure name is in tree of batch
++-|--------------------+                                  
+  |                                                       
+  |--> given name, find slot from tree of batch           
+  |                                                       
+  +--> if slot found                                      
+       |                                                  
+       |    +-----------------------+                     
+       |--> | policy_batch_name_new | prepare name        
+       |    +-----------------------+                     
+       |    +--------------+                              
+       +--> | c_rbtree_add | add name to tree             
+            +--------------+                              
+```
+
+```
+src/bus/policy.c                                                      
++-----------------------+                                              
+| policy_batch_add_send | : prepare xmit and insert to list end of name
++-|---------------------+                                              
+  |    +-----------------+                                             
+  |--> | policy_xmit_new | prepare xmit                                
+  |    +-----------------+                                             
+  |                                                                    
+  |--> xmit->verdict = verdict                                         
+  |                                                                    
+  |    +----------------------+                                        
+  |--> | policy_batch_at_name | ensure name is in tree of batch        
+  |    +----------------------+                                        
+  |                                                                    
+  +--> insert xmit to list end of name                                 
+```
+
+```
+src/broker/controller.c                                                                                
++-------------------------+                                                                             
+| controller_add_listener | : prepare listener & add to controller, init dispatch-file & add to context 
++-|-----------------------+                                                                             
+  |    +-------------------------+                                                                      
+  |--> | controller_listener_new | prepare listener, save path in it, add listener to tree of controller
+  |    +-------------------------+                                                                      
+  |    +-----------------------+                                                                        
+  +--> | listener_init_with_fd | set up listener, init dispatch-file and add to context                 
+       +-----------------------+                                                                        
+```
+
+```
+src/bus/listener.c                                                               
++-----------------------+                                                         
+| listener_init_with_fd | : set up listener, init dispatch-file and add to context
++-|---------------------+                                                         
+  |    +--------------------+                                                     
+  |--> | dispatch_file_init | config epoll, set up arg file                       
+  |    +--------------------+ +-------------------+                               
+  |                           | listener_dispatch | (skip)                        
+  |                           +-------------------+                               
+  |                                                                               
+  |    +----------------------+                                                   
+  +--> | dispatch_file_select | add file to the end of context's link             
+       +----------------------+                                                   
+```
+
+```
+src/broker/controller-dbus.c                                                           
++------------------+                                                                    
+| connection_queue | : add msg to connection, add connnection to context                
++-|----------------+                                                                    
+  |    +--------------+                                                                 
+  |--> | socket_queue | prepare buffer containing msg, add to end of out-queue of socket
+  |    +--------------+                                                                 
+  |    +----------------------+                                                         
+  +--> | dispatch_file_select | add file to the end of context's link                   
+       +----------------------+                                                         
+```
+
+```
+src/dbus/socket.c                                                                 
++--------------+                                                                   
+| socket_queue | : prepare buffer containing msg, add to end of out-queue of socket
++-|------------+                                                                   
+  |    +---------------------------+                                               
+  |--> | socket_buffer_new_message | prepare buffer, save arg msg in it            
+  |    +---------------------------+                                               
+  |    +------------------+                                                        
+  +--> | c_list_link_tail | add buffer to the end of out-queue of socket           
+       +------------------+                                                        
+```
+
+```
+src/dbus/socket.c                                                                     
++---------------------------+                                                          
+| socket_buffer_new_message | : prepare buffer, save arg msg in it                     
++-|-------------------------+                                                          
+  |    +----------------------------+                                                  
+  |--> | socket_buffer_new_internal | prepare buffer                                   
+  |    +----------------------------+                                                  
+  |                                                                                    
+  |--> save arg msg in buffer                                                          
+  |                                                                                    
+  |    +-------------+                                                                 
+  |--> | user_charge | given slot idx, update user slot and usage slot by amount change
+  |    +-------------+ (this is for USER_SLOT_BYTES)                                   
+  |    +-------------+                                                                 
+  +--> | user_charge | this is for USER_SLOT_FDS                                       
+       +-------------+                                                                 
+```
+
+```
+src/dbus/socket.c                                                                
++-------------+                                                                   
+| user_charge | : given slot idx, update user slot and usage slot by amount change
++-|-----------+                                                                   
+  |                                                                               
+  |--> determine actor                                                            
+  |                                                                               
+  |--> get usage and ref++                                                        
+  |                                                                               
+  |--> given arg slot (idx), get user slot and usage slot                         
+  |                                                                               
+  |--> user slot -= amount                                                        
+  |                                                                               
+  +--> usage slot += amount                                                       
+```
+
+```
+src/broker/controller-dbus.c                                                               
++---------------------------+                                                               
+| controller_dispatch_reply | : given sender id, find peer, prepare msg sending to it       
++-|-------------------------+                                                               
+  |    +------------------------+                                                           
+  |--> | controller_find_reload | given controller, find outer 'reload'                     
+  |    +------------------------+                                                           
+  |    +-----------------------------+                                                      
+  |--> | controller_reload_completed | given sender id, find peer, prepare msg sending to it
+  |    +-----------------------------+                                                      
+  |    +------------------------+                                                           
+  +--> | controller_reload_free | release 'reload'                                          
+       +------------------------+                                                           
+```
+
+```
+src/broker/controller-dbus.c                                                             
++-----------------------------+                                                           
+| controller_reload_completed | : given sender id, find peer, prepare msg sending to it   
++--------------------------------+                                                        
+| driver_reload_config_completed | : given sender id, find peer, prepare msg sending to it
++-|------------------------------+                                                        
+  |    +-------------------------+                                                        
+  |--> | peer_registry_find_peer | given sender id, find peer (sender) from bus           
+  |    +-------------------------+                                                        
+  |                                                                                       
+  +--> if sender found                                                                    
+       |                                                                                  
+       |--> prepare data                                                                  
+       |                                                                                  
+       |    +-------------------+                                                         
+       +--> | driver_send_reply | prepare msg, send to arg peer                           
+            +-------------------+                                                         
+```
+
+```
+src/bus/driver.c                                          
++-------------------+                                      
+| driver_send_reply | : prepare msg, send to arg peer      
++-|-----------------+                                      
+  |    +----------------------+                            
+  |--> | message_new_outgoing | prepare msg for sending out
+  |    +----------------------+                            
+  |    +---------------------+                             
+  +--> | driver_send_unicast | send msg to arg receiver    
+       +---------------------+                             
+```
+
+```
+src/bus/driver.c                                                                         
++---------------------+                                                                   
+| driver_send_unicast | : send msg to arg receiver                                        
++-|-------------------+                                                                   
+  |    +----------------+                                                                 
+  |--> | driver_monitor | parse metadata to get destinations, send msg to each destination
+  |    +----------------+                                                                 
+  |    +------------------+                                                               
+  +--> | connection_queue | add msg to connection, add connnection to context             
+       +------------------+                                                               
+```
+
+```
+src/bus/driver.c                                                                    
++----------------+                                                                   
+| driver_monitor | : parse metadata to get destinations, send msg to each destination
++-|--------------+                                                                   
+  |    +------------------------+                                                    
+  |--> | message_parse_metadata | validate msg header & body, truncate extra fds     
+  |    +------------------------+                                                    
+  |    +------------------------------+                                              
+  |--> | bus_get_monitor_destinations | given metadata, get destinations             
+  |    +------------------------------+                                              
+  |                                                                                  
+  +--> for each destination                                                          
+       |                                                                             
+       |--> get outer owner, then get outer peer (receiver)                          
+       |                                                                             
+       |    +---------------+                                                        
+       |--> | c_list_unlink | remove destination from list                           
+       |    +---------------+                                                        
+       |    +------------------+                                                     
+       +--> | connection_queue | add msg to connection, add connnection to context   
+            +------------------+                                                     
+```
+
 ### dbus-broker-launch
 
 ```
