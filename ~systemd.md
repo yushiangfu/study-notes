@@ -4112,3 +4112,85 @@ src/libsystemd/sd-event/sd-event.c
   +--> | sd_event_source_set_description | duplicate description into source
        +---------------------------------+                                  
 ```
+
+```
+src/libsystemd/sd-event/sd-event.c                                              
++--------------------+                                                           
+| sd_event_add_child | : prepare source monitoring child task                    
++-|------------------+                                                           
+  |                                                                              
+  |--> ensure we have callback                                                   
+  |                                                                              
+  |--> ensure hashmap in event exists                                            
+  |                                                                              
+  |--> alloc and set up source                                                   
+  |                                                                              
+  |--> if the source is about pid event                                          
+  |    |                                                                         
+  |    |    +-----------------------------+                                      
+  |    +--> | source_child_pidfd_register | add to epoll                         
+  |         +-----------------------------+                                      
+  |                                                                              
+  |--> else                                                                      
+  |    |                                                                         
+  |    |    +------------------------+                                           
+  |    +--> | event_make_signal_data | ensure target signal is monitored by epoll
+  |         +------------------------+                                           
+  |    +-------------+                                                           
+  +--> | hashmap_put | hashmap[pid] = source                                     
+       +-------------+                                                           
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                        
++-------------------+                                                  
+| sd_bus_add_filter | : prepare slot for filter, prepend to list of bus
++-|-----------------+                                                  
+  |    +-------------------+                                           
+  |--> | bus_slot_allocate | prepapre slot and prepend to bus->slots   
+  |    +-------------------+                                           
+  |                                                                    
+  +--> prepend filter to list of bus                                   
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                                                  
++--------------+                                                                                                                 
+| sd_bus_start | : set bus state = opening, prepare socket/epoll, send msg (hello) to "org.freedesktop.DBus"                     
++-|------------+                                                                                                                 
+  |    +---------------+                                                                                                         
+  |--> | bus_set_state | set bus state = opening                                                                                 
+  |    +---------------+                                                                                                         
+  |                                                                                                                              
+  |--> if bus has input fd                                                                                                       
+  |    |                                                                                                                         
+  |    |    +--------------+                                                                                                     
+  |    +--> | bus_start_fd | set up socket and start auth                                                                        
+  |         +--------------+                                                                                                     
+  |                                                                                                                              
+  |--> elif bus has address                                                                                                      
+  |    |                                                                                                                         
+  |    |    +-------------------+                                                                                                
+  |    +--> | bus_start_address | given bus address, spawn child if required, prepare socket & connect, register sources to epoll
+  |         +-------------------+                                                                                                
+  |    +----------------+                                                                                                        
+  +--> | bus_send_hello | prepare msg of method call (hello), send to "org.freedesktop.DBus"                                     
+       +----------------+                                                                                                        
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                           
++--------------+                                          
+| bus_start_fd | : set up socket and start auth           
++-|------------+                                          
+  |                                                       
+  |--> set nonblock and cloexec on input fd               
+  |                                                       
+  |--> if output fd != input fd                           
+  |    -                                                  
+  |    +--> set nonblock and cloexec on output fd         
+  |                                                       
+  |    +--------------------+                             
+  +--> | bus_socket_take_fd | set up socket and start auth
+       +--------------------+                             
+```
