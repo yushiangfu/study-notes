@@ -438,8 +438,8 @@ src/launch/main.c
   |--> | sigprocmask | block them                                  
   |    +-------------+                                             
   |    +-----+                                                     
-  +--> | run |                                                     
-       +-----+                                                     
+  +--> | run | prepare launcher and run it in loop                 
+       +-----+                                                                                                       
 ```
 
 ```
@@ -463,16 +463,16 @@ src/launch/main.c
 ```
 
 ```
-src/launch/main.c                                                       
-+-----+                                                                  
-| run |                                                                  
-+-|---+                                                                  
-  |    +--------------+                                                  
-  +--> | launcher_new | prepare launcher (event with signal sources, bus)
-       +--------------+                                                  
-       +--------------+                                                  
-       | launcher_run |                                                  
-       +--------------+                                                  
+src/launch/main.c                                                                                                              
++-----+                                                                                                                         
+| run | : prepare launcher and run it in loop                                                                                   
++-|---+                                                                                                                         
+  |    +--------------+                                                                                                         
+  |--> | launcher_new | prepare launcher (event with signal sources, bus)                                                       
+  |    +--------------+                                                                                                         
+  |    +--------------+                                                                                                         
+  +--> | launcher_run | parse config, launcher dbus-broker, start bus, add filter/services/listener, connect to system bus, loop
+       +--------------+                                                                                                                                                     
 ```
 
 ```
@@ -519,3 +519,251 @@ src/launch/launcher.c
        +--------------------------+                                                
 ```
 
+```
+src/launch/main.c                                                                                                         
++--------------+                                                                                                           
+| launcher_run | : parse config, launcher dbus-broker, start bus, add filter/services/listener, connect to system bus, loop
++-|------------+                                                                                                           
+  |    +-----------------------+                                                                                           
+  |--> | launcher_parse_config | determine config file and parse it, save settings into launcher                           
+  |    +-----------------------+                                                                                           
+  |    +------------------------+                                                                                          
+  |--> | launcher_load_services | given type, load service files accordingly                                               
+  |    +------------------------+                                                                                          
+  |    +----------------------+                                                                                            
+  |--> | launcher_load_policy | (skip)                                                                                     
+  |    +----------------------+                                                                                            
+  |    +------------+                                                                                                      
+  |--> | socketpair | create socket pair                                                                                   
+  |    +------------+                                                                                                      
+  |    +---------------+                                                                                                   
+  |--> | sd_bus_set_fd | set bus input/output fd                                                                           
+  |    +---------------+                                                                                                   
+  |    +---------------+                                                                                                   
+  |--> | launcher_fork | parent launches dbus-broker and prepares event monitoring it                                      
+  |    +---------------+                                                                                                   
+  |    +--------------------------+                                                                                        
+  |--> | sd_bus_add_object_vtable | prepare node of path, add each vtable to bus hashmap, prepare slot and add to node     
+  |    +--------------------------+                                                                                        
+  |    +-------------------+                                                                                               
+  |--> | sd_bus_add_filter | prepare slot for filter, prepend to list of bus                                               
+  |    +-------------------+                                                                                               
+  |    +--------------+                                                                                                    
+  |--> | sd_bus_start | set bus state = opening, prepare socket/epoll, send msg (hello) to "org.freedesktop.DBus"          
+  |    +--------------+                                                                                                    
+  |    +-----------------------+                                                                                           
+  |--> | launcher_add_services | add all services in launcher                                                              
+  |    +-----------------------+                                                                                           
+  |    +-----------------------+                                                                                           
+  |--> | launcher_add_listener | send msg of method call (AddListener), append policy, send out and wait for reply         
+  |    +-----------------------+                                                                                           
+  |    +------------------+                                                                                                
+  |--> | launcher_connect | connect launcher to, e.g., system bus                                                          
+  |    +------------------+                                                                                                
+  |    +---------------------+                                                                                             
+  |--> | sd_bus_attach_event | prepare all kinds of sources for event                                                      
+  |    +---------------------+ (for bus-controller)                                                                        
+  |    +---------------------+                                                                                             
+  |--> | sd_bus_attach_event | for bus-regular                                                                             
+  |    +---------------------+                                                                                             
+  |    +--------------------+                                                                                              
+  |--> | launcher_subscribe | send of msg call ("Subscribe") to "org.freedesktop.systemd1"                                 
+  |    +--------------------+                                                                                              
+  |    +---------------+                                                                                                   
+  +--> | sd_event_loop | loop: register event to epoll & wait & dispatch it                                                
+       +---------------+                                                                                                   
+```
+
+```
+src/launch/launcher.c                                                                     
++-----------------------+                                                                  
+| launcher_parse_config | : determine config file and parse it, save settings into launcher
++-|---------------------+                                                                  
+  |    +--------------+                                                                    
+  |--> | dirwatch_new | prepare dir-watch                                                  
+  |    +--------------+                                                                    
+  |                                                                                        
+  |--> determine config file, e.g., "/usr/share/dbus-1/system.conf"                        
+  |                                                                                        
+  |    +--------------------+                                                              
+  |--> | config_parser_init | prepare xml parser                                           
+  |    +--------------------+                                                              
+  |    +--------------------+                                                              
+  |--> | config_parser_read | parse config into tree structure                             
+  |    +--------------------+                                                              
+  |    +-----------------+                                                                 
+  |--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io
+  |    +-----------------+                                                                 
+  |                                                                                        
+  +--> traverse the tree and save settings in launcher
+```
+
+```
+src/launch/launcher.c                                                                  
++------------------------+                                                              
+| launcher_load_services | : given type, load service files accordingly                 
++-|----------------------+                                                              
+  |                                                                                     
+  +--> for each node in list                                                            
+       |                                                                                
+       |--> switch type                                                                 
+       |                                                                                
+       |--> case STANDARD_SESSION_SERVICEDIRS                                           
+       |    |                                                                           
+       |    |    +-----------------------------------------+                            
+       |    +--> | launcher_load_standard_session_services | (skip)                     
+       |         +-----------------------------------------+                            
+       |                                                                                
+       |--> case STANDARD_SYSTEM_SERVICEDIRS                                            
+       |    |                                                                           
+       |    |    +----------------------------------------+                             
+       |    +--> | launcher_load_standard_system_services | load each found service file
+       |         +----------------------------------------+                             
+       |                                                                                
+       +--> case SERVICEDIR                                                             
+            |                                                                           
+            |    +---------------------------+                                          
+            +--> | launcher_load_service_dir | (skip)                                   
+                 +---------------------------+                                          
+```
+
+```
+src/launch/launcher.c                                                   
++----------------------------------------+                               
+| launcher_load_standard_system_services | : load each found service file
++-|--------------------------------------+                               
+  |                                                                      
+  +--> for each folder ["/usr/local/share", "/usr/share", "/lib"]        
+       |                                                                 
+       |--> prepare path string = $folder/dbus-1/system-services         
+       |                                                                 
+       |    +---------------------------+                                
+       +--> | launcher_load_service_dir | load each found service file   
+            +---------------------------+                                
+```
+
+```
+src/launch/launcher.c                                             
++---------------------------+                                      
+| launcher_load_service_dir | : load each found service file       
++-|-------------------------+                                      
+  |    +--------------+                                            
+  |--> | dirwatch_add | add arg dirpath into our inotify watch list
+  |    +--------------+                                            
+  |                                                                
+  +--> for each *.service in arg dirpath                           
+       |                                                           
+       |--> prepare file path = arg dirpath + entry name           
+       |                                                           
+       |    +----------------------------+                         
+       +--> | launcher_load_service_file | (skip)                  
+            +----------------------------+                         
+```
+
+```
+src/launch/launcher.c                                                                
++---------------+                                                                     
+| launcher_fork | : parent launches dbus-broker and prepares event monitoring it      
++-|-------------+                                                                     
+  |    +------+                                                                       
+  |--> | fork |                                                                       
+  |    +------+                                                                       
+  |                                                                                   
+  |--> if we are the child (returned pid is 0)                                        
+  |    |                                                                              
+  |    |    +--------------------+                                                    
+  |    +--> | launcher_run_child | prepare args and launch dbus-broker                
+  |         +--------------------+                                                    
+  |                                                                                   
+  |    (parent reaches here)                                                          
+  |                                                                                   
+  |    +--------------------+                                                         
+  +--> | sd_event_add_child | prepare source monitoring child task                    
+       +--------------------+ +------------------------+                              
+                              | launcher_on_child_exit | commit log and set exit event
+                              +------------------------+                              
+```
+
+```
+src/launch/launcher.c                                      
++--------------------+                                      
+| launcher_run_child | : prepare args and launch dbus-broker
++-|------------------+                                      
+  |    +----------------------+                             
+  |--> | sd_id128_get_machine | get machine id              
+  |    +----------------------+                             
+  |                                                         
+  |--> prepare strings for execve args                      
+  |                                                         
+  |    +--------+                                           
+  +--> | execve | dbus-broker                               
+       +--------+                                           
+```
+
+```
+src/launch/launcher.c                                                                            
++-----------------------+                                                                         
+| launcher_add_services | : add all services in launcher                                          
++-|---------------------+                                                                         
+  |                                                                                               
+  +--> for each service in launcher                                                               
+       |                                                                                          
+       |    +-------------+                                                                       
+       +--> | service_add | ensure servcie is running (if not, send msg of 'Addname' to somewhere)
+            +-------------+                                                                       
+```
+
+```
+src/launch/service.c                                                                                              
++--------------+                                                                                                   
+| service_add  | : ensure servcie is running (if not, send msg of 'Addname' to somewhere)                          
++-|------------+                                                                                                   
+  |                                                                                                                
+  |--> if service is already running, return                                                                       
+  |                                                                                                                
+  |--> prepare object string = /org/bus1/DBus/Name/$service_id                                                     
+  |                                                                                                                
+  |    +--------------------+                                                                                      
+  |--> | sd_bus_call_method | prepare msg of 'method call' (AddName), append types to msg, send out, wait for reply
+  |    +--------------------+                                                                                      
+  |                                                                                                                
+  +--> service->running = true                                                                                     
+```
+
+```
+src/launch/launcher.c                                                                                                           
++-----------------------+                                                                                                        
+| launcher_add_listener | : send msg of method call (AddListener), append policy, send out and wait for reply                    
++-|---------------------+                                                                                                        
+  |    +--------------------------------+                                                                                        
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call (AddListener), append path/member/interface/destination info
+  |    +--------------------------------+                                                                                        
+  |    +-----------------------+                                                                                                 
+  |--> | sd_bus_message_append | "/org/bus1/DBus/Listener/0"                                                                     
+  |    +-----------------------+                                                                                                 
+  |    +---------------+                                                                                                         
+  |--> | policy_export | append policy to msg                                                                                    
+  |    +---------------+                                                                                                         
+  |    +-------------+                                                                                                           
+  +--> | sd_bus_call | send msg out, wait for reply                                                                              
+       +-------------+                                                                                                           
+```
+
+```
+src/launch/launcher.c                                                           
++------------------+                                                             
+| launcher_connect | : connect launcher to, e.g., system bus                     
++-|----------------+                                                             
+  |                                                                              
+  |--> if launcher is user scope (not our case)                                  
+  |    |                                                                         
+  |    |    +------------------+                                                 
+  |    +--> | sd_bus_open_user | (skip)                                          
+  |         +------------------+                                                 
+  |                                                                              
+  +--> else                                                                      
+       |                                                                         
+       |    +--------------------+                                               
+       +--> | sd_bus_open_system | prepare bus, determine address and save in bus
+            +--------------------+                                               
+```
