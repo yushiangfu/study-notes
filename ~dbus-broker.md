@@ -1032,7 +1032,162 @@ driver_method_remove_match
 ```
 
 ```
-driver_method_request_name
+src/bus/driver.c                                                                      
++----------------------------+                                                         
+| driver_method_request_name | : add ownership of name, send reply to peer             
++-|--------------------------+                                                         
+  |    +-------------------+                                                           
+  |--> | peer_request_name | add ownership of name to structures (peer tree, name list)
+  |    +-------------------+                                                           
+  |                                                                                    
+  |--> if 'chagne'                                                                     
+  |    |                                                                               
+  |    |    +---------------------------+                                              
+  |    |--> | driver_name_owner_changed | notify                                       
+  |    |    +---------------------------+                                              
+  |    |    +-----------------------+                                                  
+  |    +--> | driver_name_activated | send msgs on lists of activation                 
+  |         +-----------------------+                                                  
+  |    +-------------------+                                                           
+  +--> | driver_send_reply | prepare msg, send to arg peer                             
+       +-------------------+                                                           
+```
+
+```
+src/bus/peer.c                                                                            
++-------------------+                                                                      
+| peer_request_name | : add ownership of name to structures (peer tree, name list)         
++----------------------------+                                                             
+| name_registry_request_name | : add ownership of name to structures (peer tree, name list)
++----------------------------+                                                             
+```
+
+```
+src/bus/name.c                                                                            
++----------------------------+                                                             
+| name_registry_request_name | : add ownership of name to structures (peer tree, name list)
++-|--------------------------+                                                             
+  |    +------------------------+                                                          
+  |--> | name_registry_ref_name | given string, find name struct from registry and ref++   
+  |    +------------------------+                                                          
+  |    +--------------------+                                                              
+  |--> | c_rbtree_find_slot | given name struct, find slot from ownership tree             
+  |    +--------------------+                                                              
+  |                                                                                        
+  |--> if slot not found (there's already ownership)                                       
+  |    -                                                                                   
+  |    +--> given parent, get outer ownership                                              
+  |                                                                                        
+  |--> else                                                                                
+  |    |                                                                                   
+  |    |    +--------------------+                                                         
+  |    |--> | name_ownership_new | new a ownership                                         
+  |    |    +--------------------+                                                         
+  |    |    +---------------------+                                                        
+  |    +--> | name_ownership_link | insert ownership to tree                               
+  |         +---------------------+                                                        
+  |    +-----------------------+                                                           
+  +--> | name_ownership_update | ensure arg ownership in the list of name, save changes    
+       +-----------------------+                                                           
+```
+
+```
+src/bus/name.c                                                                   
++-----------------------+                                                         
+| name_ownership_update | : ensure arg ownership in the list of name, save changes
++-|---------------------+                                                         
+  |                                                                               
+  |--> get primary (first ownership from list of name)                            
+  |                                                                               
+  |--> if no primary                                                              
+  |    |                                                                          
+  |    |--> update 'change' struct                                                
+  |    |                                                                          
+  |    |    +-------------------+                                                 
+  |    +--> | c_list_link_front | prepend arg ownership to list of name           
+  |         +-------------------+                                                 
+  |                                                                               
+  |--> elif arg ownership is the primary already, do nothing                      
+  |                                                                               
+  +--> (skip other conditions)                                                    
+```
+
+```
+src/bus/driver.c                                                                                           
++-----------------------+                                                                                   
+| driver_name_activated | : send msgs on lists of activation                                                
++-|---------------------+                                                                                   
+  |                                                                                                         
+  |--> for each request in list of activation                                                               
+  |    |                                                                                                    
+  |    |    +-------------------------+                                                                     
+  |    |--> | peer_registry_find_peer | given send id in request, find sender from bus peers                
+  |    |    +-------------------------+                                                                     
+  |    |                                                                                                    
+  |    |--> if found                                                                                        
+  |    |    |                                                                                               
+  |    |    |    +---------------------------+                                                              
+  |    |    |--> | driver_write_reply_header |                                                              
+  |    |    |    +---------------------------+                                                              
+  |    |    |    +-------------------+                                                                      
+  |    |    +--> | driver_send_reply | prepare msg, send to arg peer                                        
+  |    |         +-------------------+                                                                      
+  |    |    +-------------------------+                                                                     
+  |    +--> | activation_request_free | release request                                                     
+  |         +-------------------------+                                                                     
+  |                                                                                                         
+  +--> for each msg in list of activation                                                                   
+       |                                                                                                    
+       |    +-------------------------+                                                                     
+       |--> | peer_registry_find_peer | given send id in msg, find sender from bus peers                    
+       |    +-------------------------+                                                                     
+       |    +--------------------+                                                                          
+       |--> | peer_queue_unicast | prepare reply if needed, add msg to connection, add connection to context
+       |    +--------------------+                                                                          
+       |    +-------------------------+                                                                     
+       +--> | activation_message_free | release msg                                                         
+            +-------------------------+                                                                     
+```
+
+```
+src/bus/peer.c                                                                                   
++--------------------+                                                                            
+| peer_queue_unicast | : prepare reply if needed, add msg to connection, add connection to context
++-|------------------+                                                                            
+  |    +---------------------+                                                                    
+  |--> | message_read_serial | read serial from msg                                               
+  |    +---------------------+                                                                    
+  |                                                                                               
+  |--> if need reply                                                                              
+  |    |                                                                                          
+  |    |    +----------------+                                                                    
+  |    +--> | reply_slot_new | prepare 'reply' and add to structures                              
+  |         +----------------+                                                                    
+  |    +------------------+                                                                       
+  +--> | connection_queue | add msg to connection, add connnection to context                     
+       +------------------+                                                                       
+```
+
+```
+src/bus/reply.c                                                  
++----------------+                                                
+| reply_slot_new | : prepare 'reply' and add to structures        
++-|--------------+                                                
+  |                                                               
+  |--> set up key                                                 
+  |                                                               
+  |    +--------------------+                                     
+  |--> | c_rbtree_find_slot | given key, find slot from reply tree
+  |    +--------------------+                                     
+  |                                                               
+  |--> alloc and init 'reply'                                     
+  |                                                               
+  |    +--------------+                                           
+  |--> | c_rbtree_add | insert reply to reply tree of registry    
+  |    +--------------+                                           
+  |    +------------------+                                       
+  +--> | c_list_link_tail | insert reply to reply list of owner   
+       +------------------+                                       
 ```
 
 ```
