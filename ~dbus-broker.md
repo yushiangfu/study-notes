@@ -1643,7 +1643,7 @@ src/launch/launcher.c
 ```
 src/bus/peer.c                                                                                                        
 +---------------+                                                                                                      
-| peer_dispatch |                                                                                                      
+| peer_dispatch | : get msg and validate it, handle it locally or unicast request to peer
 +-|-------------+                                                                                                      
   |                                                                                                                    
   |--> given arg file, get outer peer                                                                                  
@@ -1905,4 +1905,56 @@ src/bus/driver.c
   |    +------------------+                                                  
   +--> | connection_queue | add msg to connection, add connnection to context
        +------------------+                                                  
+```
+
+```
+src/bus/listener.c                                                                           
++-------------------+                                                                         
+| listener_dispatch | : prepare peer, handle msg locally or unicast request to peer           
++-|-----------------+                                                                         
+  |                                                                                           
+  |--> get outer listener                                                                     
+  |                                                                                           
+  |    +---------+                                                                            
+  |--> | accept4 | accept connection request from service task?                               
+  |    +---------+                                                                            
+  |    +------------------+                                                                   
+  |--> | peer_new_with_fd | prepare peer, get id from bus, add peer to bus                    
+  |    +------------------+                                                                   
+  |                                                                                           
+  |--> append listener to list end of peer                                                    
+  |                                                                                           
+  |    +------------+                                                                         
+  |--> | peer_spawn | add file to the end of context's link                                   
+  |    +------------+                                                                         
+  |    +---------------+                                                                      
+  +--> | peer_dispatch | get msg and validate it, handle it locally or unicast request to peer
+       +---------------+                                                                      
+```
+
+```
+src/bus/peer.c                                                      
++------------------+                                                 
+| peer_new_with_fd | : prepare peer, get id from bus, add peer to bus
++-|----------------+                                                 
+  |    +---------------------+                                       
+  |--> | sockopt_get_peersec | get sec label                         
+  |    +---------------------+                                       
+  |    +------------------------+                                    
+  |--> | sockopt_get_peergroups | (credential related, skip)         
+  |    +------------------------+                                    
+  |                                                                  
+  |--> alloc and init peer                                           
+  |                                                                  
+  |    +---------------------+                                       
+  |--> | policy_snapshot_new | (credential related, skip)            
+  |    +---------------------+                                       
+  |    +------------------------+                                    
+  +--> | connection_init_server | init connection and sasl server    
+  |    +------------------------+ +---------------+                  
+  |                               | peer_dispatch |                  
+  |                               +---------------+                  
+  |--> bus assigns id to peer                                        
+  |                                                                  
+  +--> given perer id, insert to peer tree of bus                    
 ```
