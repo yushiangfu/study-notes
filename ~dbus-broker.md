@@ -1528,8 +1528,42 @@ src/launch/launcher.c
        |--> prepare file path = arg dirpath + entry name           
        |                                                           
        |    +----------------------------+                         
-       +--> | launcher_load_service_file | (skip)                  
+       +--> | launcher_load_service_file | read service file, ensure service struct is in launcher
             +----------------------------+                         
+```
+
+```
+src/launch/launcher.c                                                                                       
++----------------------------+                                                                               
+| launcher_load_service_file | : read service file, ensure service struct is in launcher                             
++-|--------------------------+                                                                               
+  |    +--------------------------------+                                                                    
+  |--> | launcher_ini_reader_parse_file | read and parse file        /usr/share/dbus-1/system-services:      
+  |    +--------------------------------+                                                                    
+  |                                                                  org.freedesktop.Avahi.service           
+  |--> get entries, e.g.,                                            org.freedesktop.hostname1.service       
+  |    name entry = xyz.openbmc_project.ObjectMapper                 org.freedesktop.network1.service        
+  |    unit entry = dbus-xyz.openbmc_project.ObjectMapper.service    org.freedesktop.resolve1.service        
+  |    exec_entry = /bin/false                                       org.freedesktop.systemd1.service        
+  |    user entry = root                                             org.freedesktop.timedate1.service       
+  |                                                                  org.freedesktop.timesync1.service       
+  |--> validate entries                                              xyz.openbmc_project.Logging.service     
+  |                                                                  xyz.openbmc_project.ObjectMapper.service
+  |    +--------------------+                                                                                
+  |--> | c_rbtree_find_slot | find target from services in launcher                                          
+  |    +--------------------+                                                                                
+  |                                                                                                          
+  |--> if not found                                                                                          
+  |    |                                                                                                     
+  |    |    +-------------+                                                                                  
+  |    +--> | service_new | prepare service, update info, add to launcher                                    
+  |         +-------------+                                                                                  
+  |                                                                                                          
+  +--> else                                                                                                  
+       |                                                                                                     
+       |    +----------------+                                                                               
+       +--> | service_update | update info                                                                   
+            +----------------+                                                                               
 ```
 
 ```
