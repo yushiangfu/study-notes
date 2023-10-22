@@ -4194,3 +4194,37 @@ src/libsystemd/sd-bus/sd-bus.c
   +--> | bus_socket_take_fd | set up socket and start auth
        +--------------------+                             
 ```
+
+```
+src/libsystemd/sd-bus/bus-convenience.c                                                             
++---------------------------+                                                                        
+| sd_bus_match_signal_async | : send msg ('add match' method) to bus clients, add match rule to bus  
++-|-------------------------+                                                                        
+  |    +-----------------+                                                                           
+  |--> | make_expression | make a long string  = type + sender + path + interface + member           
+  |    +-----------------+                                                                           
+  |    +------------------------+                                                                    
+  +--> | sd_bus_add_match_async | send msg ('add match' method) to bus clients, add match rule to bus
+       +------------------------+                                                                    
+```
+
+```
+src/libsystemd/sd-bus/bus-convenience.c                                                                                
++--------------------------+                                                                                            
+| sd_bus_call_method_async | : prepare msg (method call), install callback, send msg out                                
++---------------------------+                                                                                           
+| sd_bus_call_method_asyncv | : prepare msg (method call), install callback, send msg out                               
++-|-------------------------+                                                                                           
+  |    +--------------------------------+                                                                               
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |    +--------------------------------+                                                                               
+  |                                                                                                                     
+  |--> if arg type is provided                                                                                          
+  |    |                                                                                                                
+  |    |    +------------------------+                                                                                  
+  |    +--> | sd_bus_message_appendv | append type to msg                                                               
+  |         +------------------------+                                                                                  
+  |    +-------------------+                                                                                            
+  +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                     
+       +-------------------+                                                                                            
+```
