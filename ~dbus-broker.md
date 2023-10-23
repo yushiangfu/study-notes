@@ -1290,6 +1290,325 @@ driver_method_get_connection_stats
 driver_method_get_all_match_rules
 ```
 
+```
+src/bus/peer.c                                                                                                        
++---------------+                                                                                                      
+| peer_dispatch | : get msg and validate it, handle it locally or unicast request to peer
++-|-------------+                                                                                                      
+  |                                                                                                                    
+  |--> given arg file, get outer peer                                                                                  
+  |                                                                                                                    
+  +--> for event in [poll-in, poll-hup | poll-out]                                                                     
+       |                                                                                                               
+       |    +--------------------------+                                                                               
+       +--> | peer_dispatch_connection | in loop: get msg and validate it, handle it locally or unicast request to peer
+            +--------------------------+                                                                               
+```
+
+```
+src/bus/peer.c                                                                                              
++--------------------------+                                                                                 
+| peer_dispatch_connection | : in loop: get msg and validate it, handle it locally or unicast request to peer
++-|------------------------+                                                                                 
+  |    +---------------------+                                                                               
+  |--> | connection_dispatch | handle arg events (in/out/hup) accordingly (read/write/discard)               
+  |    +---------------------+                                                                               
+  |                                                                                                          
+  +--> endless loop                                                                                          
+       |                                                                                                     
+       |    +--------------------+                                                                           
+       |--> | connection_dequeue | fetch msg from input buffer, return to caller                             
+       |    +--------------------+                                                                           
+       |    +------------------------+                                                                       
+       |--> | message_parse_metadata | validate msg header & body, truncate extra fds                        
+       |    +------------------------+                                                                       
+       |    +-----------------------+                                                                        
+       |--> | message_stitch_sender | stitch in new sender field                                             
+       |    +-----------------------+                                                                        
+       |    +-----------------+                                                                              
+       +--> | driver_dispatch | given destination, handle it locally or unicast request to peer              
+            +-----------------+                                                                              
+```
+
+```
+src/bus/driver.c                                                                                  
++-----------------+                                                                                
+| driver_dispatch | : given destination, handle it locally or unicast request to peer              
++-|---------------+                                                                                
+  |    +--------------------------+                                                                
+  +--> | driver_dispatch_internal | given destination, handle it locally or unicast request to peer
+       +--------------------------+                                                                
+```
+
+```
+src/bus/driver.c                                                                                                                   
++--------------------------+                                                                                                        
+| driver_dispatch_internal | : given destination, handle it locally or unicast request to peer                                      
++-|------------------------+                                                                                                        
+  |    +----------------+                                                                                                           
+  |--> | driver_monitor | parse metadata to get destinations, send msg to each destination                                          
+  |    +----------------+                                                                                                           
+  |                                                                                                                                 
+  |--> if destination == org.freedesktop.DBus                                                                                       
+  |    |                                                                                                                            
+  |    |    +---------------------------+                                                                                           
+  |    +--> | driver_dispatch_interface | given interface/method strings, verify in-signature, call method->fn(), send reply to peer
+  |         +---------------------------+                                                                                           
+  |                                                                                                                                 
+  |--> if msg has no destination && msg type is signal                                                                              
+  |    |                                                                                                                            
+  |    |    +--------------------------+                                                                                            
+  |    +--> | driver_forward_broadcast | determine broadcast destinations, for each: queue a connection to context                  
+  |         +--------------------------+                                                                                            
+  |                                                                                                                                 
+  +--> switch header type                                                                                                           
+       case signal                                                                                                                  
+       case method_call                                                                                                             
+       -    +------------------------+                                                                                              
+       +--> | driver_forward_unicast | queue connection to toward specific peer                                                     
+            +------------------------+                                                                                              
+       case method_return                                                                                                           
+       case error                                                                                                                   
+       -    +------------------+                                                                                                    
+       +--> | peer_queue_reply | determine receiver, queue connection to context                                                    
+            +------------------+                                                                                                    
+```
+
+```
+src/bus/driver.c                                                                                                         
++---------------------------+                                                                                             
+| driver_dispatch_interface | : given interface/method strings, verify in-signature, call method->fn(), send reply to peer
++-|-------------------------+                                                                                             
+  |                                                                                                                       
+  |--> if arg interface is provided                                                                                       
+  |    |                                                                                                                  
+  |    |--> find match from predefined interfaces                                                                         
+  |    |                                                                                                                  
+  |    |    +------------------------+                                                                                    
+  |    +--> | driver_dispatch_method | verify in-signature, call method->fn(), send reply to arg peer                     
+  |         +------------------------+                                                                                    
+  |                                                                                                                       
+  +--> else                                                                                                               
+       -                                                                                                                  
+       +--> for each interface in interfaces                                                                              
+            |                                                                                                             
+            |    +------------------------+                                                                               
+            +--> | driver_dispatch_method | verify in-signature, call method->fn(), send reply to arg peer                
+                 +------------------------+                                                                               
+```
+
+```
+src/bus/driver.c                                                                                  
++------------------------+                                                                         
+| driver_dispatch_method | : verify in-signature, call method->fn(), send reply to arg peer        
++-|----------------------+                                                                         
+  |                                                                                                
+  |--> find match from arg methods                                                                 
+  |                                                                                                
+  +--> if found                                                                                    
+       |                                                                                           
+       |    +----------------------+                                                               
+       +--> | driver_handle_method | verify in-signature, call method->fn(), send reply to arg peer
+            +----------------------+                                                               
+```
+
+```
+src/bus/driver.c                                                                        
++----------------------+                                                                 
+| driver_handle_method | : verify in-signature, call method->fn(), send reply to arg peer
++-|--------------------+                                                                 
+  |    +---------------------------------+                                               
+  |--> | driver_dvar_verify_signature_in |                                               
+  |    +---------------------------------+                                               
+  |    +---------------------------+                                                     
+  |--> | driver_write_reply_header |                                                     
+  |    +---------------------------+                                                     
+  |                                                                                      
+  +--> call method->fn(), e.g.,                                                          
+       +--------------------------+                                                      
+       | driver_method_introspect | given path, prepare data, send reply to arg peer     
+       +--------------------------+                                                      
+```
+
+```
+src/bus/driver.c                                                                                             
++--------------------------+                                                                                  
+| driver_forward_broadcast | : determine broadcast destinations, for each: queue a connection to context      
++-|------------------------+                                                                                  
+  |    +--------------------------------+                                                                     
+  |--> | bus_get_broadcast_destinations | get broadcast destinations from a few sources (matches, sender, bus)
+  |    +--------------------------------+                                                                     
+  |                                                                                                           
+  +--> for each match_owner in destinations                                                                   
+       |                                                                                                      
+       |--> given match_owner, get outer receiver                                                             
+       |                                                                                                      
+       |    +---------------+                                                                                 
+       |--> | c_list_unlink | remove match_owner from destinations                                            
+       |    +---------------+                                                                                 
+       |    +------------------+                                                                              
+       +--> | connection_queue | add msg to connection, add connnection to context                            
+            +------------------+                                                                              
+```
+
+```
+src/bus/bus.c                                                                                           
++--------------------------------+                                                                       
+| bus_get_broadcast_destinations | : get broadcast destinations from a few sources (matches, sender, bus)
++-|------------------------------+                                                                       
+  |                                                                                                      
+  |--> if arg 'matches' is provided                                                                      
+  |    |                                                                                                 
+  |    |    +--------------------------------+                                                           
+  |    +--> | match_registry_get_subscribers |                                                           
+  |         +--------------------------------+                                                           
+  |                                                                                                      
+  |--> if arg 'sender' is provided                                                                       
+  |    -                                                                                                 
+  |    +--> get primary ownership from sender                                                            
+  |         |                                                                                            
+  |         |    +--------------------------------+                                                      
+  |         +--> | match_registry_get_subscribers |                                                      
+  |              +--------------------------------+                                                      
+  |                                                                                                      
+  +--> else                                                                                              
+       |                                                                                                 
+       |    +--------------------------------+                                                           
+       +--> | match_registry_get_subscribers |                                                           
+            +--------------------------------+                                                           
+```
+
+```
+src/bus/driver.c                                                                                      
++------------------------+                                                                             
+| driver_forward_unicast | : queue connection to toward specific peer                                  
++-|----------------------+                                                                             
+  |    +-----------------------+                                                                       
+  |--> | bus_find_peer_by_name | given name, get receiver                                              
+  |    +-----------------------+                                                                       
+  |                                                                                                    
+  |--> if no receiver found                                                                            
+  |    |                                                                                               
+  |    |    +--------------------------+                                                               
+  |    +--> | activation_queue_message | prepare msg and append to activation queue                    
+  |         +--------------------------+                                                               
+  |                                                                                                    
+  |    +--------------------+                                                                          
+  +--> | peer_queue_unicast | prepare reply if needed, add msg to connection, add connection to context
+       +--------------------+                                                                          
+```
+
+```
+src/bus/activation.c                                                             
++--------------------------+                                                      
+| activation_queue_message | : prepare msg and append to activation queue         
++-|------------------------+                                                      
+  |    +--------------------+                                                     
+  |--> | activation_request | prepare msg of activation, add connection to context
+  |    +--------------------+                                                     
+  |                                                                               
+  |--> alloc and init msg                                                         
+  |                                                                               
+  |    +------------------+                                                       
+  +--> | c_list_link_tail | add msg to list end of activation                     
+       +------------------+                                                       
+```
+
+```
+src/bus/activation.c                                                                   
++--------------------+                                                                  
+| activation_request | : prepare msg of activation, add connection to context           
++-|------------------+                                                                  
+  |    +--------------------------+                                                     
+  +--> | controller_name_activate | prepare msg of activation, add connection to context
+       +--------------------------+                                                     
+```
+
+```
+src/broker/controller.c                                                                  
++--------------------------+                                                              
+| controller_name_activate | : prepare msg of activation, add connection to context       
++---------------------------------+                                                       
+| controller_dbus_send_activation | : prepare msg of activation, add connection to context
++-|-------------------------------+                                                       
+  |                                                                                       
+  |--> prepare data                                                                       
+  |                                                                                       
+  |    +----------------------+                                                           
+  |--> | message_new_outgoing | prepare msg for sending out                               
+  |    +----------------------+                                                           
+  |    +------------------+                                                               
+  +--> | connection_queue | add msg to connection, add connnection to context             
+       +------------------+                                                               
+```
+
+```
+src/bus/driver.c                                                            
++------------------+                                                         
+| peer_queue_reply | : determine receiver, queue connection to context       
++-|----------------+                                                         
+  |                                                                          
+  |--> given id/serial, get slot from sender                                 
+  |                                                                          
+  |--> given slot, get outer receiver (peer)                                 
+  |                                                                          
+  |    +------------------+                                                  
+  +--> | connection_queue | add msg to connection, add connnection to context
+       +------------------+                                                  
+```
+
+```
+src/bus/listener.c                                                                           
++-------------------+                                                                         
+| listener_dispatch | : prepare peer, handle msg locally or unicast request to peer           
++-|-----------------+                                                                         
+  |                                                                                           
+  |--> get outer listener                                                                     
+  |                                                                                           
+  |    +---------+                                                                            
+  |--> | accept4 | accept connection request from service task?                               
+  |    +---------+                                                                            
+  |    +------------------+                                                                   
+  |--> | peer_new_with_fd | prepare peer, get id from bus, add peer to bus                    
+  |    +------------------+                                                                   
+  |                                                                                           
+  |--> append listener to list end of peer                                                    
+  |                                                                                           
+  |    +------------+                                                                         
+  |--> | peer_spawn | add file to the end of context's link                                   
+  |    +------------+                                                                         
+  |    +---------------+                                                                      
+  +--> | peer_dispatch | get msg and validate it, handle it locally or unicast request to peer
+       +---------------+                                                                      
+```
+
+```
+src/bus/peer.c                                                      
++------------------+                                                 
+| peer_new_with_fd | : prepare peer, get id from bus, add peer to bus
++-|----------------+                                                 
+  |    +---------------------+                                       
+  |--> | sockopt_get_peersec | get sec label                         
+  |    +---------------------+                                       
+  |    +------------------------+                                    
+  |--> | sockopt_get_peergroups | (credential related, skip)         
+  |    +------------------------+                                    
+  |                                                                  
+  |--> alloc and init peer                                           
+  |                                                                  
+  |    +---------------------+                                       
+  |--> | policy_snapshot_new | (credential related, skip)            
+  |    +---------------------+                                       
+  |    +------------------------+                                    
+  +--> | connection_init_server | init connection and sasl server    
+  |    +------------------------+ +---------------+                  
+  |                               | peer_dispatch |                  
+  |                               +---------------+                  
+  |--> bus assigns id to peer                                        
+  |                                                                  
+  +--> given perer id, insert to peer tree of bus                    
+```
+
 ### dbus-broker-launch
 
 ```
@@ -1675,320 +1994,274 @@ src/launch/launcher.c
 ```
 
 ```
-src/bus/peer.c                                                                                                        
-+---------------+                                                                                                      
-| peer_dispatch | : get msg and validate it, handle it locally or unicast request to peer
-+-|-------------+                                                                                                      
+src/launch/launcher.c                                                                                                 
++---------------------+                                                                                                
+| launcher_on_message |                                                                                                
++-|-------------------+                                                                                                
+  |    +-------------------------+                                                                                     
+  |--> | sd_bus_message_get_path | given msg, get path                                                                 
+  |    +-------------------------+                                                                                     
+  |    +---------------+                                                                                               
+  |--> | string_prefix | get anything after '/org/bus1/DBus/Name/'                                                     
+  |    +---------------+                                                                                               
   |                                                                                                                    
-  |--> given arg file, get outer peer                                                                                  
+  |--> if got something                                                                                                
+  |    -                                                                                                               
+  |    +--> if msg is about signal                                                                                     
+  |         |                                                                                                          
+  |         |    +---------------------------+                                                                         
+  |         +--> | launcher_on_name_activate | given arg id, find service from launcher and activate it                
+  |              +---------------------------+                                                                         
   |                                                                                                                    
-  +--> for event in [poll-in, poll-hup | poll-out]                                                                     
+  +--> elif path == /org/bus1/DBus/Broker                                                                              
        |                                                                                                               
-       |    +--------------------------+                                                                               
-       +--> | peer_dispatch_connection | in loop: get msg and validate it, handle it locally or unicast request to peer
-            +--------------------------+                                                                               
+       |    +----------------------------------------+                                                                 
+       +--> | launcher_on_set_activation_environment | given in-msg, prepare method call 'set environment' and send out
+            +----------------------------------------+                                                                 
 ```
 
 ```
-src/bus/peer.c                                                                                              
-+--------------------------+                                                                                 
-| peer_dispatch_connection | : in loop: get msg and validate it, handle it locally or unicast request to peer
-+-|------------------------+                                                                                 
-  |    +---------------------+                                                                               
-  |--> | connection_dispatch | handle arg events (in/out/hup) accordingly (read/write/discard)               
-  |    +---------------------+                                                                               
-  |                                                                                                          
-  +--> endless loop                                                                                          
-       |                                                                                                     
-       |    +--------------------+                                                                           
-       |--> | connection_dequeue | fetch msg from input buffer, return to caller                             
-       |    +--------------------+                                                                           
-       |    +------------------------+                                                                       
-       |--> | message_parse_metadata | validate msg header & body, truncate extra fds                        
-       |    +------------------------+                                                                       
-       |    +-----------------------+                                                                        
-       |--> | message_stitch_sender | stitch in new sender field                                             
-       |    +-----------------------+                                                                        
-       |    +-----------------+                                                                              
-       +--> | driver_dispatch | given destination, handle it locally or unicast request to peer              
-            +-----------------+                                                                              
+src/launch/launcher.c                                                                  
++---------------------------+                                                           
+| launcher_on_name_activate | : given arg id, find service from launcher and activate it
++-|-------------------------+                                                           
+  |    +---------------------+                                                          
+  |--> | sd_bus_message_read | read serial from msg                                     
+  |    +---------------------+                                                          
+  |                                                                                     
+  |--> given arg id, find service from launcher                                         
+  |                                                                                     
+  |--> if not found, print warning and return                                           
+  |                                                                                     
+  |    +------------------+                                                             
+  +--> | service_activate | start unit or transient unit, monitor 'job removed' signal  
+       +------------------+                                                             
 ```
 
 ```
-src/bus/driver.c                                                                                  
-+-----------------+                                                                                
-| driver_dispatch | : given destination, handle it locally or unicast request to peer              
-+-|---------------+                                                                                
-  |    +--------------------------+                                                                
-  +--> | driver_dispatch_internal | given destination, handle it locally or unicast request to peer
-       +--------------------------+                                                                
+src/launch/service.c                                                                                                                          
++------------------+                                                                                                                           
+| service_activate | : start unit or transient unit, monitor 'job removed' signal                                                              
++-|----------------+                                                                                                                           
+  |    +----------------------------+                                                                                                          
+  |--> | service_discard_activation |                                                                                                          
+  |    +----------------------------+                                                                                                          
+  |                                                                                                                                            
+  |--> if service has unit                                                                                                                     
+  |    |                                                                                                                                       
+  |    |    +--------------------+                                                                                                             
+  |    +--> | service_start_unit | send method call (add unit), send method call (start unit), monitor 'job removed' signal                    
+  |         +--------------------+                                                                                                             
+  |                                                                                                                                            
+  +--> elif service has multiple arguments                                                                                                     
+       |                                                                                                                                       
+       |    +------------------------------+                                                                                                   
+       +--> | service_start_transient_unit | send method call (add unit), send method call (start transient unit), monitor 'job removed' signal
+            +------------------------------+                                                                                                   
 ```
 
 ```
-src/bus/driver.c                                                                                                                   
-+--------------------------+                                                                                                        
-| driver_dispatch_internal | : given destination, handle it locally or unicast request to peer                                      
-+-|------------------------+                                                                                                        
-  |    +----------------+                                                                                                           
-  |--> | driver_monitor | parse metadata to get destinations, send msg to each destination                                          
-  |    +----------------+                                                                                                           
-  |                                                                                                                                 
-  |--> if destination == org.freedesktop.DBus                                                                                       
-  |    |                                                                                                                            
-  |    |    +---------------------------+                                                                                           
-  |    +--> | driver_dispatch_interface | given interface/method strings, verify in-signature, call method->fn(), send reply to peer
-  |         +---------------------------+                                                                                           
-  |                                                                                                                                 
-  |--> if msg has no destination && msg type is signal                                                                              
-  |    |                                                                                                                            
-  |    |    +--------------------------+                                                                                            
-  |    +--> | driver_forward_broadcast | determine broadcast destinations, for each: queue a connection to context                  
-  |         +--------------------------+                                                                                            
-  |                                                                                                                                 
-  +--> switch header type                                                                                                           
-       case signal                                                                                                                  
-       case method_call                                                                                                             
-       -    +------------------------+                                                                                              
-       +--> | driver_forward_unicast | queue connection to toward specific peer                                                     
-            +------------------------+                                                                                              
-       case method_return                                                                                                           
-       case error                                                                                                                   
-       -    +------------------+                                                                                                    
-       +--> | peer_queue_reply | determine receiver, queue connection to context                                                    
-            +------------------+                                                                                                    
+src/launch/service.c                                                                                                   
++--------------------+                                                                                                  
+| service_start_unit | : send method call (add unit), send method call (start unit), monitor 'job removed' signal       
++-|------------------+                                                                                                  
+  |    +--------------------+                                                                                           
+  |--> | service_watch_jobs | register match-rule to 'JobRemoved' of systemd                                            
+  |    +--------------------+                                                                                           
+  |    +--------------------+                                                                                           
+  |--> | service_watch_unit | send method call (add unit), install callback to add match rules                          
+  |    +--------------------+                                                                                           
+  |    +--------------------------------+                                                                               
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |    +--------------------------------+ (StartUnit)                                                                   
+  |    +-----------------------+                                                                                        
+  |--> | sd_bus_message_append | append 'unit' to msg                                                                   
+  |    +-----------------------+                                                                                        
+  |    +-------------------+                                                                                            
+  +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                     
+       +-------------------+ +----------------------------+                                                             
+                             | service_start_unit_handler | read 'job' from msg and save in service                     
+                             +----------------------------+                                                             
 ```
 
 ```
-src/bus/driver.c                                                                                                         
-+---------------------------+                                                                                             
-| driver_dispatch_interface | : given interface/method strings, verify in-signature, call method->fn(), send reply to peer
-+-|-------------------------+                                                                                             
-  |                                                                                                                       
-  |--> if arg interface is provided                                                                                       
-  |    |                                                                                                                  
-  |    |--> find match from predefined interfaces                                                                         
-  |    |                                                                                                                  
-  |    |    +------------------------+                                                                                    
-  |    +--> | driver_dispatch_method | verify in-signature, call method->fn(), send reply to arg peer                     
-  |         +------------------------+                                                                                    
-  |                                                                                                                       
-  +--> else                                                                                                               
-       -                                                                                                                  
-       +--> for each interface in interfaces                                                                              
-            |                                                                                                             
-            |    +------------------------+                                                                               
-            +--> | driver_dispatch_method | verify in-signature, call method->fn(), send reply to arg peer                
-                 +------------------------+                                                                               
+src/launch/service.c                                                                                                
++--------------------+                                                                                               
+| service_watch_jobs | : register match-rule to 'JobRemoved' of systemd                                              
++-|------------------+                                                                                               
+  |    +---------------------------+                                                                                 
+  +--> | sd_bus_match_signal_async | send msg ('add match' method) to bus clients, add match rule to bus             
+       +---------------------------+ +----------------------------+                                                  
+                                     | service_watch_jobs_handler | if job failed, send method call 'Reset' to broker
+                                     +----------------------------+                                                  
 ```
 
 ```
-src/bus/driver.c                                                                                  
-+------------------------+                                                                         
-| driver_dispatch_method | : verify in-signature, call method->fn(), send reply to arg peer        
-+-|----------------------+                                                                         
-  |                                                                                                
-  |--> find match from arg methods                                                                 
-  |                                                                                                
-  +--> if found                                                                                    
-       |                                                                                           
-       |    +----------------------+                                                               
-       +--> | driver_handle_method | verify in-signature, call method->fn(), send reply to arg peer
-            +----------------------+                                                               
+src/launch/service.c                                                                 
++----------------------------+                                                        
+| service_watch_jobs_handler | : if job failed, send method call 'Reset' to broker    
++-|--------------------------+                                                        
+  |    +---------------------+                                                        
+  |--> | sd_bus_message_read | read id/path/unit/result from msg                      
+  |    +---------------------+                                                        
+  |                                                                                   
+  |--> if result == done || result == skipped                                         
+  |    -                                                                              
+  |    +--> unref service job                                                         
+  |                                                                                   
+  +--> else                                                                           
+       |                                                                              
+       |    +--------------------------+                                              
+       +--> | service_reset_activation | thru controller bus, send method call 'Reset'
+            +--------------------------+                                              
 ```
 
 ```
-src/bus/driver.c                                                                        
-+----------------------+                                                                 
-| driver_handle_method | : verify in-signature, call method->fn(), send reply to arg peer
-+-|--------------------+                                                                 
-  |    +---------------------------------+                                               
-  |--> | driver_dvar_verify_signature_in |                                               
-  |    +---------------------------------+                                               
-  |    +---------------------------+                                                     
-  |--> | driver_write_reply_header |                                                     
-  |    +---------------------------+                                                     
-  |                                                                                      
-  +--> call method->fn(), e.g.,                                                          
-       +--------------------------+                                                      
-       | driver_method_introspect | given path, prepare data, send reply to arg peer     
-       +--------------------------+                                                      
+src/launch/service.c                                                       
++--------------------------+                                                
+| service_reset_activation | : thru controller bus, send method call 'Reset'
++-|------------------------+                                                
+  |    +----------------------------+                                       
+  |--> | service_discard_activation |                                       
+  |    +----------------------------+                                       
+  |                                                                         
+  |--> prepare string = /org/bus1/DBus/Name/$id                             
+  |                                                                         
+  |    +--------------------+                                               
+  +--> | sd_bus_call_method | Reset                                         
+       +--------------------+                                               
 ```
 
 ```
-src/bus/driver.c                                                                                             
-+--------------------------+                                                                                  
-| driver_forward_broadcast | : determine broadcast destinations, for each: queue a connection to context      
-+-|------------------------+                                                                                  
-  |    +--------------------------------+                                                                     
-  |--> | bus_get_broadcast_destinations | get broadcast destinations from a few sources (matches, sender, bus)
-  |    +--------------------------------+                                                                     
-  |                                                                                                           
-  +--> for each match_owner in destinations                                                                   
-       |                                                                                                      
-       |--> given match_owner, get outer receiver                                                             
-       |                                                                                                      
-       |    +---------------+                                                                                 
-       |--> | c_list_unlink | remove match_owner from destinations                                            
-       |    +---------------+                                                                                 
-       |    +------------------+                                                                              
-       +--> | connection_queue | add msg to connection, add connnection to context                            
-            +------------------+                                                                              
+src/launch/service.c                                                                                                
++--------------------+                                                                                               
+| service_watch_unit | : send method call (add unit), install callback to add match rules                            
++-|------------------+                                                                                               
+  |    +--------------------------+                                                                                  
+  +--> | sd_bus_call_method_async | prepare msg (method call), install callback, send msg out                        
+       +--------------------------+ +---------------------------------+                                              
+                                    | service_watch_unit_load_handler |                                              
+                                    +---------------------------------+                                              
+                                    read obj_path from msg, send msg (method call, add match), add match rules to bus
 ```
 
 ```
-src/bus/bus.c                                                                                           
-+--------------------------------+                                                                       
-| bus_get_broadcast_destinations | : get broadcast destinations from a few sources (matches, sender, bus)
-+-|------------------------------+                                                                       
-  |                                                                                                      
-  |--> if arg 'matches' is provided                                                                      
-  |    |                                                                                                 
-  |    |    +--------------------------------+                                                           
-  |    +--> | match_registry_get_subscribers |                                                           
-  |         +--------------------------------+                                                           
-  |                                                                                                      
-  |--> if arg 'sender' is provided                                                                       
-  |    -                                                                                                 
-  |    +--> get primary ownership from sender                                                            
-  |         |                                                                                            
-  |         |    +--------------------------------+                                                      
-  |         +--> | match_registry_get_subscribers |                                                      
-  |              +--------------------------------+                                                      
-  |                                                                                                      
-  +--> else                                                                                              
-       |                                                                                                 
-       |    +--------------------------------+                                                           
-       +--> | match_registry_get_subscribers |                                                           
-            +--------------------------------+                                                           
+src/launch/service.c                                                                                                                        
++---------------------------------+                                                                                                          
+| service_watch_unit_load_handler | : read obj_path from msg, send msg (method call, add match), add match rules to bus                      
++-|-------------------------------+                                                                                                          
+  |    +---------------------+                                                                                                               
+  |--> | sd_bus_message_read | read obj_path from msg                                                                                        
+  |    +---------------------+                                                                                                               
+  |    +---------------------------+                                                                                                         
+  +--> | sd_bus_match_signal_async | send msg ('add match' method) to bus clients, add match rule to bus                                     
+       +---------------------------+ +----------------------------+                                                                          
+                                     | service_watch_unit_handler | check msg, if condition met: send method call 'Reset' thru controller bus
+                                     +----------------------------+                                                                          
 ```
 
 ```
-src/bus/driver.c                                                                                      
-+------------------------+                                                                             
-| driver_forward_unicast | : queue connection to toward specific peer                                  
-+-|----------------------+                                                                             
-  |    +-----------------------+                                                                       
-  |--> | bus_find_peer_by_name | given name, get receiver                                              
-  |    +-----------------------+                                                                       
-  |                                                                                                    
-  |--> if no receiver found                                                                            
-  |    |                                                                                               
-  |    |    +--------------------------+                                                               
-  |    +--> | activation_queue_message | prepare msg and append to activation queue                    
-  |         +--------------------------+                                                               
-  |                                                                                                    
-  |    +--------------------+                                                                          
-  +--> | peer_queue_unicast | prepare reply if needed, add msg to connection, add connection to context
-       +--------------------+                                                                          
+src/launch/service.c                                                                                     
++----------------------------+                                                                            
+| service_watch_unit_handler | : check msg, if condition met: send method call 'Reset' thru controller bus
++-|--------------------------+                                                                            
+  |    +---------------------+                                                                            
+  |--> | sd_bus_message_read | read interface from msg                                                    
+  |    +---------------------+                                                                            
+  |                                                                                                       
+  |--> while not end of msg                                                                               
+  |    |                                                                                                  
+  |    |    +---------------------+                                                                       
+  |    |--> | sd_bus_message_read | read property from msg                                                
+  |    |    +---------------------+                                                                       
+  |    |                                                                                                  
+  |    |--> if property == 'ActiveState'                                                                  
+  |    |    |                                                                                             
+  |    |    |    +---------------------+                                                                  
+  |    |    +--> | sd_bus_message_read | read value from msg                                              
+  |    |         +---------------------+                                                                  
+  |    |                                                                                                  
+  |    |--> elif property == 'ConditionResult'                                                            
+  |    |    |                                                                                             
+  |    |    |    +---------------------+                                                                  
+  |    |    +--> | sd_bus_message_read | read condition_result from msg                                   
+  |    |         +---------------------+                                                                  
+  |    |                                                                                                  
+  |    +--> else                                                                                          
+  |         |                                                                                             
+  |         |    +---------------------+                                                                  
+  |         +--> | sd_bus_message_skip |                                                                  
+  |              +---------------------+                                                                  
+  |                                                                                                       
+  +--> if value == failed || condition_result == false                                                    
+       |                                                                                                  
+       |    +--------------------------+                                                                  
+       +--> | service_reset_activation | thru controller bus, send method call 'Reset'                    
+            +--------------------------+                                                                  
 ```
 
 ```
-src/bus/activation.c                                                             
-+--------------------------+                                                      
-| activation_queue_message | : prepare msg and append to activation queue         
-+-|------------------------+                                                      
-  |    +--------------------+                                                     
-  |--> | activation_request | prepare msg of activation, add connection to context
-  |    +--------------------+                                                     
-  |                                                                               
-  |--> alloc and init msg                                                         
-  |                                                                               
-  |    +------------------+                                                       
-  +--> | c_list_link_tail | add msg to list end of activation                     
-       +------------------+                                                       
+src/launch/service.c                                                   
++----------------------------+                                          
+| service_start_unit_handler | : read 'job' from msg and save in service
++-|--------------------------+                                          
+  |    +---------------------+                                          
+  |--> | sd_bus_message_read | read 'job' from msg                      
+  |    +---------------------+                                          
+  |                                                                     
+  +--> service->job = job                                               
 ```
 
 ```
-src/bus/activation.c                                                                   
-+--------------------+                                                                  
-| activation_request | : prepare msg of activation, add connection to context           
-+-|------------------+                                                                  
-  |    +--------------------------+                                                     
-  +--> | controller_name_activate | prepare msg of activation, add connection to context
-       +--------------------------+                                                     
+src/launch/service.c                                                                                                                
++------------------------------+                                                                                                     
+| service_start_transient_unit | : send method call (add unit), send method call (start transient unit), monitor 'job removed' signal
++-|----------------------------+                                                                                                     
+  |    +--------------------+                                                                                                        
+  |--> | service_watch_jobs | register match-rule to 'JobRemoved' of systemd                                                         
+  |    +--------------------+                                                                                                        
+  |    +------------------------+                                                                                                    
+  |--> | sd_bus_get_unique_name | get unique name of bus                                                                             
+  |    +------------------------+                                                                                                    
+  |    +---------------------+                                                                                                       
+  |--> | systemd_escape_unit | escape the unique name                                                                                
+  |    +---------------------+                                                                                                       
+  |                                                                                                                                  
+  |--> determine unit name                                                                                                           
+  |                                                                                                                                  
+  |    +--------------------+                                                                                                        
+  |--> | service_watch_unit | send method call (add unit), install callback to add match rules                                       
+  |    +--------------------+                                                                                                        
+  |    +--------------------------------+                                                                                            
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info             
+  |    +--------------------------------+ (StartTransientUnit)                                                                       
+  |                                                                                                                                  
+  |--> append content (as if it's a service file) to msg                                                                             
+  |                                                                                                                                  
+  |    +-------------------+                                                                                                         
+  +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                                  
+       +-------------------+ +----------------------------+                                                                          
+                             | service_start_unit_handler | read 'job' from msg and save in service                                  
+                             +----------------------------+                                                                          
 ```
 
 ```
-src/broker/controller.c                                                                  
-+--------------------------+                                                              
-| controller_name_activate | : prepare msg of activation, add connection to context       
-+---------------------------------+                                                       
-| controller_dbus_send_activation | : prepare msg of activation, add connection to context
-+-|-------------------------------+                                                       
-  |                                                                                       
-  |--> prepare data                                                                       
-  |                                                                                       
-  |    +----------------------+                                                           
-  |--> | message_new_outgoing | prepare msg for sending out                               
-  |    +----------------------+                                                           
-  |    +------------------+                                                               
-  +--> | connection_queue | add msg to connection, add connnection to context             
-       +------------------+                                                               
-```
-
-```
-src/bus/driver.c                                                            
-+------------------+                                                         
-| peer_queue_reply | : determine receiver, queue connection to context       
-+-|----------------+                                                         
-  |                                                                          
-  |--> given id/serial, get slot from sender                                 
-  |                                                                          
-  |--> given slot, get outer receiver (peer)                                 
-  |                                                                          
-  |    +------------------+                                                  
-  +--> | connection_queue | add msg to connection, add connnection to context
-       +------------------+                                                  
-```
-
-```
-src/bus/listener.c                                                                           
-+-------------------+                                                                         
-| listener_dispatch | : prepare peer, handle msg locally or unicast request to peer           
-+-|-----------------+                                                                         
-  |                                                                                           
-  |--> get outer listener                                                                     
-  |                                                                                           
-  |    +---------+                                                                            
-  |--> | accept4 | accept connection request from service task?                               
-  |    +---------+                                                                            
-  |    +------------------+                                                                   
-  |--> | peer_new_with_fd | prepare peer, get id from bus, add peer to bus                    
-  |    +------------------+                                                                   
-  |                                                                                           
-  |--> append listener to list end of peer                                                    
-  |                                                                                           
-  |    +------------+                                                                         
-  |--> | peer_spawn | add file to the end of context's link                                   
-  |    +------------+                                                                         
-  |    +---------------+                                                                      
-  +--> | peer_dispatch | get msg and validate it, handle it locally or unicast request to peer
-       +---------------+                                                                      
-```
-
-```
-src/bus/peer.c                                                      
-+------------------+                                                 
-| peer_new_with_fd | : prepare peer, get id from bus, add peer to bus
-+-|----------------+                                                 
-  |    +---------------------+                                       
-  |--> | sockopt_get_peersec | get sec label                         
-  |    +---------------------+                                       
-  |    +------------------------+                                    
-  |--> | sockopt_get_peergroups | (credential related, skip)         
-  |    +------------------------+                                    
-  |                                                                  
-  |--> alloc and init peer                                           
-  |                                                                  
-  |    +---------------------+                                       
-  |--> | policy_snapshot_new | (credential related, skip)            
-  |    +---------------------+                                       
-  |    +------------------------+                                    
-  +--> | connection_init_server | init connection and sasl server    
-  |    +------------------------+ +---------------+                  
-  |                               | peer_dispatch |                  
-  |                               +---------------+                  
-  |--> bus assigns id to peer                                        
-  |                                                                  
-  +--> given perer id, insert to peer tree of bus                    
+src/launch/launcher.c                                                                                                  
++----------------------------------------+                                                                              
+| launcher_on_set_activation_environment | : given in-msg, prepare method call 'set environment' and send out           
++-|--------------------------------------+                                                                              
+  |    +--------------------------------+                                                                               
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type, append path/member/interface/destination info
+  |    +--------------------------------+ (SetEnvironment)                                                              
+  |                                                                                                                     
+  |--> while not at end of input msg                                                                                    
+  |    |                                                                                                                
+  |    |    +-----------------------+                                                                                   
+  |    +--> | sd_bus_message_append | append 'key = value' to output msg                                                
+  |         +-----------------------+                                                                                   
+  |    +-------------------+                                                                                            
+  +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                     
+       +-------------------+ +----------------------------------+                                                       
+                             | launcher_set_environment_handler | commit error log if there's any                       
+                             +----------------------------------+                                                       
 ```
