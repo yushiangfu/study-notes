@@ -4228,3 +4228,75 @@ src/libsystemd/sd-bus/bus-convenience.c
   +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                     
        +-------------------+                                                                                            
 ```
+
+```
+src/basic/log.c                                                                                                                 
++----------+                                                                                                                     
+| log_open | : given target, ensure its fd is ready                                                                              
++-|--------+                                                                                                                     
+  |                                                                                                                              
+  +--> if pid == 1                                                                                                               
+       |                                                                                                                         
+       |--> if prohibit_ipc == false                                                                                             
+       |    |                                                                                                                    
+       |    |--> if log target is auto, journal, or kmsg                                                                         
+       |    |    |                                                                                                               
+       |    |    |    +------------------+                                                                                       
+       |    |    |--> | log_open_journal | ensure journal fd exists (prepare socket and connect to "/run/systemd/journal/socket")
+       |    |    |    +------------------+                                                                                       
+       |    |    |                                                                                                               
+       |    |    +--> close syslog and console, return                                                                           
+       |    |                                                                                                                    
+       |    +--> if log target is syslog, or kmsg                                                                                
+       |         |                                                                                                               
+       |         |    +-----------------+                                                                                        
+       |         |--> | log_open_syslog | ensure syslog fd exists (prepare socket and connect to "/dev/log")                     
+       |         |    +-----------------+                                                                                        
+       |         |                                                                                                               
+       |         +--> close journal and console, return                                                                          
+       |                                                                                                                         
+       |--> if target is auto, journal, syslog, or kmsg                                                                          
+       |    |                                                                                                                    
+       |    |    +---------------+                                                                                               
+       |    +--> | log_open_kmsg | ensure kmsg fd exists (prepare socket and connect to "/dev/log")                              
+       |         +---------------+                                                                                               
+       |                                                                                                                         
+       +--> close jorunal, syslog, console, and return                                                                           
+```
+
+```
+src/basic/log.c                                                                                             
++------------------+                                                                                         
+| log_open_journal | : ensure journal fd exists (prepare socket and connect to "/run/systemd/journal/socket")
++-|----------------+                                                                                         
+  |                                                                                                          
+  |--> if journal_fd exists already, return                                                                  
+  |                                                                                                          
+  |    +-------------------+                                                                                 
+  |--> | create_log_socket | create socket fd for journal                                                    
+  |    +-------------------+                                                                                 
+  |    +-------------------+                                                                                 
+  +--> | connect_unix_path | connect to "/run/systemd/journal/socket"                                        
+       +-------------------+                                                                                 
+```
+
+```
+src/core/main.c                                                               
++------------------+                                                           
+| initialize_clock | : determine epoch and set clock time (realtime base)      
++-|----------------+                                                           
+  |    +--------------------+                                                  
+  |--> | clock_is_localtime | open /etc/adjtime to adjust time (not our case)  
+  |    +--------------------+                                                  
+  |                                                                            
+  |--> if not in initrd                                                        
+  |    |                                                                       
+  |    |    +----------------------+                                           
+  |    +--> | clock_reset_timewarp | do a dummy call to trigger time warp magic
+  |         +----------------------+                                           
+  |    +-------------------+                                                   
+  |--> | clock_apply_epoch | determine epoch and set clock time (realtime base)
+  |    +-------------------+                                                   
+  |                                                                            
+  +--> if now isn't correct and need to be forwarded or backwarded, log it     
+```
