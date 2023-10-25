@@ -4300,3 +4300,164 @@ src/core/main.c
   |                                                                            
   +--> if now isn't correct and need to be forwarded or backwarded, log it     
 ```
+
+```
+src/core/main.c                                                                                                  
++--------+                                                                                                        
+| part 0 | : setup mount, open log, init clock, make null stdio                                                   
++--------+                                                                                                        
+  |                                                                                                               
+  |    +-------+                                                                                                  
+  |--> | prctl | set task name = 'systemd'                                                                        
+  |    +-------+                                                                                                  
+  |                                                                                                               
+  +--> if our pid == 1 （system scope)                                                                             
+       |    +-------------------+                                                                                 
+       |--> | mount_setup_early | mount each entry in mount_table                                                 
+       |    +-------------------+                                                                                 
+       |    +-----------------------+                                                                             
+       |--> | log_parse_environment | parse cmdline/env_vars, and log                                             
+       |    +-----------------------+                                                                             
+       |    +----------+                                                                                          
+       |--> | log_open |                                                                                          
+       |    +----------+                                                                                          
+       |    +------------------+                                                                                  
+       |--> | initialize_clock |                                                                                  
+       |    +------------------+                                                                                  
+       |    +----------------+                                                                                    
+       |--> | log_set_target | set log target to journal or kmsg                                                  
+       |    +----------------+                                                                                    
+       |    +---------------------+                                                                               
+       |--> | initialize_coredump | config coredump                                                               
+       |    +---------------------+                                                                               
+       |    +-----------------+                                                                                   
+       |--> | make_null_stdio | assign '/dev/null' to in/out/err                                                  
+       |    +-----------------+                                                                                   
+       |    +------------+                                                                                        
+       |--> | kmod_setup | (probably do nothing bc of disabled config)                                            
+       |    +------------+                                                                                        
+       |    +-------------+                                                                                       
+       |--> | mount_setup | setup mount, symlink, and make a few folders under /run                               
+       |    +-------------+                                                                                       
+       |    +-------------------------+                                                                           
+       +--> | lock_down_efi_variables | set attribute=immutable on '/sys/firmware/efi/efivars/LoaderSystemToken*' 
+       |    +-------------------------+                                                                           
+       |    +----------------------------+                                                                        
+       +--> | cache_efi_options_variable | (probably do nothing bc of disabled config)                            
+            +----------------------------+                                                                        
+```
+
+```
+src/shared/mount-setup.c                               
++-------------------+                                   
+| mount_setup_early | : mount each entry in mount_table 
++--------------------+                                  
+| mount_points_setup | : mount each entry in mount_table
++-|------------------+                                  
+  |                                                     
+  +--> for each entry in mount_table                    
+       |                                                
+       |    +-----------+                               
+       +--> | mount_one | mount one entry               
+            +-----------+                               
+```
+
+```
+src/shared/mount-setup.c                                   
++-----------+                                               
+| mount_one | : mount one entry                             
++-|---------+                                               
+  |                                                         
+  |--> if ->condition_fn exists, call it                    
+  |                                                         
+  |    +---------------------+                              
+  |--> | path_is_mount_point | check if path is a mountpoint
+  |    +---------------------+                              
+  |                                                         
+  |--> if true, return                                      
+  |    |                                                    
+  |    |    +---------+                                     
+  |    +--> | mkdir_p | ensure mount point is there         
+  |         +---------+                                     
+  |                                                         
+  +--> mount                                                
+```
+
+```
+src/basic/log.c                                                              
++-----------------------+                                                     
+| log_parse_environment | : parse cmdline/env_vars, and log                   
++-|---------------------+                                                     
+  |                                                                           
+  |--> if we should parse proc cmdline                                        
+  |    |                                                                      
+  |    |    +--------------------+                                            
+  |    +--> | proc_cmdline_parse | parse /proc/cmdline and log                
+  |         +--------------------+                                            
+  |    +---------------------------------+                                    
+  +--> | log_parse_environment_variables | parse environment variables and log
+       +---------------------------------+                                    
+```
+
+```
+src/basic/proc-cmdline.c                                                         
++--------------------+                                                            
+| proc_cmdline_parse | : parse /proc/cmdline and log                              
++-|------------------+                                                            
+  |    +----------------------------+                                             
+  |--> | proc_cmdline_strv_internal | read /proc/cmdline and tokenize the the data
+  |    +----------------------------+                                             
+  |    +-------------------------+                                                
+  +--> | proc_cmdline_parse_strv | parse key=value and log                        
+       +-------------------------+                                                
+```
+
+```
+src/basic/fd-util.h                                     
++-----------------+                                      
+| make_null_stdio | : assign arg fd[] to in/out/err      
++-----------------+                                      
+| rearrange_stdio | : assign arg fd[] to in/out/err      
++-|---------------+                                      
+  |                                                      
+  |--> if any of the arg fd is negative                  
+  |    |                                                 
+  |    |--> null_fd = open '/dev/null'                   
+  |    |                                                 
+  |    +--> ensure it's not in range [0, 2]              
+  |                                                      
+  |--> for each arg fd                                   
+  |    |                                                 
+  |    |--> if it's < 0, fd[i] = null_fd                 
+  |    |                                                 
+  |    +--> elif it's in range [0, 2]                    
+  |         -                                            
+  |         +--> move it out of range, and fd[i] = new fd
+  |                                                      
+  |--> for each fd in array                              
+  |    |                                                 
+  |    |    +------+                                     
+  |    +--> | dup2 | duplicate fd to the right idx       
+  |         +------+                                     
+  |                                                      
+  |--> if arg fd is out of range [0, 2], close them      
+  |                                                      
+  +--> close copied fd[]                                 
+```
+
+```
+src/shared/mount-setup.c                                                
++-------------+                                                          
+| mount_setup | : setup mount, symlink, and make a few folders under /run
++-|-----------+                                                          
+  |    +--------------------+                                            
+  |--> | mount_points_setup | mount each entry in mount_table            
+  |    +--------------------+                                            
+  |    +-----------+                                                     
+  |--> | dev_setup | generate a few symlinks in /dev                     
+  |    +-----------+                                                     
+  |                                                                      
+  |--> remount '/' as shared                                             
+  |                                                                      
+  +--> make a few folders under /run                                     
+```
