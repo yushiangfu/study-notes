@@ -4461,3 +4461,219 @@ src/shared/mount-setup.c
   |                                                                      
   +--> make a few folders under /run                                     
 ```
+
+```
+src/core/main.c                                                                                 
++---------------------+                                                                          
+| parse_configuration | : parse config_files & proc_cmdline & env_vars                           
++-|-------------------+                                                                          
+  |    +-----------------+                                                                       
+  |--> | reset_arguments | reset config values to default                                        
+  |    +-----------------+                                                                       
+  |    +-------------------+                                                                     
+  |--> | parse_config_file | parse config files                                                  
+  |    +-------------------+                                                                     
+  |                                                                                              
+  |--> if runtime scope == system                                                                
+  |    |                                                                                         
+  |    |    +--------------------+                                                               
+  |    +--> | proc_cmdline_parse | parse /proc/cmdline                                           
+  |         +--------------------+                                                               
+  |    +-----------------------+                                                                 
+  |--> | log_parse_environment | parse cmdline/env_vars, and log                                 
+  |    +-----------------------+                                                                 
+  |    +----------------------------+                                                            
+  |--> | setenv_manager_environment | for each token in arg_manager_environment, set env variable
+  |    +----------------------------+                                                            
+  |    +-----------------------+                                                                 
+  +--> | log_parse_environment | parse cmdline/env_vars, and log                                 
+       +-----------------------+                                                                 
+```
+
+```
+src/core/main.c                                                            
++-------------------+                                                       
+| parse_config_file | : parse config files                                  
++-|-----------------+                                                       
+  |                                                                         
+  |--> if runtime scope == system                                           
+  |    |                                                                    
+  |    |    +--------------------------+                                    
+  |    +--> | config_parse_config_file | parse config file and drop-in files
+  |         +--------------------------+                                    
+  |                                                                         
+  +--> else (scope == user)                                                 
+       -                                                                    
+       +--> (skip)                                                          
+```
+
+```
+src/shared/conf-parser.c                                                           
++--------------------------+                                                        
+| config_parse_config_file | : parse config file and drop-in files                  
++-|------------------------+                                                        
+  |                                                                                 
+  |--> for each possible path                                                       
+  |    -                                                                            
+  |    +--> assemble string = path + config_file                                    
+  |         e.g., /usr/lib/systemd/system.conf.d (only this path exists in our case)
+  |                                                                                 
+  |    +----------------------+                                                     
+  |--> | conf_files_list_strv | find *.conf and return list                         
+  |    +----------------------+ e.g.,                                               
+  |                             00-systemd-conf.conf                                
+  |                             40-hardware-watchdog.conf                           
+  |                             service-restart-policy.conf                         
+  |                                                                                 
+  |--> assemble config_file                                                         
+  |                                                                                 
+  |    +-------------------------+                                                  
+  +--> | config_parse_many_files | parse config file and drop-in files              
+       +-------------------------+                                                  
+```
+
+```
+src/basic/conf-files.c                                                                   
++----------------------+                                                                  
+| conf_files_list_strv | : find *.conf and return list                                    
++-|--------------------+                                                                  
+  |                                                                                       
+  |--> for each possible folder                                                           
+  |    |                                                                                  
+  |    |    +-------------------+                                                         
+  |    |--> | chase_and_opendir |                                                         
+  |    |    +-------------------+                                                         
+  |    |    +-----------+                                                                 
+  |    +--> | files_add | for each file end with arg suffix, e.g., ".conf", add to hashmap
+  |         +-----------+                                                                 
+  |    +----------------------------------+                                               
+  +--> | copy_and_sort_files_from_hashmap | sort and return string (files)                
+       +----------------------------------+                                               
+```
+
+```
+src/basic/proc-cmdline.c                                                         
++--------------------+                                                            
+| proc_cmdline_parse | : parse /proc/cmdline                                      
++-|------------------+                                                            
+  |                                                                               
+  |--> (ignore efi part)                                                          
+  |                                                                               
+  |    +----------------------------+                                             
+  |--> | proc_cmdline_strv_internal | read /proc/cmdline and tokenize the the data
+  |    +----------------------------+                                             
+  |    +-------------------------+                                                
+  +--> | proc_cmdline_parse_strv | parse all kinds of arguments                   
+       +-------------------------+                                                
+```
+
+```
+src/basic/proc-cmdline.c                                           
++-------------------------+                                         
+| proc_cmdline_parse_strv | : parse all kinds of arguments          
++-|-----------------------+                                         
+  |                                                                 
+  +--> for each token                                               
+       |                                                            
+       |    +-------------+                                         
+       |--> | mangle_word | filter out initrd related token         
+       |    +-------------+                                         
+       |                                                            
+       +--> call arg parse_item(), e.g.,                            
+            +-------------------------+                             
+            | parse_proc_cmdline_item | parse all kinds of arguments
+            +-------------------------+                             
+```
+
+```
+src/core/main.c                                                     
++------------------------+                                           
+| setup_console_terminal | : reset terminal settings of /dev/consolem
++-|----------------------+                                           
+  |    +------------------+                                          
+  |--> | release_terminal | open /dev/tty and ioctl notty            
+  |    +------------------+                                          
+  |    +---------------+                                             
+  +--> | console_setup | reset terminal settings of /dev/consolem    
+       +---------------+                                             
+```
+
+```
+src/core/main.c                                                                                
++---------------+                                                                               
+| console_setup | : reset terminal settings of /dev/consolem                                    
++-|-------------+                                                                               
+  |                                                                                             
+  |--> open /dev/console                                                                        
+  |                                                                                             
+  |    +-------------------+                                                                    
+  +--> | reset_terminal_fd | reset terminal settings                                            
+  |    +-------------------+                                                                    
+  |    +-----------------------+                                                                
+  |--> | proc_cmdline_tty_size | get tty size from kernel cmdline (but it's not set in our case)
+  |    +-----------------------+                                                                
+  |                                                                                             
+  +--> if got                                                                                   
+       |                                                                                        
+       |    +----------------------+                                                            
+       +--> | terminal_set_size_fd |                                                            
+            +----------------------+                                                            
+```
+
+```
+src/core/main.c
++--------------------+                                                                                        
+| initialize_runtime | : install crash handler for signals, setup machine_id, setup loopback, disable watchdog
++-|------------------+                                                                                        
+  |                                                                                                           
+  |--> if runtime scope == system                                                                             
+  |    |                                                                                                      
+  |    |    +-----------------------+                                                                         
+  |    |--> | install_crash_handler | install crash handler for many related signals                          
+  |    |    +-----------------------+                                                                         
+  |    |    +--------------------------+                                                                      
+  |    |--> | mount_cgroup_controllers | (skip)                                                               
+  |    |    +--------------------------+                                                                      
+  |    |    +-------------------+                                                                             
+  |    |--> | os_release_status | parse os release info                                                       
+  |    |    +-------------------+                                                                             
+  |    |    +-------------------+                                                                             
+  |    |--> | read_etc_hostname | read /etc/hostname                                                          
+  |    |    +-------------------+                                                                             
+  |    |    +------------------+                                                                              
+  |    |--> | machine_id_setup | setup machine id                                                             
+  |    |    +------------------+                                                                              
+  |    |    +----------------+                                                                                
+  |    |--> | loopback_setup | setup loopback                                                                 
+  |    |    +----------------+                                                                                
+  |    |    +------------------+                                                                              
+  |    |--> | setup_os_release | copy /etc/os-release to /run/systemd/propagate/os-release                    
+  |    |    +------------------+                                                                              
+  |    |    +---------------------+                                                                           
+  |    +--> | watchdog_set_device | disable watchdog                                                          
+  |         +---------------------+                                                                           
+  |    +---------------------+                                                                                
+  +--> | make_reaper_process | do nothing if pid == 1                                                         
+       +---------------------+                                                                                
+```
+
+```
+src/shared/loopback-setup.c                         
++----------------+                                   
+| loopback_setup | : setup loopback                  
++-|--------------+                                   
+  |    +-----------------+                           
+  |--> | sd_netlink_open | open route-netlink        
+  |    +-----------------+                           
+  |    +------------------+                          
+  |--> | add_ipv4_address | add ipv4 addr of loopback
+  |    +------------------+                          
+  |    +------------------+                          
+  |--> | add_ipv6_address | add ipv6 addr of loopback
+  |    +------------------+                          
+  |    +----------------+                            
+  |--> | start_loopback |                            
+  |    +----------------+                            
+  |                                                  
+  +--> wait till it's brought up                     
+```
