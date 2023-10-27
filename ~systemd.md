@@ -4677,3 +4677,300 @@ src/shared/loopback-setup.c
   |                                                  
   +--> wait till it's brought up                     
 ```
+
+```
+src/core/manager.c                                                                                                        
++-------------------------+                                                                                                
+| manager_setup_run_queue | : prepare soucr of 'defer', which run and monitor jobs in runqueue                             
++-|-----------------------+                                                                                                
+  |    +--------------------+                                                                                              
+  |--> | sd_event_add_defer | prepare 'source' for defer, set pending = true                                               
+  |    +--------------------+ +----------------------------+                                                               
+  |                           | manager_dispatch_run_queue | run and invalidate jobs in runqueue, monitor those in progress
+  |                           +----------------------------+                                                               
+  |                                                                                                                        
+  |    +-----------------------------+                                                                                     
+  |--> | sd_event_source_set_enabled | enabled = off                                                                       
+  |    +-----------------------------+                                                                                     
+  |    +---------------------------------+                                                                                 
+  +--> | sd_event_source_set_description | description = 'manager-run-queue'                                               
+       +---------------------------------+                                                                                 
+```
+
+```
+src/core/manager.c                                                                                    
++----------------------------+                                                                         
+| manager_dispatch_run_queue | : run and invalidate jobs in runqueue, monitor those in progress        
++-|--------------------------+                                                                         
+  |                                                                                                    
+  |--> for each job in run_queue (priority sorted)                                                     
+  |    |                                                                                               
+  |    |    +------------------------+                                                                 
+  |    +--> | job_run_and_invalidate | set job state = running, add it to manager, run unit accordingly
+  |         +------------------------+                                                                 
+  |                                                                                                    
+  +--> if manager still has running job                                                                
+       |                                                                                               
+       |    +--------------------------------+                                                         
+       +--> | manager_watch_jobs_in_progress | ensure manage has a event source for 'job in progress'  
+            +--------------------------------+                                                         
+```
+
+```
+src/core/job.c                                                                              
++------------------------+                                                                   
+| job_run_and_invalidate | : set job state = running, add it to manager, run unit accordingly
++-|----------------------+                                                                   
+  |    +--------------+                                                                      
+  |--> | prioq_remove | remove job from run_queue                                            
+  |    +--------------+                                                                      
+  |    +-----------------+                                                                   
+  |--> | job_start_timer | ensure job has a timer source                                     
+  |    +-----------------+                                                                   
+  |    +---------------+                                                                     
+  |--> | job_set_state | state = running                                                     
+  |    +---------------+                                                                     
+  |    +-----------------------+                                                             
+  |--> | job_add_to_dbus_queue | add job to dbus queue                                       
+  |    +-----------------------+                                                             
+  |                                                                                          
+  +--> given job type (start, stop, ...), perform on unit accordingly                        
+```
+
+```
+src/core/job.c                                                                                                
++-----------------+                                                                                            
+| job_start_timer | : ensure job has a timer source                                                            
++-|---------------+                                                                                            
+  |                                                                                                            
+  |--> if job is running                                                                                       
+  |    |                                                                                                       
+  |    |--> if source isn't expired, return                                                                    
+  |    |                                                                                                       
+  |    |--> calculate timeout                                                                                  
+  |    |                                                                                                       
+  |    +--> if job has timer source                                                                            
+  |         |                                                                                                  
+  |         |    +--------------------------+                                                                  
+  |         |--> | sd_event_source_set_time | update 'next timeout' of source                                  
+  |         |    +--------------------------+                                                                  
+  |         +--> return                                                                                        
+  |                                                                                                            
+  |--> else                                                                                                    
+  |    |                                                                                                       
+  |    |--> if job has timer source already, return                                                            
+  |    |                                                                                                       
+  |    +--> calculate timeout                                                                                  
+  |                                                                                                            
+  |    +-------------------+                                                                                   
+  |--> | sd_event_add_time | set up timer fields of event (fd/queues), prepare 'source' and add to those queues
+  |    +-------------------+ +--------------------+                                                            
+  |                          | job_dispatch_timer | uninstall job and free it, commit log                      
+  |                          +--------------------+                                                            
+  |    +---------------------------------+                                                                     
+  +--> | sd_event_source_set_description | 'job-start'                                                         
+       +---------------------------------+                                                                     
+```
+
+```
+src/core/job.c                                                      
++--------------------+                                               
+| job_dispatch_timer | : uninstall job and free it, commit log       
++-|------------------+                                               
+  |    +---------------------------+                                 
+  |--> | job_finish_and_invalidate | uninstall job ad free it, notify
+  |    +---------------------------+                                 
+  |    +------------------+                                          
+  +--> | emergency_action | given action, commit log accordingly     
+       +------------------+                                          
+```
+
+```
+src/core/job.c                                                                                                  
++---------------------------+                                                                                    
+| job_finish_and_invalidate | : uninstall job ad free it, notify                                                 
++-|-------------------------+                                                                                    
+  |                                                                                                              
+  |--> job->result = arg result (e.g., timeout)                                                                  
+  |                                                                                                              
+  |--> if arg already == false                                                                                   
+  |    |                                                                                                         
+  |    |    +-----------------------+                                                                            
+  |    +--> | job_emit_done_message | determine format, commit log, print to console                             
+  |         +-----------------------+                                                                            
+  |                                                                                                              
+  |--> if result == done && type == restart                                                                      
+  |    |                                                                                                         
+  |    |--> set job_type = start, job_state = waiting                                                            
+  |    |                                                                                                         
+  |    +--> add job to dbus/run/gc queues                                                                        
+  |                                                                                                              
+  |    +---------------+                                                                                         
+  |--> | job_uninstall | send signal (job removed) to busses, add unit to gc/dbus queues, remove job from manager
+  |    +---------------+                                                                                         
+  |    +----------+                                                                                              
+  |--> | job_free | release job                                                                                  
+  |    +----------+                                                                                              
+  |    +---------------------+                                                                                   
+  |--> | unit_trigger_notify | (skip)                                                                            
+  |    +---------------------+                                                                                   
+  |                                                                                                              
+  +--> submit unit to upheld/bound/unneeded queues of manager                                                    
+```
+
+```
+src/core/job.c                                                             
++-----------------------+                                                   
+| job_emit_done_message | : determine format, commit log, print to console  
++-|---------------------+                                                   
+  |    +-------------------------+                                          
+  |--> | job_done_message_format | given unit/type/result, get format string
+  |    +-------------------------+                                          
+  |    +--------------------+                                               
+  |--> | unit_status_string | get status string from unit                   
+  |    +--------------------+                                               
+  |                                                                         
+  |--> commit log                                                           
+  |                                                                         
+  +--> print to console                                                     
+```
+
+```
+src/core/job.c                                                                                                             
++---------------+                                                                                                           
+| job_uninstall | : send signal (job removed) to busses, add unit to gc/dbus queues, remove job from manager                
++-|-------------+                                                                                                           
+  |    +---------------+                                                                                                    
+  |--> | job_set_state | waiting                                                                                            
+  |    +---------------+                                                                                                    
+  |                                                                                                                         
+  |--> if not daemon-reload                                                                                                 
+  |    |                                                                                                                    
+  |    |    +-----------------------------+                                                                                 
+  |    +--> | bus_job_send_removed_signal | send signal (job removed) to private bus, and api bus (if someone is interested)
+  |         +-----------------------------+                                                                                 
+  |    +----------------------+                                                                                             
+  |--> | unit_add_to_gc_queue |                                                                                             
+  |    +----------------------+                                                                                             
+  |    +------------------------+                                                                                           
+  |--> | unit_add_to_dbus_queue |                                                                                           
+  |    +------------------------+                                                                                           
+  |    +----------------------+                                                                                             
+  |--> | hashmap_remove_value | remove job from manager                                                                     
+  |    +----------------------+                                                                                             
+  |                                                                                                                         
+  +--> job->installed = false                                                                                               
+```
+
+```
+src/core/dbus-job.c                                                                                                   
++-----------------------------+                                                                                        
+| bus_job_send_removed_signal | : send signal (job removed) to private bus, and api bus (if someone is interested)     
++-|---------------------------+                                                                                        
+  |                                                                                                                    
+  |--> if no new signal sent                                                                                           
+  |    |                                                                                                               
+  |    |    +----------------------------+                                                                             
+  |    +--> | bus_job_send_change_signal | send change signal of unit first, then send change signal of job            
+  |         +----------------------------+                                                                             
+  |    +-------------------------------------+                                                                         
+  |--> | bus_unit_send_pending_change_signal | move unit from dbus queue to gc queue, send signal to private/api busses
+  |    +-------------------------------------+                                                                         
+  |    +-----------------+                                                                                             
+  +--> | bus_foreach_bus | send signal to private bus, and api bus (if someone is interested)                          
+       +-----------------+                                                                                             
+```
+
+```
+src/core/dbus-job.c                                                                                                   
++----------------------------+                                                                                         
+| bus_job_send_change_signal | : send change signal of unit first, then send change signal of job                      
++-|--------------------------+                                                                                         
+  |    +-------------------------------------+                                                                         
+  |--> | bus_unit_send_pending_change_signal | move unit from dbus queue to gc queue, send signal to private/api busses
+  |    +-------------------------------------+                                                                         
+  |                                                                                                                    
+  |--> if job is in dbus queue                                                                                         
+  |    -                                                                                                               
+  |    +--> transfer to gc queue                                                                                       
+  |                                                                                                                    
+  |    +-----------------+                                                                                             
+  +--> | bus_foreach_bus | send signal to private bus, and api bus (if someone is interested)                          
+       +-----------------+                                                                                             
+```
+
+```
+src/core/dbus-unit.c                                                                                             
++-------------------------------------+                                                                           
+| bus_unit_send_pending_change_signal | : move unit from dbus queue to gc queue, send signal to private/api busses
++-----------------------------+-------+                                                                           
+| bus_unit_send_change_signal | : move unit from dbus queue to gc queue, send signal to private/api busses        
++-|---------------------------+                                                                                   
+  |                                                                                                               
+  |--> if unit is in dbus queue                                                                                   
+  |    |                                                                                                          
+  |    |    +-------------+                                                                                       
+  |    |--> | LIST_REMOVE | remove unit from dbus queue                                                           
+  |    |    +-------------+                                                                                       
+  |    |    +----------------------+                                                                              
+  |    +--> | unit_add_to_gc_queue | add unit to gc queue                                                         
+  |         +----------------------+                                                                              
+  |    +-----------------+                                                                                        
+  +--> | bus_foreach_bus | send signal to private bus, and api bus (if someone is interested)                     
+       +-----------------+                                                                                        
+```
+
+```
+src/core/dbus.c                                                                                  
++-----------------+                                                                               
+| bus_foreach_bus | : send signal to private bus, and api bus (if someone is interested)          
++-|---------------+                                                                               
+  |                                                                                               
+  |--> for each private bus in manager                                                            
+  |    -                                                                                          
+  |    +--> call arg send_message(), e.g.,                                                        
+  |         +---------------------+                                                               
+  |         | send_changed_signal | send signal (properties changed) out twice: specific + generic
+  |         +-----------------+---+                                                               
+  |         | send_new_signal | send signal (UnitNew) out                                         
+  |         +-----------------+                                                                   
+  |                                                                                               
+  +--> if sombody subscribed this                                                                 
+       -                                                                                          
+       +--> call arg send_message(), except we send to api bus this time                                                                                                
+```
+
+```
+src/core/dbus-unit.c                                                                                    
++---------------------+                                                                                  
+| send_changed_signal | : send signal (properties changed) out twice: specific + generic                 
++-|-------------------+                                                                                  
+  |    +----------------+                                                                                
+  |--> | unit_dbus_path | given unit, get object path                                                    
+  |    +----------------+                                                                                
+  |    +-------------------------------------+                                                           
+  |--> | sd_bus_emit_properties_changed_strv | prepare msg of signal (PropertiesChanged),                
+  |    +-------------------------------------+ append changed/invalidated properties to msg, send it out 
+  |    +-------------------------------------+                                                           
+  +--> | sd_bus_emit_properties_changed_strv | (the above is for specific type, this is for generic unit)
+       +-------------------------------------+                                                           
+```
+
+```
+src/core/dbus-unit.c                                                                             
++-----------------+                                                                               
+| send_new_signal | : send signal (UnitNew) out                                                   
++-|---------------+                                                                               
+  |    +----------------+                                                                         
+  |--> | unit_dbus_path | given unit, get object path                                             
+  |    +----------------+                                                                         
+  |    +---------------------------+                                                              
+  |--> | sd_bus_message_new_signal | prepare msg of signal type, append path/interface/member info
+  |    +---------------------------+                                                              
+  |    +-----------------------+                                                                  
+  |--> | sd_bus_message_append | append unit_id and that object_path                              
+  |    +-----------------------+                                                                  
+  |    +-------------+                                                                            
+  +--> | sd_bus_send | seal, send msg out or append to wqueue                                     
+       +-------------+                                                                            
+```
