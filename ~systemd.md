@@ -4974,3 +4974,331 @@ src/core/dbus-unit.c
   +--> | sd_bus_send | seal, send msg out or append to wqueue                                     
        +-------------+                                                                            
 ```
+
+```
+src/core/manager.c                                                                                  
++-------------+                                                                                      
+| manager_new | : alloc manager, get default event, prepare all kinds of sources and callbacks       
++-|-----------+                                                                                      
+  |                                                                                                  
+  |--> alloc manager and init to default                                                             
+  |                                                                                                  
+  |    +-----------------------------+                                                               
+  |--> | manager_default_environment | set default env (e.g., path, locale, ...)                     
+  |    +-----------------------------+                                                               
+  |    +----------------------+                                                                      
+  |--> | manager_setup_prefix | (???)                                                                
+  |    +----------------------+                                                                      
+  |    +------------------+                                                                          
+  |--> | sd_event_default | get default event for manager                                            
+  |    +------------------+                                                                          
+  |    +-------------------------+                                                                   
+  |--> | manager_setup_run_queue | prepare soucr of 'defer', which run and monitor jobs in runqueue  
+  |    +-------------------------+                                                                   
+  |    +-----------------------+                                                                     
+  |--> | manager_setup_signals | install handler for signal source                                   
+  |    +-----------------------+                                                                     
+  |    +----------------------+                                                                      
+  |--> | manager_setup_cgroup | (skip)                                                               
+  |    +----------------------+                                                                      
+  |    +---------------------------+                                                                 
+  |--> | manager_setup_time_change | prepare source and callback for time change                     
+  |    +---------------------------+                                                                 
+  |    +----------------------------+                                                                
+  |--> | manager_read_timezone_stat | read /etc/localtime to set up localtime fields in manager      
+  |    +----------------------------+                                                                
+  |    +---------------------------+                                                                 
+  |--> | manager_setup_time_change | prepare inotify and callback for /etc/localtime change          
+  |    +---------------------------+                                                                 
+  |    +------------------------------------+                                                        
+  |--> | manager_setup_sigchld_event_source | prepare source and callback for signal 'child'         
+  |    +------------------------------------+                                                        
+  |    +--------------------------------------------+                                                
+  |--> | manager_setup_memory_pressure_event_source | prepare source and callback for memory pressure
+  |    +--------------------------------------------+                                                
+  |                                                                                                  
+  +--> mkdir /run/systemd/units                                                                      
+```
+
+```
+src/core/manager.c                                                                                     
++-----------------------+                                                                               
+| manager_setup_signals | : install handler for signal source                                           
++-|---------------------+                                                                               
+  |                                                                                                     
+  |--> add many signals to mask                                                                         
+  |                                                                                                     
+  |    +----------+                                                                                     
+  |--> | signalfd | flags = non-block | clo-exec                                                        
+  |    +----------+                                                                                     
+  |    +-----------------+                                                                              
+  |--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io             
+  |    +-----------------+ +----------------------------+                                               
+  |                        | manager_dispatch_signal_fd | read signal from fd, and handle it accordingly
+  |                        +----------------------------+                                               
+  |                                                                                                     
+  |    +---------------------------------+                                                              
+  |--> | sd_event_source_set_description | 'manager-signal'                                             
+  |    +---------------------------------+                                                              
+  |                                                                                                     
+  +--> if manager is in system scope                                                                    
+       |                                                                                                
+       |    +------------------------+                                                                  
+       +--> | enable_special_signals | enable SIGWINCH                                                  
+            +------------------------+                                                                  
+```
+
+```
+src/core/manager.c                                                                                       
++----------------------------+                                                                            
+| manager_dispatch_signal_fd | : read signal from fd, and handle it accordingly                           
++-|--------------------------+                                                                            
+  |                                                                                                       
+  |--> read signal from fd                                                                                
+  |                                                                                                       
+  |--> switch signal                                                                                      
+  |                                                                                                       
+  |--> case sigchld                                                                                       
+  |    +--> enable sigchld source of manager                                                              
+  |--> case sigterm, sigint                                                                               
+  |    -    +-----------------------------+                                                               
+  |    +--> | manager_handle_ctrl_alt_del | load unit from manager, add job to transaction and activate it
+  |         +-----------------------------+                                                               
+  |--> case sigwinch                                                                                      
+  |    -    +-----------------------+                                                                     
+  |    +--> | manager_start_special | load unit from manager, add job to transaction and activate it      
+  |         +-----------------------+                                                                     
+  |--> case sigpwr                                                                                        
+  |    -    +-----------------------+                                                                     
+  |    +--> | manager_start_special | load unit from manager, add job to transaction and activate it      
+  |         +-----------------------+                                                                     
+  +--> case sigusr                                                                                        
+       -                                                                                                  
+       +--> blabla                                                                                        
+```
+
+```
+src/core/manager.c                                                                                       
++-----------------------------+                                                                           
+| manager_handle_ctrl_alt_del | : load unit from manager, add job to transaction and activate it          
++-----------------------+-----+                                                                           
+| manager_start_special | : load unit from manager, add job to transaction and activate it                
++-|---------------------+                                                                                 
+  |    +----------------------------------+                                                               
+  +--> | manager_add_job_by_name_and_warn | load unit from manager, add job to transaction and activate it
+       +----------------------------------+                                                               
+```
+
+```
+src/core/manager.c                                                                                  
++----------------------------------+                                                                 
+| manager_add_job_by_name_and_warn | : load unit from manager, add job to transaction and activate it
++----------------------------------+                                                                 
+| manager_add_job_by_name | : load unit from manager, add job to transaction and activate it         
++-|-----------------------+                                                                          
+  |    +-------------------+                                                                         
+  |--> | manager_load_unit | ensure unit is in load_queue of manager, load each unit from there      
+  |    +-------------------+                                                                         
+  |    +-----------------+                                                                           
+  +--> | manager_add_job | alloc transaction, add job to it, activate transaction, free it           
+       +-----------------+                                                                           
+```
+
+```
+src/core/manager.c                                                                                
++-------------------+                                                                              
+| manager_load_unit | : ensure unit is in load_queue of manager, load each unit from there         
++-|-----------------+                                                                              
+  |    +---------------------------+                                                               
+  |--> | manager_load_unit_prepare | ensure unit is in manager                                     
+  |    +---------------------------+                                                               
+  |    +-----------------------------+                                                             
+  +--> | manager_dispatch_load_queue | for each unit in load_queue, load it and add to other queues
+       +-----------------------------+                                                             
+```
+
+```
+src/core/manager.c                                            
++---------------------------+                                  
+| manager_load_unit_prepare | : ensure unit is in manager      
++-|-------------------------+                                  
+  |    +------------------+                                    
+  |--> | manager_get_unit | given name, get unit from manager  
+  |    +------------------+                                    
+  |                                                            
+  |--> if unit found                                           
+  |    -                                                       
+  |    +--> if it's already loaded, return                     
+  |                                                            
+  |--> else                                                    
+  |    |                                                       
+  |    |    +----------+                                       
+  |    +--> | unit_new |                                       
+  |         +----------+                                       
+  |    +---------------+                                       
+  |--> | unit_add_name | add (name, unit) to hashmap of manager
+  |    +---------------+                                       
+  |                                                            
+  +--> add unit to load/dbus/gc queues                         
+```
+
+```
+src/core/manager.c                                                                           
++-----------------------------+                                                               
+| manager_dispatch_load_queue | : for each unit in load_queue, load it and add to other queues
++-|---------------------------+                                                               
+  |                                                                                           
+  |--> while manager still has something in load_queue                                        
+  |    |                                                                                      
+  |    |    +-----------+                                                                     
+  |    +--> | unit_load | remove unit from manager, call ->load(), add unit to queues         
+  |         +-----------+                                                                     
+  |    +------------------------------------+                                                 
+  +--> | manager_dispatch_target_deps_queue | for unit in target_deps_queue, add dependencies 
+       +------------------------------------+                                                 
+```
+
+```
+src/core/unit.c                                                           
++-----------+                                                              
+| unit_load | : remove unit from manager, call ->load(), add unit to queues
++-|---------+                                                              
+  |                                                                        
+  |--> remove unit from manager                                            
+  |                                                                        
+  |--> if unit->transient_file                                             
+  |    -                                                                   
+  |    +--> flush file and close it                                        
+  |                                                                        
+  |--> call ->load(), e.g.,                                                
+  |    +-------------+                                                     
+  |    | socket_load | merge socket unit, handle dependencies              
+  |    +-------------+                                                     
+  |                                                                        
+  |--> if unit state == loaded, add more dependencies                      
+  |                                                                        
+  +--> add unit to dbus/gc queues                                          
+```
+
+```
+src/core/socket.c                                                                             
++-------------+                                                                                
+| socket_load | : merge socket unit, handle dependencies                                       
++-|-----------+                                                                                
+  |    +-------------------------------+                                                       
+  |--> | unit_load_fragment_and_dropin | merge unit(s), process its dependencies based on files
+  |    +-------------------------------+                                                       
+  |    +-------------------+                                                                   
+  +--> | socket_add_extras | handle extra dependencies                                         
+       +-------------------+                                                                   
+```
+
+```
+src/core/unit.c                                                                                        
++-------------------------------+                                                                       
+| unit_load_fragment_and_dropin | : merge unit(s), process its dependencies based on files              
++-|-----------------------------+                                                                       
+  |    +--------------------+                                                                           
+  +--> | unit_load_fragment | given unit id, find unit(s) and merge                                     
+  |    +--------------------+                                                                           
+  |    +------------------+                                                                             
+  +--> | unit_load_dropin | process unit dependencies from file with suffix of .requires/.wants/.upholds
+       +------------------+                                                                             
+```
+
+```
+src/core/load-fragment.c                                                                  
++--------------------+                                                                     
+| unit_load_fragment | : given unit id, find unit(s) and merge                             
++-|------------------+                                                                     
+  |                                                                                        
+  |--> if unit->transient, return                                                          
+  |                                                                                        
+  |    +--------------------------+                                                        
+  |--> | unit_file_build_name_map | build two maps for unit->main and unit->aliases queries
+  |    +--------------------------+                                                        
+  |    +-------------------------+                                                         
+  |--> | unit_file_find_fragment | given unit id, find fragment/names                      
+  |    +-------------------------+                                                         
+  |                                                                                        
+  |--> if fragment found                                                                   
+  |    |                                                                                   
+  |    |--> open fragment (file)                                                           
+  |    |                                                                                   
+  |    |    +--------------+                                                               
+  |    +--> | config_parse | parse file contents                                           
+  |         +--------------+                                                               
+  |    +----------------+                                                                  
+  +--> | merge_by_names | merge units by names                                             
+       +----------------+                                                                  
+```
+
+```
+src/core/manager.c                                                                          
++-----------------+                                                                          
+| manager_add_job | : alloc transaction, add job to it, activate transaction, free it        
++-|---------------+                                                                          
+  |    +-----------------+                                                                   
+  |--> | transaction_new | alloc transaction                                                 
+  |    +-----------------+                                                                   
+  |    +--------------------------------------+                                              
+  |--> | transaction_add_job_and_dependencies | alloc job and add to transaction             
+  |    +--------------------------------------+                                              
+  |                                                                                          
+  |--> if mode == isolate                                                                    
+  |    |                                                                                     
+  |    |    +------------------------------+                                                 
+  |    +--> | transaction_add_isolate_jobs | (skip)                                          
+  |         +------------------------------+                                                 
+  |                                                                                          
+  |--> if mode == triggering                                                                 
+  |    |                                                                                     
+  |    |    +---------------------------------+                                              
+  |    +--> | transaction_add_triggering_jobs | (skip)                                       
+  |         +---------------------------------+                                              
+  |    +----------------------+                                                              
+  |--> | transaction_activate | find important jobs & merge them, add to manager for handling
+  |    +----------------------+                                                              
+  |    +------------------+                                                                  
+  +--> | transaction_free | remove transaction from hashmap, release it                      
+       +------------------+                                                                  
+```
+
+```
+src/core/transaction.c                                                                 
++----------------------+                                                                
+| transaction_activate | : find important jobs & merge them, add to manager for handling
++-|--------------------+                                                                
+  |    +---------------------------------------------+                                  
+  |--> | transaction_find_jobs_that_matter_to_anchor | find jobs that matter            
+  |    +---------------------------------------------+                                  
+  |    +----------------------------+                                                   
+  |--> | transaction_drop_redundant | drop redundant jobs                               
+  |    +----------------------------+                                                   
+  |                                                                                     
+  |--> endless loop                                                                     
+  |    |                                                                                
+  |    |    +-----------------------------+                                             
+  |    |--> | transaction_collect_garbage | remove unneeded jobs                        
+  |    |    +-----------------------------+                                             
+  |    |    +--------------------------+                                                
+  |    |--> | transaction_verify_order |                                                
+  |    |    +--------------------------+                                                
+  |    |                                                                                
+  |    +--> break if everything is good                                                 
+  |                                                                                     
+  |--> endless loop                                                                     
+  |    |                                                                                
+  |    |    +------------------------+                                                  
+  |    |--> | transaction_merge_jobs | merge jobs                                       
+  |    |    +------------------------+                                                  
+  |    |    +-----------------------------+                                             
+  |    +--> | transaction_collect_garbage | remove unneeded jobs                        
+  |         +-----------------------------+                                             
+  |    +----------------------------+                                                   
+  |--> | transaction_drop_redundant | drop redundant jobs again                         
+  |    +----------------------------+                                                   
+  |    +-------------------+                                                            
+  +--> | transaction_apply | add jobs of transaction to manager                         
+       +-------------------+                                                            
+```
