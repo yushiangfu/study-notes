@@ -812,29 +812,29 @@ drivers/char/ipmi/ssif_bmc.c
 +-|-----------+                                                                                
   |                                                                                            
   |--> switch event                                                                            
-  |    case read_requested                                                                     
+  |    case read_requested (master requests 'read')
   |    |                                                                                       
   |    |--> if is_single_part                                                                  
   |    |    |                                                                                  
   |    |    |    +--------------------------------+                                            
-  |    |    +--> | set_singlepart_response_buffer | get value from response                    
+  |    |    +--> | set_singlepart_response_buffer | return length of ipmi response
   |    |         +--------------------------------+                                            
   |    +--> else                                                                               
   |         -    +-------------------------------+                                             
-  |         +--> | set_multipart_response_buffer | get value, set up response buffer          
+  |         +--> | set_multipart_response_buffer | copy data from payload to response_buf, return length of ipmi response
   |              +-------------------------------+                                             
   |                                                                                            
-  |--> case write_requested                                                                    
+  |--> case write_requested (master requests 'write')                                                                   
   |    -                                                                                       
   |    +--> ssif_bmc.msg_ids = 0                                                               
   |                                                                                            
-  |--> case read_processed                                                                     
+  |--> case read_processed (master reads a byte)                                                                     
   |    |                                                                                       
   |    |    +-----------------------+                                                          
-  |    +--> | handle_read_processed | get value, complete response                             
+  |    +--> | handle_read_processed | get a byte from ipmi response for master to read
   |         +-----------------------+                                                          
   |                                                                                            
-  |--> case write_received                                                                     
+  |--> case write_received (master writes a byte)                                                                     
   |    |                                                                                       
   |    |--> if msg_idx is 0                                                                    
   |    |    |                                                                                  
@@ -843,23 +843,23 @@ drivers/char/ipmi/ssif_bmc.c
   |    |         +---------------------+                                                       
   |    +--> else                                                                               
   |         -    +-----------------------+                                                     
-  |         +--> | handle_write_received | handle write request                                
+  |         +--> | handle_write_received | save a byte from master to request buffer
   |              +-----------------------+                                                     
-  |--> case stop                                                                               
+  |--> case stop (master finishes the 'write' and waits for response from us)                                                                              
   |    -                                                                                       
   |    +--> if last_event == write_received                                                    
   |         |                                                                                  
   |         |     +-------------------------+                                                  
-  |         +-->  | complete_write_received | reset response, wake up task for request handling
+  |         +-->  | complete_write_received | validate pec, wake up task to handle and generate response
   |               +-------------------------+                                                  
   |                                                                                            
   +--> update ssif_bmc.last_event                                                              
 ```
   
 ```
-set_multipart_response_buffer                                
+drivers/char/ipmi/ssif_bmc.c
 +-------------------------------+                             
-| set_multipart_response_buffer | : set up response buffer    
+| set_multipart_response_buffer | : copy data from payload to response_buf, return length of ipmi response
 +-|-----------------------------+                             
   |                                                           
   |--> switch smbus_cmd                                       
@@ -886,7 +886,7 @@ set_multipart_response_buffer
 ```
 drivers/char/ipmi/ssif_bmc.c                                                
 +-----------------------+                                                    
-| handle_read_processed | : get value, complete response                     
+| handle_read_processed | : get a byte from ipmi response for master to read
 +-|---------------------+                                                    
   |                                                                          
   |--> calculate pec on start_read_addr, ssif_cmd, restart_write_addr        
@@ -928,7 +928,7 @@ drivers/char/ipmi/ssif_bmc.c
 ```
 drivers/char/ipmi/ssif_bmc.c                   
 +-----------------------+                       
-| handle_write_received | : handle write request
+| handle_write_received | : save a byte from master to request buffer
 +-|---------------------+                       
   |                                             
   |--> get buffer from ssif_bmc.request         
@@ -949,7 +949,7 @@ drivers/char/ipmi/ssif_bmc.c
 ```
 drivers/char/ipmi/ssif_bmc.c                                                   
 +-------------------------+                                                     
-| complete_write_received | : reset response, wake up task for request handling 
+| complete_write_received | : validate pec, wake up task to handle and generate response
 +-|-----------------------+                                                     
   |    +--------------+                                                         
   |--> | validate_pec | validate checksum                                       
@@ -958,14 +958,14 @@ drivers/char/ipmi/ssif_bmc.c
   +--> if cmd == single_part_write || cmd == multi_part_write                   
        |                                                                        
        |    +----------------+                                                  
-       +--> | handle_request | reset response, wake up task for request handling
+       +--> | handle_request | lable 'request available', wake up task to handle and generate response
             +----------------+                                                  
 ```
   
 ```
 drivers/char/ipmi/ssif_bmc.c                                            
 +----------------+                                                       
-| handle_request | : reset response, wake up task for request handling   
+| handle_request | : lable 'request available', wake up task to handle and generate response
 +-|--------------+                                                       
   |                                                                      
   |--> if ->set_ssif_bmc_status exists                                   
@@ -1696,6 +1696,87 @@ struct device_attribute dev_attr_delete_device = {     \             -+
       |    +-----------------+                                                             
       +--> | i2c_add_adapter | determine adapter id and register it                        
            +-----------------+                                                             
+```
+
+```
+drivers/i2c/busses/i2c-ast2600.c                                                                                           
++-------------------+                                                                                                       
+| ast2600_i2c_probe | prepare i2c-bus, determine mode, ioremap registers, init hw, register irq, add adapter                
++-|-----------------+                                                                                                       
+  |                                                                                                                         
+  |--> alloc i2c-bus, look for global register map, and read its control register                                           
+  |                                                                                                                         
+  |--> set bus mode = dma                                                                                                   
+  |                                                                                                                         
+  |--> if 'byte-mode' is specified in dt                                                                                    
+  |    -                                                                                                                    
+  |    +--> mode = byte                                                                                                     
+  |                                                                                                                         
+  |--> if 'buff-mode' is specified in dt                                                                                    
+  |    |                                                                 i2c0: i2c-bus@80 {                                 
+  |    |    +-----------------------+                                        #address-cells = <1>;                          
+  |    |--> | platform_get_resource | get mem resource 1                     #size-cells = <0>;                             
+  |    |    +-----------------------+                                        #interrupt-cells = <1>;                        
+  |    |    +-----------------------+                                        reg = <0x80 0x80>, <0xC00 0x20>;               
+  |    |--> | devm_ioremap_resource | ioremap                                compatible = "aspeed,ast2600-i2c-bus";         
+  |    |    +-----------------------+                                        clocks = <&syscon ASPEED_CLK_APB2>;            
+  |    |                                                                     resets = <&syscon ASPEED_RESET_I2C>;           
+  |    +--> mode = buff                                                      interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+  |                                                                          bus-frequency = <100000>;                      
+  |--> if not byte mode, smbus algo = ast2600_i2c_smbus_xfer                 buff-mode;                                     
+  |                                                                          pinctrl-names = "default";                     
+  |    +--------------------------------+                                    pinctrl-0 = <&pinctrl_i2c1_default>;           
+  |--> | devm_platform_ioremap_resource | ioremap mem resource 0             status = "disabled";                           
+  |    +--------------------------------+                                };                                                 
+  |    +----------------------+                                                                                             
+  |--> | irq_of_parse_and_map | get irq value                                                                               
+  |    +----------------------+                                                                                             
+  |                                                                                                                         
+  |--> get property 'bus-frequency'                                                                                         
+  |                                                                                                                         
+  |    +------------------+                                                                                                 
+  |--> | ast2600_i2c_init | init i2c hw                                                                                     
+  |    +------------------+                                                                                                 
+  |    +------------------+                                                                                                 
+  |--> | devm_request_irq | prepare 'action' (handler, thread_fn, ...) and install to irq desc                              
+  |    +------------------+ +---------------------+                                                                         
+  |                         | ast2600_i2c_bus_irq |                                                                         
+  |                         +---------------------+                                                                         
+  |                                                                                                                         
+  |--> set master interrupt generation                                                                                      
+  |                                                                                                                         
+  |    +-----------------+                                                                                                  
+  |--> | i2c_add_adapter | determine adapter id and register it                                                             
+  |    +-----------------+                                                                                                  
+  |                                                                                                                         
+  +--> print "%s [%d]: adapter [%d khz] mode [%d]\n"                                                                        
+```
+
+```
+drivers/i2c/busses/i2c-ast2600.c    
++------------------+                 
+| ast2600_i2c_init | : init i2c hw   
++-|----------------+                 
+  |                                  
+  |--> reset i2c                     
+  |                                  
+  |--> enable master mode            
+  |                                  
+  |--> disable slave address         
+  |                                  
+  |--> set ac timing (?)             
+  |                                  
+  |--> clear master interrupt        
+  |                                  
+  |--> if bus mode == dma (default)  
+  |    |                             
+  |    |    +---------------------+  
+  |    +--> | dmam_alloc_coherent |  
+  |         +---------------------+  
+  |                                  
+  |--> clear slave interrupt         
+  |                                  
+  +--> set slave interrupt generation
 ```
   
 </details>
