@@ -1778,6 +1778,132 @@ drivers/i2c/busses/i2c-ast2600.c
   |                                  
   +--> set slave interrupt generation
 ```
+
+```
+drivers/i2c/busses/i2c-ast2600.c                                                                    
++---------------------+                                                                              
+| ast2600_i2c_bus_irq | : handle interrupt (from slave perspective first, then master)               
++-|-------------------+                                                                              
+  |                                                                                                  
+  |--> if slave is enabled                                                                           
+  |    |                                                                                             
+  |    |    +-----------------------+                                                                
+  |    |--> | ast2600_i2c_slave_irq | given isr, handle read or write request from master accordingly
+  |    |    +-----------------------+                                                                
+  |    |                                                                                             
+  |    +--> if something is done, return handled                                                     
+  |                                                                                                  
+  |    +------------------------+                                                                    
+  +--> | ast2600_i2c_master_irq | given isr, handle tx/rx accordingly                                
+       +------------------------+                                                                    
+```
+
+```
+drivers/i2c/busses/i2c-ast2600.c                                                                                     
++-----------------------+                                                                                             
+| ast2600_i2c_slave_irq | : given isr, handle read or write request from master accordingly                           
++-|---------------------+                                                                                             
+  |                                                                                                                   
+  |--> read slave ier and isr                                                                                         
+  |                                                                                                                   
+  |--> if nothing, return                                                                                             
+  |                                                                                                                   
+  |--> if bit 'packet done' is set in isr                                                                             
+  |    |                                                                                                              
+  |    |--> if bus mode == dma                                                                                        
+  |    |    |                                                                                                         
+  |    |    |    +----------------------------------+                                                                 
+  |    |    +--> | ast2600_i2c_slave_packet_dma_irq | given isr, handle read or write request from master accordingly 
+  |    |         +----------------------------------+                                                                 
+  |    |                                                                                                              
+  |    +--> else （mode == buff)                                                                                       
+  |         |                                                                                                         
+  |         |    +-----------------------------------+                                                                
+  |         +--> | ast2600_i2c_slave_packet_buff_irq | given isr, handle read or write request from master accordingly
+  |              +-----------------------------------+                                                                
+  |                                                                                                                   
+  +--> else (mode == byte)                                                                                            
+       |                                                                                                              
+       |    +----------------------------+                                                                            
+       +--> | ast2600_i2c_slave_byte_irq | given isr, handle read or write request from master accordingly            
+            +----------------------------+                                                                            
+```
+
+```
+drivers/i2c/busses/i2c-ast2600.c                                                                     
++----------------------------------+                                                                  
+| ast2600_i2c_slave_packet_dma_irq | : given isr, handle read or write request from master accordingly
++-|--------------------------------+                                                                  
+  |                                                                                                   
+  |--> switch isr                                                                                     
+  |    case blabla                                                                                    
+  |    |    +-----------------+                                                                       
+  |    |--> | i2c_slave_event | event = master-requests-to-write                                      
+  |    |    +-----------------+                                                                       
+  |    +--> for each byte in rx len                                                                   
+  |         -    +-----------------+                                                                  
+  |         +--> | i2c_slave_event | event = master-writes-a-byte                                     
+  |              +-----------------+                                                                  
+  |    case blabla                                                                                    
+  |    -     +-----------------+                                                                      
+  |    +---> | i2c_slave_event | event = master-finishes-the-write-and-wait-for-response              
+  |          +-----------------+                                                                      
+  |    case blabla                                                                                    
+  |    |    +-----------------+                                                                       
+  |    |--> | i2c_slave_event | event = master-requests-to-write                                      
+  |    |    +-----------------+                                                                       
+  |    |--> for each byte in rx len                                                                   
+  |    |    -    +-----------------+                                                                  
+  |    |    +--> | i2c_slave_event | event = master-writes-a-byte                                     
+  |    |         +-----------------+                                                                  
+  |    |    +-----------------+                                                                       
+  |    +--> | i2c_slave_event | event = master-finishes-the-write-and-wait-for-response               
+  |         +-----------------+                                                                       
+  |    case blabla                                                                                    
+  |    |    +-----------------+                                                                       
+  |    |--> | i2c_slave_event | event = master-requests-to-write                                      
+  |    |    +-----------------+                                                                       
+  |    |--> for each byte in rx len                                                                   
+  |    |    -    +-----------------+                                                                  
+  |    |    +--> | i2c_slave_event | event = master-writes-a-byte                                     
+  |    |         +-----------------+                                                                  
+  |    |    +-----------------+                                                                       
+  |    +--> | i2c_slave_event | event = master-requests-to-read                                       
+  |         +-----------------+                                                                       
+  |    case blabla                                                                                    
+  |    -    +-----------------+                                                                       
+  |    +--> | i2c_slave_event | event = master-requests-to-read                                       
+  |         +-----------------+                                                                       
+  |    case blabla                                                                                    
+  |    -    +-----------------+                                                                       
+  |    +--> | i2c_slave_event | event = master-reads-a-byte                                           
+  |         +-----------------+                                                                       
+  |                                                                                                   
+  +--> write cmd, set packet_done, clear isr                                                          
+```
+
+```
+drivers/i2c/busses/i2c-ast2600.c                                                      
++------------------------+                                                             
+| ast2600_i2c_master_irq | : given isr, handle tx/rx accordingly                       
++-|----------------------+                                                             
+  |                                                                                    
+  |--> read isr and ier                                                                
+  |                                                                                    
+  +--> if bit 'packet done' is set in isr                                              
+       |                                                                               
+       |--> if protocol == smbus                                                       
+       |    |                                                                          
+       |    |    +-------------------------------+                                     
+       |    +--> | ast2600_i2c_smbus_package_irq | given isr, handle tx/rx accordingly 
+       |         +-------------------------------+                                     
+       |                                                                               
+       +--> else (protocl == i2c)                                                      
+            |                                                                          
+            |    +--------------------------------+                                    
+            +--> | ast2600_i2c_master_package_irq | given isr, handle tx/rx accordingly
+                 +--------------------------------+                                    
+```
   
 </details>
 
