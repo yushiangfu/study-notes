@@ -748,6 +748,8 @@ SSIF events, in regular order, comprise:
 
 In the BMC runtime environment, a user space application, such as `ssifbridge`, reads IPMI requests from the SSIF device and forwards them to the IPMI service for processing. 
 The response then follows the path from which the request originated, eventually reaching the host.
+
+<p align="center"><img src="images/i2c/ssif.png" /></p>
   
 <details><summary> More Details </summary>
 
