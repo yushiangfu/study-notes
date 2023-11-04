@@ -5,7 +5,7 @@
 - [Introduction](#introduction)
 - [I2C and SMBus](#i2c-and-smbus)
 - [Mux](#mux)
-- [SMBus System Interface](#smbus-system-interface)
+- [SMBus System Interface (SSIF)](#smbus-system-interface)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -734,9 +734,20 @@ i2c-5           |slave                                   |slave
   
 </details>
 
-## <a name="smbus-system-interface"></a> SMBus System Interface
+## <a name="smbus-system-interface"></a> SMBus System Interface (SSIF)
 
-(TBD)
+The host, functioning as the I2C master, transmits IPMI commands to the slave (BMC), which processes the requests and provides responses. 
+The BMC initiates the process in its interrupt handler, dispatching events to the slave handler, reading registers for detailed events, and delivering them to the SSIF driver. 
+SSIF events, in regular order, comprise:
+
+- **I2C_SLAVE_WRITE_REQUESTED:** Host sends a write request to the BMC.
+- **I2C_SLAVE_WRITE_RECEIVED:** Host writes IPMI request to the BMC.
+- **I2C_SLAVE_STOP:** Host completes the write action, awaiting the BMC to handle and return a response.
+- **I2C_SLAVE_READ_REQUESTED:** Host sends a read request to the BMC.
+- **I2C_SLAVE_READ_PROCESSED:** Host reads IPMI response from the BMC.
+
+In the BMC runtime environment, a user space application, such as `ssifbridge`, reads IPMI requests from the SSIF device and forwards them to the IPMI service for processing. 
+The response then follows the path from which the request originated, eventually reaching the host.
   
 <details><summary> More Details </summary>
 
