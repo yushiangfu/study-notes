@@ -417,3 +417,98 @@ include/linux/clk-provider.h
        +--> | of_clk_hw_register | alloc and set up core, prepare clk and add to core, add core to proper list and enable
             +--------------------+                                                                                       
 ```
+
+```
+drivers/reset/core.c                                                                   
++--------------------------+                                                            
+| __devm_reset_control_get | : get reset_control and add to dev as resource             
++-|------------------------+                                                            
+  |                                                                                     
+  |--> alloc ptr to reset_control_release                                               
+  |                                                                                     
+  |    +---------------------+                                                          
+  |--> | __reset_control_get | get target rc_dev from list, given id, get rc from rc_dev
+  |    +---------------------+                                                          
+  |                                                                                     
+  |--> *ptr = reset_control                                                             
+  |                                                                                     
+  |    +------------+                                                                   
+  +--> | devres_add | add ptr to dev as resource                                        
+       +------------+                                                                   
+```
+
+```
+drivers/reset/core.c                                                                           
++---------------------+                                                                         
+| __reset_control_get | : get target rc_dev from list, given id, get rc from rc_dev             
++-|-------------------+                                                                         
+  |                                                                                             
+  |--> if dev->of_node                                                                          
+  |    |                                                                                        
+  |    |    +------------------------+                                                          
+  |    +--> | __of_reset_control_get | get target rc_dev from list, given id, get rc from rc_dev
+  |         +------------------------+                                                          
+  |                                                                                             
+  +--> else                                                                                     
+       |                                                                                        
+       |    +---------------------------------+                                                 
+       +--> | __reset_control_get_from_lookup | (skip)                                          
+            +---------------------------------+                                                 
+```
+
+```
+drivers/reset/core.c                                                                             
++------------------------+                                                                        
+| __of_reset_control_get | : get target rc_dev from list, given id, get rc from rc_dev            
++-|----------------------+                                                                        
+  |                                                                                               
+  |--> if arg id is provided                                                                      
+  |    |                                                                                          
+  |    |    +--------------------------+                                                          
+  |    +--> | of_property_match_string | get property 'reset-names'                               
+  |         +--------------------------+                                                          
+  |    +----------------------------+                                                             
+  |--> | of_parse_phandle_with_args | get property 'resets'                                       
+  |    +----------------------------+                                                             
+  |                                                                                               
+  |--> for each entry in 'reset_controller_list'                                                  
+  |    -                                                                                          
+  |    +--> if target entry found (e.g., syscon)                                                  
+  |         -                                                                                     
+  |         +--> break                                                                            
+  |                                                                                               
+  |--> call ->of_xlate() to translate args into id                                                
+  |                                                                                               
+  |    +------------------------------+                                                           
+  +--> | __reset_control_get_internal | ensure reset_control of matched id is in reset_control_dev
+       +------------------------------+                                                           
+```
+
+```
+drivers/reset/core.c                                                                                                   
++------------------------------+                                                                                        
+| __reset_control_get_internal | : ensure reset_control of matched id is in reset_control_dev                           
++-|----------------------------+                                                                                        
+  |                                                                                                                     
+  |--> for each rest_control in reset_control_dev                                                                       
+  |    -                                                                                                                
+  |    +--> if matched id found                                                                                         
+  |         |                                                                                                           
+  |         |--> if reset_control isn't for shared && caller isn't asking for shared && caller isn't asking for acquired
+  |         |    -                                                                                                      
+  |         |    +--> break                                                                                             
+  |         |                                                                                                           
+  |         |--> if reset_control isn't for shared || call isn't asking for shared                                      
+  |         |    -                                                                                                      
+  |         |    +--> warn and return error                                                                             
+  |         |                                                                                                           
+  |         +--> return reset_control                                                                                   
+  |                                                                                                                     
+  |--> alloc reset_control                                                                                              
+  |                                                                                                                     
+  |--> add reset_control to reset_control_dev                                                                           
+  |                                                                                                                     
+  |--> ->acquired = arg acquired                                                                                        
+  |                                                                                                                     
+  +--> ->shared = arg shared                                                                                            
+```
