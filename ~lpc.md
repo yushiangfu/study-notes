@@ -231,3 +231,189 @@ drivers/reset/core.c
   |                                                                                                    
   +--> add resource to dev                                                                             
 ```
+
+```
+drivers/clk/clk-aspeed.c                                                                                   
++------------------+                                                                                        
+| aspeed_clk_probe | : setup reset controler, register clocks and save in aspeed_clk_data[]                 
++-|----------------+                                                                                        
+  |    +-----------------------+                                                                            
+  |--> | syscon_node_to_regmap | ensure system controller exists and return its register map                
+  |    +-----------------------+                                                                            
+  |    +--------------+                                                                                     
+  |--> | devm_kzalloc | alloc aspeed_reset                                                                  
+  |    +--------------+                                                                                     
+  |                                                                                                         
+  |--> setup aspeed_reset and install 'aspeed_reset_ops'                                                    
+  |                                                                                                         
+  |    +--------------------------------+                                                                   
+  |--> | devm_reset_controller_register | alloc reset_controller_dev, register it and add to dev as resource
+  |    +--------------------------------+                                                                   
+  |    +----------------------------+                                                                       
+  |--> | clk_hw_register_fixed_rate | alloc and setup 'fixed', register to proper list and enable           
+  |    +----------------------------+ ("uart")                                                              
+  |    +----------------------+                                                                             
+  |--> | clk_hw_register_gate | alloc and setup 'gate', register to proper list and enable                  
+  |    +----------------------+ ("sd_extclk_gate")                                                          
+  |    +-------------------------------+                                                                    
+  |--> | clk_hw_register_divider_table | alloc and setup 'divider', register to proper list and enable      
+  |    +-------------------------------+ ("sd_extclk")                                                      
+  |    +-------------------------------+                                                                    
+  |--> | clk_hw_register_divider_table | alloc and setup 'divider', register to proper list and enable      
+  |    +-------------------------------+ ("mac")                                                            
+  |    +-------------------------------+                                                                    
+  |--> | clk_hw_register_divider_table | alloc and setup 'divider', register to proper list and enable      
+  |    +-------------------------------+ ("lhclk")                                                          
+  |    +-------------------------------+                                                                    
+  |--> | clk_hw_register_divider_table | alloc and setup 'divider', register to proper list and enable      
+  |    +-------------------------------+ ("bclk")                                                           
+  |    +----------------------------+                                                                       
+  |--> | clk_hw_register_fixed_rate | alloc and setup 'fixed', register to proper list and enable           
+  |    +----------------------------+ ("fixed-24m")                                                         
+  |    +---------------------+                                                                              
+  |--> | clk_hw_register_mux | alloc and setup 'fixed', register to proper list and enable                  
+  |    +---------------------+ ("eclk-mux")                                                                 
+  |    +-------------------------------+                                                                    
+  |--> | clk_hw_register_divider_table | alloc and setup 'divider', register to proper list and enable      
+  |    +-------------------------------+ ("eclk")                                                           
+  |                                                                                                         
+  +--> for each aspeed gate                                                                                 
+       |                                                                                                    
+       |    +-----------------------------+                                                                 
+       +--> | aspeed_clk_hw_register_gate | alloc and setup 'gate', register to proper list and enable      
+            +-----------------------------+                                                                 
+```
+
+```
+include/linux/clk-provider.h                                                                                            
++----------------------------+                                                                                           
+| clk_hw_register_fixed_rate | : alloc and setup 'fixed', register to proper list and enable                             
++------------------------------+                                                                                         
+| __clk_hw_register_fixed_rate | : alloc and setup 'fixed', register to proper list and enable                           
++-|----------------------------+                                                                                         
+  |                                                                                                                      
+  |--> alloc 'fixed'                                                                                                     
+  |                                                                                                                      
+  |--> set up local 'init' and save in 'fixed'                                                                           
+  |                                                                                                                      
+  |--> if dev is provided || node isn't provided                                                                         
+  |    |                                                                                                                 
+  |    |    +-----------------+                                                                                          
+  |    +--> | clk_hw_register | alloc and set up core, prepare clk and add to core, add core to proper list and enable   
+  |         +-----------------+                                                                                          
+  |                                                                                                                      
+  +--> elif node is provided                                                                                             
+       |                                                                                                                 
+       |    +--------------------+                                                                                       
+       +--> | of_clk_hw_register | alloc and set up core, prepare clk and add to core, add core to proper list and enable
+            +--------------------+                                                                                       
+```
+
+```
+drivers/clk/clk.c                                                                                          
++-----------------+                                                                                         
+| clk_hw_register | : alloc and set up core, prepare clk and add to core, add core to proper list and enable
++----------------++                                                                                         
+| __clk_register | : alloc and set up core, prepare clk and add to core, add core to proper list and enable 
++-|--------------+                                                                                          
+  |                                                                                                         
+  |--> alloc 'core'                                                                                         
+  |                                                                                                         
+  |--> core->ops = init->ops                                                                                
+  |                                                                                                         
+  |--> setup other fields of 'core'                                                                         
+  |                                                                                                         
+  |    +------------------------------+                                                                     
+  |--> | clk_core_populate_parent_map | alloc and setup 'parents'                                           
+  |    +------------------------------+                                                                     
+  |    +-----------+                                                                                        
+  |--> | alloc_clk | alloc and setup 'clk'                                                                  
+  |    +-----------+                                                                                        
+  |    +------------------------+                                                                           
+  |--> | clk_core_link_consumer | add clk to core                                                           
+  |    +------------------------+                                                                           
+  |    +-----------------+                                                                                  
+  +--> | __clk_core_init | add 'core' to proper list, set duty_cycle/rate, prepare() and enable()           
+       +-----------------+                                                                                  
+```
+
+```
+drivers/clk/clk.c                                          
++------------------------------+                            
+| clk_core_populate_parent_map | : alloc and setup 'parents'
++-|----------------------------+                            
+  |                                                         
+  |--> alloc 'parents' and save in 'core'                   
+  |                                                         
+  +--> for each parent                                      
+       -                                                    
+       +--> set up parent                                   
+```
+
+```
+drivers/clk/clk.c                                                                          
++-----------------+                                                                         
+| __clk_core_init | : add 'core' to proper list, set duty_cycle/rate, prepare() and enable()
++-|---------------+                                                                         
+  |    +--------------------+                                                               
+  |--> | clk_pm_runtime_get | (do nothing in our case)                                      
+  |    +--------------------+                                                               
+  |                                                                                         
+  |--> check if 'core' is already registered                                                
+  |                                                                                         
+  |--> if ->init exists, call it                                                            
+  |                                                                                         
+  |    +-------------------+                                                                
+  |--> | __clk_init_parent | ensure parent has 'core'                                       
+  |    +-------------------+                                                                
+  |                                                                                         
+  |--> add 'core' to proper list                                                            
+  |                                                                                         
+  |--> set core's accuracy                                                                  
+  |                                                                                         
+  |    +--------------------+                                                               
+  |--> | clk_core_get_phase | call ->get_phase()                                            
+  |    +--------------------+                                                               
+  |    +-----------------------------------+                                                
+  |--> | clk_core_update_duty_cycle_nolock | set clock's duty cycle                         
+  |    +-----------------------------------+                                                
+  |                                                                                         
+  |--> set core's rate                                                                      
+  |                                                                                         
+  |--> if flag has is_critical                                                              
+  |    |                                                                                    
+  |    |    +------------------+                                                            
+  |    +--> | clk_core_prepare | recursively call parent's ->prepare()                      
+  |         +------------------+                                                            
+  |    +----------------------+                                                             
+  +--> | clk_core_enable_lock | call ->enable()                                             
+  |    +----------------------+                                                             
+  |    +----------------------------------+                                                 
+  +--> | clk_core_reparent_orphans_nolock | re-parent orphan clocks in list                 
+       +----------------------------------+                                                 
+```
+
+```
+include/linux/clk-provider.h                                                                                            
++----------------------+                                                                                                 
+| clk_hw_register_gate | : alloc and setup 'gate', register to proper list and enable                                    
++------------------------+                                                                                               
+| __clk_hw_register_gate | : alloc and setup 'gate', register to proper list and enable                                  
++-|----------------------+                                                                                               
+  |                                                                                                                      
+  |--> alloc 'gate'                                                                                                      
+  |                                                                                                                      
+  |--> set up local 'init', install 'clk_gate_ops', save in 'gate'                                                       
+  |                                                                                                                      
+  |--> if dev is provided || node isn't provided                                                                         
+  |    |                                                                                                                 
+  |    |    +-----------------+                                                                                          
+  |    +--> | clk_hw_register | alloc and set up core, prepare clk and add to core, add core to proper list and enable   
+  |         +-----------------+                                                                                          
+  |                                                                                                                      
+  +--> elif node is provided                                                                                             
+       |                                                                                                                 
+       |    +--------------------+                                                                                       
+       +--> | of_clk_hw_register | alloc and set up core, prepare clk and add to core, add core to proper list and enable
+            +--------------------+                                                                                       
+```
