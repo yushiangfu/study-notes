@@ -5302,3 +5302,276 @@ src/core/transaction.c
   +--> | transaction_apply | add jobs of transaction to manager                         
        +-------------------+                                                            
 ```
+
+```
+src/core/manager.c                                             
++-------------------+                                           
+| manager_setup_bus | : ensure api bus of manager is initialized
++-|-----------------+                                           
+  |                                                             
+  +--> if dbus is up                                            
+       |                                                        
+       |    +--------------+                                    
+       |--> | bus_init_api | ensure api bus is initialized      
+       |    +--------------+                                    
+       |                                                        
+       +--> if manager is in system cscope                      
+            |                                                   
+            |    +-----------------+                            
+            +--> | bus_init_system | (do nothing in our case)   
+                 +-----------------+                            
+```
+
+```
+src/core/dbus.c                                                                                  
++--------------+                                                                                  
+| bus_init_api | : ensure api bus is initialized                                                  
++-|------------+                                                                                  
+  |                                                                                               
+  |--> if api bus of manager is up, return                                                        
+  |                                                                                               
+  |--> if system bus of manager is up, get bus                                                    
+  |                                                                                               
+  |--> else                                                                                       
+  |    |                                                                                          
+  |    |    +-------------------------------------+                                               
+  |    |--> | sd_bus_open_system_with_description | prepare bus, determine address and save in bus
+  |    |    +-------------------------------------+                                               
+  |    |    +---------------------+                                                               
+  |    |--> | sd_bus_attach_event | prepare all kinds of sources for event                        
+  |    |    +---------------------+                                                               
+  |    |    +------------------------------+                                                      
+  |    +--> | bus_setup_disconnected_match | register callback for dbus signal 'disconnedted'     
+  |         +------------------------------+                                                      
+  |    +---------------+                                                                          
+  +--> | bus_setup_api | setup vtables, install bus_match/signal_match, request name              
+       +---------------+                                                                          
+```
+
+```
+src/core/dbus.c                                                                                                 
++------------------------------+                                                                                 
+| bus_setup_disconnected_match | : register callback for dbus signal 'disconnedted'                              
++-|----------------------------+                                                                                 
+  |    +---------------------------+                                                                             
+  +--> | sd_bus_match_signal_async | send msg ('add match' method) to bus clients, add match rule to bus         
+       +---------------------------+ +---------------------+                                                     
+                                     | signal_disconnected | get bus from msg, destroy it and remove from manager
+                                     +---------------------+                                                     
+```
+
+```
+src/core/dbus.c                                                                                                                           
++---------------+                                                                                                                          
+| bus_setup_api | : setup vtables, install bus_match/signal_match, request name                                                            
++-|-------------+                                                                                                                          
+  |    +-----------------------+                                                                                                           
+  |--> | bus_setup_api_vtables | setup vtables of bus_manager and manager_log_control                                                      
+  |    +-----------------------+                                                                                                           
+  |                                                                                                                                        
+  |--> for each watch_bus in manager                                                                                                       
+  |    |                                                                                                                                   
+  |    |    +------------------------+                                                                                                     
+  |    +--> | unit_install_bus_match | add match, get name owner                                                                           
+  |         +------------------------+ +---------------------------+                                                                       
+  |                                    | signal_name_owner_changed | read new owner from reply, call ->bus_name_owner_change() if it exists
+  |                                    +---------------------------+                                                                       
+  |    +---------------------------+                                                                                                       
+  |--> | sd_bus_match_signal_async | send msg ('add match' method) to bus clients, add match rule to bus                                   
+  |    +---------------------------+ +---------------------------+                                                                         
+  |                                  | signal_activation_request | given name from msg, load its unit and add job to it                    
+  |                                  +---------------------------+                                                                         
+  |    +---------------------------+                                                                                                       
+  |--> | sd_bus_request_name_async | prepare msg (method call, request_name), install callback, send msg out                               
+  |    +---------------------------+                                                                                                       
+  |    +----------------------------+                                                                                                      
+  +--> | bus_register_malloc_status | prepare match rule and callback for malloc status                                                    
+       +----------------------------+                                                                                                      
+```
+
+```
+src/core/dbus.c                                                                                                            
++-----------------------+                                                                                                   
+| bus_setup_api_vtables | : setup vtables of bus_manager and manager_log_control                                            
++-|---------------------+                                                                                                   
+  |    +------------------------+                                                                                           
+  |--> | bus_add_implementation | add implementation (vtable, fallback, node enumerator, manager), apply to children as well
+  |    +------------------------+ (bus_manager_object)                                                                      
+  |                                                                                                                         
+  |    +------------------------+                                                                                           
+  +--> | bus_add_implementation | (manager_log_control_object)                                                              
+       +------------------------+                                                                                           
+```
+
+```
+src/shared/bus-object.c                                                                                                   
++------------------------+                                                                                                 
+| bus_add_implementation | : add implementation (vtable, fallback, node enumerator, manager), apply to children as well    
++-|----------------------+                                                                                                 
+  |                                                                                                                        
+  |--> for each vtable in vtables                                                                                          
+  |    |                                                                                                                   
+  |    |    +--------------------------+                                                                                   
+  |    +--> | sd_bus_add_object_vtable | prepare node of path, add each vtable to bus hashmap, prepare slot and add to node
+  |         +--------------------------+                                                                                   
+  |                                                                                                                        
+  |--> if there's node enumerator                                                                                          
+  |    |                                                                                                                   
+  |    |    +----------------------------+                                                                                 
+  |    +--> | sd_bus_add_node_enumerator | alloc node/slot, link them                                                      
+  |         +----------------------------+                                                                                 
+  |                                                                                                                        
+  |--> if there's manager                                                                                                  
+  |    |                                                                                                                   
+  |    |    +---------------------------+                                                                                  
+  |    +--> | sd_bus_add_object_manager | prepare node of path, prepare slot and add to node                               
+  |         +---------------------------+                                                                                  
+  |                                                                                                                        
+  +--> for each child                                                                                                      
+       |                                                                                                                   
+       |    +------------------------+                                                                                     
+       +--> | bus_add_implementation | (recursive)                                                                         
+            +------------------------+                                                                                     
+```
+
+```
+src/core/unit.c                                                                                                                       
++------------------------+                                                                                                             
+| unit_install_bus_match | : add match, get name owner                                                                                 
++-|----------------------+                                                                                                             
+  |    +--------------------+                                                                                                          
+  |--> | bus_add_match_full | send msg ('add match' method) to bus clients, add match rule to bus                                      
+  |    +--------------------+ +---------------------------+                                                                            
+  |                           | signal_name_owner_changed | read new owner from reply, call ->bus_name_owner_change() if it exists     
+  |                           +---------------------------+                                                                            
+  |                                                                                                                                    
+  |    +--------------------------------+                                                                                              
+  |--> | sd_bus_message_new_method_call | prepare msg of method_call type (GetNameOwner), append path/member/interface/destination info
+  |    +--------------------------------+                                                                                              
+  |    +-----------------------+                                                                                                       
+  |--> | sd_bus_message_append | append name                                                                                           
+  |    +-----------------------+                                                                                                       
+  |    +-------------------+                                                                                                           
+  +--> | sd_bus_call_async | prepare slot (install callback, insert to hashmap/prioq), send msg out                                    
+       +-------------------+ +------------------------+                                                                                
+                             | get_name_owner_handler | get new name_owner from msg                                                    
+                             +------------------------+                                                                                
+```
+
+```
+src/core/unit.c                                                                                      
++---------------------------+                                                                         
+| signal_name_owner_changed | : read new owner from reply, call ->bus_name_owner_change() if it exists
++-|-------------------------+                                                                         
+  |    +---------------------+                                                                        
+  |--> | sd_bus_message_read | read data (type = string,string,string) from reply                     
+  |    +---------------------+                                                                        
+  |                                                                                                   
+  +--> if ->bus_name_owner_change exists                                                              
+       -                                                                                              
+       +--> call it, e.g.,                                                                            
+            +-------------------------------+                                                         
+            | service_bus_name_owner_change | (skip)                                                  
+            +-------------------------------+                                                         
+```
+
+```
+src/core/unit.c                                        
++------------------------+                              
+| get_name_owner_handler | : get new name_owner from msg
++-|----------------------+                              
+  |    +---------------------+                          
+  |--> | sd_bus_message_read | read new owner from msg  
+  |    +---------------------+                          
+  |                                                     
+  +--> if ->bus_name_owner_change() exists              
+       -                                                
+       +--> call it                                     
+```
+
+```
+src/core/dbus.c                                                                               
++---------------------------+                                                                  
+| signal_activation_request | : given name from msg, load its unit and add job to it           
++-|-------------------------+                                                                  
+  |    +---------------------+                                                                 
+  |--> | sd_bus_message_read | read name from msg                                              
+  |    +---------------------+                                                                 
+  |    +-------------------+                                                                   
+  |--> | manager_load_unit | ensure unit is in load_queue of manager, load each unit from there
+  |    +-------------------+                                                                   
+  |    +-----------------+                                                                     
+  +--> | manager_add_job | alloc transaction, add job to it, activate transaction, free it     
+       +-----------------+                                                                     
+```
+
+```
+src/libsystemd/sd-bus/bus-control.c                                                         
++---------------------------+                                                                
+| sd_bus_request_name_async | : prepare msg (method call), install callback, send msg out    
++-|-------------------------+                                                                
+  |    +----------------------------------+                                                  
+  |--> | validate_request_name_parameters |                                                  
+  |    +----------------------------------+                                                  
+  |    +--------------------------+                                                          
+  +--> | sd_bus_call_method_async | prepare msg (method call), install callback, send msg out
+       +--------------------------+                                                          
+```
+
+```
+src/shared/bus-util.c                                                                                                  
++----------------------------+                                                                                          
+| bus_register_malloc_status | : prepare match rule and callback for malloc status                                      
++-|--------------------------+                                                                                          
+  |                                                                                                                     
+  |--> prepare match rule                                                                                               
+  |                                                                                                                     
+  |    +------------------------+                                                                                       
+  +--> | sd_bus_add_match_async | send msg ('add match' method) to bus clients, add match rule to bus                   
+       +------------------------+ +--------------------------------+                                                    
+                                  | method_dump_memory_state_by_fd | get fd from dump data and reply msg (method return)
+                                  +--------------------------------+                                                    
+```
+
+```
+src/shared/bus-util.c                                                                  
++--------------------------------+                                                      
+| method_dump_memory_state_by_fd | : get fd from dump data and reply msg (method return)
++-|------------------------------+                                                      
+  |    +----------------+                                                               
+  |--> | memstream_init | init mem_stream                                               
+  |    +----------------+                                                               
+  |    +-------------+                                                                  
+  +--> | malloc_info | get malloc info (?)                                              
+  |    +-------------+                                                                  
+  |    +--------------------+                                                           
+  |--> | memstream_finalize | finalize mem_stream                                       
+  |    +--------------------+                                                           
+  |    +-----------------+                                                              
+  |--> | acquire_data_fd | get fd from dump data                                        
+  |    +-----------------+                                                              
+  |    +----------------------------+                                                   
+  +--> | sd_bus_reply_method_return | reply msg of 'method return'                      
+       +----------------------------+                                                   
+```
+
+```
+src/core/dbus.c                                         
++-----------------+                                      
+| bus_init_system | : (do nothing in our case)           
++-|---------------+                                      
+  |                                                      
+  |--> if system bus is ready, return                    
+  |                                                      
+  |--> if manager is in system cscope && api bus is ready
+  |    -                                                 
+  |    +--> get api bus                                  
+  |                                                      
+  |--> else                                              
+  |    -                                                 
+  |    +--> (skip, probably not our case)                
+  |                                                      
+  |    +------------------+                              
+  +--> | bus_setup_system | (do nothing in our case)     
+       +------------------+                              
+```
