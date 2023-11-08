@@ -5575,3 +5575,264 @@ src/core/dbus.c
   +--> | bus_setup_system | (do nothing in our case)     
        +------------------+                              
 ```
+
+```
+src/core/main.c                                                                                      
++-----------------+                                                                                   
+| manager_startup | : set up and start manager, ensure journal and dbus are ready                     
++-|---------------+                                                                                   
+  |    +---------------------------+                                                                  
+  |--> | lookup_paths_init_or_warn | init lookup path                                                 
+  |    +---------------------------+                                                                  
+  |    +------------------------------------+                                                         
+  |--> | manager_run_environment_generators | determine paths and execute them (?)                    
+  |    +------------------------------------+                                                         
+  |    +--------------------+                                                                         
+  |--> | manager_preset_all | determin presets and execute them (?)                                   
+  |    +--------------------+                                                                         
+  |    +-----------------------------+                                                                
+  |--> | manager_enumerate_perpetual | for each supported unit type, call its ->enumerate_perpetual() 
+  |    +-----------------------------+                                                                
+  |    +-------------------+                                                                          
+  |--> | manager_enumerate | for each supported unit type, call its ->enumerate(), dispatch load queue
+  |    +-------------------+                                                                          
+  |    +------------------------+                                                                     
+  |--> | manager_distribute_fds | for each unit in manager, call ->distribute_fds()                   
+  |    +------------------------+                                                                     
+  |    +----------------------+                                                                       
+  |--> | manager_setup_notify | ensure manager has notify fd and source (callback)                    
+  |    +----------------------+                                                                       
+  |    +-------------------+                                                                          
+  |--> | manager_setup_bus | ensure api bus of manager is initialized                                 
+  |    +-------------------+                                                                          
+  |    +----------------------+                                                                       
+  |--> | manager_varlink_init | alloc and setup varlink server                                        
+  |    +----------------------+                                                                       
+  |    +------------------+                                                                           
+  |--> | manager_coldplug | for each unit in manager: uninstall and release its jobs                  
+  |    +------------------+                                                                           
+  |    +----------------+                                                                             
+  |--> | manager_vacuum | clean up runtime objects                                                    
+  |    +----------------+                                                                             
+  |    +---------------+                                                                              
+  +--> | manager_ready | ensure journal and dbus are ready, touch file 'systemd-units-load'           
+       +---------------+                                                                              
+```
+
+```
+src/core/core-varlink.c                                                                                                    
++----------------------+                                                                                                    
+| manager_varlink_init | : alloc and setup varlink server                                                                   
++-----------------------------+                                                                                             
+| manager_varlink_init_system | : alloc and setup varlink server                                                            
++-|---------------------------+                                                                                             
+  |                                                                                                                         
+  |--> if server is ready, return                                                                                           
+  |                                                                                                                         
+  |    +------------------------------+                                                                                     
+  |--> | manager_setup_varlink_server | alloc and setup varlink server, install several (method, callback)                  
+  |    +------------------------------+                                                                                     
+  |                                                                                                                         
+  |--> if manager isn't for test run (our case)                                                                             
+  |    |                                                                                                                    
+  |    |--> mkdir of '/run/systemd/userdb'                                                                                  
+  |    |                                                                                                                    
+  |    |    +-------------------------------+                                                                               
+  |    |--> | varlink_server_listen_address | get socket and set addr, listen, alloc server_socket and add to varlink_server
+  |    |    +-------------------------------+ (/run/systemd/userdb/io.systemd.DynamicUser)                                  
+  |    |    +-------------------------------+                                                                               
+  |    +--> | varlink_server_listen_address | get socket and set addr, listen, alloc server_socket and add to varlink_server
+  |         +-------------------------------+ (/run/systemd/io.system.ManagedOOM)                                           
+  |    +-----------------------------+                                                                                      
+  +--> | varlink_server_attach_event | for each server_socket in varlink_server: register io source                         
+       +-----------------------------+                                                                                      
+```
+
+```
+src/core/core-varlink.c                                                                             
++------------------------------+                                                                     
+| manager_setup_varlink_server | : alloc and setup varlink server, install several (method, callback)
++-|----------------------------+                                                                     
+  |    +--------------------+                                                                        
+  |--> | varlink_server_new | alloc varlink server                                                   
+  |    +--------------------+                                                                        
+  |    +-----------------------------+                                                               
+  |--> | varlink_server_set_userdata | save userdata (manager) in server                             
+  |    +-----------------------------+                                                               
+  |    +---------------------------------+                                                           
+  |--> | varlink_server_bind_method_many | add (method, callback) to hashmap of server               
+  |    +---------------------------------+                                                           
+  |    +--------------------------------+                                                            
+  +--> | varlink_server_bind_disconnect | install 'vl_disconnect()' to server                        
+       +--------------------------------+                                                            
+```
+
+```
+src/shared/varlink.h                                                                     
++---------------------------------+                                                       
+| varlink_server_bind_method_many | : add (method, callback) to hashmap of server         
++---------------------------------+--------+                                              
+| varlink_server_bind_method_many_internal | : add (method, callback) to hashmap of server
++-|----------------------------------------+                                              
+  |                                                                                       
+  |--> get method and callback from va_args                                               
+  |                                                                                       
+  |    +----------------------------+                                                     
+  +--> | varlink_server_bind_method | add (method, callback) to hashmap of server         
+       +----------------------------+                                                     
+```
+
+```
+src/shared/varlink.c                                                                                             
++-------------------------------+                                                                                 
+| varlink_server_listen_address | : get socket and set addr, listen, alloc server_socket and add to varlink_server
++-|-----------------------------+                                                                                 
+  |    +----------------------+                                                                                   
+  |--> | sockaddr_un_set_path | e.g., /run/systemd/userdb/io.systemd.DynamicUser                                  
+  |    +----------------------+                                                                                   
+  |    +--------+                                                                                                 
+  |--> | socket |                                                                                                 
+  |    +--------+                                                                                                 
+  |    +--------------------+                                                                                     
+  |--> | sockaddr_un_unlink | ensure the path is null terminated                                                  
+  |    +--------------------+                                                                                     
+  |    +--------+                                                                                                 
+  |--> | listen |                                                                                                 
+  |    +--------+                                                                                                 
+  |    +----------------------------------------+                                                                 
+  |--> | varlink_server_create_listen_fd_socket | alloc and setup server_socket                                   
+  |    +----------------------------------------+                                                                 
+  |    +--------------+                                                                                           
+  +--> | LIST_PREPEND | add server_socket to varlink_server                                                       
+       +--------------+                                                                                           
+```
+
+```
+src/shared/varlink.c
++----------------------------------------+                                                      
+| varlink_server_create_listen_fd_socket | : alloc and setup server_socket                      
++-|--------------------------------------+                                                      
+  |                                                                                             
+  |--> alloc server_socket                                                                      
+  |                                                                                             
+  |--> save server and fd in it                                                                 
+  |                                                                                             
+  +--> if varlink_server has event                                                              
+       |                                                                                        
+       |    +-----------------+                                                                 
+       |--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io
+       |    +-----------------+                                                                 
+       |    +------------------------------+                                                    
+       +--> | sd_event_source_set_priority |                                                    
+            +------------------------------+                                                    
+```
+
+```
+src/shared/varlink.c                                                                            
++-----------------------------+                                                                  
+| varlink_server_attach_event | : for each server_socket in varlink_server: register io source   
++-|---------------------------+                                                                  
+  |                                                                                              
+  |--> ensure varlink_esrver has event                                                           
+  |                                                                                              
+  |--> for each server_socket in varlink_server                                                  
+  |    |                                                                                         
+  |    |    +----------------------------------------+                                           
+  |    +--> | varlink_server_add_socket_event_source | prepare io source for varlink_server event
+  |         +----------------------------------------+                                           
+  |                                                                                              
+  +--> save priority in varlink_server                                                           
+```
+
+```
+src/shared/varlink.c                                                                      
++----------------------------------------+                                                 
+| varlink_server_add_socket_event_source | : prepare io source for varlink_server event    
++-|--------------------------------------+                                                 
+  |    +-----------------+                                                                 
+  |--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io
+  |    +-----------------+ +------------------+                                            
+  |                        | connect_callback | (skip)                                     
+  |                        +------------------+                                            
+  |    +------------------------------+                                                    
+  +--> | sd_event_source_set_priority |                                                    
+       +------------------------------+                                                    
+```
+
+```
+src/core/manager.c                                                            
++------------------+                                                           
+| manager_coldplug | : for each unit in manager: uninstall and release its jobs
++-|----------------+                                                           
+  |                                                                            
+  +--> for each unit in manager                                                
+       |                                                                       
+       |    +---------------+                                                  
+       +--> | unit_coldplug | uninstall and release jobs in unit               
+            +---------------+                                                  
+```
+
+```
+src/core/unit.c                                                                         
++---------------+                                                                        
+| unit_coldplug | : uninstall and release jobs in unit                                   
++-|-------------+                                                                        
+  |                                                                                      
+  |--> if ->coldplug() exists                                                            
+  |    -                                                                                 
+  |    +--> call it                                                                      
+  |                                                                                      
+  +--> if unit->job                                                                      
+  |    |                                                                                 
+  |    |    +--------------+                                                             
+  |    +--> | job_coldplug | move job to gc queue, set timer to uninstall and release job
+  |         +--------------+                                                             
+  |                                                                                      
+  +--> if unit->nop_job                                                                  
+       |                                                                                 
+       |    +--------------+                                                             
+       +--> | job_coldplug | move job to gc queue, set timer to uninstall and release job
+            +--------------+                                                             
+```
+
+```
+src/core/manager.c                                                                                                
++---------------+                                                                                                  
+| manager_ready | : ensure journal and dbus are ready, touch file 'systemd-units-load'                             
++-|-------------+                                                                                                  
+  |                                                                                                                
+  |--> ->objective = manager_ok                                                                                    
+  |                                                                                                                
+  |    +-------------------------+                                                                                 
+  |--> | manager_recheck_journal | given target, ensure its fd is ready                                            
+  |    +-------------------------+                                                                                 
+  |    +----------------------+                                                                                    
+  |--> | manager_recheck_dbus | ensure api bus is initialized                                                      
+  |    +----------------------+                                                                                    
+  |    +-----------------+                                                                                         
+  |--> | manager_catchup | (skip)                                                                                  
+  |    +-----------------+                                                                                         
+  |                                                                                                                
+  +--> if manager is in system scope                                                                               
+       -                                                                                                           
+       +--> touch "/run/systemd/systemd-units-load" to indiate when the manager started loading units the last time
+```
+
+```
+src/core/manager.c                                          
++----------------------+                                     
+| manager_recheck_dbus | : ensure api bus is initialized     
++-|--------------------+                                     
+  |                                                          
+  +--> if manager dbus is running                            
+       |                                                     
+       |    +-------------+                                  
+       |--> | bus_init_api| ensure api bus is initialized    
+       |    +-------------+                                  
+       |                                                     
+       +--> if manager is in system scope                    
+            |                                                
+            |    +-----------------+                         
+            +--> | bus_init_system | (do nothing in our case)
+                 +-----------------+                         
+```
