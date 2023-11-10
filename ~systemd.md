@@ -5836,3 +5836,324 @@ src/core/manager.c
             +--> | bus_init_system | (do nothing in our case)
                  +-----------------+                         
 ```
+
+```
+src/core/main.c                                                                                                                    
++------+                                                                                                                            
+| main |                                                                                                                            
++-|----+                                                                                                                            
+  |    +--------+                                                                                                                   
+  |--> | part 0 | setup mount, open log, init clock, make null stdio                                                                
+  |    +--------+                                                                                                                   
+  |    +--------+                                                                                                                   
+  +--> | part 1 | reset signal handlers, parse config/args, prepare manager, ready manager/journal/dbus, endlessly handle units/jobs
+       +--------+                                                                                                                   
+```
+
+```
+src/core/main.c                                                                                                               
++--------+                                                                                                                     
+| part 1 | : reset signal handlers, parse config/args, prepare manager, ready manager/journal/dbus, endlessly handle units/jobs
++-|------+                                                                                                                     
+  |    +---------------------------+                                                                                           
+  |--> | reset_all_signal_handlers | reset to default handler and set 'restart' flag for each signal                           
+  |    +---------------------------+                                                                                           
+  |    +----------------+                                                                                                      
+  |--> | ignore_signals | ignore signal 'pipe'                                                                                 
+  |    +----------------+                                                                                                      
+  |    +---------------------+                                                                                                 
+  |--> | parse_configuration | parse config_files & proc_cmdline & env_vars                                                    
+  |    +---------------------+                                                                                                 
+  |    +------------+                                                                                                          
+  |--> | parse_argv | (skip, I don't see any argument usage in our case)                                                       
+  |    +------------+                                                                                                          
+  |                                                                                                                            
+  |--> if action == run                                                                                                        
+  |    |                                                                                                                       
+  |    |    +------------------------+                                                                                         
+  |    |--> | setup_console_terminal | reset terminal settings of /dev/console                                                 
+  |    |    +------------------------+                                                                                         
+  |    |    +----------+                                                                                                       
+  |    +--> | log_open | given target, ensure its fd is ready                                                                  
+  |         +----------+                                                                                                       
+  |    +--------------------+                                                                                                  
+  |--> | log_execution_mode | log execution info                                                                               
+  |    +--------------------+                                                                                                  
+  |    +--------------------+                                                                                                  
+  |--> | initialize_runtime | install crash handler for signals, setup machine_id, setup loopback, disable watchdog            
+  |    +--------------------+                                                                                                  
+  |    +-------------+                                                                                                         
+  |--> | manager_new | alloc manager, get default event, prepare all kinds of sources and callbacks                            
+  |    +-------------+                                                                                                         
+  |    +----------------------+                                                                                                
+  |--> | set_manager_defaults | set some manager fields to default                                                             
+  |    +----------------------+                                                                                                
+  |    +----------------------+                                                                                                
+  |--> | set_manager_settings | further set up manager                                                                         
+  |    +----------------------+                                                                                                
+  |    +------------------------+                                                                                              
+  |--> | manager_set_first_boot | generate or remove /run/systemd/first-boot                                                   
+  |    +------------------------+                                                                                              
+  |    +-----------------+                                                                                                     
+  |--> | manager_startup | set up and start manager, ensure journal and dbus are ready                                         
+  |    +-----------------+                                                                                                     
+  |    +------------------+                                                                                                    
+  |--> | invoke_main_loop | loop: dispatch unit units/jobs, epoll, handle event                                                
+  |    +------------------+                                                                                                    
+  |                                                                                                                            
+  +--> (normally it should reach here, skip)                                                                                   
+```
+
+```
+src/core/main.c                                                                
++------------------+                                                            
+| invoke_main_loop | : loop: dispatch unit units/jobs, epoll, handle event      
++-|----------------+                                                            
+  |                                                                             
+  +--> endless loop                                                             
+       |                                                                        
+       |    +--------------+                                                    
+       |--> | manager_loop | loop: dispatch unit units/jobs, epoll, handle event
+       |    +--------------+                                                    
+       |                                                                        
+       +--> switch objective                                                    
+            (cases, skip)                                                       
+```
+
+```
+src/core/manager.c                                                                                                  
++--------------+                                                                                                     
+| manager_loop | : loop: dispatch unit units/jobs, epoll, handle event                                               
++-|------------+                                                                                                     
+  |    +------------------------+                                                                                    
+  |--> | manager_check_finished | (skip)                                                                             
+  |    +------------------------+                                                                                    
+  |    +-----------------------------+                                                                               
+  |--> | sd_event_source_set_enabled |                                                                               
+  |    +-----------------------------+                                                                               
+  |                                                                                                                  
+  +--> while ->objective == manager_ok                                                                               
+       |                                                                                                             
+       |    +---------------+                                                                                        
+       |--> | watchdog_ping | ensure watchdog is opened, ping it                                                     
+       |    +---------------+                                                                                        
+       |    +-----------------------------+                                                                          
+       |--> | manager_dispatch_load_queue | for each unit in load_queue, load it and add to other queues             
+       |    +-----------------------------+                                                                          
+       |    +-------------------------------+                                                                        
+       |--> | manager_dispatch_gc_job_queue | for each job in gc_queue: uninstall and free it                        
+       |    +-------------------------------+                                                                        
+       |    +--------------------------------+                                                                       
+       |--> | manager_dispatch_gc_unit_queue | handle each unit in gc_unit_queue                                     
+       |    +--------------------------------+                                                                       
+       |    +--------------------------------+                                                                       
+       |--> | manager_dispatch_cleanup_queue | for each unit in cleanup_queue, free it                               
+       |    +--------------------------------+                                                                       
+       |    +------------------------------------------+                                                             
+       |--> | manager_dispatch_start_when_upheld_queue | for each unit in upheld_queue, activate it                  
+       |    +------------------------------------------+                                                             
+       |    +----------------------------------------+                                                               
+       |--> | manager_dispatch_stop_when_bound_queue | for each unit in bound_queue, activate it                     
+       |    +----------------------------------------+                                                               
+       |    +-------------------------------------------+                                                            
+       |--> | manager_dispatch_stop_when_unneeded_queue | for each unit in unneeded_queue, activate it               
+       |    +-------------------------------------------+                                                            
+       |    +------------------------------------------+                                                             
+       |--> | manager_dispatch_release_resources_queue | for each unit in resources_queue, call ->release_resources()
+       |    +------------------------------------------+                                                             
+       |    +-----------------------------+                                                                          
+       |--> | manager_dispatch_dbus_queue | handle each unit and job                                                 
+       |    +-----------------------------+                                                                          
+       |    +--------------+                                                                                         
+       +--> | sd_event_run | register event (sources) to epoll, wait till there's pending source, dispatch it        
+            +--------------+                                                                                         
+```
+
+```
+src/shared/watchdog.c                                           
++---------------+                                                
+| watchdog_ping | : ensure watchdog is opened, ping it           
++-|-------------+                                                
+  |                                                              
+  |--> if watchdog_timeout isn't set, return                     
+  |                                                              
+  |--> if not watchdog_fd yet                                    
+  |    |                                                         
+  |    |    +---------------+                                    
+  |    +--> | open_watchdog | config watchdog, enable and ping it
+  |         +---------------+                                    
+  |         return                                               
+  |                                                              
+  |    +-------------------+                                     
+  +--> | watchdog_ping_now | ping watchdog thru ioctl            
+       +-------------------+                                     
+```
+
+```
+src/shared/watchdog.c                                       
++---------------+                                            
+| open_watchdog | : config watchdog, enable and ping it      
++-|-------------+                                            
+  |                                                          
+  |--> open /dev/watchdog0, save path in watchdog_device     
+  |                                                          
+  |    +----------------+                                    
+  +--> | update_timeout | config watchdog, enable and ping it
+       +----------------+                                    
+```
+
+```
+src/shared/watchdog.c                                                    
++----------------+                                                        
+| update_timeout | : config watchdog, enable and ping it                  
++-|--------------+                                                        
+  |                                                                       
+  |--> if watchdog_timeout != infinity                                    
+  |    |                                                                  
+  |    |    +----------------------+                                      
+  |    +--> | watchdog_set_timeout | set timeout of watchdog thru ioctl   
+  |         +----------------------+                                      
+  |                                                                       
+  |--> if watchdog_timeout == infinity                                    
+  |    |                                                                  
+  |    |    +-----------------------+                                     
+  |    +--> | watchdog_read_timeout | get timeout from watchdog thru ioctl
+  |         +-----------------------+                                     
+  |    +-------------------+                                              
+  |--> | update_pretimeout | (skip)                                       
+  |    +-------------------+                                              
+  |    +---------------------+                                            
+  +--> | watchdog_set_enable | enable watchdog                            
+  |    +---------------------+                                            
+  |    +-------------------+                                              
+  +--> | watchdog_ping_now | ping watchdog thru ioctl                     
+       +-------------------+                                              
+```
+
+```
+src/core/manager.c                                                                
++-------------------------------+                                                  
+| manager_dispatch_gc_job_queue | : for each job in gc_queue: uninstall and free it
++-|-----------------------------+                                                  
+  |                                                                                
+  +--> for each job in gc_job_queue                                                
+       |                                                                           
+       |    +-------------+                                                        
+       |--> | LIST_REMOVE | remove job from list                                   
+       |    +-------------+                                                        
+       |    +---------------------------+                                          
+       +--> | job_finish_and_invalidate | uninstall job ad free it, notify         
+            +---------------------------+                                          
+```
+
+```
+src/core/manager.c                                                                
++--------------------------------+                                                 
+| manager_dispatch_gc_unit_queue | : handle each unit in gc_unit_queue             
++-|------------------------------+                                                 
+  |                                                                                
+  +--> for each unit in gc_unit_queue                                              
+       |                                                                           
+       |    +---------------+                                                      
+       |--> | unit_gc_sweep | mark unit good or bad                                
+       |    +---------------+                                                      
+       |    +-------------+                                                        
+       |--> | LIST_REMOVE | remove unit from list                                  
+       |    +-------------+                                                        
+       |                                                                           
+       +--> if unit marker isn't good                                              
+            |                                                                      
+            |    +---------------------------+                                     
+            +--> | unit_add_to_cleanup_queue | add unit to cleanup_queue of manager
+                 +---------------------------+                                     
+```
+
+```
+src/core/manager.c                                                                            
++------------------------------------------+                                                   
+| manager_dispatch_start_when_upheld_queue | : for each unit in upheld_queue, activate it      
++-|----------------------------------------+                                                   
+  |                                                                                            
+  +--> for each unit in upheld_queue                                                           
+       |                                                                                       
+       |    +-------------+                                                                    
+       |--> | LIST_REMOVE | remove unit from queue                                             
+       |    +-------------+                                                                    
+       |    +-----------------+                                                                
+       +--> | manager_add_job | alloc transaction, add job to it, activate transaction, free it
+            +-----------------+                                                                
+```
+
+```
+src/core/manager.c                                                                                        
++------------------------------------------+                                                               
+| manager_dispatch_release_resources_queue | : for each unit in resources_queue, call ->release_resources()
++-|----------------------------------------+                                                               
+  |                                                                                                        
+  +--> for each unit in resources_queue                                                                    
+       |                                                                                                   
+       |    +-------------+                                                                                
+       |--> | LIST_REMOVE | remove unit from queue                                                         
+       |    +-------------+                                                                                
+       |    +------------------------+                                                                     
+       +--> | unit_release_resources | call ->release_resources()                                          
+            +------------------------+                                                                     
+```
+
+```
+src/core/unit.c                                         
++------------------------+                               
+| unit_release_resources | : call ->release_resources()  
++-|----------------------+                               
+  |    +-------------------+                             
+  |--> | unit_active_state | call ->active_state()       
+  |    +-------------------+                             
+  |    +-----------------------+                         
+  |--> | unit_get_exec_context | get exec_context in unit
+  |    +-----------------------+                         
+  |                                                      
+  +--> call ->release_resources()                        
+```
+
+```
+src/core/manager.c                                                                                                 
++-----------------------------+                                                                                     
+| manager_dispatch_dbus_queue | : handle each unit and job                                                          
++-|---------------------------+                                                                                     
+  |                                                                                                                 
+  |--> while we have budget && there's unit needs to be handled                                                     
+  |    |                                                                                                            
+  |    |    +-----------------------------+                                                                         
+  |    +--> | bus_unit_send_change_signal | move unit from dbus queue to gc queue, send signal to private/api busses
+  |         +-----------------------------+                                                                         
+  |                                                                                                                 
+  |--> while we have budget && there's job needs to be handled                                                      
+  |    |                                                                                                            
+  |    |    +----------------------------+                                                                          
+  |    +--> | bus_job_send_change_signal | send change signal of unit first, then send change signal of job         
+  |         +----------------------------+                                                                          
+  |                                                                                                                 
+  |--> if send_reloading_done == true                                                                               
+  |    |                                                                                                            
+  |    |    +----------------------------+                                                                          
+  |    +--> | bus_manager_send_reloading | send signal of 'reloading' to private/api buses                          
+  |         +----------------------------+                                                                          
+  |                                                                                                                 
+  +--> if pending_reload_message == true                                                                            
+       |                                                                                                            
+       |    +---------------------------------+                                                                     
+       +--> | bus_send_pending_reload_message | send out msg of 'pending_reload'                                    
+            +---------------------------------+                                                                     
+```
+
+```
+src/core/dbus-manager.c                                                                     
++----------------------------+                                                               
+| bus_manager_send_reloading | : send signal of 'reloading' to private/api buses             
++-|--------------------------+                                                               
+  |    +-----------------+                                                                   
+  +--> | bus_foreach_bus | send signal to private bus, and api bus (if someone is interested)
+       +-----------------+ +----------------+                                                
+                           | send_reloading | send signal of 'reloading'                     
+                           +----------------+                                                
+```
