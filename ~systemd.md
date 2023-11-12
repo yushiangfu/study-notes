@@ -6157,3 +6157,61 @@ src/core/dbus-manager.c
                            | send_reloading | send signal of 'reloading'                     
                            +----------------+                                                
 ```
+
+```
+core/manager.c                                                                                                   
++-----------------------------+                                                                                   
+| manager_enumerate_perpetual | : for each supported unit type, call its ->enumerate_perpetual()                  
++-|---------------------------+                                                                                   
+  |                                                                                                               
+  +--> for each unit type                                                                                         
+       -                                                                                                          
+       +--> if ->enumerate_perpetual() exists                                                                     
+            -                                                                                                     
+            +--> call it, e.g.,                                                                                   
+                 +---------------------------+                                                                    
+                 | mount_enumerate_perpetual | ensure unit of "-.mount" exists, add to both load/dbus queues      
+                 +---------------------------+                                                                    
+                 | slice_enumerate_perpetual | ensure two slice units exist and add them to both load/dbus queues 
+                 +---------------------------+                                                                    
+                 | scope_enumerate_perpetual | ensure unit of "init.scope" exists and add to both load/dbus queues
+                 +---------------------------+                                                                    
+```
+
+```
+core/mount.c                                                                                
++---------------------------+                                                                
+| mount_enumerate_perpetual | : ensure unit of "-.mount" exists, add to both load/dbus queues
++-|-------------------------+                                                                
+  |    +------------------+                                                                  
+  |--> | manager_get_unit | given name (e.g., "-.mount"), get unit from manager              
+  |    +------------------+                                                                  
+  |                                                                                          
+  |--> if it't not there                                                                     
+  |    |                                                                                     
+  |    |    +-------------------+                                                            
+  |    +--> | unit_new_for_name | alloc unit, add to manager                                 
+  |         +-------------------+                                                            
+  |    +------------------------+                                                            
+  |--> | unit_add_to_load_queue | prepend unit to load_queue of manager                      
+  |    +------------------------+                                                            
+  |    +------------------------+                                                            
+  +--> | unit_add_to_dbus_queue | prepend unit to dbus_queue of manager                      
+       +------------------------+                                                            
+```
+
+```
+core/slice.c                                                                                               
++---------------------------+                                                                               
+| slice_enumerate_perpetual | : ensure two slice units exist and add them to both load/dbus queues          
++-|-------------------------+                                                                               
+  |     +----------------------+                                                                            
+  |---> | slice_make_perpetual | ensure unit of "-.slice" exists and add to both load/dbus queues           
+  |     +----------------------+                                                                            
+  |                                                                                                         
+  +---> if manager is in system scope                                                                       
+        |                                                                                                   
+        |     +----------------------+                                                                      
+        +---> | slice_make_perpetual | ensure unit of "system.slice" exists and add to both load/dbus queues
+              +----------------------+                                                                      
+```
