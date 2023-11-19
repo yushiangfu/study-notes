@@ -5186,7 +5186,7 @@ src/core/socket.c
 | socket_load | : merge socket unit, handle dependencies                                       
 +-|-----------+                                                                                
   |    +-------------------------------+                                                       
-  |--> | unit_load_fragment_and_dropin | merge unit(s), process its dependencies based on files
+  |--> | unit_load_fragment_and_dropin | load unit fragment (itself) and dropin files (others)
   |    +-------------------------------+                                                       
   |    +-------------------+                                                                   
   +--> | socket_add_extras | handle extra dependencies                                         
@@ -5196,20 +5196,20 @@ src/core/socket.c
 ```
 src/core/unit.c                                                                                        
 +-------------------------------+                                                                       
-| unit_load_fragment_and_dropin | : merge unit(s), process its dependencies based on files              
+| unit_load_fragment_and_dropin | : load unit fragment (itself) and dropin files (others)
 +-|-----------------------------+                                                                       
   |    +--------------------+                                                                           
-  +--> | unit_load_fragment | given unit id, find unit(s) and merge                                     
+  +--> | unit_load_fragment | load a .{service, socket, ...} file
   |    +--------------------+                                                                           
   |    +------------------+                                                                             
-  +--> | unit_load_dropin | process unit dependencies from file with suffix of .requires/.wants/.upholds
+  +--> | unit_load_dropin | read files (.requires/.wants/.upholds) to figure out dependencies and add other units to load queue
        +------------------+                                                                             
 ```
 
 ```
 src/core/load-fragment.c                                                                  
 +--------------------+                                                                     
-| unit_load_fragment | : given unit id, find unit(s) and merge                             
+| unit_load_fragment | : load a .{service, socket, ...} file
 +-|------------------+                                                                     
   |                                                                                        
   |--> if unit->transient, return                                                          
@@ -6214,4 +6214,198 @@ core/slice.c
         |     +----------------------+                                                                      
         +---> | slice_make_perpetual | ensure unit of "system.slice" exists and add to both load/dbus queues
               +----------------------+                                                                      
+```
+
+```
+core/manager.c                                                                                                                               
++-------------------+                                                                                                                         
+| manager_enumerate | : call ->enumerate() of each unit type, dispatch load queue                                                             
++-|-----------------+                                                                                                                         
+  |                                                                                                                                           
+  |--> for each supported unit                                                                                                                
+  |    -                                                                                                                                      
+  |    +--> if ->enumerate() exists                                                                                                           
+  |         -                                                                                                                                 
+  |         +--> call it, e.g.,                                                                                                               
+  |              +-----------------+                                                                                                          
+  |              | mount_enumerate | ensure manager has mount moinitor ready, prepare unit for each entry in mount table and add to load queue
+  |              +-----------------+                                                                                                          
+  |    +-----------------------------+                                                                                                        
+  +--> | manager_dispatch_load_queue | for each unit in load_queue, load it and add to other queues                                           
+       +-----------------------------+                                                                                                        
+```
+
+```
+core/mount.c                                                                                                                  
++-----------------+                                                                                                            
+| mount_enumerate | : ensure manager has mount moinitor ready, prepare unit for each entry in mount table and add to load queue
++-|---------------+                                                                                                            
+  |                                                                                                                            
+  |--> if manager has no mount_monitor yet                                                                                     
+  |    |                                                                                                                       
+  |    |--> alloc monitor                                                                                                      
+  |    |                                                                                                                       
+  |    |    +---------------------------+                                                                                      
+  |    |--> | mnt_monitor_enable_kernel | ?                                                                                    
+  |    |    +---------------------------+                                                                                      
+  |    |    +------------------------------+                                                                                   
+  |    |--> | mnt_monitor_enable_userspace | ?                                                                                 
+  |    |    +------------------------------+                                                                                   
+  |    |    +--------------------+                                                                                             
+  |    |--> | mnt_monitor_get_fd |                                                                                             
+  |    |    +--------------------+                                                                                             
+  |    |    +-----------------+                                                                                                
+  |    +--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io                               
+  |         +-----------------+ +-------------------+                                                                          
+  |                             | mount_dispatch_io |                                                                          
+  |                             +-------------------+                                                                          
+  |    +--------------------------------+                                                                                      
+  +--> | mount_load_proc_self_mountinfo | for each entry in mount table, ensure it has mount unit and in load_queue            
+       +--------------------------------+                                                                                      
+```
+
+```
+core/mount.c                                                                                                        
++--------------------------------+                                                                                   
+| mount_load_proc_self_mountinfo | : for each entry in mount table, ensure it has mount unit and in load_queue       
++-|------------------------------+                                                                                   
+  |    +----------------+                                                                                            
+  |--> | libmount_parse | determine source, parse, get table/iter                                                    
+  |    +----------------+                                                                                            
+  |                                                                                                                  
+  +--> endless loop                                                                                                  
+       |                                                                                                             
+       |    +-------------------+                                                                                    
+       |--> | mnt_table_next_fs | get next fs from table                                                             
+       |    +-------------------+                                                                                    
+       |                                                                                                             
+       |--> if got nothing, break                                                                                    
+       |                                                                                                             
+       +--> get source/target/options/fs_type from fs                                                                
+       |                                                                                                             
+       |    +-------------------+                                                                                    
+       |--> | device_found_node | ensur device unit is in load_queue, update its state                               
+       |    +-------------------+                                                                                    
+       |    +------------------+                                                                                     
+       +--> | mount_setup_unit | ensure mount unit is in load_queue of manager                                       
+            +------------------+                                                                                     
+                                                                                                                     
+                                                                                                                     
+            dev, /dev, rw,relatime,size=403092k,nr_inodes=100773,mode=755, devtmpfs   <-- ignored in mount_setup_unit
+            sys, /sys, rw,relatime, sysfs                                             <-- ignored in mount_setup_unit
+            proc, /proc, rw,relatime, proc                                            <-- ignored in mount_setup_unit
+            tmpfs, /run, rw,nodev,relatime,mode=755, tmpfs                            <-- ignored in mount_setup_unit
+            /dev/mtdblock4, /run/initramfs/ro, ro,relatime,errors=continue, squashfs  <-- handled                    
+```
+
+```
+core/device.c                                                              
++-------------------+                                                       
+| device_found_node | : ensur device unit is in load_queue, update its state
++-|-----------------+                                                       
+  |                                                                         
+  |--> if found & mask                                                      
+  |    |                                                                    
+  |    |    +----------------------------+                                  
+  |    |--> | sd_device_new_from_devname |                                  
+  |    |    +----------------------------+                                  
+  |    |    +-------------------+                                           
+  |    +--> | device_setup_unit | ensure unit (device) is in load_queue     
+  |         +-------------------+                                           
+  |    +-----------------------------+                                      
+  +--> | device_update_found_by_name | update device unit's state           
+       +-----------------------------+                                      
+```
+
+```
+core/device.c                                                                                    
++-------------------+                                                                             
+| device_setup_unit | : ensure unit (device) is in load_queue                                     
++-|-----------------+                                                                             
+  |                                                                                               
+  |--> if dev is provided                                                                         
+  |    -                                                                                          
+  |    +--> get sysfs path from it                                                                
+  |                                                                                               
+  |    +---------------------+                                                                    
+  |--> | unit_name_from_path | given path, get unit name '*.device'                               
+  |    +---------------------+                                                                    
+  |    +------------------+                                                                       
+  |--> | manager_get_unit | given unit, get job from manager                                      
+  |    +------------------+                                                                       
+  |                                                                                               
+  |--> if unit found                                                                              
+  |    |                                                                                          
+  |    |    +--------------------------+                                                          
+  |    +--> | unit_remove_dependencies | given unit, remove dependencies from both sides          
+  |         +--------------------------+                                                          
+  |                                                                                               
+  |--> else                                                                                       
+  |    -                                                                                          
+  |    +--> alloc unit and add to load_queue of manager                                           
+  |                                                                                               
+  |--> save path in unit (Device)                                                                 
+  |                                                                                               
+  |--> if sysfs                                                                                   
+  |    |                                                                                          
+  |    |    +------------------+                                                                  
+  |    +--> | device_set_sysfs | add (sysfs, device) to hashmap in manager, add unit to dbus queue
+  |         +------------------+                                                                  
+  |    +---------------------------+                                                              
+  |--> | device_update_description |                                                              
+  |    +---------------------------+                                                              
+  |                                                                                               
+  +--> ensure unit (device) is in arg set                                                         
+```
+
+```
+core/unit.c                                                                                                
++--------------------------+                                                                                
+| unit_remove_dependencies | : given unit, remove dependencies from both sides                              
++-|------------------------+                                                                                
+  |                                                                                                         
+  +--> for each hashmap of dependency_type in target_unit                                                   
+       -                                                                                                    
+       +--> for each (other_unit, dep_info) in hashmap                                                      
+            |                                                                                               
+            |    +-----------------------------+                                                            
+            |--> | unit_update_dependency_mask | remove (other_unit, value) from hashmap of target_unit     
+            |    +-----------------------------+                                                            
+            |                                                                                               
+            |--> if other_unit also depends on target_unit                                                  
+            |    |                                                                                          
+            |    |    +-----------------------------+                                                       
+            |    +--> | unit_update_dependency_mask | remove (target_unit, value) from hashmap of other_unit
+            |         +-----------------------------+                                                       
+            |    +----------------------+                                                                   
+            |--> | unit_add_to_gc_queue | add other_unit to gc_queue                                        
+            |    +----------------------+                                                                   
+            |    +-----------------------------------------+                                                
+            +--> | unit_submit_to_stop_when_unneeded_queue | add other_unit to stop_when_unneeded_queue     
+                 +-----------------------------------------+                                                
+```
+
+```
+core/mount.c
++------------------+
+| mount_setup_unit | : ensure mount unit is in load_queue of manager
++-|----------------+
+  |    +---------------------+
+  |--> | unit_name_from_path | get unit name from path, e.g., /run/initramfs/ro --> run-initramfs-ro.mount
+  |    +---------------------+
+  |    +------------------+
+  |--> | manager_get_unit | given name, get unit from manager
+  |    +------------------+
+  |
+  |--> if found
+  |    |
+  |    |    +---------------------------+
+  |    +--> | mount_setup_existing_unit | save mount info in mount unit
+  |         +---------------------------+
+  |
+  +--> else
+       |
+       |    +----------------------+
+       +--> | mount_setup_new_unit | alloc unit, add dependencies, add to load_queue
+            +----------------------+
 ```
