@@ -1,4 +1,1100 @@
 ```
+call mount_enumerate_perpetual()
+    push -.mount
+
+call slice_enumerate_perpetual()
+    push -.slice
+    push system.slice
+
+call scope_enumerate_perpetual()
+    push init.scope
+
+call mount_enumerate()
+    push dev-mtdblock4.device
+    push blockdev@dev-mtdblock4.target
+
+pop push blockdev@dev-mtdblock4.target
+    open /usr/lib/systemd/system/blockdev@.target
+    push shutdown.target
+
+pop shutdown.target
+    open /usr/lib/systemd/system/shutdown.target
+
+pop dev-mtdblock4.device
+    open null
+
+pop init.scope
+    open null
+
+pop system.slice
+    open null
+
+pop -.slice
+    open null
+
+pop -.mount
+    open /run/systemd/generator/-.mount
+    push local-fs.target
+    push blockdev@dev-root.target
+    push dev-root.mount
+    push dev.mount
+
+pop dev.mount
+    open null
+
+pop dev-root.mount
+    open null
+
+pop blockdev@dev-root.target
+    open /usr/lib/systemd/system/blockdev@.target
+
+pop local-fs.target
+    open /usr/lib/systemd/system/local-fs.target
+    push local-fs-pre.target
+    push emergency.target
+    push systemd-fsck-root.service
+    push systemd-remount-fs.service
+    push tmp.mount
+    push var-volatile-cache.service
+    push var-volatile-lib.service
+    push var-volatile-spool.service
+    push var-volatile-srv.service
+    push var-volatile.mount
+
+pop var-volatile.mount
+    open /run/systemd/generator/var-volatile.mount
+    push systemd-journald.socket
+    push umount.target
+    push swap.target
+    push var.mount
+
+pop var.mount
+    open null
+
+pop swap.target
+    open /usr/lib/systemd/system/swap.target
+
+pop umount.target
+    open /usr/lib/systemd/system/umount.target
+
+pop systemd-journald.socket
+    open /usr/lib/systemd/system/systemd-journald.socket
+    push sockets.target
+    push systemd-journald.service
+    push run-systemd-journal-socket.mount
+    push run-systemd-journal.mount
+    push run-systemd.mount
+    push run.mount
+    push run-systemd-journal-stdout.mount
+
+pop run-systemd-journal-stdout.mount
+    open null
+
+pop run.mount
+    open null
+
+pop run-systemd.mount
+    open null
+
+pop run-systemd-journal.mount
+    open null
+
+pop run-systemd-journal-socket.mount
+    open null
+
+pop systemd-journald.service
+    open /usr/lib/systemd/system/systemd-journald.service
+    push systemd-journald-dev-log.socket
+    push systemd-journald-audit.socket
+    push syslog.socket
+    push sysinit.target
+
+pop sysinit.target
+    open /usr/lib/systemd/system/sysinit.target
+    push emergency.service
+    push dev-hugepages.mount
+    push dev-mqueue.mount
+    push run-postinsts.service
+    push sys-fs-fuse-connections.mount
+    push sys-kernel-config.mount
+    push sys-kernel-debug.mount
+    push sys-kernel-tracing.mount
+    push systemd-ask-password-console.path
+    push systemd-hwdb-update.service
+    push systemd-journal-catalog-update.service
+    push systemd-journal-flush.service
+    push systemd-machine-id-commit.service
+    push systemd-network-generator.service
+    push systemd-pstore.service
+    push systemd-random-seed.service
+    push systemd-resolved.service
+    push systemd-sysctl.service
+    push systemd-sysusers.service
+    push systemd-timesyncd.service
+    push systemd-tmpfiles-setup-dev.service
+    push systemd-tmpfiles-setup.service
+    push systemd-udev-trigger.service
+    push systemd-udevd.service
+    push systemd-update-done.service
+    push xyz.openbmc_project.Chassis.Control.Power@0.service
+
+pop xyz.openbmc_project.Chassis.Control.Power@0.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Chassis.Control.Power@.service
+    push system-xyz.openbmc_project.Chassis.Control.Power.slice
+    push basic.target
+    push dbus.socket
+
+pop dbus.socket
+    open /usr/lib/systemd/system/dbus.socket
+    push dbus.service
+    push run-dbus-system_bus_socket.mount
+    push run-dbus.mount
+
+pop run-dbus.mount
+    open null
+
+pop run-dbus-system_bus_socket.mount
+    open null
+
+pop dbus.service
+    open /usr/lib/systemd/system/dbus-broker.service
+    (u->id becomes dbus-broker.service?)
+    push var-tmp.mount
+
+pop var-tmp.mount
+    open null
+
+pop basic.target
+    open /usr/lib/systemd/system/basic.target
+    push timers.target
+    push paths.target
+    push slices.target
+    push ipmb.service
+
+pop ipmb.service
+    open /usr/lib/systemd/system/ipmb.service
+    add phosphor-ipmi-host.service
+
+pop phosphor-ipmi-host.service
+    open /usr/lib/systemd/system/phosphor-ipmi-host.service
+    add clear-once.service
+    add xyz.openbmc_project.Settings.service
+    add org.openbmc.HostIpmi.service
+    add mapper-wait@-xyz-openbmc_project-control-host0-boot.service
+    add mapper-wait@-xyz-openbmc_project-control-host0-boot-one_time.service
+    add mapper-wait@-xyz-openbmc_project-control-host0-power_restore_policy.service
+    add mapper-wait@-xyz-openbmc_project-control-host0-restriction_mode.service
+    add var-lib-ipmi.mount
+    add var-lib.mount
+    add run-ipmi.mount
+
+pop run-ipmi.mount
+    open null
+
+pop var-lib.mount
+    open null
+
+pop var-lib-ipmi.mount
+    open null
+
+pop mapper-wait@-xyz-openbmc_project-control-host0-restriction_mode.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+    push xyz.openbmc_project.ObjectMapper.service
+    push system-mapper\x2dwait.slice
+
+pop system-mapper\x2dwait.slice
+    open null
+
+pop xyz.openbmc_project.ObjectMapper.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.ObjectMapper.service
+
+pop mapper-wait@-xyz-openbmc_project-control-host0-power_restore_policy.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop mapper-wait@-xyz-openbmc_project-control-host0-boot-one_time.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop mapper-wait@-xyz-openbmc_project-control-host0-boot.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop org.openbmc.HostIpmi.service
+    open /usr/lib/systemd/system/org.openbmc.HostIpmi.service
+
+pop xyz.openbmc_project.Settings.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Settings.service
+
+pop clear-once.service
+    open /usr/lib/systemd/system/clear-once.service
+    push sbin.mount
+    push etc.mount
+
+pop etc.mount
+    open null
+
+pop sbin.mount
+    open null
+
+pop slices.target
+    open /usr/lib/systemd/system/slices.target
+
+pop paths.target
+    open /usr/lib/systemd/system/paths.target
+
+pop timers.target
+    open /usr/lib/systemd/system/timers.target
+    push logrotate.timer
+    push systemd-tmpfiles-clean.timer
+
+pop systemd-tmpfiles-clean.timer
+    open /usr/lib/systemd/system/systemd-tmpfiles-clean.timer
+    push systemd-tmpfiles-clean.service
+
+pop systemd-tmpfiles-clean.service
+    open /usr/lib/systemd/system/systemd-tmpfiles-clean.service
+    push time-set.target
+    push initrd-switch-root.target
+
+pop initrd-switch-root.target
+    open /usr/lib/systemd/system/initrd-switch-root.target
+
+pop time-set.target
+    open /usr/lib/systemd/system/time-set.target
+
+pop logrotate.timer
+    open /usr/lib/systemd/system/logrotate.timer
+    push logrotate.service
+    push time-sync.target
+    push var-lib-systemd-timers.mount
+    push var-lib-systemd.mount
+
+pop var-lib-systemd.mount
+    open null
+
+pop var-lib-systemd-timers.mount
+    open null
+
+pop time-sync.target
+    open /usr/lib/systemd/system/time-sync.target
+
+pop logrotate.service
+    open /usr/lib/systemd/system/logrotate.service
+    push var-log.mount
+
+pop var-log.mount
+    open null
+
+pop system-xyz.openbmc_project.Chassis.Control.Power.slice
+    open null
+
+pop systemd-update-done.service
+    open /usr/lib/systemd/system/systemd-update-done.service
+
+pop systemd-udevd.service
+    open /usr/lib/systemd/system/systemd-udevd.service
+
+pop systemd-udev-trigger.service
+    open /usr/lib/systemd/system/systemd-udev-trigger.service
+
+pop systemd-tmpfiles-setup.service
+    open systemd-tmpfiles-setup.service
+
+pop systemd-tmpfiles-setup-dev.service
+    open /usr/lib/systemd/system/systemd-tmpfiles-setup-dev.service
+
+pop systemd-timesyncd.service
+    open /usr/lib/systemd/system/systemd-timesyncd.service
+    push var-lib-systemd-timesync.mount
+    push run-systemd-timesync.mount
+
+pop run-systemd-timesync.mount
+    open null
+
+pop var-lib-systemd-timesync.mount
+    open null
+
+pop systemd-sysusers.service
+    open /usr/lib/systemd/system/systemd-sysusers.service
+
+pop systemd-sysctl.service
+    open /usr/lib/systemd/system/systemd-sysctl.service
+    push systemd-modules-load.service
+
+pop systemd-modules-load.service
+    open null
+
+pop systemd-resolved.service
+    open /usr/lib/systemd/system/systemd-resolved.service
+    push network.target
+    push nss-lookup.target
+    push run-systemd-resolve.mount
+
+pop run-systemd-resolve.mount
+    open null
+
+pop nss-lookup.target
+    open /usr/lib/systemd/system/nss-lookup.target
+
+pop network.target
+    open /usr/lib/systemd/system/network.target
+    push network-pre.target
+    push bmcweb.service
+
+pop bmcweb.service
+    open /usr/lib/systemd/system/bmcweb.service
+    push home-root.mount
+    push home.mount
+
+pop home.mount
+    open null
+
+pop home-root.mount
+    open null
+
+pop network-pre.target
+    open /usr/lib/systemd/system/network-pre.target
+
+pop systemd-random-seed.service
+    open /usr/lib/systemd/system/systemd-random-seed.service
+    push first-boot-complete.target
+    push var-lib-systemd-random\x2dseed.mount
+
+pop var-lib-systemd-random\x2dseed.mount
+    open null
+
+pop first-boot-complete.target
+    open /usr/lib/systemd/system/first-boot-complete.target
+
+pop systemd-pstore.service
+    open /usr/lib/systemd/system/systemd-pstore.service
+    push modprobe@efi_pstore.service
+    push var-lib-systemd-pstore.mount
+
+pop var-lib-systemd-pstore.mount
+    open null
+
+pop modprobe@efi_pstore.service
+    open /usr/lib/systemd/system/modprobe@.service
+    push system-modprobe.slice
+
+pop system-modprobe.slice
+    open null
+
+pop systemd-network-generator.service
+    open /usr/lib/systemd/system/systemd-network-generator.service
+
+pop systemd-machine-id-commit.service
+    open /usr/lib/systemd/system/systemd-machine-id-commit.service
+    push systemd-machine-id-commit.service
+
+pop systemd-journal-flush.service
+    open /usr/lib/systemd/system/systemd-journal-flush.service
+    push var-log-journal.mount
+
+pop var-log-journal.mount
+    open null
+
+pop systemd-journal-catalog-update.service
+    open /usr/lib/systemd/system/systemd-journal-catalog-update.service
+
+pop systemd-hwdb-update.service
+    open /usr/lib/systemd/system/systemd-hwdb-update.service
+
+pop systemd-ask-password-console.path
+    open /usr/lib/systemd/system/systemd-ask-password-console.path
+    push cryptsetup.target
+    push systemd-ask-password-console.service
+    push run-systemd-ask\x2dpassword.mount
+
+pop run-systemd-ask\x2dpassword.mount
+    open null
+
+pop systemd-ask-password-console.service
+    open /usr/lib/systemd/system/systemd-ask-password-console.service
+    push systemd-vconsole-setup.service
+
+pop systemd-vconsole-setup.service
+    open null
+
+pop cryptsetup.target
+    open null
+
+pop sys-kernel-tracing.mount
+    open /usr/lib/systemd/system/sys-kernel-tracing.mount
+    push sys-kernel.mount
+    push sys.mount
+
+pop sys.mount
+    open null
+
+pop sys-kernel.mount
+    open null
+
+pop sys-kernel-debug.mount
+    open /usr/lib/systemd/system/sys-kernel-debug.mount
+
+pop sys-kernel-config.mount
+    open /usr/lib/systemd/system/sys-kernel-config.mount
+    push modprobe@configfs.service
+
+pop modprobe@configfs.service
+    open /usr/lib/systemd/system/modprobe@.service
+
+pop sys-fs-fuse-connections.mount
+    open /usr/lib/systemd/system/sys-fs-fuse-connections.mount
+    push modprobe@fuse.service
+    push sys-fs-fuse.mount
+    push sys-fs.mount
+
+pop sys-fs.mount
+    open null
+
+pop sys-fs-fuse.mount
+    open null
+
+pop modprobe@fuse.service
+    open /usr/lib/systemd/system/modprobe@.service
+
+pop run-postinsts.service
+    open /usr/lib/systemd/system/run-postinsts.service
+    push ldconfig.service
+
+pop ldconfig.service
+    open null
+
+pop dev-mqueue.mount
+    open /usr/lib/systemd/system/dev-mqueue.mount
+
+pop dev-hugepages.mount
+    open /usr/lib/systemd/system/dev-hugepages.mount
+
+pop emergency.service
+    open /usr/lib/systemd/system/emergency.service
+
+pop syslog.socket
+    open /usr/lib/systemd/system/syslog.socket
+    push syslog.service
+    push run-systemd-journal-syslog.mount
+
+pop run-systemd-journal-syslog.mount
+    open null
+
+pop syslog.service
+    open /usr/lib/systemd/system/rsyslog.service
+    push network-online.target
+
+pop network-online.target
+    open /usr/lib/systemd/system/network-online.target
+    push systemd-networkd-wait-online.service
+
+pop systemd-networkd-wait-online.service
+    open /usr/lib/systemd/system/systemd-networkd-wait-online.service
+    push systemd-networkd.service
+
+pop systemd-networkd.service
+    open /usr/lib/systemd/system/systemd-networkd.service
+    push systemd-networkd.socket
+    push multi-user.target
+    push run-systemd-netif.mount
+
+pop run-systemd-netif.mount
+    open null
+
+pop multi-user.target
+    open /usr/lib/systemd/system/multi-user.target
+    push avahi-daemon.service
+    push convert-pam-configs.service
+    push dropbearkey.service
+    push getty.target
+    push hostlogger@ttyS2.service
+    push lpcsnoop.service
+    push nfs-statd.service
+    push nscd.service
+    push nslcd.service
+    push obmc-console@ttyS2.service
+    push obmc-dump-monitor.service
+    push obmc-fru-fault-monitor.service
+    push obmc-led-group-start@bmc_booted.service
+    push phosphor-certificate-manager@authority.service
+    push phosphor-certificate-manager@bmcweb.service
+    push phosphor-certificate-manager@nslcd.service
+    push phosphor-health-monitor.service
+    push phosphor-ipmi-kcs@ipmi-kcs1.service
+    push phosphor-ipmi-kcs@ipmi-kcs2.service
+    push phosphor-ipmi-kcs@ipmi-kcs3.service
+    push phosphor-ipmi-kcs@ipmi-kcs4.service
+    push phosphor-ipmi-kcs@ipmi-kcs5.service
+    push phosphor-ipmi-kcs@ipmi-kcs6.service
+    push phosphor-ipmi-kcs@ipmi-kcs7.service
+    push phosphor-ipmi-kcs@ipmi-kcs8.service
+    push phosphor-ipmi-net@eth0.service
+    push phosphor-ipmi-net@eth1.service
+    push phosphor-pid-control.service
+    push phosphor-systemd-target-monitor.service
+    push ramoops-monitor.service
+    push remote-fs.target
+    push rpcbind.service
+    push slpd-lite.service
+    push ssifbridge.service
+    push start-ipkvm.service
+    push systemd-ask-password-wall.path
+    push systemd-user-sessions.service
+    push trace-enable.service
+    push xyz.openbmc_project.Dump.Manager.service
+    push xyz.openbmc_project.EntityManager.service
+    push xyz.openbmc_project.FruDevice.service
+    push xyz.openbmc_project.Inventory.Manager.service
+    push xyz.openbmc_project.LED.GroupManager.service
+    push xyz.openbmc_project.Ldap.Config.service
+    push xyz.openbmc_project.Logging.IPMI.service
+    push xyz.openbmc_project.Logging.service
+    push xyz.openbmc_project.Network.service
+    push xyz.openbmc_project.Software.BMC.Updater.service
+    push xyz.openbmc_project.Software.Download.service
+    push xyz.openbmc_project.Software.Version.service
+    push xyz.openbmc_project.State.BMC.service
+    push xyz.openbmc_project.State.Boot.PostCode
+    push xyz.openbmc_project.Syslog.Config.service
+    push xyz.openbmc_project.Telemetry.service
+    push xyz.openbmc_project.Time.Manager.service
+    push xyz.openbmc_project.User.Manager.service
+    push xyz.openbmc_project.adcsensor.service
+    push xyz.openbmc_project.exitairsensor.service
+    push xyz.openbmc_project.externalsensor.service
+    push xyz.openbmc_project.fansensor.service
+    push xyz.openbmc_project.hwmontempsensor.service
+    push xyz.openbmc_project.intelcpusensor.service
+    push xyz.openbmc_project.intrusionsensor.service
+    push xyz.openbmc_project.ipmbsensor.service
+    push xyz.openbmc_project.mcutempsensor.service
+    push xyz.openbmc_project.psusensor.service
+
+pop xyz.openbmc_project.psusensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.psusensor.service
+
+pop xyz.openbmc_project.mcutempsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.mcutempsensor.service
+
+pop xyz.openbmc_project.ipmbsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.ipmbsensor.service
+
+pop xyz.openbmc_project.intrusionsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.intrusionsensor.service
+
+pop xyz.openbmc_project.intelcpusensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.intelcpusensor.service
+
+pop xyz.openbmc_project.hwmontempsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.hwmontempsensor.service
+
+pop xyz.openbmc_project.fansensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.fansensor.service
+
+pop xyz.openbmc_project.externalsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.externalsensor.service
+
+pop xyz.openbmc_project.exitairsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.exitairsensor.service
+
+pop xyz.openbmc_project.adcsensor.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.adcsensor.service
+
+pop xyz.openbmc_project.User.Manager.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.User.Manager.service
+
+pop xyz.openbmc_project.Time.Manager.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Time.Manager.service
+    push mapper-wait@-xyz-openbmc_project-time-sync_method.service
+
+pop mapper-wait@-xyz-openbmc_project-time-sync_method.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop xyz.openbmc_project.Telemetry.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Telemetry.service
+
+pop xyz.openbmc_project.Syslog.Config.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Syslog.Config.service
+
+pop xyz.openbmc_project.State.Boot.PostCode@0.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.State.Boot.PostCode@.service
+    push system-xyz.openbmc_project.State.Boot.PostCode.slice
+
+pop system-xyz.openbmc_project.State.Boot.PostCode.slice
+    open null
+
+pop xyz.openbmc_project.State.BMC.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.State.BMC.service
+    push mapper-wait@-xyz-openbmc_project-state-bmc.service
+    push xyz.openbmc_project.State.Chassis@0.service
+
+pop xyz.openbmc_project.State.Chassis@0.service
+    open null
+
+pop mapper-wait@-xyz-openbmc_project-state-bmc.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop xyz.openbmc_project.Software.Version.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Software.Version.service
+
+pop xyz.openbmc_project.Software.Download.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Software.Download.service
+
+pop xyz.openbmc_project.Software.BMC.Updater.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Software.BMC.Updater.service
+
+pop xyz.openbmc_project.Network.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Network.service
+    push run-network.mount
+    push var-lib-network.mount
+
+pop var-lib-network.mount
+    open null
+
+pop run-network.mount
+    open null
+
+pop xyz.openbmc_project.Logging.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Logging.service
+
+pop xyz.openbmc_project.Logging.IPMI.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Logging.IPMI.service
+
+pop xyz.openbmc_project.Ldap.Config.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Ldap.Config.service
+    push xyz.openbmc_project.Software.Sync.service
+
+pop xyz.openbmc_project.Software.Sync.service
+    open null
+
+pop xyz.openbmc_project.LED.GroupManager.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.LED.GroupManager.service
+    push mapper-wait@-xyz-openbmc_project-led-groups.service
+
+pop mapper-wait@-xyz-openbmc_project-led-groups.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop xyz.openbmc_project.Inventory.Manager.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Inventory.Manager.service
+    push mapper-wait@-xyz-openbmc_project-inventory.service
+
+pop mapper-wait@-xyz-openbmc_project-inventory.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop xyz.openbmc_project.FruDevice.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.FruDevice.service
+
+pop xyz.openbmc_project.EntityManager.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.EntityManager.service
+
+pop xyz.openbmc_project.Dump.Manager.service
+    open /usr/lib/systemd/system/xyz.openbmc_project.Dump.Manager.service
+
+pop trace-enable.service
+    open /usr/lib/systemd/system/trace-enable.service
+
+pop systemd-user-sessions.service
+    open /usr/lib/systemd/system/systemd-user-sessions.service
+    push nss-user-lookup.target
+
+pop nss-user-lookup.target
+    open /usr/lib/systemd/system/nss-user-lookup.target
+
+pop systemd-ask-password-wall.path
+    open /usr/lib/systemd/system/systemd-ask-password-wall.path
+    push systemd-ask-password-wall.service
+
+pop systemd-ask-password-wall.service
+    open /usr/lib/systemd/system/systemd-ask-password-wall.service
+
+pop start-ipkvm.service
+    open /usr/lib/systemd/system/start-ipkvm.service
+
+pop ssifbridge.service
+    open /usr/lib/systemd/system/ssifbridge.service
+
+pop slpd-lite.service
+    open /usr/lib/systemd/system/slpd-lite.service
+
+pop rpcbind.service
+    open /usr/lib/systemd/system/rpcbind.service
+    push rpcbind.socket
+    push rpcbind.target
+    push var-run-rpcbind.mount
+    push var-run.mount
+
+pop var-run.mount
+    open null
+
+pop var-run-rpcbind.mount
+    open null
+
+pop rpcbind.target
+    open /usr/lib/systemd/system/rpcbind.target
+
+pop rpcbind.socket
+    open /usr/lib/systemd/system/rpcbind.socket
+    push run-rpcbind.sock.mount
+
+pop run-rpcbind.sock.mount
+    open null
+
+pop remote-fs.target
+    open /usr/lib/systemd/system/remote-fs.target
+    push remote-fs-pre.target
+
+pop remote-fs-pre.target
+    open /usr/lib/systemd/system/remote-fs-pre.target
+
+pop ramoops-monitor.service
+    open /usr/lib/systemd/system/ramoops-monitor.service
+
+pop phosphor-systemd-target-monitor.service
+    open /usr/lib/systemd/system/phosphor-systemd-target-monitor.service
+
+pop phosphor-pid-control.service
+    open /usr/lib/systemd/system/phosphor-pid-control.service
+
+pop phosphor-ipmi-net@eth1.service
+    open /usr/lib/systemd/system/phosphor-ipmi-net@.service
+    push sys-subsystem-net-devices-eth1.device
+    push system-phosphor\x2dipmi\x2dnet.slice
+
+pop system-phosphor\x2dipmi\x2dnet.slice
+    open null
+
+pop sys-subsystem-net-devices-eth1.device
+    open null
+
+pop phosphor-ipmi-net@eth0.service
+    open /usr/lib/systemd/system/phosphor-ipmi-net@.service
+    push sys-subsystem-net-devices-eth0.device
+
+pop sys-subsystem-net-devices-eth0.device
+    open null
+
+pop phosphor-ipmi-kcs@ipmi-kcs8.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+    push system-phosphor\x2dipmi\x2dkcs.slice
+
+pop system-phosphor\x2dipmi\x2dkcs.slice
+    open null
+
+pop phosphor-ipmi-kcs@ipmi-kcs7.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-ipmi-kcs@ipmi-kcs6.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-ipmi-kcs@ipmi-kcs5.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-ipmi-kcs@ipmi-kcs4.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-ipmi-kcs@ipmi-kcs3.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-ipmi-kcs@ipmi-kcs2.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-ipmi-kcs@ipmi-kcs1.service
+    open /usr/lib/systemd/system/phosphor-ipmi-kcs@.service
+
+pop phosphor-health-monitor.service
+    open /usr/lib/systemd/system/phosphor-health-monitor.service
+
+pop phosphor-certificate-manager@nslcd.service
+    open /usr/lib/systemd/system/phosphor-certificate-manager@.service
+    push system-phosphor\x2dcertificate\x2dmanager.slice
+
+pop system-phosphor\x2dcertificate\x2dmanager.slice
+    open null
+
+pop phosphor-certificate-manager@bmcweb.service
+    open /usr/lib/systemd/system/phosphor-certificate-manager@.service
+
+pop phosphor-certificate-manager@authority.service
+    open /usr/lib/systemd/system/phosphor-certificate-manager@.service
+
+pop obmc-led-group-start@bmc_booted.service
+    open /usr/lib/systemd/system/obmc-led-group-start@.service
+    push mapper-wait@-xyz-openbmc_project-led-groups-bmc_booted.service
+    push obmc-led-group-stop@bmc_booted.service
+    push system-obmc\x2dled\x2dgroup\x2dstart.slice
+
+pop system-obmc\x2dled\x2dgroup\x2dstart.slice
+    open null
+
+pop obmc-led-group-stop@bmc_booted.service
+    open /usr/lib/systemd/system/obmc-led-group-stop@.service
+    push system-obmc\x2dled\x2dgroup\x2dstop.slice
+
+pop system-obmc\x2dled\x2dgroup\x2dstop.slice
+    open null
+
+pop mapper-wait@-xyz-openbmc_project-led-groups-bmc_booted.service
+    open /usr/lib/systemd/system/mapper-wait@.service
+
+pop obmc-fru-fault-monitor.service
+    open /usr/lib/systemd/system/obmc-fru-fault-monitor.service
+
+pop obmc-dump-monitor.service
+    open /usr/lib/systemd/system/obmc-dump-monitor.service
+
+pop obmc-console@ttyS2.service
+    open /usr/lib/systemd/system/obmc-console@.service
+    push dev-ttyS2.device
+    push system-obmc\x2dconsole.slice
+
+pop system-obmc\x2dconsole.slice
+    open null
+
+pop dev-ttyS2.device
+    open null
+
+pop nslcd.service
+    open /usr/lib/systemd/system/nslcd.service
+    push syslog.target
+
+pop syslog.target
+    open null
+
+pop nscd.service
+    open /usr/lib/systemd/system/nscd.service
+
+pop nfs-statd.service
+    open /usr/lib/systemd/system/nfs-statd.service
+
+pop lpcsnoop.service
+    open /usr/lib/systemd/system/lpcsnoop.service
+
+pop hostlogger@ttyS2.service
+    open /usr/lib/systemd/system/hostlogger@.service
+    push system-hostlogger.slice
+
+pop system-hostlogger.slice
+    open null
+
+pop getty.target
+    open /usr/lib/systemd/system/getty.target
+    push getty@tty1.service
+    push serial-getty@ttyS4.service
+
+pop serial-getty@ttyS4.service
+    open /usr/lib/systemd/system/serial-getty@.service
+    push dev-ttyS4.device
+    push plymouth-quit-wait.service
+    push getty-pre.target
+    push rc-local.service
+    push system-serial\x2dgetty.slice
+
+pop system-serial\x2dgetty.slice
+    open null
+
+pop rc-local.service
+    open null
+
+pop getty-pre.target
+    open /usr/lib/systemd/system/getty-pre.target
+
+pop plymouth-quit-wait.service
+    open null
+
+pop dev-ttyS4.device
+    open null
+
+pop getty@tty1.service
+    open /usr/lib/systemd/system/getty@.service
+    push system-getty.slice
+
+pop system-getty.slice
+    open null
+
+pop dropbearkey.service
+    open /usr/lib/systemd/system/dropbearkey.service
+    push dropbear-migrate-key-location.service
+
+pop dropbear-migrate-key-location.service
+    open /usr/lib/systemd/system/dropbear-migrate-key-location.service
+
+pop convert-pam-configs.service
+    open /usr/lib/systemd/system/convert-pam-configs.service
+
+pop avahi-daemon.service
+    open /usr/lib/systemd/system/avahi-daemon.service
+    push avahi-daemon.socket
+    push connman.service
+
+pop connman.service
+    open null
+
+pop avahi-daemon.socket
+    open /usr/lib/systemd/system/avahi-daemon.socket
+    push run-avahi\x2ddaemon-socket.mount
+    push run-avahi\x2ddaemon.mount
+
+pop run-avahi\x2ddaemon.mount
+    open null
+
+pop run-avahi\x2ddaemon-socket.mount
+    open null
+
+pop systemd-networkd.socket
+    open /usr/lib/systemd/system/systemd-networkd.socket
+
+pop systemd-journald-audit.socket
+    open /usr/lib/systemd/system/systemd-journald-audit.socket
+
+pop systemd-journald-dev-log.socket
+    open /usr/lib/systemd/system/systemd-journald-dev-log.socket
+    push run-systemd-journal-dev\x2dlog.mount
+
+pop run-systemd-journal-dev\x2dlog.mount
+    open null
+
+pop sockets.target
+    open /usr/lib/systemd/system/sockets.target
+    push bmcweb.socket
+    push dropbear.socket
+    push mctp-demux.socket
+    push obmc-console-ssh.socket
+    push phosphor-ipmi-net@eth0.socket
+    push phosphor-ipmi-net@eth1.socket
+    push systemd-coredump.socket
+
+pop systemd-coredump.socket
+    open /usr/lib/systemd/system/systemd-coredump.socket
+    push run-systemd-coredump.mount
+
+pop run-systemd-coredump.mount
+    open null
+
+pop phosphor-ipmi-net@eth1.socket
+    open /usr/lib/systemd/system/phosphor-ipmi-net@.socket
+    (Invalid interface name, ignoring: sys-subsystem-net-devices-%i.device)
+
+pop phosphor-ipmi-net@eth0.socket
+    open /usr/lib/systemd/system/phosphor-ipmi-net@.socket
+    (Invalid interface name, ignoring: sys-subsystem-net-devices-%i.device)
+
+pop obmc-console-ssh.socket
+    open /usr/lib/systemd/system/obmc-console-ssh.socket
+
+pop mctp-demux.socket
+    open /usr/lib/systemd/system/mctp-demux.socket
+    push mctp-demux.service
+
+pop mctp-demux.service
+    open /usr/lib/systemd/system/mctp-demux.service
+
+pop dropbear.socket
+    open /usr/lib/systemd/system/dropbear.socket
+    push dropbear.service
+
+pop dropbear.service
+    open null
+
+pop bmcweb.socket
+    open /usr/lib/systemd/system/bmcweb.socket
+
+pop var-volatile-srv.service
+    open /usr/lib/systemd/system/var-volatile-srv.service
+
+pop var-volatile-spool.service
+    open /usr/lib/systemd/system/var-volatile-spool.service
+
+pop var-volatile-lib.service
+    open /usr/lib/systemd/system/var-volatile-lib.service
+
+pop var-volatile-cache.service
+    open /usr/lib/systemd/system/var-volatile-cache.service
+
+pop tmp.mount
+    open /usr/lib/systemd/system/tmp.mount
+
+pop systemd-remount-fs.service
+    open /usr/lib/systemd/system/systemd-remount-fs.service
+
+pop systemd-fsck-root.service
+    open /usr/lib/systemd/system/systemd-fsck-root.service
+
+pop emergency.target
+    open /usr/lib/systemd/system/emergency.target
+
+pop local-fs-pre.target
+    open /usr/lib/systemd/system/local-fs-pre.target
+    push run-initramfs-ro.mount
+    push dev-mtdblock5.device
+    push blockdev@dev-mtdblock5.target
+
+pop blockdev@dev-mtdblock5.target
+    open /usr/lib/systemd/system/blockdev@.target
+
+pop dev-mtdblock5.device
+    open null
+
+pop run-initramfs-ro.mount
+    open null
+    push run-initramfs.mount
+
+pop run-initramfs.mount
+    open null
+    push run-initramfs-rw.mount
+
+pop run-initramfs-rw.mount
+    open null
+
+
+
+
+
+"Listening on Syslog Socket."
+
+???
+    push systemd-coredump@internal.service
+
+pop systemd-coredump@internal.service
+    open /usr/lib/systemd/system/systemd-coredump@.service
+    push system-systemd\x2dcoredump.slice
+    push var-tmp.mount
+    push var.mount
+    push var-lib-systemd-coredump.mount
+    push var-lib-systemd.mount
+    push var-lib.mount
+
+pop var-lib.mount
+    open null
+
+pop var-lib-systemd.mount
+    open null
+
+pop var-lib-systemd-coredump.mount
+    open null
+
+pop var.mount
+    open null
+
+pop var-tmp.mount
+    open null
+
+popo system-systemd\x2dcoredump.slice
+    open null
+
+???
+    push run-credentials-systemd\x2dsysctl.service.mount
+
+pop run-credentials-systemd\x2dsysctl.service.mount
+    open null
+    push run-credentials.mount
+    push run.mount
+
+pop run.mount
+    open null
+
+pop run-credentials.mount
+    open null
+```
+
+```
 src/libsystemd/sd-event/sd-event.c                                                   
 +--------------+                                                                      
 | sd_event_new | : prepare event and its priority queue, create epoll_fd, return event
