@@ -1947,6 +1947,9 @@ src/PCIeBinding.cpp
 +--------------------------+                                                                           
 | PCIeBinding::PCIeBinding | : register iface/props, get routing table and update info internally      
 +-|------------------------+                                                                           
+  |    +--------------------------+                                                                             
+  |--> | MctpBinding::MctpBinding | set callback, register dbus obj/iface/signals/methods
+  |    +--------------------------+                                                                             
   |    +-----------------+                                                                             
   |--> | ->add_interface |                                                                             
   |    +-----------------+                                                                             
@@ -1959,7 +1962,56 @@ src/PCIeBinding.cpp
   +--> | getRoutingTableTimer.async_wait |                                                             
        +---------------------------------+                                                             
        | PCIeBinding::updateRoutingTable | : send request to get routing tables, update info internally
-       +---------------------------------+                                                             
+       +---------------------------------+                                                                 
+```
+
+```
+src/MCTPBinding.cpp                                                                
++--------------------------+                                                        
+| MctpBinding::MctpBinding | : set callback, register dbus obj/iface/signals/methods
++-|------------------------+                                                        
+  |                                                                                 
+  |--> add obj to service                                                           
+  |                                                                                 
+  |    +-------------------------------------+                                      
+  |--> | MCTPServiceScanner::setAllowedBuses |                                      
+  |    +-------------------------------------+                                      
+  |    +---------------------------------+                                          
+  |--> | MCTPServiceScanner::setCallback |                                          
+  |    +---------------------------------+                                          
+  |    +-------------------------------------------+                                
+  |--> | MCTPServiceScanner::setEidRemovedCallback |                                
+  |    +-------------------------------------------+                                
+  |                                                                                 
+  |--> add iface to obj                                                             
+  |                                                                                 
+  |    +-------------------------+                                                  
+  |--> | MctpBinding::createUuid |                                                  
+  |    +-------------------------+                                                  
+  |                                                                                 
+  +--> register properties to iface                                                 
+  |                                                                                 
+  |--> if the endpoint is a bus_owner                                               
+  |    -                                                                            
+  |    +--> prepare entry and add to routing_table                                  
+  |                                                                                 
+  |--> register to method "SendMctpMessagePayload" to iface                         
+  |                                                                                 
+  |--> register to method "ReserveBandwidth" to iface                               
+  |                                                                                 
+  |--> register to method "ReleaseBandwidth" to iface                               
+  |                                                                                 
+  |--> register to method "SendReceiveMctpMessagePayload" to iface                  
+  |                                                                                 
+  |--> register signal "MessageReceivedSignal" to iface                             
+  |                                                                                 
+  |--> register signal "RegisterResponder" to iface                                 
+  |                                                                                 
+  |--> register signal "RegisterVdpciResponder" to iface                            
+  |                                                                                 
+  |--> register signal "TriggerDeviceDiscovery" to iface                            
+  |                                                                                 
+  +--> register signal "SendMctpRawPayload" to iface                                
 ```
 
 ```
