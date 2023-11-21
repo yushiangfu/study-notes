@@ -1808,3 +1808,521 @@ net/mctp/device.c
                  +--> | mctp_dump_dev_addrinfo | for each addr, fill info into skb
                       +------------------------+                                  
 ```
+
+```
+src/main.cpp                                                                
++------+                                                                     
+| main |                                                                     
++-|----+                                                                     
+  |    +------------------+                                                  
+  |--> | getConfiguration | setup 'config' from entity_manager or config_file
+  |    +------------------+                                                  
+  |    +----------------+                                                    
+  |--> | ->request_name | request service name                               
+  |    +----------------+                                                    
+  |    +---------------+                                                     
+  |--> | getBindingPtr | get binding (handle dbus and get routing table)     
+  |    +---------------+                                                     
+  |    +--------------------------------+                                    
+  +--> | PCIeBinding::initializeBinding |                                    
+       +--------------------------------+                                    
+```
+
+```
+src/utils/Configuration.cpp                                                                                       
++------------------+                                                                                               
+| getConfiguration | : setup 'config' from entity_manager or config_file                                           
++-|----------------+                                                                                               
+  |    +-----------------------------------+                                                                       
+  |--> | getConfigurationFromEntityManager | (skip, not sure what it's like in entity_manager, but we have config!)
+  |    +-----------------------------------+                                                                       
+  |                                                                                                                
+  +--> if that doesn't work                                                                                        
+       |                                                                                                           
+       |    +--------------------------+                                                                           
+       +--> | getConfigurationFromFile | parse config file, get smbus or pcie fields and setup 'config'            
+            +--------------------------+ (config_path = "/usr/share/mctp/mctp_config.json")                        
+```
+
+```
+src/utils/Configuration.cpp                                                                 
++--------------------------+                                                                 
+| getConfigurationFromFile | : parse config file, get smbus or pcie fields and setup 'config'
++-|------------------------+                                                                 
+  |    +-------------+                                                                       
+  |--> | json::parse |                                                                       
+  |    +-------------+                                                                       
+  |                                                                                          
+  |--> if arg name == 'smbios'                                                               
+  |    |                                                                                     
+  |    |    +-----------------------+                                                        
+  |    +--> | getSMBusConfiguration | (skip smbus part for now)                              
+  |         +-----------------------+                                                        
+  |                                                                                          
+  +--> elif arg name == 'pcie'                                                               
+       |                                                                                     
+       |    +----------------------+                                                         
+       +--> | getPcieConfiguration | get fields, setup config and return                     
+            +----------------------+                                                         
+```
+
+```
+src/utils/Configuration.cpp                                                                 
++----------------------+                                                                     
+| getPcieConfiguration | : get fields, setup config and return                               
++-|--------------------+                                                                     
+  |                                                                                          
+  |--> get fields                                                                            
+  |                                                                                          
+  |--> (non-bus-owner, e.g., endpoint or bridge, is expected to have "GetRoutingInterval" set
+  |                                                                                          
+  +--> setup config                                                                          
+```
+
+```
+src/main.cpp                                                                                              
++---------------+                                                                                          
+| getBindingPtr | : get binding (handle dbus and get routing table)                                        
++-|-------------+                                                                                          
+  |                                                                                                        
+  |--> if arg config is for smbus                                                                          
+  |    -                                                                                                   
+  |    +--> (skip)                                                                                         
+  |                                                                                                        
+  +--> elif arg config is for pcie                                                                         
+       -                                                                                                   
+       +--> alloc PCIeBinding                                                                              
+            +--------------------------+                                                                   
+            | PCIeBinding::PCIeBinding | register iface/props, get routing table and update info internally
+            +--------------------------+                                                                   
+```
+
+```
+                                                  PCIeBinding                 
+                                     +---------------------------------------+
+                                     |          ------pub------              |
+                                     |         initializeBinding()           |
+                                     |          ------pro------              |
+                                     |  handlePrepareForEndpointDiscovery()  |
+                                     |      handleEndpointDiscovery()        |
+      PCIeDriver                     |        handleGetEndpointId()          |
++---------------------+              |        handleSetEndpointId()          |
+|  ------pub------    |              |      handleGetVersionSupport()        |
+|       init()        |              |      handleGetMsgTypeSupport()        |
+|     binding()       |              |        handleGetVdmSupport()          |
+|      pollRx()       |              |         deviceReadyNotify()           |
+| registerAsDefault() |              |      populateDeviceProperties()       |
+|      getBdf()       |              |                 hw                    |
+|   getMediumId()     |              |              hwMonitor                |
+|  setEndpointMap()   |              |          ------pri------              |
+|  ------pri------    |              |                bdf                    |
+|    streamMonitor    |              |            busOwnerBdf                |
+|       *pcie         |              |           pcieInterface               |
++---------------------+              |           discoveredFlag              |
+                                     |         getRoutingInterval            |
+                                     |        getRoutingTableTimer           |
+                                     |            routingTable               |
+                                     |       endpointDiscoveryFlow()         |
+                                     |        updateRoutingTable()           |
+    PCIeMonitor                      |     processRoutingTableChanges()      |
++------------------+                 |       processBridgeEntries()          |
+| ------pub------  |                 |         readRoutingTable()            |
+|   initialize()   |                 |      getRoutingEntryPhysAddr()        |
+|     observe()    |                 |       isEntryInRoutingTable()         |
+| ------pri------  |                 |     isEndOfGetRoutingTableResp()      |
+|   *udevContext   |                 |      isActiveEntryBehindBridge()      |
+|     *udevice     |                 |           isEntryBridge()             |
+|     *umonitor    |                 |          isBridgeCalled()             |
+|   ueventMonitor  |                 |         allBridgesCalled()            |
++------------------+                 |       setDriverEndpointMap()          |
+                                     |       getBindingPrivateData()         |
+                                     |    isReceivedPrivateDataCorrect()     |
+                                     |           getBindingMode()            |
+                                     |        changeDiscoveredFlag()         |
+                                     +---------------------------------------+
+```
+
+```
+src/PCIeBinding.cpp                                                                                   
++--------------------------+                                                                           
+| PCIeBinding::PCIeBinding | : register iface/props, get routing table and update info internally      
++-|------------------------+                                                                           
+  |    +-----------------+                                                                             
+  |--> | ->add_interface |                                                                             
+  |    +-----------------+                                                                             
+  |                                                                                                    
+  |--> register property "bdf"                                                                         
+  |                                                                                                    
+  |--> determine discover_flag and register property "DiscoveredFlag"                                  
+  |                                                                                                    
+  |    +---------------------------------+                                                             
+  +--> | getRoutingTableTimer.async_wait |                                                             
+       +---------------------------------+                                                             
+       | PCIeBinding::updateRoutingTable | : send request to get routing tables, update info internally
+       +---------------------------------+                                                             
+```
+
+```
+src/PCIeBinding.cpp                                                                                                                        
++---------------------------------+                                                                                                         
+| PCIeBinding::updateRoutingTable | : send request to get routing tables, update info internally                                            
++-|-------------------------------+                                                                                                         
+  |                                                                                                                                         
+  |--> config getRoutingTableTimer                                                                                                          
+  |                                                                                                                                         
+  |--> if we haven't been discovered, return                                                                                                
+  |                                                                                                                                         
+  |    +--------------------+                                                                                                               
+  +--> | boost::asio::spawn |                                                                                                               
+       +-----------------------------------------------------------------------------------------------------------------------------------+
+       | +-------------------------------+                                                                                                 |
+       | | PCIeBinding::readRoutingTable | commute with bus owner to update routing table internally                                       |
+       | +-------------------------------+                                                                                                 |
+       |                                                                                                                                   |
+       | while not all bridges are contacted                                                                                               |
+       | |                                                                                                                                 |
+       | |    +-----------------------------------+                                                                                        |
+       | |--> | PCIeBinding::processBridgeEntries | for each not-yet-contacted-bridge, get routing table from it                           |
+       | |    +-----------------------------------+                                                                                        |
+       | |                                                                                                                                 |
+       | +--> if tmp_routing_table != routing_table                                                                                        |
+       |      |                                                                                                                            |
+       |      |    +-----------------------------------+                                                                                   |
+       |      |--> | PCIeBinding::setDriverEndpointMap | set arg new_table in mctp driver                                                  |
+       |      |    +-----------------------------------+                                                                                   |
+       |      |    +-----------------------------------------+                                                                             |
+       |      |--> | PCIeBinding::processRoutingTableChanges | compare old/new routint tables, unregister and register entries accordingly |
+       |      |    +-----------------------------------------+                                                                             |
+       |      |                                                                                                                            |
+       |      +--> routing_table = tmp_routing_table                                                                                       |
+       +-----------------------------------------------------------------------------------------------------------------------------------+
+```
+
+```
+src/PCIeBinding.cpp                                                                                
++-----------------------------------+                                                               
+| PCIeBinding::processBridgeEntries | : for each not-yet-contacted-bridge, get routing table from it
++-|---------------------------------+                                                               
+  |                                                                                                 
+  +--> for each entry in routing-table                                                              
+       |                                                                                            
+       |--> if it's not bridge || it's called already                                               
+       |    -                                                                                       
+       |    +--> continue                                                                           
+       |                                                                                            
+       |--> setup private packet                                                                    
+       |                                                                                            
+       |    +-------------------------------+                                                       
+       +--> | PCIeBinding::readRoutingTable |                                                       
+            +-------------------------------+                                                       
+```
+
+```
+src/PCIeBinding.cpp                                                                               
++-------------------------------+                                                                  
+| PCIeBinding::readRoutingTable | : commute with bus owner to update routing table internally      
++-|-----------------------------+                                                                  
+  |                                                                                                
+  +--> while not end of response                                                                   
+       |                                                                                           
+       |--> add (eid, bdf) to arg call_bridges                                                     
+       |                                                                                           
+       |    +------------------------------------+                                                 
+       |--> | MCTPBridge::getRoutingTableCtrlCmd | send and receive mctp packet (get routing table)
+       |    +------------------------------------+                                                 
+       |                                                                                           
+       +--> for each entry specified in response header                                            
+            |                                                                                      
+            |--> get target entry                                                                  
+            |                                                                                      
+            |--> advance offset                                                                    
+            |                                                                                      
+            +--> push entry to routing-table                                                       
+```
+
+```
+src/mctp_bridge.cpp                                                                     
++------------------------------------+                                                   
+| MCTPBridge::getRoutingTableCtrlCmd | : send and receive mctp packet (get routing table)
++-|----------------------------------+                                                   
+  |                                                                                      
+  |--> alloc request for 'get-routing-table-entries'                                     
+  |                                                                                      
+  |    +--------------------------------+                                                
+  |--> | MCTPDevice::sendAndRcvMctpCtrl | send and receive mctp packet                   
+  |    +--------------------------------+                                                
+  |                                                                                      
+  +--> for each entry specified in response header                                       
+       |                                                                                 
+       |--> get target entry from response                                               
+       |                                                                                 
+       +--> advance offset                                                               
+```
+
+```
+src/mctp_device.cpp                                                                                                            
++--------------------------------+                                                                                              
+| MCTPDevice::sendAndRcvMctpCtrl | : send and receive mctp packet                                                               
++-|------------------------------+                                                                                              
+  |                                                                                                                             
+  |--> prepare callback                                                                                                         
+  |    +-----------------------------+                                                                                          
+  |    | get response & packet state |                                                                                          
+  |    |                             |                                                                                          
+  |    | cancel timer                |                                                                                          
+  |    +-----------------------------+                                                                                          
+  |                                                                                                                             
+  |    +-------------------------------+                                                                                        
+  |--> | MCTPDevice::pushToCtrlTxQueue | add request to tx-queue, ensure timer is triggered to handle (re-send or discard) queue
+  |    +-------------------------------+                                                                                        
+  |                                                                                                                             
+  +--> while pkt_state == pushed_for_transmission                                                                               
+       -                                                                                                                        
+       +--> create timer and wait for handling                                                                                  
+```
+
+```
+src/mctp_device.cpp                                                                                                       
++-------------------------------+                                                                                          
+| MCTPDevice::pushToCtrlTxQueue | : add request to tx-queue, ensure timer is triggered to handle (re-send or discard) queue
++-|-----------------------------+                                                                                          
+  |                                                                                                                        
+  |--> add request to tx_queue                                                                                             
+  |                                                                                                                        
+  |    +---------------------------------+                                                                                 
+  |--> | MCTPDevice::sendMctpCtrlMessage | call libmctp to send tx                                                         
+  |    +---------------------------------+                                                                                 
+  |                                                                                                                        
+  +--> if tx-timer expires                                                                                                 
+       |                                                                                                                   
+       |    +--------------------------------+                                                                             
+       +--> | MCTPDevice::processCtrlTxQueue | setup periodic timer to re-send or discard requests in tx queue             
+            +--------------------------------+                                                                             
+```
+
+```
+src/mctp_device.cpp                                                                                
++--------------------------------+                                                                  
+| MCTPDevice::processCtrlTxQueue | : setup periodic timer to re-send or discard requests in tx queue
++-|------------------------------+                                                                  
+  |                                                                                                 
+  +--> setup timer                                                                                  
+       +----------------------------------------------------------------------+                     
+       | discard packet from tx queue if condition met                        |                     
+       | +------------------------------------------------------------------+ |                     
+       | | if current pkt is still qualified for re-send                    | |                     
+       | | |                                                                | |                     
+       | | |    +---------------------------------+                         | |                     
+       | | |--> | MCTPDevice::sendMctpCtrlMessage | call libmctp to send tx | |                     
+       | | |    +---------------------------------+                         | |                     
+       | | |                                                                | |                     
+       | | |--> state = transmitted                                         | |                     
+       | | |                                                                | |                     
+       | | |--> retry_count--                                               | |                     
+       | | |                                                                | |                     
+       | | +--> return false                                                | |                     
+       | |                                                                  | |                     
+       | | run out of retry, call callback, e.g.,                           | |                     
+       | | get pkt_state & response, cancel timer                           | |                     
+       | +------------------------------------------------------------------+ |                     
+       |                                                                      |                     
+       | if  tx-queue becomes empty                                           |                     
+       | |                                                                    |                     
+       | |--> cancel tx-timer                                                 |                     
+       | |                                                                    |                     
+       | +--> timer_expired = true                                            |                     
+       |                                                                      |                     
+       | else                                                                 |                     
+       | |                                                                    |                     
+       | |    +--------------------------------+                              |                     
+       | +--> | MCTPDevice::processCtrlTxQueue |                              |                     
+       |      +--------------------------------+                              |                     
+       +----------------------------------------------------------------------+                     
+```
+
+```
+src/PCIeBinding.cpp                                                                            
++-----------------------------------+                                                           
+| PCIeBinding::setDriverEndpointMap | : set arg new_table in mctp driver                        
++-|---------------------------------+                                                           
+  |                                                                                             
+  |--> for each tuple (eid, bdf, type) in new_table                                             
+  |    |                                                                                        
+  |    |                                                                                        
+  |    +--> add to local 'endpoints'                                                            
+  |                                                                                             
+  |    +----------------------------+                                                           
+  +--> | PCIeDriver::setEndpointMap | save eid table in mctp driver                             
+       +----------------------------+ (libmcpt-intel implements mctp_astpcie_set_eid_info_ioctl)
+```
+
+```
+src/PCIeBinding.cpp                                                                                                     
++-----------------------------------------+                                                                              
+| PCIeBinding::processRoutingTableChanges | : compare old/new routint tables, unregister and register entries accordingly
++-|---------------------------------------+                                                                              
+  |                                                                                                                      
+  |--> for each entry in routing_table                                                                                   
+  |    -                                                                                                                 
+  |    +--> if it's not in new_table                                                                                     
+  |         |                                                                                                            
+  |         |    +--------------------------------+                                                                      
+  |         +--> | MCTPDevice::unregisterEndpoint | given eid, remove its from dbus ifaces and routing_table             
+  |              +--------------------------------+                                                                      
+  |                                                                                                                      
+  +--> for each entry in new_table                                                                                       
+       -                                                                                                                 
+       +--> if it's not in routing_table                                                                                 
+            |                                                                                                            
+            |--> prepare private data                                                                                    
+            |                                                                                                            
+            |    +-------------------------------+                                                                       
+            |--> | MctpBinding::registerEndpoint | register eid (endpoint, or bus owner, or mix)                         
+            |    +-------------------------------+                                                                       
+            |                                                                                                            
+            +--> log the bdf info                                                                                        
+```
+
+```
+src/MCTPBinding.cpp                                                                                                            
++-------------------------------+                                                                                               
+| MctpBinding::registerEndpoint | : register eid (endpoint, or bus owner, or mix)                                               
++-|-----------------------------+                                                                                               
+  |                                                                                                                             
+  |--> if the entry represents bus_owner                                                                                        
+  |    |                                                                                                                        
+  |    |    +--------------------------------------+                                                                            
+  |    |--> | MCTPBridge::busOwnerRegisterEndpoint | given eid, send ctrl requests, register to bus owner and export dbus ifaces
+  |    |    +--------------------------------------+                                                                            
+  |    |                                                                                                                        
+  |    |--> if anything goes wrong                                                                                              
+  |    |    |                                                                                                                   
+  |    |    |    +------------------------------------+                                                                         
+  |    |    +--> | MctpBinding::clearRegisteredDevice |                                                                         
+  |    |         +------------------------------------+                                                                         
+  |    +--> return eid                                                                                                          
+  |                                                                                                                             
+  |    +--------------------------------------+                                                                                 
+  |--> | MCTPBridge::getMsgTypeSupportCtrlCmd | send request to get supported_msg_types                                         
+  |    +--------------------------------------+                                                                                 
+  |                                                                                                                             
+  |--> if eid is already registered, return                                                                                     
+  |                                                                                                                             
+  |    +----------------------------+                                                                                           
+  |--> | MCTPBridge::getUuidCtrlCmd | send request to get uuid and check if it's valid                                          
+  |    +----------------------------+                                                                                           
+  |                                                                                                                             
+  |--> setup ep properties                                                                                                      
+  |                                                                                                                             
+  |--> if eid is for bridge                                                                                                     
+  |    |                                                                                                                        
+  |    |    +--------------------------------------------------+                                                                
+  |    |--> | MCTPBridge::sendNewRoutingTableEntryToAllBridges | send routing tables to all bridges                             
+  |    |    +--------------------------------------------------+                                                                
+  |    |                                                                                                                        
+  |    +--> if it's bridge (with or without endpoints)                                                                          
+  |         |                                                                                                                   
+  |         |    +---------------------------------------------+                                                                
+  |         +--> | MCTPBridge::sendRoutingTableEntriesToBridge | send routing tables                                            
+  |              +---------------------------------------------+                                                                
+  |    +---------------------------------------+                                                                                
+  |--> | PCIeBinding::populateDeviceProperties | add interface for underlying device, e.g., bdf if it's pcie                    
+  |    +---------------------------------------+                                                                                
+  |    +------------------------------------------------+                                                                       
+  +--> | MCTPDBusInterfaces::populateEndpointProperties | add interface for endpoint properties                                 
+       +------------------------------------------------+                                                                       
+```
+
+```
+src/mctp_bridge.cpp                                                                                                  
++--------------------------------------+                                                                              
+| MCTPBridge::busOwnerRegisterEndpoint | : given eid, send ctrl requests, register to bus owner and export dbus ifaces
++-|------------------------------------+                                                                              
+  |    +------------------------------------------+                                                                   
+  |--> | MCTPBridge::getMctpVersionSupportCtrlCmd | send mctp request to get version data                             
+  |    +------------------------------------------+                                                                   
+  |    +---------------------------+                                                                                  
+  |--> | MCTPBridge::getEidCtrlCmd | send request (get eid) and receive                                               
+  |    +---------------------------+                                                                                  
+  |--> get dst eid from response                                                                                      
+  |    +---------------------------------------+                                                                      
+  |--> | MCTPBridge::logUnsupportedMCTPVersion | log unsupported mctp version                                         
+  |    +---------------------------------------+                                                                      
+  |    +----------------------------+                                                                                 
+  |--> | MCTPBridge::getUuidCtrlCmd | send request to get uuid and check if it's valid                                
+  |    +----------------------------+                                                                                 
+  |    +-------------------+                                                                                          
+  |--> | isEIDMappedToUUID | given (eid, uuid), check if they are still the same in our mapping                       
+  |    +-------------------+                                                                                          
+  +--> if yes, return eid                                                                                             
+  |    +-------------------------+                                                                                    
+  |    | getEIDForReregistration | given uuid, get eid from map, and ensure there's no dbus interfaces of it          
+  |    +-------------------------+                                                                                    
+  |--> +-----------------------------------------+                                                                    
+  |--> | DeviceWatcher::checkDeviceInitThreshold | check we haven't retried too many times on this device             
+  |    +-----------------------------------------+                                                                    
+  |--> ensure eid is valid                                                                                            
+  |    +---------------------------+                                                                                  
+  |--> | MCTPBridge::setEidCtrlCmd | send request to set eid                                                          
+  |    +---------------------------+                                                                                  
+  |--> update eid's status in pool                                                                                    
+  |    +--------------------------------------+                                                                       
+  |--> | MCTPBridge::getMsgTypeSupportCtrlCmd | send request to get supported_msg_types                               
+  |    +--------------------------------------+                                                                       
+  |--> if eid is already registered, return                                                                           
+  |--> setup ep properties                                                                                            
+  |    +---------------------------------------+                                                                      
+  |--> | PCIeBinding::populateDeviceProperties | add interface for underlying device, e.g., bdf if it's pcie          
+  |    +---------------------------------------+                                                                      
+  |    +------------------------------------------------+                                                             
+  |--> | MCTPDBusInterfaces::populateEndpointProperties | add interface for endpoint properties                       
+  |    +------------------------------------------------+                                                             
+  |--> update routing table                                                                                           
+  +--> if eid is bridge                                                                                               
+       -    +---------------------------------------------+                                                           
+       +--> | MCTPBridge::sendRoutingTableEntriesToBridge |                                                           
+            +---------------------------------------------+                                                           
+```
+
+```
+src/mctp_bridge.cpp                                                                
++------------------------------------------+                                        
+| MCTPBridge::getMctpVersionSupportCtrlCmd | : send mctp request to get version data
++-|----------------------------------------+                                        
+  |    +-----------------+                                                          
+  |--> | getFormattedReq | prepare mctp_ctrl request (get version support)          
+  |    +-----------------+                                                          
+  |    +--------------------------------+                                           
+  |--> | MCTPDevice::sendAndRcvMctpCtrl | send and receive mctp packet              
+  |    +--------------------------------+                                           
+  |                                                                                 
+  +--> get version data from response                                               
+```
+
+```
+src/mctp_bridge.cpp                                                  
++---------------------------+                                         
+| MCTPBridge::getEidCtrlCmd | : send request (get eid) and receive    
++-|-------------------------+                                         
+  |                                                                   
+  |--> prepare request of 'get eid'                                   
+  |                                                                   
+  |    +--------------------------------+                             
+  |--> | MCTPDevice::sendAndRcvMctpCtrl | send and receive mctp packet
+  |    +--------------------------------+                             
+  |                                                                   
+  +--> check resp size and completion code                            
+```
+
+```
+src/mctp_bridge.cpp                                                             
++----------------------------+                                                   
+| MCTPBridge::getUuidCtrlCmd | : send request to get uuid and check if it's valid
++-|--------------------------+                                                   
+  |                                                                              
+  |--> prepare request (gte eid uuid)                                            
+  |                                                                              
+  |    +--------------------------------+                                        
+  +--> | MCTPDevice::sendAndRcvMctpCtrl | send and receive mctp packet           
+       +--------------------------------+                                        
+```
