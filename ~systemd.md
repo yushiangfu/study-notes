@@ -1,4 +1,38 @@
 ```
+main                                                                                                                                                      
+|                                                                                                                                                          
+|--> log_execution_mode          systemd[1]: Detected architecture arm.                                                                                    
+|                                                                                                                                                          
+|--> initialize_runtime                                                                                                                                    
+|    |                                                                                                                                                     
+|    |--> os_release_status      Welcome to Phosphor OpenBMC (Phosphor OpenBMC Project Reference Distro) 2.13.0-dev!                                       
+|    |                                                                                                                                                     
+|    +--> hostname_setup         systemd[1]: Hostname set to <ast2600-default>.                                                                            
+|    |                                                                                                                                                     
+|    +--> machine_id_setup       systemd[1]: Initializing machine ID from random generator.                                                                
+|                                                                                                                                                          
+|--> set_manager_settings                                                                                                                                  
+|    -                                                                                                                                                     
+|    +--> manager_set_watchdog                                                                                                                             
+|         -                                                                                                                                                
+|         +--> watchdog_setup    systemd[1]: Using hardware watchdog 'aspeed_wdt', version 0, device /dev/watchdog0                                        
+|                                systemd[1]: Watchdog running with a timeout of 2min.                                                                      
+|--> manager_startup                                                                                                                                       
+|    -                                                                                                                                                     
+|    +-->  manager_enumerate     /usr/lib/systemd/system/phosphor-ipmi-net@.socket:6: Invalid interface name, ignoring: sys-subsystem-net-devices-%i.device
+|                                /usr/lib/systemd/system/phosphor-ipmi-net@.socket:6: Invalid interface name, ignoring: sys-subsystem-net-devices-%i.device
+|                                                                                                                                                          
+|--> do_queue_default_job        systemd[1]: Queued start job for default target Multi-User System.                                                        
+|                                                                                                                                                          
++--> invoke_main_loop                                                                                                                                      
+     -                                                                                                                                                     
+     +--> manager_loop           [  OK  ] Created slice Slice /system/getty.                                                                               
+                                 [  OK  ] Created slice Slice /system/hostlogger.                                                                          
+                                 [  OK  ] Created slice Slice /system/mapper-wait.                                                                         
+                                 ...                                                                                                                       
+```
+
+```
 call mount_enumerate_perpetual()
     push -.mount
 
