@@ -1,4 +1,56 @@
-### dbus-broker
+```
+src/launch/main.c                                                                           
++------+                                                                                     
+| main |                                                                                     
++-|----+                                                                                     
+  |    +-------------+                                                                       
+  |--> | inherit_fds | Assume fd 3 is an inherited socket at '/run/dbus/system_bus_socket'.  
+  |    +-------------+                                                                       
+  |    +-----+                                                                               
+  +--> | run |                                                                               
+       +-|---+                                                                               
+         |    +--------------+                                                               
+         |--> | launcher_new |                                                               
+         |    +-|------------+                                                               
+         |      |                                                                            
+         |      |--> Prepare an event and add signal sources for SIGTERM, SIGINT, and SIGHUP.
+         |      |                                                                            
+         |      +--> Obtain bus for controller.                                              
+         |                                                                                   
+         |    +--------------+                                                               
+         +--> | launcher_run |                                                               
+              +-|------------+                                                               
+                |    +------------------------+                                              
+                |--> | launcher_load_services | Load service files into the launcher.        
+                |    +------------------------+                                              
+                |                                                                            
+                +--> Prepare socket pair, [0] for launcher, [1] for broker.                  
+                |                                                                            
+                |    +---------------+                                                       
+                |--> | launcher_fork | Launch broker.                                        
+                |    +---------------+                                                       
+                |    +--------------------------+                                            
+                |--> | sd_bus_add_object_vtable | Register launcher's method calls.          
+                |    +--------------------------+                                            
+                |    +-------------------+                                                   
+                |--> | sd_bus_add_filter | Register service activation filter.               
+                |    +-------------------+                                                   
+                |    +--------------+                                                        
+                |--> | sd_bus_start | Start controller bus, ready for message exchange.      
+                |    +--------------+                                                        
+                |    +-----------------------+                                               
+                |--> | launcher_add_services | Register services with the broker.            
+                |    +-----------------------+                                               
+                |    +-----------------------+                                               
+                |--> | launcher_add_listener | Add listener to broker (purpose?).            
+                |    +-----------------------+                                               
+                |    +------------------+                                                    
+                |--> | launcher_connect | Open and start regular bus for message exchange.   
+                |    +------------------+                                                    
+                |    +---------------+                                                       
+                +--> | sd_event_loop | In a loop, handle events.                             
+                     +---------------+                                                       
+```
 
 ```
 src/broker/main.c                                                                       
@@ -1608,8 +1660,6 @@ src/bus/peer.c
   |                                                                  
   +--> given perer id, insert to peer tree of bus                    
 ```
-
-### dbus-broker-launch
 
 ```
 src/launch/main.c                                                 
