@@ -582,6 +582,28 @@ src/main.cpp
           method: org.freedesktop.DBus                                                      
 ```
 
+```
+root@romulus:~# busctl get-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software xyz.openbmc_project.Association.Definitions Associations
+a(sss) 3 "functional" "software_version" "/xyz/openbmc_project/software/7e2de8e3" "active" "software_version" "/xyz/openbmc_project/software/7e2de8e3" "updateable" "software_version" "/xyz/openbmc_project/software/7e2de8e3"
+root@romulus:~# 
+root@romulus:~# 
+root@romulus:~# 
+root@romulus:~# 
+root@romulus:~# 
+root@romulus:~# 
+root@romulus:~# busctl tree xyz.openbmc_project.ObjectMapper                                                                                               
+`- /xyz
+  `- /xyz/openbmc_project
+    |- /xyz/openbmc_project/object_mapper
+    `- /xyz/openbmc_project/software
+      |- /xyz/openbmc_project/software/7e2de8e3
+      | `- /xyz/openbmc_project/software/7e2de8e3/software_version
+      |- /xyz/openbmc_project/software/active
+      |- /xyz/openbmc_project/software/functional
+      `- /xyz/openbmc_project/software/updateable
+
+```
+
 </details>
 
 ## <a name="association"></a> Association
