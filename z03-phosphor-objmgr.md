@@ -626,6 +626,36 @@ busctl call --verbose \
    xyz.openbmc_project.Common.FactoryReset
 ```
 
+- GetAssociatedSubTree
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \
+   /xyz/openbmc_project/object_mapper \
+   xyz.openbmc_project.ObjectMapper \
+   GetAssociatedSubTree \
+   ooias \
+   /xyz/openbmc_project/software/active \
+   /xyz/openbmc_project/software \
+   0 \
+   0
+```
+
+- GetAssociatedSubTreePaths
+
+```
+busctl call --verbose \
+   xyz.openbmc_project.ObjectMapper \
+   /xyz/openbmc_project/object_mapper \
+   xyz.openbmc_project.ObjectMapper \
+   GetAssociatedSubTreePaths \
+   ooias \
+   /xyz/openbmc_project/software/active \
+   /xyz/openbmc_project/software \
+   0 \
+   0
+```
+
 - GetObject
 
 ```
@@ -635,8 +665,9 @@ busctl call --verbose \
   xyz.openbmc_project.ObjectMapper \
   GetObject \
   sas \
-  /xyz/openbmc_project/FruDevice \
-  0
+  /xyz/openbmc_project/software \
+  1 \
+  xyz.openbmc_project.Association.Definitions
 ```
 
 - GetSubTree
@@ -648,10 +679,10 @@ busctl call --verbose \
    xyz.openbmc_project.ObjectMapper \
    GetSubTree \
    sias \
-   / \
+   /xyz/openbmc_project/software \
    0 \
    1 \
-   xyz.openbmc_project.FruDeviceManager
+   xyz.openbmc_project.Association.Definitions
 ```
 
 - GetSubTreePaths
@@ -663,10 +694,10 @@ busctl call --verbose \
    xyz.openbmc_project.ObjectMapper \
    GetSubTreePaths \
    sias \
-   / \
+   /xyz/openbmc_project/software \
    0 \
    1 \
-   xyz.openbmc_project.FruDeviceManager
+   xyz.openbmc_project.Association.Definitions
 ```
 
 ## <a name="reference"></a> Reference
