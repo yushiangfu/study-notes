@@ -1824,7 +1824,7 @@ src/main.cpp
   |--> | getBindingPtr | get binding (handle dbus and get routing table)     
   |    +---------------+                                                     
   |    +--------------------------------+                                    
-  +--> | PCIeBinding::initializeBinding |                                    
+  +--> | PCIeBinding::initializeBinding | update internal routing table, setup binding, install callbacks to rx/rx_ctrl, setup udev monitor, trigger ep discovery                                    
        +--------------------------------+                                    
 ```
 
@@ -2377,4 +2377,361 @@ src/mctp_bridge.cpp
   |    +--------------------------------+                                        
   +--> | MCTPDevice::sendAndRcvMctpCtrl | send and receive mctp packet           
        +--------------------------------+                                        
+```
+
+```
+src/PCIeBinding.cpp                                                                                                                                        
++--------------------------------+                                                                                                                          
+| PCIeBinding::initializeBinding | : update internal routing table, setup binding, install callbacks to rx/rx_ctrl, setup udev monitor, trigger ep discovery
++-|------------------------------+                                                                                                                          
+  |    +-----------------------------+                                                                                                                      
+  |--> | MctpBinding::initializeMctp | get all eid from all mctp services, update to internal routing_table                                                 
+  |    +-----------------------------+                                                                                                                      
+  |    +-------------------------------+                                                                                                                    
+  |--> | mctp_register_bus_dynamic_eid | set up bus, link 'mctp' and 'binding', call binding->start (open file, ...)                                        
+  |    +-------------------------------+ (libmctp-intel)                                                                                                    
+  |    +-------------------------------+                                                                                                                    
+  |--> | PCIeDriver::registerAsDefault | ioctl (register default handler)                                                                                   
+  |    +-------------------------------+                                                                                                                    
+  |    +-----------------+                                                                                                                                  
+  |--> | mctp_set_rx_all | install callback to rx                                                                                                           
+  |    +-----------------+ +------------------------+                                                                                                       
+  |                        | MctpBinding::rxMessage | handle received msg (e.g., call saved callback)                                                       
+  |                        +------------------------+                                                                                                       
+  |    +------------------+                                                                                                                                 
+  |--> | mctp_set_rx_ctrl | install rx function for ctrl                                                                                                    
+  |    +------------------+ +----------------------------------------+                                                                                      
+  |                         | MctpBinding::handleMCTPControlRequests | handle mctp control request, return response if necessary                            
+  |                         +----------------------------------------+                                                                                      
+  |    +-------------------------+                                                                                                                          
+  |--> | PCIeMonitor::initialize | setup udev monitor                                                                                                       
+  |    +-------------------------+                                                                                                                          
+  |    +--------------------+                                                                                                                               
+  |--> | PCIeDriver::pollRx | receive data and continue to poll                                                                                             
+  |    +--------------------+                                                                                                                               
+  |                                                                                                                                                         
+  |--> if binding_mode == endpoint                                                                                                                          
+  |    |                                                                                                                                                    
+  |    |    +------------------------------------+                                                                                                          
+  |    +--> | PCIeBinding::endpointDiscoveryFlow | set flag = undiscovered, send request (discovery notify)                                                 
+  |         +------------------------------------+                                                                                                          
+  |                                                                                                                                                         
+  |--> get bdf and set to property                                                                                                                          
+  |                                                                                                                                                         
+  |--> get medium_id and set to property                                                                                                                    
+  |                                                                                                                                                         
+  |    +----------------------+                                                                                                                             
+  +--> | PCIeMonitor::observe | get PCIE_READY value from udev monitor, update bdf accordingly                                                              
+       +----------------------+                                                                                                                             
+```
+
+```
+src/MCTPBinding.cpp                                                                                                       
++-----------------------------+                                                                                            
+| MctpBinding::initializeMctp | : get all eid from all mctp services, update to internal routing_table                     
++--------------------------+--+                                                                                            
+| MCTPServiceScanner::scan | : get all eid from all mctp services, update to internal routing_table                        
++-|------------------------+                                                                                               
+  |                                                                                                                        
+  |--> prepare scan_task function                                                                                          
+  |    +------------------------------------------------------------------------------------------------------------------+
+  |    | bind handler                                                                                                     |
+  |    | +-------------------------------------+                                                                          |
+  |    | | MCTPServiceScanner::onHotPluggedEid | handle eid of hotpluggable device                                        |
+  |    | +-------------------------------------+                                                                          |
+  |    |                                                                                                                  |
+  |    | register handler for signal "InterfacesAdded"                                                                    |
+  |    |                                                                                                                  |
+  |    | register handler for signal "InterfacesRemoved"                                                                  |
+  |    |                                                                                                                  |
+  |    | +-------------------------------------+                                                                          |
+  |    | | MCTPServiceScanner::getMCTPServices | get all mctp services                                                    |
+  |    | +-------------------------------------+                                                                          |
+  |    |                                                                                                                  |
+  |    | for each mctp service (e.g., pcie, smbus, ...)                                                                   |
+  |    | |                                                                                                                |
+  |    | |    +---------------------------------+                                                                         |
+  |    | +--> | MCTPServiceScanner::scanForEIDs | get eid objects from other service and update to internal routing_table |
+  |    |      +---------------------------------+                                                                         |
+  |    +------------------------------------------------------------------------------------------------------------------+
+  |    +--------------------+                                                                                              
+  +--> | boost::asio::spawn | run scan_task                                                                                
+       +--------------------+                                                                                              
+```
+
+```
+src/service_scanner.cpp                                                      
++-------------------------------------+                                       
+| MCTPServiceScanner::onHotPluggedEid | : handle eid of hotpluggable device   
++-|-----------------------------------+                                       
+  |                                                                           
+  |--> read msg into values                                                   
+  |                                                                           
+  |--> find iface "xyz.openbmc_project.MCTP.Endpoint"                         
+  |                                                                           
+  |    +----------------+                                                     
+  |--> | getEIDFromPath |                                                     
+  |    +----------------+                                                     
+  |                                                                           
+  |--> get ep type (endpoint? bridge?)                                        
+  |                                                                           
+  |    +--------------------+                                                 
+  +--> | boost::asio::spawn |                                                 
+       +---------------------------------------------------------------------+
+       | get msg sender                                                      |
+       |                                                                     |
+       | if it's us, return                                                  |
+       | |                                                                   |
+       | |    +-------------------------------------------+                  |
+       | +--> | MCTPServiceScanner::getMctpServiceDetails | get service info |
+       |      +-------------------------------------------+                  |
+       +---------------------------------------------------------------------+
+```
+
+```
+src/service_scanner.cpp                                                                                     
++---------------------------------+                                                                          
+| MCTPServiceScanner::scanForEIDs | : get eid objects from other service and update to internal routing_table
++-|-------------------------------+                                                                          
+  |                                                                                                          
+  |--> if it's self process, return                                                                          
+  |                                                                                                          
+  |--> send method call "GetManagedObjects" to arg service                                                   
+  |                                                                                                          
+  +--> for (obj, ifaces) in reply                                                                            
+       |                                                                                                     
+       |--> if can't find iface "xyz.openbmc_project.MCTP.Endpoint", return                                  
+       |                                                                                                     
+       |    +----------------+                                                                               
+       |--> | getEIDFromPath |                                                                               
+       |    +----------------+                                                                               
+       |    +-------------------+                                                                            
+       |--> | readPropertyValue | send method call to get property 'mode'                                    
+       |    +-------------------+                                                                            
+       |    +-------------------------------------------+                                                    
+       |--> | MCTPServiceScanner::getMctpServiceDetails | get service info                                   
+       |    +-------------------------------------------+                                                    
+       |    +----------------+                                                                               
+       +--> | this->onNewEid | ensure eid is in routing_table                                                
+            +----------------+                                                                               
+```
+
+```
+src/MCTPBinding.cpp                                                                                                            
++------------------------+                                                                                                      
+| MctpBinding::rxMessage | : handle received msg (e.g., call saved callback)                                                    
++-|----------------------+                                                                                                      
+  |                                                                                                                             
+  |--> if eid is for regular endpoint                                                                                           
+  |    |                                                                                                                        
+  |    |    +-----------------------------------------+                                                                         
+  |    +--> | MctpBinding::addUnknownEIDToDeviceTable | (do nothing)                                                            
+  |         +-----------------------------------------+                                                                         
+  |                                                                                                                             
+  +--> if no tag owner && is ctrl msg && is response                                                                            
+  |    |                                                                                                                        
+  |    |    +----------------------------+                                                                                      
+  |    |--> | MCTPDevice::handleCtrlResp | find iid_matched tx entry and call the saved callback(), remove it from ctrl_tx_queue
+  |    |    +----------------------------+                                                                                      
+  |    +--> return                                                                                                              
+  |                                                                                                                             
+  |--> if no tag owner                                                                                                          
+  |    |                                                                                                                        
+  |    |    +--------------------------------+                                                                                  
+  |    |--> | MctpTransmissionQueue::receive | remove msg from transmitted_msg, send out all queued msgs                        
+  |    |    +--------------------------------+                                                                                  
+  |    +--> return                                                                                                              
+  |                                                                                                                             
+  +--> send out "MessageReceivedSignal"                                                                                         
+```
+
+```
+src/mctp_device.cpp                                                                                                  
++----------------------------+                                                                                        
+| MCTPDevice::handleCtrlResp | : find iid_matched tx entry and call the saved callback(), remove it from ctrl_tx_queue
++-|--------------------------+                                                                                        
+  |                                                                                                                   
+  |--> find instance_id matched req from ctrl_tx_queue                                                                
+  |                                                                                                                   
+  |--> get callback from entry                                                                                        
+  |                                                                                                                   
+  |--> call it, e.g.?                                                                                                 
+  |                                                                                                                   
+  +--> if match found, remove it from ctrl_tx_queue                                                                   
+```
+
+```
+src/utils/transmission_queue.cpp                                                              
++--------------------------------+                                                             
+| MctpTransmissionQueue::receive | : remove msg from transmitted_msg, send out all queued msgs 
++-|------------------------------+                                                             
+  |                                                                                            
+  |--> given eid and msg_tag, find target msg from transmitted_msg                             
+  |                                                                                            
+  |--> remove msg from transmitted_msg                                                         
+  |                                                                                            
+  |--> add msg_tag to available_tags                                                           
+  |                                                                                            
+  |--> cancel msg timer                                                                        
+  |                                                                                            
+  +--> post a job                                                                              
+       +--------------------------------------------------------------------------------------+
+       | +---------------------------------------------------------+                          |
+       | | MctpTransmissionQueue::Endpoint::transmitQueuedMessages | send out all queued msgs |
+       | +---------------------------------------------------------+                          |
+       +--------------------------------------------------------------------------------------+
+```
+
+```
+src/utils/transmission_queue.cpp                                                              
++---------------------------------------------------------+                                    
+| MctpTransmissionQueue::Endpoint::transmitQueuedMessages | : send out all queued msgs         
++-|-------------------------------------------------------+                                    
+  |                                                                                            
+  +--> while there's queued msg                                                                
+       |                                                                                       
+       |--> get next_tag from available_tags                                                   
+       |                                                                                       
+       |--> remove msg from queued_msg                                                         
+       |    |                                                                                  
+       |    |    +-----------------+                                                           
+       |    +--> | mctp_message_tx | prepare packet(s) to accommodate msg, send out through kcs
+       |         +-----------------+                                                           
+       |                                                                                       
+       |--> erase tag from available_tags                                                      
+       |                                                                                       
+       +--> mvoe msg to transmitted_msg                                                        
+```
+
+```
+src/MCTPBinding.cpp                                                                                                 
++----------------------------------------+                                                                           
+| MctpBinding::handleMCTPControlRequests | : handle mctp control request, return response if necessary               
++-----------------------------+----------+                                                                           
+| MCTPEndpoint::handleCtrlReq | : handle mctp control request, return response if necessary                          
++-|---------------------------+                                                                                      
+  |                                                                                                                  
+  |--> switch cmd_code                                                                                               
+  |--> case prepare_ep_discovery                                                                                     
+  |    -    +------------------------------------------------+                                                       
+  |    +--> |  PCIeBinding::handlePrepareForEndpointDiscovery| prepare response and set flag = undiscovered          
+  |         +------------------------------------------------+                                                       
+  |--> case ep_discovery                                                                                             
+  |    -    +--------------------------------------+                                                                 
+  |    +--> | PCIeBinding::handleEndpointDiscovery | save bus_owner bdf, prepare response                            
+  |         +--------------------------------------+                                                                 
+  |--> case get_ep_id                                                                                                
+  |    -    +----------------------------------+                                                                     
+  |    +--> | PCIeBinding::handleGetEndpointId | prepare response                                                    
+  |         +----------------------------------+                                                                     
+  |--> case set_ep_id                                                                                                
+  |    -    +----------------------------------+                                                                     
+  |    +--> | PCIeBinding::handleSetEndpointId | save dst eid & our assigned eid, prepare response                   
+  |         +----------------------------------+                                                                     
+  |--> case get_version_support                                                                                      
+  |    -    +--------------------------------------+                                                                 
+  |    +--> | PCIeBinding::handleGetVersionSupport | add supported version in response                               
+  |         +--------------------------------------+                                                                 
+  |--> case get_msg_type_support                                                                                     
+  |    -    +--------------------------------------+                                                                 
+  |    +--> | PCIeBinding::handleGetMsgTypeSupport | add supported msg types in response                             
+  |         +--------------------------------------+                                                                 
+  |--> case get_vendor_msg_support                                                                                   
+  |    -    +----------------------------------+                                                                     
+  |    +--> | PCIeBinding::handleGetVdmSupport | given idx, add target vdm info in reponse                           
+  |         +----------------------------------+                                                                     
+  |--> case get_routing_table_entries                                                                                
+  |    -    +-------------------------------------+                                                                  
+  |    +--> | MCTPEndpoint::handleGetRoutingTable | add routing table in response                                    
+  |         +-------------------------------------+                                                                  
+  |                                                                                                                  
+  +--> if response is prepared                                                                                       
+       |                                                                                                             
+       |    +-----------------+                                                                                      
+       +--> | mctp_message_tx | prepare packet(s) to accommodate msg, send out through kcs                           
+            +-----------------+                                                                                      
+```
+
+```
+src/hw/aspeed/PCIeMonitor.cpp                                                                            
++-------------------------+                                                                               
+| PCIeMonitor::initialize | : setup udev monitor                                                          
++-|-----------------------+                                                                               
+  |    +----------+                                                                                       
+  |--> | udev_new |                                                                                       
+  |    +----------+                                                                                       
+  |    +------------------------------+                                                                   
+  |--> | udev_device_new_from_syspath | given sys path, alloc udevice                                     
+  |    +------------------------------+ (/sys/devices/platform/ahb/ahb:apb/1e6e8000.mctp/misc/aspeed-mctp)
+  |    +-------------------------------+                                                                  
+  |--> | udev_monitor_new_from_netlink | given netlink name, alloc monitor                                
+  |    +-------------------------------+                                                                  
+  |    +-------------------------------+                                                                  
+  |--> | udev_monitor_enable_receiving |                                                                  
+  |    +-------------------------------+                                                                  
+  |                                                                                                       
+  +--> setup ueventMonitor using monitor fd                                                               
+```
+
+```
+src/PCIeBinding.cpp                                                                                                                 
++------------------------------------+                                                                                               
+| PCIeBinding::endpointDiscoveryFlow | : set flag = undiscovered, send request (discovery notify)                                    
++-|----------------------------------+                                                                                               
+  |    +-----------------------------------+                                                                                         
+  |--> | PCIeBinding::changeDiscoveredFlag | given flag, set dbus property, if it's 'discovered', trigger timer to get routing  table
+  |    +-----------------------------------+                                                                                         
+  |    +--------------------------------------+                                                                                      
+  +--> | MCTPEndpoint::discoveryNotifyCtrlCmd | send request (discovery notify) and receive                                          
+       +--------------------------------------+                                                                                      
+```
+
+```
+src/hw/aspeed/PCIeMonitor.cpp                                                           
++----------------------+                                                                 
+| PCIeMonitor::observe | : get PCIE_READY value from udev monitor, update bdf accordingly
++-|--------------------+                                                                 
+  |    +------------------------------+                                                  
+  |--> | udev_monitor_receive_device  | get udevice from monitor                         
+  |    +------------------------------+                                                  
+  |    +-----------------------+                                                         
+  |--> | ueventHandlePcieReady | get PCIE_READY value and update bdf accordingly         
+  |    +-----------------------+                                                         
+  |    +----------------------+                                                          
+  +--> | PCIeMonitor::observe |                                                          
+       +----------------------+                                                          
+```
+
+```
+src/hw/aspeed/PCIeMonitor.cpp                                                   
++-----------------------+                                                        
+| ueventHandlePcieReady | : get PCIE_READY value and update bdf accordingly      
++-|---------------------+                                                        
+  |                                                                              
+  |--> get property "PCIE_READY" and check if value == 1                         
+  |                                                                              
+  |    +--------------------------------+                                        
+  +--> | PCIeBinding::deviceReadyNotify | given 'ready' value, update bdf in time
+       +--------------------------------+                                        
+```
+
+```
+src/PCIeBinding.cpp                                                                                                                           
++--------------------------------+                                                                                                             
+| PCIeBinding::deviceReadyNotify | : given 'ready' value, update bdf in time                                                                   
++-|------------------------------+                                                                                                             
+  |                                                                                                                                            
+  |--> if ready, get bdf thru ioctl                                                                                                            
+  |                                                                                                                                            
+  |--> else                                                                                                                                    
+  |    |                                                                                                                                       
+  |    |--> bdf = 0                                                                                                                            
+  |    |                                                                                                                                       
+  |    +--> if binding_mode != bus_owner                                                                                                       
+  |         |                                                                                                                                  
+  |         |    +-----------------------------------+                                                                                         
+  |         +--> | PCIeBinding::changeDiscoveredFlag | given flag, set dbus property, if it's 'discovered', trigger timer to get routing  table
+  |              +-----------------------------------+                                                                                         
+  |                                                                                                                                            
+  +--> pcieInterface->set_property(bdf)                                                                                                        
 ```
