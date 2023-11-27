@@ -33,6 +33,261 @@ main
 ```
 
 ```
+[  OK  ] Created slice Slice /system/getty.                         <-- system-getty.slice
+[  OK  ] Created slice Slice /system/hostlogger.                    <-- system-hostlogger.slice
+[  OK  ] Created slice Slice /system/mapper-wait.                   <-- system-mapper\x2dwait.slice
+[  OK  ] Created slice Slice /system/modprobe.                      <-- system-modprobe.slice
+[  OK  ] Created slice Slice /system/obmc-console.                  <-- system-obmc\x2dconsole.slice
+[  OK  ] Created slice Slice /system/obmc-led-group-start.          <-- system-obmc\x2dled\x2dgroup\x2dstart.slice
+[  OK  ] Created slice Slice /system/phosphor-certificate-manager.  <-- system-phosphor\x2dcertificate\x2dmanager.slice
+[  OK  ] Created slice Slice /system/phosphor-ipmi-kcs.             <-- system-phosphor\x2dipmi\x2dkcs.slice
+[  OK  ] Created slice Slice /system/phosphor-ipmi-net.             <-- system-phosphor\x2dipmi\x2dnet.slice
+[  OK  ] Created slice Slice /system/serial-getty.                  <-- system-serial\x2dgetty.slice
+[  OK  ] Created slice Slice /syste…project.Chassis.Control.Power.  <-- system-xyz.openbmc_project.Chassis.Control.Power.slice
+[  OK  ] Created slice Slice /syste…c_project.State.Boot.PostCode.  <-- system-xyz.openbmc_project.State.Boot.PostCode.slice
+[  OK  ] Started Dispatch Password …ts to Console Directory Watch.  <-- systemd-ask-password-console.path
+[  OK  ] Started Forward Password R…uests to Wall Directory Watch.  <-- systemd-ask-password-wall.path
+[  OK  ] Reached target Path Units.                                 <-- paths.target
+[  OK  ] Reached target Remote File Systems.                        <-- remote-fs.target
+[  OK  ] Reached target Slice Units.                                <-- slices.target
+[  OK  ] Reached target Swaps.                                      <-- swap.target
+[  OK  ] Listening on RPCbind Server Activation Socket.             <-- rpcbind.socket
+[  OK  ] Reached target RPC Port Mapper.                            <-- rpcbind.target
+[  OK  ] Listening on Syslog Socket.                                <-- syslog.socket
+[  OK  ] Listening on Process Core Dump Socket.                     <-- systemd-coredump.socket
+[  OK  ] Listening on Journal Socket (/dev/log).                    <-- systemd-journald-dev-log.socket
+[  OK  ] Listening on Journal Socket.                               <-- systemd-journald.socket
+[  OK  ] Listening on Network Service Netlink Socket.               <-- systemd-networkd.socket
+[  OK  ] Listening on udev Control Socket.                          <-- systemd-udevd-control.socket
+[  OK  ] Listening on udev Kernel Socket.                           <-- systemd-udevd-kernel.socket
+         Mounting Kernel Debug File System...                       <-- sys-kernel-debug.mount
+         Mounting Kernel Trace File System...                       <-- sys-kernel-tracing.mount
+         Mounting Temporary Directory /tmp...                       <-- tmp.mount
+         Starting Load Kernel Module configfs...                    <-- modprobe@configfs.service
+         Starting Load Kernel Module efi_pstore...                  <-- modprobe@efi_pstore.service
+         Starting Load Kernel Module fuse...                        <-- modprobe@fuse.service
+         Starting RPC Bind...                                       <-- rpcbind.service
+         Starting Journal Service...                                <-- systemd-journald.service
+         Starting Generate network …ts from Kernel command line...  <-- systemd-network-generator.service
+         Starting Remount Root and Kernel File Systems...           <-- systemd-remount-fs.service
+         Starting Apply Kernel Variables...                         <-- systemd-sysctl.service
+         Starting Coldplug All udev Devices...                      <-- systemd-udev-trigger.service
+[  OK  ] Started RPC Bind.                                          <-- rpcbind.service
+[  OK  ] Mounted Kernel Debug File System.                          <-- sys-kernel-debug.mount
+[  OK  ] Mounted Kernel Trace File System.                          <-- sys-kernel-tracing.mount
+[  OK  ] Mounted Temporary Directory /tmp.                          <-- tmp.mount
+[  OK  ] Finished Load Kernel Module configfs.                      <-- modprobe@configfs.service
+[  OK  ] Finished Load Kernel Module efi_pstore.                    <-- modprobe@efi_pstore.service
+[  OK  ] Finished Load Kernel Module fuse.                          <-- modprobe@fuse.service
+[  OK  ] Finished Generate network units from Kernel command line.  <-- systemd-network-generator.service
+[  OK  ] Finished Remount Root and Kernel File Systems.             <-- systemd-remount-fs.service
+[  OK  ] Finished Apply Kernel Variables.                           <-- systemd-sysctl.service
+[  OK  ] Reached target Preparation for Network.                    <-- network-pre.target
+         Mounting Kernel Configuration File System...               <-- sys-kernel-config.mount
+         Starting Rebuild Hardware Database...                      <-- systemd-hwdb-update.service
+         Starting Create System Users...                            <-- systemd-sysusers.service
+[  OK  ] Mounted Kernel Configuration File System.                  <-- sys-kernel-config.mount
+[  OK  ] Finished Rebuild Hardware Database.                        <-- systemd-hwdb-update.service
+[  OK  ] Finished Create System Users.                              <-- systemd-sysusers.service
+         Starting Create Static Device Nodes in /dev...             <-- systemd-tmpfiles-setup-dev.service
+[  OK  ] Finished Create Static Device Nodes in /dev.               <-- systemd-tmpfiles-setup-dev.service
+[  OK  ] Reached target Preparation for Local File Systems.         <-- local-fs-pre.target
+         Mounting /var/volatile...                                  <-- var-volatile.mount
+         Starting Rule-based Manage…for Device Events and Files...  <-- systemd-udevd.service
+[  OK  ] Mounted /var/volatile.                                     <-- var-volatile.mount
+         Starting Load/Save OS Random Seed...                       <-- systemd-random-seed.service
+[  OK  ] Reached target Local File Systems.                         <-- local-fs.target
+[  OK  ] Started Rule-based Manager for Device Events and Files.    <-- systemd-udevd.service
+         Starting Network Configuration...                          <-- systemd-networkd.service
+[  OK  ] Started Journal Service.                                   <-- systemd-journald.service
+         Starting Flush Journal to Persistent Storage...            <-- systemd-journal-flush.service
+[  OK  ] Finished Flush Journal to Persistent Storage.              <-- systemd-journal-flush.service
+         Starting Create Volatile Files and Directories...          <-- systemd-tmpfiles-setup.service
+[  OK  ] Started Network Configuration.                             <-- systemd-networkd.service
+         Starting Wait for Network to be Configured...              <-- systemd-networkd-wait-online.service
+[  OK  ] Finished Create Volatile Files and Directories.            <-- systemd-tmpfiles-setup.service
+         Starting Run pending postinsts...                          <-- run-postinsts.service
+         Starting Rebuild Journal Catalog...                        <-- systemd-journal-catalog-update.service
+         Starting Network Name Resolution...                        <-- systemd-resolved.service
+         Starting Network Time Synchronization...                   <-- systemd-timesyncd.service
+[  OK  ] Finished Rebuild Journal Catalog.                          <-- systemd-journal-catalog-update.service
+         Starting Update is Completed...                            <-- systemd-update-done.service
+[  OK  ] Finished Update is Completed.                              <-- systemd-update-done.service
+[  OK  ] Started Network Time Synchronization.                      <-- systemd-timesyncd.service
+[  OK  ] Reached target System Time Set.                            <-- time-set.target
+[  OK  ] Started Network Name Resolution.                           <-- systemd-resolved.service
+[  OK  ] Reached target Network.                                    <-- network.target
+[  OK  ] Reached target Host and Network Name Lookups.              <-- nss-lookup.target
+[  OK  ] Started NFS status monitor for NFSv2/3 locking..           <-- nfs-statd.service
+[  OK  ] Finished Load/Save OS Random Seed.                         <-- systemd-random-seed.service
+[  OK  ] Finished Run pending postinsts.                            <-- run-postinsts.service
+[  OK  ] Finished Coldplug All udev Devices.                        <-- systemd-udev-trigger.service
+[  OK  ] Reached target System Initialization.                      <-- sysinit.target
+[  OK  ] Started Daily rotation of log files.                       <-- logrotate.timer
+[  OK  ] Started Daily Cleanup of Temporary Directories.            <-- systemd-tmpfiles-clean.timer
+[  OK  ] Reached target Timer Units.                                <-- timers.target
+[  OK  ] Listening on Avahi mDNS/DNS-SD Stack Activation Socket.    <-- avahi-daemon.socket
+[  OK  ] Listening on BMC Webserver socket.                         <-- bmcweb.socket
+[  OK  ] Listening on D-Bus System Message Bus Socket.              <-- dbus.socket
+[  OK  ] Listening on dropbear.socket.                              <-- dropbear.socket
+[  OK  ] Listening on MCTP demux Unix domain socket.                <-- mctp-demux.socket
+[  OK  ] Listening on Phosphor Host…ole SSH Per-Connection socket.  <-- obmc-console-ssh.socket
+[  OK  ] Listening on phosphor-ipmi-net@eth0.socket.                <-- phosphor-ipmi-net@eth0.socket
+[  OK  ] Listening on phosphor-ipmi-net@eth1.socket.                <-- phosphor-ipmi-net@eth1.socket
+[  OK  ] Reached target Socket Units.                               <-- sockets.target
+         Starting D-Bus System Message Bus...                       <-- dbus-broker.service
+[  OK  ] Started D-Bus System Message Bus.                          <-- dbus-broker.service
+[  OK  ] Found device /dev/ttyS2.                                   <-- dev-ttyS2.device
+[  OK  ] Found device /sys/subsystem/net/devices/eth0.              <-- sys-subsystem-net-devices-eth0.device
+[  OK  ] Found device /sys/subsystem/net/devices/eth1.              <-- sys-subsystem-net-devices-eth1.device
+[  *** ] A start job is running for Wait for… to be Configured (20s / no limit)
+[  OK  ] Finished Wait for Network to be Configured.                <-- systemd-networkd-wait-online.service
+[  OK  ] Created slice Slice /system/xyz.openbmc_project.Hwmon.     <-- system-xyz.openbmc_project.Hwmon.slice
+[  OK  ] Created slice Slice /syste…penbmc_project.led.controller.  <-- system-xyz.openbmc_project.led.controller.slice
+[  OK  ] Reached target Basic System.                               <-- basic.target
+[  OK  ] Reached target Network is Online.                          <-- network-online.target
+[  OK  ] Reached target Hardware activated USB gadget.              <-- usb-gadget.target
+         Starting Avahi mDNS/DNS-SD Stack...                        <-- avahi-daemon.service
+[  OK  ] Started Start bmcweb server.                               <-- bmcweb.service
+         Starting Clear one time boot overrides...                  <-- clear-once.service
+         Starting Convert PAM config files...                       <-- convert-pam-configs.service
+         Starting SSH Key Generation...                             <-- dropbearkey.service
+[  OK  ] Started LPC Snoop Daemon.                                  <-- lpcsnoop.service
+         Starting Name Service Cache Daemon...                      <-- nscd.service
+         Starting LDAP daemon...                                    <-- nslcd.service
+         Starting Phosphor Console …tening on device /dev/ttyS2...  <-- obmc-console@ttyS2.service
+[  OK  ] Started Phosphor Dump core monitor..                       <-- obmc-dump-monitor.service
+         Starting Phosphor IPMI BT DBus Bridge...                   <-- org.openbmc.HostIpmi.service
+[  OK  ] Started Phosphor certificate manager for authority.        <-- phosphor-certificate-manager@authority.service
+[  OK  ] Started Phosphor certificate manager for bmcweb.           <-- phosphor-certificate-manager@bmcweb.service
+[  OK  ] Started Phosphor certificate manager for nslcd.            <-- phosphor-certificate-manager@nslcd.service
+         Starting BMC health monitoring...                          <-- phosphor-health-monitor.service
+         Starting System Logging Service...                         <-- rsyslog.service
+[  OK  ] Started Lightweight SLP Server.                            <-- slpd-lite.service
+         Starting OpenBMC ipKVM daemon...                           <-- start-ipkvm.service
+         Starting Hostname Service...                               <-- systemd-hostnamed.service
+         Starting Permit User Sessions...                           <-- systemd-user-sessions.service
+         Starting Enable Linux trace events in the boot loader...   <-- trace-enable.service
+         Starting Intel Power Control for the Host 0...             <-- xyz.openbmc_project.Chassis.Control.Power@0.service
+         Starting Phosphor Dump Manager...                          <-- xyz.openbmc_project.Dump.Manager.service
+         Starting Entity Manager...                                 <-- xyz.openbmc_project.EntityManager.service
+[  OK  ] Started Fru Device.                                        <-- xyz.openbmc_project.FruDevice.service
+         Starting Phosphor Inventory Manager...                     <-- xyz.openbmc_project.Inventory.Manager.service
+         Starting Phosphor LED Group Management Daemon...           <-- xyz.openbmc_project.LED.GroupManager.service
+[  OK  ] Started IPMI SEL Logging Service.                          <-- xyz.openbmc_project.Logging.IPMI.service
+         Starting Phosphor Log Manager...                           <-- xyz.openbmc_project.Logging.service
+         Starting Phosphor Network Manager...                       <-- xyz.openbmc_project.Network.service
+         Starting Phosphor DBus Service Discovery Manager...        <-- xyz.openbmc_project.ObjectMapper.service
+         Starting Phosphor Settings Daemon...                       <-- xyz.openbmc_project.Settings.service
+         Starting OpenBMC Software Update Manager...                <-- xyz.openbmc_project.Software.BMC.Updater.service
+         Starting Phosphor Download Manager...                      <-- xyz.openbmc_project.Software.Download.service
+         Starting Phosphor BMC State Manager...                     <-- xyz.openbmc_project.State.BMC.service
+         Starting Post code manager...                              <-- xyz.openbmc_project.State.Boot.PostCode@0.service
+         Starting Rsyslog config updater...                         <-- xyz.openbmc_project.Syslog.Config.service
+         Starting Telemetry...                                      <-- xyz.openbmc_project.Telemetry.service
+         Starting Phosphor User Manager...                          <-- xyz.openbmc_project.User.Manager.service
+[  OK  ] Started Phosphor sysfs LED controller.                     <-- xyz.openbmc_project.led.controller@sys-class-leds-mmc0::.service
+[  OK  ] Started Phosphor sysfs LED controller.                     <-- xyz.openbmc_project.led.controller@sys-class-leds-mmc1::.service
+[  OK  ] Started Phosphor sysfs LED controller.                     <-- xyz.openbmc_project.led.controller@sys-class-leds-mmc2::.service
+         Starting Rotate log files...                               <-- logrotate.service
+[  OK  ] Started System Logging Service.                            <-- rsyslog.service
+[  OK  ] Finished Convert PAM config files.                         <-- convert-pam-configs.service
+[  OK  ] Started Name Service Cache Daemon.                         <-- nscd.service
+[  OK  ] Started OpenBMC ipKVM daemon.                              <-- start-ipkvm.service
+[  OK  ] Finished Permit User Sessions.                             <-- systemd-user-sessions.service
+[  OK  ] Finished Enable Linux trace events in the boot loader.     <-- trace-enable.service
+[FAILED] Failed to start Intel Power Control for the Host 0.        <-- xyz.openbmc_project.Chassis.Control.Power@0.service
+See 'systemctl status xyz.openbmc_proje…s.Control.Power@0.service' for details.
+[  OK  ] Finished Clear one time boot overrides.                    <-- clear-once.service
+[  OK  ] Started Phosphor Console M…istening on device /dev/ttyS2.  <-- obmc-console@ttyS2.service
+[  OK  ] Started Phosphor IPMI BT DBus Bridge.                      <-- org.openbmc.HostIpmi.service
+[  OK  ] Started BMC health monitoring.                             <-- phosphor-health-monitor.service
+[  OK  ] Started LDAP daemon.                                       <-- nslcd.service
+[  OK  ] Started Phosphor Log Manager.                              <-- xyz.openbmc_project.Logging.service
+[  OK  ] Started Phosphor Download Manager.                         <-- xyz.openbmc_project.Software.Download.service
+[  OK  ] Started Phosphor Settings Daemon.                          <-- xyz.openbmc_project.Settings.service
+[  OK  ] Started Phosphor LED Group Management Daemon.              <-- xyz.openbmc_project.LED.GroupManager.service
+[  OK  ] Started Phosphor DBus Service Discovery Manager.           <-- xyz.openbmc_project.ObjectMapper.service
+[  OK  ] Started Phosphor Inventory Manager.                        <-- xyz.openbmc_project.Inventory.Manager.service
+[  OK  ] Started Rsyslog config updater.                            <-- xyz.openbmc_project.Syslog.Config.service
+[  OK  ] Started Post code manager.                                 <-- xyz.openbmc_project.State.Boot.PostCode@0.service
+[  OK  ] Started Telemetry.                                         <-- xyz.openbmc_project.Telemetry.service
+[  OK  ] Started OpenBMC Software Update Manager.                   <-- xyz.openbmc_project.Software.BMC.Updater.service
+[  OK  ] Started Hostname Service.                                  <-- systemd-hostnamed.service
+[  OK  ] Started Phosphor Network Manager.                          <-- xyz.openbmc_project.Network.service
+[  OK  ] Started Phosphor Dump Manager.                             <-- xyz.openbmc_project.Dump.Manager.service
+[  OK  ] Started Entity Manager.                                    <-- xyz.openbmc_project.EntityManager.service
+[  OK  ] Started Avahi mDNS/DNS-SD Stack.                           <-- avahi-daemon.service
+[  OK  ] Started Getty on tty1.                                     <-- getty@tty1.service
+[  OK  ] Started Host logger for ttyS2.                             <-- hostlogger@ttyS2.service
+         Starting Wait for /xyz/ope…control/host0/boot/one_time...  <-- mapper-wait@-xyz-openbmc_project-control-host0-boot-one_time.service
+         Starting Wait for /xyz/ope…_project/control/host0/boot...  <-- mapper-wait@-xyz-openbmc_project-control-host0-boot.service
+         Starting Wait for /xyz/ope…/host0/power_restore_policy...  <-- mapper-wait@-xyz-openbmc_project-control-host0-power_restore_policy.service
+         Starting Wait for /xyz/ope…trol/host0/restriction_mode...  <-- mapper-wait@-xyz-openbmc_project-control-host0-restriction_mode.service
+         Starting Wait for /xyz/ope…oject/led/groups/bmc_booted...  <-- mapper-wait@-xyz-openbmc_project-led-groups-bmc_booted.service
+         Starting Wait for /xyz/openbmc_project/led/groups...       <-- mapper-wait@-xyz-openbmc_project-led-groups.service
+         Starting Wait for /xyz/ope…mc_project/time/sync_method...  <-- mapper-wait@-xyz-openbmc_project-time-sync_method.service
+[  OK  ] Started phosphor systemd target monitor.                   <-- phosphor-systemd-target-monitor.service
+[  OK  ] Started Serial Getty on ttyS4.                             <-- serial-getty@ttyS4.service
+[  OK  ] Reached target Login Prompts.                              <-- getty.target
+         Starting Phosphor Ldap config updater...                   <-- xyz.openbmc_project.Ldap.Config.service
+         Starting Phosphor Version Software Manager...              <-- xyz.openbmc_project.Software.Version.service
+[  OK  ] Started Adc Sensor.                                        <-- xyz.openbmc_project.adcsensor.service
+[  OK  ] Started Exit Air Temp Sensor.                              <-- xyz.openbmc_project.exitairsensor.service
+[  OK  ] Started External Sensor.                                   <-- xyz.openbmc_project.externalsensor.service
+[  OK  ] Started Fan Sensor.                                        <-- xyz.openbmc_project.fansensor.service
+[  OK  ] Started Phosphor-Pid-Contr…rgin-based Fan Control Daemon.  <-- phosphor-pid-control.service
+[  OK  ] Started Hwmon Temp Sensor.                                 <-- xyz.openbmc_project.hwmontempsensor.service
+[  OK  ] Started Intel CPU Sensor.                                  <-- xyz.openbmc_project.intelcpusensor.service
+[  OK  ] Started Intrusion Sensor.                                  <-- xyz.openbmc_project.intrusionsensor.service
+[  OK  ] Started IPMB Sensor.                                       <-- xyz.openbmc_project.ipmbsensor.service
+[  OK  ] Started MCU Temp Sensor.                                   <-- xyz.openbmc_project.mcutempsensor.service
+[  OK  ] Started PSU Sensor.                                        <-- xyz.openbmc_project.psusensor.service
+[  OK  ] Finished Wait for /xyz/ope…t/control/host0/boot/one_time.  <-- mapper-wait@-xyz-openbmc_project-control-host0-boot-one_time.service
+[  OK  ] Finished Wait for /xyz/ope…mc_project/control/host0/boot.  <-- mapper-wait@-xyz-openbmc_project-control-host0-boot.service
+[  OK  ] Finished Wait for /xyz/ope…ol/host0/power_restore_policy.  <-- mapper-wait@-xyz-openbmc_project-control-host0-power_restore_policy.service
+[  OK  ] Finished Wait for /xyz/ope…ontrol/host0/restriction_mode.  <-- mapper-wait@-xyz-openbmc_project-control-host0-restriction_mode.service
+[  OK  ] Finished Wait for /xyz/ope…project/led/groups/bmc_booted.  <-- mapper-wait@-xyz-openbmc_project-led-groups-bmc_booted.service
+[  OK  ] Finished Wait for /xyz/openbmc_project/led/groups.         <-- mapper-wait@-xyz-openbmc_project-led-groups.service
+[  OK  ] Finished Wait for /xyz/openbmc_project/time/sync_method.   <-- mapper-wait@-xyz-openbmc_project-time-sync_method.service
+
+Phosphor OpenBMC (Phosphor OpenBMC Project Reference Distro) nodistro.0 ast2600-default ttyS4
+
+         Started Phosphor Version Software Manager.                 <-- xyz.openbmc_project.Software.Version.service
+         Started Phosphor Ldap config updater.                      <-- xyz.openbmc_project.Ldap.Config.service
+         Stopping LDAP daemon...                                    <-- nslcd.service
+         Started FRU Fault monitor service.                         <-- obmc-fru-fault-monitor.service
+         Starting Phosphor Inband IPMI...                           <-- phosphor-ipmi-host.service
+         Stopped Intel Power Control for the Host 0.                <-- xyz.openbmc_project.Chassis.Control.Power@0.service
+         Starting Intel Power Control for the Host 0...             <-- xyz.openbmc_project.Chassis.Control.Power@0.service
+         Starting Phosphor Time Manager daemon...                   <-- xyz.openbmc_project.Time.Manager.service
+         Stopped LDAP daemon.                                       <-- nslcd.service
+         Started Phosphor BMC State Manager.                        <-- xyz.openbmc_project.State.BMC.service
+         Started Phosphor User Manager.                             <-- xyz.openbmc_project.User.Manager.service
+         Started Intel Power Control for the Host 0.                <-- xyz.openbmc_project.Chassis.Control.Power@0.service
+         Starting Time & Date Service...                            <-- systemd-timedated.service
+         Started Phosphor Inband IPMI.                              <-- phosphor-ipmi-host.service
+         Started IPMB bridge.                                       <-- ipmb.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs1.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs2.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs3.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs4.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs5.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs6.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs7.service
+         Starting Phosphor IPMI KCS DBus Bridge...                  <-- phosphor-ipmi-kcs@ipmi-kcs8.service
+         Finished SSH Key Generation.                               <-- dropbearkey.service
+         Started Time & Date Service.                               <-- systemd-timedated.service
+         Started Phosphor Time Manager daemon.                      <-- xyz.openbmc_project.Time.Manager.service
+         Reached target Multi-User System.                          <-- multi-user.target
+         Starting Assert bmc_booted LED...                          <-- obmc-led-group-start@bmc_booted.service
+         Finished Assert bmc_booted LED.                            <-- obmc-led-group-start@bmc_booted.service
+         Finished Rotate log files.                                 <-- logrotate.service
+         Startup finished in 5.457s (kernel) + 49.357s (userspace) = 54.815s.
+         Stopped Host logger for ttyS2.                             <-- hostlogger@ttyS2.service
+```
+
+```
 call mount_enumerate_perpetual()
     push -.mount
 
