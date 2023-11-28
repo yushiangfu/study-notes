@@ -111,6 +111,37 @@ busctl call --verbose \
 <details><summary> More Details </summary>
 
 ```
++------+                                                                         
+| main |                                                                         
++-|----+                                                                         
+  |                                                                              
+  |--> Set up handlers for matching rules:                                       
+  |        Name Owner Changed                                                    
+  |        Interfaces Added                                                      
+  |        Interfaces Removed                                                    
+  |        Association Changed                                                   
+  |                                                                              
+  |--> Register the methods provided by the service:                             
+  |        GetAncestors()                                                        
+  |        GetObject()                                                           
+  |        GetSubTree()                                                          
+  |        GetSubTreePaths()                                                     
+  |        GetAssociatedSubTree()                                                
+  |        GetAssociatedSubTreePaths()                                           
+  |                                                                              
+  |--> Initialize the interface.                                                 
+  |                                                                              
+  |--> Post a job to the I/O context.                                            
+  |    +-------------+                                                           
+  |    | doListNames | Set up the interface map and construct the list of owners.
+  |    +-------------+                                                           
+  |                                                                              
+  |--> Request the service name.                                                 
+  |                                                                              
+  +--> Run the I/O context.                                                      
+```
+
+```
 +------+
 | main |
 +-|----+
