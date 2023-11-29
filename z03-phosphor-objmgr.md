@@ -635,6 +635,244 @@ root@romulus:~# busctl tree xyz.openbmc_project.ObjectMapper
 
 ```
 
+```
+libmapper/app.c                                                                                                          
++------+                                                                                                                  
+| main | : perform one of 'wait', 'subtree-remove', or 'get-service'                                                      
++-|----+                                                                                                                  
+  |                                                                                                                       
+  |--> if arg == wait                                                                                                     
+  |    |                                                                                                                  
+  |    |    +-----------+                                                                                                 
+  |    +--> | wait_main | add match rules, wait for 'get objects' completion                                              
+  |         +-----------+                                                                                                 
+  |                                                                                                                       
+  |--> elif arg == subtree-remove                                                                                         
+  |    |                                                                                                                  
+  |    |    +--------------+                                                                                              
+  |    +--> | subtree_main | add match rule, send method call (get subtree paths) to obj_mapper, check if iface is removed
+  |         +--------------+                                                                                              
+  |                                                                                                                       
+  +--> elif arg == get-service                                                                                            
+       |                                                                                                                  
+       |    +------------------+                                                                                          
+       +--> | get_service_main | send method call (get obj) to obj_mapper to get service name                             
+            +------------------+                                                                                          
+```
+
+```
+libmapper/app.c                                                                    
++-----------+                                                                       
+| wait_main | : add match rules, wait for 'get objects' completion                  
++-|---------+                                                                       
+  |                                                                                 
+  |--> endless loop                                                                 
+  |    |                                                                            
+  |    |    +----------------+                                                      
+  |    |--> | sd_bus_default |                                                      
+  |    |    +----------------+                                                      
+  |    |    +------------------+                                                    
+  |    |--> | sd_event_default |                                                    
+  |    |    +------------------+                                                    
+  |    |    +---------------------+                                                 
+  |    |--> | sd_bus_attach_event |                                                 
+  |    |    +---------------------+                                                 
+  |    |    +-------------------+                                                   
+  |    |--> | mapper_wait_async | add match rules, wait for 'get objects' completion
+  |    |    +-------------------+                                                   
+  |    |    +---------------+                                                       
+  |    |--> | sd_event_loop |                                                       
+  |    |    +---------------+                                                       
+  |    |                                                                            
+  |    +--> break                                                                   
+  |                                                                                 
+  |    +------+                                                                     
+  +--> | exit |                                                                     
+       +------+                                                                     
+```
+
+```
+libmapper/mapper.c                                                                                                                                               
++-------------------+                                                                                                                                             
+| mapper_wait_async | : add match rules, wait for 'get objects' completion                                                                                        
++-|-----------------+                                                                                                                                             
+  |                                                                                                                                                               
+  |--> alloc 'wait' and setup it                                                                                                                                  
+  |                                                                                                                                                               
+  |    +------------------+                                                                                                                                       
+  +--> | sd_bus_add_match | add match rule 'IntrospectionComplete'                                                                                                
+  |    +------------------+ +-----------------------------------------+                                                                                           
+  |                         | async_wait_match_introspection_complete | for each obj in wait, send methond call (get object) to obj_mapper and wait for completion
+  |                         +-----------------------------------------+                                                                                           
+  |    +------------------+                                                                                                                                       
+  |--> | sd_bus_add_match | add match rule 'InterfacesAdded'                                                                                                      
+  |    +------------------+ +-----------------------------------------+                                                                                           
+  |                         | async_wait_match_introspection_complete | for each obj in wait, send methond call (get object) to obj_mapper and wait for completion
+  |                         +-----------------------------------------+                                                                                           
+  |    +------------------------+                                                                                                                                 
+  +--> | async_wait_get_objects | for each obj in wait, send methond call (get object) to obj_mapper and wait for completion                                      
+       +------------------------+                                                                                                                                 
+```
+
+```
+libmapper/mapper.c                                                                                                                     
++-----------------------------------------+                                                                                             
+| async_wait_match_introspection_complete | : for each obj in wait, send methond call (get object) to obj_mapper and wait for completion
++-|---------------------------------------+                                                                                             
+  |                                                                                                                                     
+  |--> if wait is already finished, return                                                                                              
+  |                                                                                                                                     
+  |    +------------------------+                                                                                                       
+  +--> | async_wait_get_objects | for each obj in wait, send methond call (get object) to obj_mapper and wait for completion            
+       +------------------------+                                                                                                       
+```
+
+```
+libmapper/mapper.c                                                                                                    
++------------------------+                                                                                             
+| async_wait_get_objects | : for each obj in wait, send methond call (get object) to obj_mapper and wait for completion
++-|----------------------+                                                                                             
+  |                                                                                                                    
+  +--> for each obj in wait                                                                                            
+       |                                                                                                               
+       |--> setup tmp data                                                                                             
+       |                                                                                                               
+       |    +--------------------------+                                                                               
+       +--> | sd_bus_call_method_async | prepare msg (method call), install callback, send msg out                     
+            +--------------------------+ +-------------------------------+                                             
+                                         | async_wait_getobject_callback | finish the wait on 'get object'             
+                                         +-------------------------------+                                             
+```
+
+```
+libmapper/mapper.c                                                
++-------------------------------+                                  
+| async_wait_getobject_callback | : finish the wait on 'get object'
++-|-----------------------------+                                  
+  |                                                                
+  |--> for each obj in wait                                        
+  |    -                                                           
+  |    +--> if data_path == wait_obj                               
+  |         -                                                      
+  |         +--> wait_status = 1                                   
+  |                                                                
+  |    +-----------------------+                                   
+  |--> | async_wait_check_done | check if done (all status == 1)   
+  |    +-----------------------+                                   
+  |                                                                
+  +--> if done                                                     
+       |                                                           
+       |    +-----------------+                                    
+       +--> | async_wait_done | finish the wait                    
+            +-----------------+                                    
+```
+
+```
+libmapper/mapper.c                  
++-----------------+                  
+| async_wait_done | : finish the wait
++-|---------------+                  
+  |                                  
+  |--> wait->finished = 1            
+  |                                  
+  +--> if wait has callback()        
+       -                             
+       +--> call it, e.g.,           
+            +------+                 
+            | quit | exit event      
+            +------+                 
+```
+
+```
+libmapper/app.c                                                                                                             
++--------------+                                                                                                             
+| subtree_main | : add match rule, send method call (get subtree paths) to obj_mapper, check if iface is removed             
++-|------------+                                                                                                             
+  |                                                                                                                          
+  |--> get namespace and interface from args                                                                                 
+  |                                                                                                                          
+  |    +----------------+                                                                                                    
+  |--> | sd_bus_default |                                                                                                    
+  |    +----------------+                                                                                                    
+  |    +------------------+                                                                                                  
+  |--> | sd_event_default |                                                                                                  
+  |    +------------------+                                                                                                  
+  |    +---------------------+                                                                                               
+  |--> | sd_bus_attach_event |                                                                                               
+  |    +---------------------+                                                                                               
+  |    +----------------------+                                                                                              
+  |--> | mapper_subtree_async | add match rule, send method call (get subtree paths) to obj_mapper, check if iface is removed
+  |    +----------------------+                                                                                              
+  |    +---------------+                                                                                                     
+  |--> | sd_event_loop |                                                                                                     
+  |    +---------------+                                                                                                     
+  |    +------+                                                                                                              
+  +--> | exit |                                                                                                              
+       +------+                                                                                                              
+```
+
+```
+libmapper/mapper.c                                                                                                                            
++----------------------+                                                                                                                       
+| mapper_subtree_async | : add match rule, send method call (get subtree paths) to obj_mapper, check if iface is removed                       
++-|--------------------+                                                                                                                       
+  |                                                                                                                                            
+  |--> alloc and setup 'subtree'                                                                                                               
+  |                                                                                                                                            
+  |--> if op == remove                                                                                                                         
+  |    |                                                                                                                                       
+  |    |    +------------------+                                                                                                               
+  |    +--> | sd_bus_add_match | send msg ('add match' method) to bus clients, add match rule to bus                                           
+  |         +------------------+ +------------------------------+                                                                              
+  |                              | async_subtree_match_callback | send method call (get subtree paths) to obj_mapper, check if iface is removed
+  |                              +------------------------------+                                                                              
+  |    +------------------------+                                                                                                              
+  +--> | async_subtree_getpaths | send method call (get subtree paths) to obj_mapper, check if iface is removed                                
+       +------------------------+                                                                                                              
+```
+
+```
+libmapper/mapper.c                                                                                                                   
++------------------------------+                                                                                                      
+| async_subtree_match_callback | : send method call (get subtree paths) to obj_mapper, check if iface is removed                      
++------------------------+-----+                                                                                                      
+| async_subtree_getpaths | : send method call (get subtree paths) to obj_mapper, check if iface is removed                            
++-|----------------------+                                                                                                            
+  |    +--------------------------+                                                                                                   
+  +--> | sd_bus_call_method_async | send method call (get subtree paths) to obj_mapper                                                
+       +--------------------------+ +---------------------------------+                                                               
+                                    | async_subtree_getpaths_callback | check if we get nothing (which means the interface is removed)
+                                    +---------------------------------+                                                               
+```
+
+```
+libmapper/app.c                                                                          
++------------------+                                                                      
+| get_service_main | : send method call (get obj) to obj_mapper to get service name       
++-|----------------+                                                                      
+  |    +----------------+                                                                 
+  |--> | sd_bus_default |                                                                 
+  |    +----------------+                                                                 
+  |    +--------------------+                                                             
+  |--> | mapper_get_service | send method call (get obj) to obj_mapper to get service name
+  |    +--------------------+                                                             
+  |    +------+                                                                           
+  +--> | exit |                                                                           
+       +------+                                                                           
+```
+
+```
+libmapper/mapper.c                                                                     
++--------------------+                                                                  
+| mapper_get_service | : send method call (get obj) to obj_mapper to get service name   
++-|------------------+                                                                  
+  |    +-------------------+                                                            
+  |--> | mapper_get_object | send method call (get object) to obj_mapper, wait for reply
+  |    +-------------------+                                                            
+  |                                                                                     
+  +--> read service name from reply                                                     
+```
+
 </details>
 
 ## <a name="association"></a> Association
