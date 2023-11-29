@@ -1966,10 +1966,30 @@ src/PCIeBinding.cpp
 ```
 
 ```
+src/mctp_bridge.cpp                                  
++------------------------+                            
+| MCTPBridge::MCTPBridge | : prepare 'mctp' struct    
++------------------------+---+                        
+| MCTPEndpoint::MCTPEndpoint | : prepare 'mctp' struct
++----------------------------+                        
+| MCTPDevice::MCTPDevice | : prepare 'mctp' struct    
++-|----------------------+                            
+  |    +-------------------------------+              
+  |--> | MCTPDevice::initializeLogging |              
+  |    +-------------------------------+              
+  |    +-----------+                                  
+  +--> | mctp_init | prepare 'mctp' struct            
+       +-----------+ (libmctp)                        
+```
+
+```
 src/MCTPBinding.cpp                                                                
 +--------------------------+                                                        
 | MctpBinding::MctpBinding | : set callback, register dbus obj/iface/signals/methods
 +-|------------------------+                                                        
+  |    +------------------------+                                      
+  |--> | MCTPBridge::MCTPBridge | prepare 'mctp' struct                                     
+  |    +------------------------+     
   |                                                                                 
   |--> add obj to service                                                           
   |                                                                                 
