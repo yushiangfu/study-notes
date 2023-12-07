@@ -609,6 +609,231 @@ src/mctpd.c
   +--> return buf and size to caller         
 ```
 
+### Socket-Based kernel Driver
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                                               
++----------------+                                                                                                           
+| mctp_i2c_probe | : for each qualified adapter, prepare net-dev(& midev) & create kthread for tx handling                   
++-|--------------+                                                                                                           
+  |    +---------------------+                                                                                               
+  |--> | mctp_i2c_new_client | register i2c slave callback, which receives data from master and add to network stack (upward)
+  |    +---------------------+                                                                                               
+  |    +------------------+                                                                                                  
+  +--> | i2c_for_each_dev | for each dev on 'i2c_bus_type', apply callback                                                   
+       +------------------+ +----------------------------+                                                                   
+                            | mctp_i2c_client_try_attach | prepare net-dev (& midev), add midev to list of mctp-client,      
+                            +----------------------------+ create kthread for tx handling, register net-dev                  
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                                                           
++---------------------+                                                                                                                  
+| mctp_i2c_new_client | : register i2c slave callback, which receives data from master and add to network stack (upward)                 
++-|-------------------+                                                                                                                  
+  |    +------------------+                                                                                                              
+  |--> | mux_root_adapter | get root adapter                                                                                             
+  |    +------------------+                                                                                                              
+  |                                                                                                                                      
+  |--> (expect mctp-i2c-controller client is placed on root adapter)                                                                     
+  |                                                                                                                                      
+  |--> alloc mctp_client                                                                                                                 
+  |                                                                                                                                      
+  |    +--------------------+                                                                                                            
+  |--> | i2c_set_clientdata | save mctp_client in i2c_client                                                                             
+  |    +--------------------+                                                                                                            
+  |    +--------------------+                                                                                                            
+  +--> | i2c_slave_register | set up client (callback) and register to bus as slave, enable slave mode                                   
+       +--------------------+ +-------------------+                                                                                      
+                              | mctp_i2c_slave_cb | receive data from i2c master, setup skb accordingly and add to network stack (upward)
+                              +-------------------+                                                                                      
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                                          
++-------------------+                                                                                                   
+| mctp_i2c_slave_cb | : receive data from i2c master, setup skb accordingly and add to network stack (upward)           
++-|-----------------+                                                                                                   
+  |                                                                                                                     
+  |--> get mctp-i2c-dev rom mctp-client                                                                                 
+  |                                                                                                                     
+  +--> switch arg event                                                                                                 
+       case write_received                                                                                              
+       ---> save data in rx_buffer of mctp-i2c-dev                                                                      
+       case write_requested                                                                                             
+       ---> reset rx_buffer                                                                                             
+       case stop                                                                                                        
+       -    +---------------+                                                                                           
+       +--> | mctp_i2c_recv | give rx buffer of mctp-i2c-dev, prepare skb accordingly, post it to network stack (upward)
+            +---------------+                                                                                           
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                                
++---------------+                                                                                             
+| mctp_i2c_recv | : give rx buffer of mctp-i2c-dev, prepare skb accordingly, post it to network stack (upward)
++-|-------------+                                                                                             
+  |                                                                                                           
+  |--> get mctp-i2c header from rx buffer                                                                     
+  |                                                                                                           
+  |--> check pec                                                                                              
+  |                                                                                                           
+  |--> alloc and setup skb                                                                                    
+  |                                                                                                           
+  +--> if rx isn't allowed                                                                                    
+       |                                                                                                      
+       |    +----------+                                                                                      
+       +--> | netif_rx | post skb to network stack (as if nic receives a packet)                              
+            +----------+                                                                                      
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                                                                
++----------------------------+                                                                                                                
+| mctp_i2c_client_try_attach | : prepare net-dev (& midev), add midev to list of mctp-client, create kthread for tx handling, register net-dev
++-|--------------------------+                                                                                                                
+  |                                                                                                                                           
+  |--> given raw device, get outer adapter                                                                                                    
+  |                                                                                                                                           
+  |--> expect the adapter to either                                                                                                           
+  |        - has prop "mctp-controller" specified in dt node                                                                                  
+  |        - is a root adapter                                                                                                                
+  |                                                                                                                                           
+  |    +---------------------+                                                                                                                
+  +--> | mctp_i2c_add_netdev | prepare net-dev (& midev), create kthread for tx handling, register net-dev                                    
+       +---------------------+                                                                                                                
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                           
++---------------------+                                                                                  
+| mctp_i2c_add_netdev | : prepare net-dev (& midev), create kthread for tx handling, register net-dev    
++-|-------------------+                                                                                  
+  |    +------------------+                                                                              
+  |--> | mux_root_adapter | get root adapter                                                             
+  |    +------------------+                                                                              
+  |    +--------------+                                                                                  
+  |--> | alloc_netdev | alloc net_device + priv, alloc tx/rx queues, install basic ops                   
+  |    +--------------+                                                                                  
+  |    +---------------------+                                                                           
+  |--> | mctp_i2c_midev_init | prepare kthread of midev for tx handling, add midev to list of mctp-client
+  |    +---------------------+                                                                           
+  |    +----------------------+                                                                          
+  |--> | mctp_register_netdev | prepare mctp-dev (add net-dev, install ops), register net-dev            
+  |    +----------------------+                                                                          
+  |                                                                                                      
+  +--> allow_rx = false                                                                                  
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                                         
++---------------------+                                                                                
+| mctp_i2c_midev_init | : prepare kthread of midev for tx handling, add midev to list of mctp-client   
++-|-------------------+                                                                                
+  |    +----------------+                                                                              
+  |--> | kthread_create | ask kthreadd help creating kthread, set its name, sched-related, and cpu mask
+  |    +----------------+ +--------------------+                                                       
+  |                       | mctp_i2c_tx_thread | endlessly send out msg on tx queue thru i2c           
+  |                       +--------------------+                                                       
+  |    +----------+                                                                                    
+  |--> | list_add | add mctp-i2c-dev to list in mctp-client                                            
+  |    +----------+                                                                                    
+  |                                                                                                    
+  |--> if mctp-client has no selection yet                                                             
+  |    |                                                                                               
+  |    |    +--------------------------+                                                               
+  |    +--> | __mctp_i2c_device_select | mctp_client->sel = mctp_i2c_device                            
+  |         +--------------------------+                                                               
+  |    +-----------------+                                                                             
+  +--> | wake_up_process | wake up the kthread we just created                                         
+       +-----------------+                                                                             
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                                 
++--------------------+                                                         
+| mctp_i2c_tx_thread | : endlessly send out msg on tx queue thru i2c           
++-|------------------+                                                         
+  |                                                                            
+  +--> endless loop                                                            
+       |                                                                       
+       |    +---------------+                                                  
+       |--> | __skb_dequeue | unlink the first skb from tx queue               
+       |    +---------------+                                                  
+       |                                                                       
+       |--> if skb (so it might be empty?)                                     
+       |    |                                                                  
+       |    |    +---------------+                                             
+       |    +--> | mctp_i2c_xmit | setup msg based on skb, perform i2c transfer
+       |         +---------------+                                             
+       |                                                                       
+       +--> else                                                               
+            |                                                                  
+            |    +-----------------+                                           
+            +--> | wait_event_idle | wait till tx queue has something          
+                 +-----------------+                                           
+```
+
+```
+drivers/net/mctp/mctp-i2c.c                                           
++---------------+                                                        
+| mctp_i2c_xmit | : setup msg based on skb, perform i2c transfer         
++-|-------------+                                                        
+  |    +----------------------------+                                    
+  |--> | mctp_i2c_get_tx_flow_state | get state of tx flow               
+  |    +----------------------------+                                    
+  |                                                                      
+  |--> get skb header                                                    
+  |                                                                      
+  |--> setup msg based on header                                         
+  |                                                                      
+  +--> switch state                                                      
+       case none                                                         
+       |    +------------------------+                                   
+       |--> | mctp_i2c_device_select | mctp_client->sel = mctp_i2c_device
+       |    +------------------------+                                   
+       |    +----------------+                                           
+       +--> | __i2c_transfer | transfer i2c packet                       
+            +----------------+                                           
+       case new                                                          
+       -    +------------------------+                                   
+       +--> | mctp_i2c_device_select | mctp_client->sel = mctp_i2c_device
+            +------------------------+                                   
+       case existing                                                     
+       -    +----------------+                                           
+       +--> | __i2c_transfer | transfer i2c packet                       
+            +----------------+                                           
+```
+
+```
+net/mctp/device.c                                                                                                           
++----------------------+                                                                                                     
+| mctp_register_netdev | : prepare mctp-dev (add net-dev, install ops), register net-dev                                     
++-------------------------+                                                                                                  
+| mctp_register_netdevice | : prepare mctp-dev (add net-dev, install ops), register net-dev                                  
++-|-----------------------+                                                                                                  
+  |    +--------------+                                                                                                      
+  |--> | mctp_add_dev | alloc mctp-dev, save net-dev in it                                                                   
+  |    +--------------+                                                                                                      
+  |                                                                                                                          
+  |--> install arg ops to mctp-dev                                                                                           
+  |                                                                                                                          
+  |    +--------------------+                                                                                                
+  +--> | register_netdevice | determine name/idx, config features, add dev, label 'present', apply noop_qdisc, setup watchdog
+       +--------------------+                                                                                                
+```
+
+```
+net/mctp/device.c                                   
++--------------+                                     
+| mctp_add_dev | : alloc mctp-dev, save net-dev in it
++-|------------+                                     
+  |                                                  
+  |--> alloc mctp-dev                                
+  |                                                  
+  +--> save arg net-dev in mctp-dev                  
+```
+
 ### mctp-demux-daemon
 
 ```
