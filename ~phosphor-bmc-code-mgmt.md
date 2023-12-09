@@ -230,12 +230,12 @@ item_updater.hpp
   |
   |--> prepare match rule and callback on "/xyz/openbmc_project/software"
   |    +-------------------------------+
-  |    | ItemUpdater::createActivation |
+  |    | ItemUpdater::createActivation | parse info from msg, prepare objects, add to 'versions' and 'activationis' separately
   |    +-------------------------------+
   |
-  |    +----------------+
-  |--> | getRunningSlot | get running slot from "/run/media/slot"
-  |    +----------------+
+  |    +-----------------------------+
+  |--> | ItemUpdater::getRunningSlot | get running slot from "/run/media/slot"
+  |    +-----------------------------+
   |    +----------------------------------+
   |--> | ItemUpdater::setBMCInventoryPath | get bmc_inventory_path from obj_mapper, save in member variable
   |    +----------------------------------+
@@ -310,7 +310,10 @@ item_updater.cpp
   |--> .new_method_call xyz.openbmc_project.ObjectMapper                                              
   |                     /xyz/openbmc_project/object_mapper                                            
   |                     xyz.openbmc_project.ObjectMapper                                              
-  |                     GetSubTreePaths                                                               
+  |                     GetSubTreePaths
+  |                     target_obj = /xyz/openbmc_project/inventory/
+  |                     depth = 0
+  |                     filter = {xyz.openbmc_project.Inventory.Item.Bmc}
   |                                                                                                   
   |--> prepare arguments, e.g., filter = xyz.openbmc_project.Inventory.Item.Bmc                       
   |                                                                                                   
@@ -325,40 +328,41 @@ item_updater.cpp
 | ItemUpdater::processBMCImage | : create a few associations and a activation instance                                   
 +-|----------------------------+                                                                                         
   |                                                                                                                      
-  |--> create folder 'media-dir'                                                                                         
+  |--> ensure folder '/run/media' exists
   |                                                                                                                      
-  |--> for each entry in 'media-dir'                                                                                     
+  |--> for each entry in '/run/media'
   |    -                                                                                                                 
-  |    +--> if the file starts with '???/rofs-'                                                                          
+  |    +--> if the file starts with 'rofs-'                                                                          
   |         |                                                                                                            
   |         |    +-----------------------------+                                                                         
-  |         |--> | VersionClass::getBMCVersion | get bmc version from file                                               
-  |         |    +-----------------------------+                                                                         
+  |         |--> | VersionClass::getBMCVersion | get bmc version from file '/etc/os-release'                                              
+  |         |    +-----------------------------+ (key, value) = e.g., VERSION_ID=2.13.0-dev-7765-g3890739b4e                                                                        
   |         |                                                                                                            
-  |         |--> id = version + flash_id                                                                                 
+  |         |--> id = digest(version + flash_id), e.g., ac6272b0
   |         |                                                                                                            
   |         |--> continue if id is already in 'versions'                                                                 
   |         |                                                                                                            
   |         |    +-------------------------------------+                                                                 
   |         |--> | VersionClass::getBMCExtendedVersion | get bmc ext version from file                                   
-  |         |    +-------------------------------------+                                                                 
+  |         |    +-------------------------------------+ e.g., EXTENDED_VERSION="2.13.0-dev-7765-g3890739b4e"                                                                
   |         |                                                                                                            
   |         |--> if 'functionial'                                                                                        
   |         |    |                                                                                                       
   |         |    |    +------------------------------------------+                                                       
   |         |    +--> | ItemUpdater::createFunctionalAssociation | create association ('functional' & 'software_version')
-  |         |         +------------------------------------------+                                                       
+  |         |         +------------------------------------------+ tuple = (functional, software_version, /xyz/openbmc_project/software/ + $id)
   |         |                                                                                                            
   |         |--> if state is active                                                                                      
   |         |    |                                                                                                       
-  |         |    |--> create association ('inventory' & 'activation')                                                    
+  |         |    |--> create association ('inventory' & 'activation')
+  |         |    |    tuple = (inventory, activation, $bmc_inventory_path = ???)
   |         |    |                                                                                                       
   |         |    |    +-------------------------+                                                                        
   |         |    +--> | createActiveAssociation | create association ('active', 'software')                              
-  |         |         +-------------------------+                                                                        
+  |         |         +-------------------------+ tuple = (active, software_version, /xyz/openbmc_project/software/ + $id)
   |         |    +------------------------------------------+                                                            
   |         |--> | ItemUpdater::createUpdateableAssociation | create association ('updateable', 'software_version')      
-  |         |    +------------------------------------------+                                                            
+  |         |    +------------------------------------------+ tuple = (updateable, software_version, /xyz/openbmc_project/software/ + $id)
   |         |                                                                                                            
   |         |--> create activation instance for this version                                                             
   |         |                                                                                                            
