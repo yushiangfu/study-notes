@@ -910,7 +910,7 @@ drivers/gpio/gpio-aspeed-sgpio.c
        +--> config to oneshot                                               
 ```
     
-</details>details>
+</details>
 
 ## <a name="pin-control"></a> Pin Control
 
