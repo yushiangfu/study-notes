@@ -3,7 +3,8 @@
 ## Index
 
 - [Introduction](#introduction)
-- [GPIO Chip](#gpio-chip)
+- [GPIO](#gpio)
+- [Serial GPIO](#sgpio)
 - [Pin Control](#pin-control)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
@@ -13,7 +14,7 @@
 
 (TBD)
 
-## <a name="gpio-chip"></a> GPIO Chip
+## <a name="gpio"></a> GPIO
 
 GPIO (General Purpose Input-Output) is a hardware pin used for sending or receiving hardware signals with external components. 
 In the AST2500 GPIO chip, there are 29 groups (A, B, ... AB, AC), each containing 8 pins. 
@@ -847,6 +848,69 @@ arch/arm/boot/dts/aspeed-bmc-vegman-sx20.dts
         #gpio-cells = <2>;
 ...
 ```
+
+## <a name="sgpio"></a> Serial GPIO
+
+<details><summary> More Details </summary>
+
+```
+drivers/gpio/gpio-aspeed-sgpio.c                                                                     
++--------------------+                                                                                
+| aspeed_sgpio_probe | : alloc and setup gpio (& chip & irq), register gpio chip                      
++-|------------------+                                                                                
+  |                                                                                                   
+  |--> alloc 'gpio' struct                                                                            
+  |                                                                                                   
+  |    +--------------------------------+                                                             
+  |--> | devm_platform_ioremap_resource | ioremap                                                     
+  |    +--------------------------------+                                                             
+  |    +-----------------------+                                                                      
+  |--> | device_get_match_data | get match data (a pin mask in the case)                              
+  |    +-----------------------+                                                                      
+  |                                                                                                   
+  |--> get dt property "ngpios"                                                                       
+  |                                                                                                   
+  |--> get dt property "bus-frequency"                                                                
+  |                                                                                                   
+  |--> write gpio# info to reg                                                                        
+  |                                                                                                   
+  +--> setup gpio chip and install ops                                                                
+  |                                                                                                   
+  |    +-------------------------+                                                                    
+  |--> | aspeed_sgpio_setup_irqs | for each sgpio bank, config default reg values                     
+  |    +-------------------------+                                                                    
+  |    +------------------------+                                                                     
+  +--> | devm_gpiochip_add_data | prepare desc for each gpio line, set up irq desc, register gpio chip
+       +------------------------+                                                                     
+```
+
+```
+drivers/gpio/gpio-aspeed-sgpio.c                                           
++-------------------------+                                                 
+| aspeed_sgpio_setup_irqs | : for each sgpio bank, config default reg values
++-|-----------------------+                                                 
+  |    +------------------+                                                 
+  |--> | platform_get_irq |                                                 
+  |    +------------------+                                                 
+  |                                                                         
+  |--> for each sgpio bank                                                  
+  |    -                                                                    
+  |    +--> disable interrupt and clear status bits                         
+  |                                                                         
+  |--> setup gpio interrupt controller (install ops)                        
+  |                                                                         
+  |--> setup 'irq' struct (install ops)                                     
+  |                                                                         
+  +--> for each sgpio bank                                                  
+       |                                                                    
+       |--> config to falling or low-level                                  
+       |                                                                    
+       |--> config to edge trigger                                          
+       |                                                                    
+       +--> config to oneshot                                               
+```
+    
+</details>details>
 
 ## <a name="pin-control"></a> Pin Control
 
