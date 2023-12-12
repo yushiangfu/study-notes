@@ -834,6 +834,154 @@ net/mctp/device.c
   +--> save arg net-dev in mctp-dev                  
 ```
 
+```
+drivers/net/mctp/mctp-serial.c                                                        
++------------------+                                                                   
+| mctp_serial_init |                                                                   
++--------------------+                                                                 
+| tty_register_ldisc | register mctp_ldisc to tty_ldiscs[]                             
++--------------------+                                                                 
+ static struct tty_ldisc_ops mctp_ldisc = {                                            
+     .owner          = THIS_MODULE,                                                    
+     .num            = N_MCTP,                                                         
+     .name           = "mctp",                                                         
+     .open           = mctp_serial_open,                                               
+     .close          = mctp_serial_close,                                              
+     .receive_buf    = mctp_serial_tty_receive_buf,                                    
+     .write_wakeup   = mctp_serial_tty_write_wakeup,                                   
+ };                                                                                    
+    +------------------+                                                               
+    | mctp_serial_open | alloc mctp_serial (along with net_device), register net_device
+    +------------------+                                                               
+    +-----------------------------+                                                    
+    | mctp_serial_tty_receive_buf | push byte stream to rx buffer of 'mctp serial' dev 
+    +-----------------------------+                                                    
+    +------------------------------+                                                   
+    | mctp_serial_tty_write_wakeup | write out dta, set state = idle, restart transmit 
+    +------------------------------+                                                   
+```
+
+```
+drivers/net/mctp/mctp-serial.c                                                                                           
++------------------+                                                                                                      
+| mctp_serial_open | : alloc mctp_serial (along with net_device), register net_device                                     
++-|----------------+                                                                                                      
+  |    +-----------+                                                                                                      
+  |--> | ida_alloc | get available id                                                                                     
+  |    +-----------+                                                                                                      
+  |                                                                                                                       
+  |--> determine name = "mctpserial" + id                                                                                 
+  |                                                                                                                       
+  |    +--------------+                                                                                                   
+  |--> | alloc_netdev | alloc net_device + priv, alloc tx/rx queues, install basic ops                                    
+  |    +--------------+ +-------------------+                                                                             
+  |                     | mctp_serial_setup | setup net device, install ops                                               
+  |                     +-------------------+                                                                             
+  |                                                                                                                       
+  |--> setup 'mctp serial' dev                                                                                            
+  |                                                                                                                       
+  |    +-----------------+                                                                                                
+  |--> | register_netdev | determine name/idx, config features, add dev, label 'present', apply noop_qdisc, setup watchdog
+  |    +-----------------+                                                                                                
+  |                                                                                                                       
+  +--> set receive_room = 64k                                                                                             
+```
+
+```
+drivers/net/mctp/mctp-serial.c                                                
++-------------------+                                                          
+| mctp_serial_setup | : setup net device, install ops                          
++-|-----------------+                                                          
+  |                                                                            
+  |--> setup net device                                                        
+  |                                                                            
+  +--> install ops 'mctp_serial_netdev_ops'                                    
+                                                                               
+        static const struct net_device_ops mctp_serial_netdev_ops = {          
+            .ndo_start_xmit = mctp_serial_tx,                                  
+            .ndo_uninit = mctp_serial_uninit,                                  
+        };                                                                     
+           +----------------+                                                  
+           | mctp_serial_tx | write out dta, set state = idle, restart transmit
+           +----------------+                                                  
+           +--------------------+                                              
+           | mctp_serial_uninit | cancel work                                  
+           +--------------------+                                              
+```
+
+```
+drivers/net/mctp/mctp-serial.c                                                                   
++----------------+                                                                                
+| mctp_serial_tx | : write out dta, set state = idle, restart transmit                            
++-|--------------+                                                                                
+  |    +------------------+                                                                       
+  |--> | netif_stop_queue | stop tx queue                                                         
+  |    +------------------+                                                                       
+  |                                                                                               
+  |--> 'mctp serial' dev state = start                                                            
+  |                                                                                               
+  |--> set 'write wakeup' in tty flags                                                            
+  |                                                                                               
+  |    +---------------+                                                                          
+  +--> | schedule_work | place work to global queue                                               
+       +---------------+ +---------------------+                                                  
+                         | mctp_serial_tx_work | write out dta, set state = idle, restart transmit
+                         +---------------------+                                                  
+```
+
+```
+drivers/net/mctp/mctp-serial.c                                            
++---------------------+                                                    
+| mctp_serial_tx_work | : write out dta, set state = idle, restart transmit
++-|-------------------+                                                    
+  |                                                                        
+  |--> given work, get outer 'mctp serial' dev                             
+  |                                                                        
+  |--> switch state                                                        
+  |    case start                                                          
+  |    ---> pos = 0                                                        
+  |    +--> fall through                                                   
+  |    case header                                                         
+  |    |--> setup header                                                   
+  |    |    +-------------+                                                
+  |    |--> | write_chunk | call tty ops ->write(), e.g., uart_write()?    
+  |    |    +-------------+                                                
+  |    |--> pos += len                                                     
+  |    +--> state = data                                                   
+  |    case escape                                                         
+  |    -    +-------------+                                                
+  |    +--> | write_chunk | write out escape byte                          
+  |         +-------------+                                                
+  |    case data                                                           
+  |    ---> handle escape or write data regularly                          
+  |    case trailer                                                        
+  |    |    +-------------+                                                
+  |    |--> | write_chunk | write out last part                            
+  |    |    +-------------+                                                
+  |    +--> state = done                                                   
+  |                                                                        
+  |--> update statistics                                                   
+  |                                                                        
+  |--> 'mctp serial' dev state = idle                                      
+  |                                                                        
+  |    +------------------+                                                
+  +--> | netif_wake_queue | restart transmit                               
+       +------------------+                                                
+```
+
+```
+drivers/net/mctp/mctp-serial.c                                                     
++-----------------------------+                                                     
+| mctp_serial_tty_receive_buf | : push byte stream to rx buffer of 'mctp serial' dev
++-|---------------------------+                                                     
+  |                                                                                 
+  +--> for each byte                                                                
+       |                                                                            
+       |    +------------------+                                                    
+       +--> | mctp_serial_push | push data to rx buffer of 'mctp serial' dev        
+            +------------------+                                                    
+```
+
 ### mctp-demux-daemon
 
 ```
