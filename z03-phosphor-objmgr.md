@@ -996,12 +996,12 @@ busctl call --verbose \
 
 ```
 e.g.,
-busctl call --verbose \                        
-  xyz.openbmc_project.Software.BMC.Updater \   
-  /xyz/openbmc_project/software \              
-  org.freedesktop.DBus.Properties \            
-  Get \                                        
-  ss \                                         
+busctl call --verbose \
+  xyz.openbmc_project.Software.BMC.Updater \
+  /xyz/openbmc_project/software \
+  org.freedesktop.DBus.Properties \
+  Get \
+  ss \
   xyz.openbmc_project.Association.Definitions \
   Associations
 ```                      
