@@ -969,6 +969,43 @@ busctl call --verbose \
    xyz.openbmc_project.Association.Definitions
 ```
 
+- Retrieve the unique ID of the target service.
+
+```
+e.g.,
+busctl call --verbose \
+  org.freedesktop.DBus \
+  /org/freedesktop/DBus \
+  org.freedesktop.DBus \
+  GetNameOwner \
+  s \
+  xyz.openbmc_project.User.Manager
+```
+
+- Enumerate all service names.
+
+```
+busctl call --verbose \
+  org.freedesktop.DBus \
+  /org/freedesktop/DBus \
+  org.freedesktop.DBus \
+  ListNames
+```
+
+- Retrieve associations from the target object.
+
+```
+e.g.,
+busctl call --verbose \                        
+  xyz.openbmc_project.Software.BMC.Updater \   
+  /xyz/openbmc_project/software \              
+  org.freedesktop.DBus.Properties \            
+  Get \                                        
+  ss \                                         
+  xyz.openbmc_project.Association.Definitions \
+  Associations
+```                      
+
 ## <a name="reference"></a> Reference
 
 - [The Mapper](https://github.com/openbmc/phosphor-objmgr)
