@@ -1,3 +1,7 @@
+## Index
+
+- [Cheat Sheet](#cheat-sheet)
+
 ```
 main                                                                                                                                                      
 |                                                                                                                                                          
@@ -7793,4 +7797,93 @@ core/mount.c
        |    +----------------------+
        +--> | mount_setup_new_unit | alloc unit, add dependencies, add to load_queue
             +----------------------+
+```
+
+```
+src/bus/driver.c                                                   
+static const DriverInterface interfaces[] = {                      
+    { "org.freedesktop.DBus", driver_methods },                       
+    { "org.freedesktop.DBus.Monitoring", monitoring_methods },        
+    { "org.freedesktop.DBus.Introspectable", introspectable_methods },
+    { "org.freedesktop.DBus.Peer", peer_methods },                    
+    { "org.freedesktop.DBus.Properties", properties_methods },        
+    { "org.freedesktop.DBus.Debug.Stats", debug_stats_methods },      
+};                                                                 
+```
+
+```
+src/bus/driver.c                                                                                              
+static const DriverMethod driver_methods[] = {                                                                
+    { "Hello",                                  ... driver_method_hello, ...                                  
+    { "AddMatch",                               ... driver_method_add_match, ...                              
+    { "RemoveMatch",                            ... driver_method_remove_match, ...                           
+    { "RequestName",                            ... driver_method_request_name, ...                           
+    { "ReleaseName",                            ... driver_method_release_name, ...                           
+    { "GetConnectionCredentials",               ... driver_method_get_connection_credentials, ...             
+    { "GetConnectionUnixUser",                  ... driver_method_get_connection_unix_user, ...               
+    { "GetConnectionUnixProcessID",             ... driver_method_get_connection_unix_process_id, ...         
+    { "GetAdtAuditSessionData",                 ... driver_method_get_adt_audit_session_data, ...             
+    { "GetConnectionSELinuxSecurityContext",    ... driver_method_get_connection_selinux_security_context, ...
+    { "StartServiceByName",                     ... driver_method_start_service_by_name, ...                  
+    { "ListQueuedOwners",                       ... driver_method_list_queued_owners, ...                     
+    { "ListNames",                              ... driver_method_list_names, ...                             
+    { "ListActivatableNames",                   ... driver_method_list_activatable_names, ...                 
+    { "NameHasOwner",                           ... driver_method_name_has_owner, ...                         
+    { "UpdateActivationEnvironment",            ... driver_method_update_activation_environment, ...          
+    { "GetNameOwner",                           ... driver_method_get_name_owner, ...                         
+    { "ReloadConfig",                           ... driver_method_reload_config, ...                          
+    { "GetId",                                  ... driver_method_get_id, ...                                 
+    { },                                                                                                      
+};                                                                                                            
+```
+
+```
+src/bus/driver.c                                                                                                
++------------------------------+                                                                                 
+| driver_method_get_name_owner | : given service name, find owner and write its unique id to out data, send reply
++-|----------------------------+                                                                                 
+  |    +-------------+                                                                                           
+  |--> | c_dvar_read | get argument (service_name)                                                               
+  |    +-------------+                                                                                           
+  |                                                                                                              
+  |--> if service_name == "org.freedesktop.DBus"                                                                 
+  |    -                                                                                                         
+  |    +--> addr = "org.freedesktop.DBus"                                                                        
+  |                                                                                                              
+  |--> else                                                                                                      
+  |    |                                                                                                         
+  |    |    +-----------------------+                                                                            
+  |    +--> | bus_find_peer_by_name | given service_name, find owner (peer)                                      
+  |         +-----------------------+                                                                            
+  |    +--------------+                                                                                          
+  |--> | c_dvar_write | write unique id of owner to out data                                                     
+  |    +--------------+                                                                                          
+  |    +-------------------+                                                                                     
+  +--> | driver_send_reply |                                                                                     
+       +-------------------+                                                                                     
+```
+
+## <a name="cheat-sheet"></a> Cheat Sheet
+
+- Retrieve the unique ID of the target service.
+
+```
+e.g.,
+busctl call --verbose \
+  org.freedesktop.DBus \
+  /org/freedesktop/DBus \
+  org.freedesktop.DBus \
+  GetNameOwner \
+  s \
+  xyz.openbmc_project.User.Manager
+```
+
+- Enumerate all service names.
+
+```
+busctl call --verbose \
+  org.freedesktop.DBus \
+  /org/freedesktop/DBus \
+  org.freedesktop.DBus \
+  ListNames
 ```
