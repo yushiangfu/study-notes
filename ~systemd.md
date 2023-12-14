@@ -7863,6 +7863,28 @@ src/bus/driver.c
        +-------------------+                                                                                     
 ```
 
+```
+src/bus/driver.c                                                                  
++--------------------------+                                                       
+| driver_method_list_names | : prepare list of uniq_id and servcie_name, send reply
++-|------------------------+                                                       
+  |    +--------------+                                                            
+  |--> | c_dvar_write | write "org.freedesktop.DBus" to out data                   
+  |    +--------------+                                                            
+  |                                                                                
+  |--> for each peer in bus                                                        
+  |    -                                                                           
+  |    +--> write its uniq id to out data                                          
+  |                                                                                
+  |--> for each service_name in bus                                                
+  |    -                                                                           
+  |    +--> write the name to out data                                             
+  |                                                                                
+  |    +-------------------+                                                       
+  +--> | driver_send_reply | send reply                                            
+       +-------------------+                                                       
+```
+
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
 - Retrieve the unique ID of the target service.
