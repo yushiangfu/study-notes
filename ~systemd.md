@@ -7794,3 +7794,31 @@ core/mount.c
        +--> | mount_setup_new_unit | alloc unit, add dependencies, add to load_queue
             +----------------------+
 ```
+
+```
+src/shared/bus-util.c                                                                                           
++---------------------------------------------+                                                                  
+| bus_open_system_watch_bind_with_description | : get a bus, configure it and start                              
++-|-------------------------------------------+                                                                  
+  |    +------------+                                                                                            
+  |--> | sd_bus_new | get a bus                                                                                  
+  |    +------------+                                                                                            
+  |    +--------------------+                                                                                    
+  |--> | sd_bus_set_address | bus->address = address                                                             
+  |    +--------------------+                                                                                    
+  |    +-----------------------+                                                                                 
+  |--> | sd_bus_set_bus_client | bus->bus_client = arg                                                           
+  |    +-----------------------+                                                                                 
+  |    +------------------------+                                                                                
+  |--> | sd_bus_negotiate_creds | (skip)                                                                         
+  |    +------------------------+                                                                                
+  |    +-----------------------+                                                                                 
+  |--> | sd_bus_set_watch_bind | bus->watch_bind = arg                                                           
+  |    +-----------------------+                                                                                 
+  |    +-----------------------------+                                                                           
+  |--> | sd_bus_set_connected_signal | bus->connected_signal = arg                                               
+  |    +-----------------------------+                                                                           
+  |    +--------------+                                                                                          
+  +--> | sd_bus_start | set bus state = opening, prepare socket/epoll, send msg (hello) to "org.freedesktop.DBus"
+       +--------------+                                                                                          
+```
