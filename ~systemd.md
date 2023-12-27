@@ -7822,3 +7822,45 @@ src/shared/bus-util.c
   +--> | sd_bus_start | set bus state = opening, prepare socket/epoll, send msg (hello) to "org.freedesktop.DBus"
        +--------------+                                                                                          
 ```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                                 
++-------------------+                                                                           
+| bus_start_running | : set bus state = running, prepare signal ('connected'), prepend to rqueue
++-|-----------------+                                                                           
+  |                                                                                             
+  |--> set bus state = running                                                                  
+  |                                                                                             
+  |    +-----------------------------+                                                          
+  +--> | synthesize_connected_signal | prepare signal ('connected'), prepend to rqueue          
+       +-----------------------------+                                                          
+```
+
+```
+src/libsystemd/sd-bus/sd-bus.c                                                  
++-----------------------------+                                                  
+| synthesize_connected_signal | : prepare signal ('connected'), prepend to rqueue
++-|---------------------------+                                                  
+  |    +---------------------------+                                             
+  |--> | sd_bus_message_new_signal | prepare msg of signal type                  
+  |    +---------------------------+ obj: "/org/freedesktop/DBus/Local"          
+  |                                  iface: "org.freedesktop.DBus.Local"         
+  |                                  prop: "Connected"                           
+  |                                                                              
+  |    +------------------------------+                                          
+  |--> | bus_message_set_sender_local | set sender = "org.freedesktop.DBus.Local"
+  |    +------------------------------+                                          
+  |    +----------------------------+                                            
+  |--> | bus_seal_synthetic_message |                                            
+  |    +----------------------------+                                            
+  |    +----------------------+                                                  
+  |--> | bus_rqueue_make_room | realloc rqueue for current msg                   
+  |    +----------------------+                                                  
+  |    +---------+                                                               
+  |--> | memmove | shift every [n] to [n+1]                                      
+  |    +---------+                                                               
+  |                                                                              
+  |--> rqueue[0] = current msg                                                   
+  |                                                                              
+  +--> update rqueue_size                                                        
+```
