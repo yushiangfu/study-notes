@@ -1,3 +1,62 @@
+> Study case: Aspeed OpenBMC (commit 742fec782ef6c34c9fcd866116631e1d7aeedf8c)
+
+## Index
+
+- [Introduction](#introduction)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+<p align="center"><img src="images/x86-power-control/gpio.png" /></p>
+
+```
+service: "xyz.openbmc_project.State.Host"                 <-- obsolete
+service: "xyz.openbmc_project.State.Chassis"              <-- obsolete
+service: "xyz.openbmc_project.State.OperatingSystem"      <-- obsolete
+service: "xyz.openbmc_project.Chassis.Buttons"            <-- obsolete
+service: "xyz.openbmc_project.Control.Host.RestartCause"  <-- obsolete
+
+service: "xyz.openbmc_project.State.Host0"
+service: "xyz.openbmc_project.State.Chassis0"
+service: "xyz.openbmc_project.State.OperatingSystem0"
+service: "xyz.openbmc_project.Chassis.Buttons0"
+service: "xyz.openbmc_project.Control.Host.RestartCause0"
+
+obj: "/xyz/openbmc_project/state/host0"
+    iface: "xyz.openbmc_project.State.Host"
+        prop: "RequestedHostTransition"  <-- Manage host power status.
+        prop: "CurrentHostState"         <-- Retrieve current host power status.
+
+obj: "/xyz/openbmc_project/state/chassis0"
+    iface: "xyz.openbmc_project.State.Chassis"
+        prop: "RequestedPowerTransition"  <-- Manage chassis power status.
+        prop: "CurrentPowerState"         <-- Retrieve current host power status.
+        prop: "LastStateChangeTime"       <-- timestamp
+
+obj: "/xyz/openbmc_project/chassis/buttons/power"
+    iface: "xyz.openbmc_project.Chassis.Buttons"
+        prop: "ButtonMasked"   <-- Deassert the 'power out' signal.
+        prop: "ButtonPressed"  <-- Verify the current status of the power button.
+
+obj: "/xyz/openbmc_project/chassis/buttons/reset"
+    iface: "xyz.openbmc_project.Chassis.Buttons"
+        prop: "ButtonMasked"   <-- Enable or disable the power button.
+        prop: "ButtonPressed"  <-- Verify the current status of the reset button.
+
+obj: "/xyz/openbmc_project/chassis/buttons/id"
+    iface: "xyz.openbmc_project.Chassis.Buttons"
+        prop: "ButtonPressed"  <-- Verify the current status of the ID button.
+
+obj: "/xyz/openbmc_project/state/os"
+    iface: "xyz.openbmc_project.State.OperatingSystem.Status"
+        prop: "OperatingSystemState"  <-- Verify the current status of 'post complete.'
+
+obj: "/xyz/openbmc_project/control/host0/restart_cause"
+    iface: "xyz.openbmc_project.Control.Host.RestartCause"
+        prop: "RestartCause"           <-- Retrieve the host's restart cause.
+        prop: "RequestedRestartCause"  <-- Add a restart cause related to the watchdog.
+```
+
 ```
 src/power_control.cpp                                                                             
 +------+                                                                                           
