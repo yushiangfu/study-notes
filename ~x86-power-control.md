@@ -7,7 +7,14 @@
 
 ## <a name="introduction"></a> Introduction
 
+In the motherboard design, BMC GPIOs play a pivotal role in both receiving host power and button status, and conversely, they facilitate sending signals to the host. 
+The diagram below is derived from `config/power-config-host0.json` in the `x86-power-control` package, simplified for clarity by excluding SIO and NMI-related elements.
+
 <p align="center"><img src="images/x86-power-control/gpio.png" /></p>
+
+The `x86-power-control` package, leveraging hardware capabilities, offers DBus interfaces that empower users to exercise control over host/chassis power and query their status.
+It's worth noting that this package requests several service names, including some that are obsolete.
+When accessing the objects within, the specific service name specified doesn't affect functionality—all service names function equivalently in this context.
 
 ```
 service: "xyz.openbmc_project.State.Host"                 <-- obsolete
@@ -57,6 +64,18 @@ obj: "/xyz/openbmc_project/control/host0/restart_cause"
         prop: "RequestedRestartCause"  <-- Add a restart cause related to the watchdog.
 ```
 
+### Event and State
+
+Actions originating from either GPIO or DBus interfaces prompt the corresponding event in `x86-power-control`, which is then processed by the current state handler. 
+Despite different actions potentially leading to the same event, such as:
+
+- Event `powerOnRequest` triggered by either
+    - Host.Transition.On
+    - Chassis.Transition.On
+- Event `powerCycleRequest` triggered by either
+    - Host.Transition.Reboot
+    - Chassis.Transition.PowerCycle
+
 | Name                               | Type             | Event                     |
 | ---                                | ---              | ---                       |
 | Power Button                       | GPIO             | powerButtonPressed        |
@@ -70,6 +89,16 @@ obj: "/xyz/openbmc_project/control/host0/restart_cause"
 | Chassis.Transition.On              | Chassis Property | powerOnRequest            |
 | Chassis.Transition.PowerCycle      | Chassis Property | powerCycleRequest         |
 
+In the current service, we consistently reside in a particular power state, with dedicated handlers prepared for each state. 
+When an event occurs, the handler associated with the existing state manages the event through:
+
+- Initiating a state change:
+  - This transition ensures that the subsequent state handler is in charge of handling the subsequent event.
+- Asserting GPIO:
+  - This involves actions such as dispatching a 'power out' signal to the host.
+- Initiating a watchdog timer:
+  - This serves as a precautionary measure in case the host hardware fails to respond promptly. If needed, the current handler can trigger a state change based on the watchdog timer's outcome.
+
 | Internal Power State         | External Host State    | External Chassis State |
 | ---                          | ---                    | ---                    |
 | on                           | Host.HostState.Running | Chassis.PowerState.On  |
@@ -82,6 +111,9 @@ obj: "/xyz/openbmc_project/control/host0/restart_cause"
 | gracefulTransitionToCycleOff | Host.HostState.Running | Chassis.PowerState.On  |
 | checkForWarmReset            | Host.HostState.Off     | Chassis.PowerState.On  |
 
+### State Flows
+
+### Restore Policy
 
 <details><summary> More Details </summary>
 
@@ -1266,3 +1298,7 @@ src/power_control.cpp
 ```
 
 </details>
+
+## <a name="reference"></a> Reference
+
+- [X86 power control](https://github.com/openbmc/x86-power-control)
