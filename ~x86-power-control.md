@@ -57,6 +57,34 @@ obj: "/xyz/openbmc_project/control/host0/restart_cause"
         prop: "RequestedRestartCause"  <-- Add a restart cause related to the watchdog.
 ```
 
+| Name                               | Type             | Event                     |
+| ---                                | ---              | ---                       |
+| Power Button                       | GPIO             | powerButtonPressed        |
+| Reset Button                       | GPIO             | resetButtonPressed        |
+| Host.Transition.Off                | Host Property    | gracefulPowerOffRequest   |
+| Host.Transition.On                 | Host Property    | powerOnRequest            |
+| Host.Transition.Reboot             | Host Property    | powerCycleRequest         |
+| Host.Transition.GracefulWarmReboot | Host Property    | gracefulPowerCycleRequest |
+| Host.Transition.ForceWarmReboot    | Host Property    | resetRequest              |
+| Chassis.Transition.Off             | Chassis Property | powerOffRequest           |
+| Chassis.Transition.On              | Chassis Property | powerOnRequest            |
+| Chassis.Transition.PowerCycle      | Chassis Property | powerCycleRequest         |
+
+| Internal Power State         | External Host State    | External Chassis State |
+| ---                          | ---                    | ---                    |
+| on                           | Host.HostState.Running | Chassis.PowerState.On  |
+| waitForPSPowerOK             | Host.HostState.Off     | Chassis.PowerState.Off |
+| off                          | Host.HostState.Off     | Chassis.PowerState.Off |
+| transitionToOff              | Host.HostState.Off     | Chassis.PowerState.On  |
+| gracefulTransitionToOff      | Host.HostState.Running | Chassis.PowerState.On  |
+| cycleOff                     | Host.HostState.Off     | Chassis.PowerState.Off |
+| transitionToCycleOff         | Host.HostState.Off     | Chassis.PowerState.On  |
+| gracefulTransitionToCycleOff | Host.HostState.Running | Chassis.PowerState.On  |
+| checkForWarmReset            | Host.HostState.Off     | Chassis.PowerState.On  |
+
+
+<details><summary> More Details </summary>
+
 ```
 src/power_control.cpp                                                                             
 +------+                                                                                           
@@ -1236,3 +1264,5 @@ src/power_control.cpp
        +--> | beep | send method call to service "xyz.openbmc_project.BeepCode"           
             +------+                                                                      
 ```
+
+</details>
