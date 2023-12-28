@@ -99,6 +99,9 @@ When an event occurs, the handler associated with the existing state manages the
 - Initiating a watchdog timer:
   - This serves as a precautionary measure in case the host hardware fails to respond promptly. If needed, the current handler can trigger a state change based on the watchdog timer's outcome.
 
+Property values for host state and chassis state are simplified to binary values: `on (running)` and `off`. 
+Notably, certain states are considered `off` in the host but `on` in the chassis:
+  
 | Internal Power State         | External Host State    | External Chassis State |
 | ---                          | ---                    | ---                    |
 | on                           | Host.HostState.Running | Chassis.PowerState.On  |
