@@ -3,7 +3,9 @@
 ## Index
 
 - [Introduction](#introduction)
+- [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
+
 
 ## <a name="introduction"></a> Introduction
 
@@ -42,12 +44,12 @@ obj: "/xyz/openbmc_project/state/chassis0"
 
 obj: "/xyz/openbmc_project/chassis/buttons/power"
     iface: "xyz.openbmc_project.Chassis.Buttons"
-        prop: "ButtonMasked"   <-- Deassert the 'power out' signal.
+        prop: "ButtonMasked"   <-- Enable or disable the power button.
         prop: "ButtonPressed"  <-- Verify the current status of the power button.
 
 obj: "/xyz/openbmc_project/chassis/buttons/reset"
     iface: "xyz.openbmc_project.Chassis.Buttons"
-        prop: "ButtonMasked"   <-- Enable or disable the power button.
+        prop: "ButtonMasked"   <-- Enable or disable the reset button.
         prop: "ButtonPressed"  <-- Verify the current status of the reset button.
 
 obj: "/xyz/openbmc_project/chassis/buttons/id"
@@ -56,7 +58,7 @@ obj: "/xyz/openbmc_project/chassis/buttons/id"
 
 obj: "/xyz/openbmc_project/state/os"
     iface: "xyz.openbmc_project.State.OperatingSystem.Status"
-        prop: "OperatingSystemState"  <-- Verify the current status of 'post complete.'
+        prop: "OperatingSystemState"  <-- Verify the current status of 'post complete.
 
 obj: "/xyz/openbmc_project/control/host0/restart_cause"
     iface: "xyz.openbmc_project.Control.Host.RestartCause"
@@ -1301,6 +1303,104 @@ src/power_control.cpp
 ```
 
 </details>
+
+## <a name="cheat-sheet"></a> Cheat Sheet
+
+### Host
+
+- Administer host power status using the following options:
+    - xyz.openbmc_project.State.Host.Transition.Off
+    - xyz.openbmc_project.State.Host.Transition.On
+    - xyz.openbmc_project.State.Host.Transition.Reboot
+    - xyz.openbmc_project.State.Host.Transition.GracefulWarmReboot
+    - xyz.openbmc_project.State.Host.Transition.ForceWarmReboot
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.State.Host \
+  /xyz/openbmc_project/state/host0 \
+  org.freedesktop.DBus.Properties \
+  Set \
+  ssv \
+  xyz.openbmc_project.State.Host \
+  RequestedHostTransition \
+  s \
+  xyz.openbmc_project.State.Host.Transition.Off
+```
+
+- Retrieve current host power status.
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.State.Host \
+  /xyz/openbmc_project/state/host0 \
+  org.freedesktop.DBus.Properties \
+  Get \
+  ss \
+  xyz.openbmc_project.State.Host \
+  CurrentHostState
+```
+
+- Retrieve the host's restart cause.
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.State.Host \
+  /xyz/openbmc_project/control/host0/restart_cause \
+  org.freedesktop.DBus.Properties \
+  Get \
+  ss \
+  xyz.openbmc_project.Control.Host.RestartCause \
+  RestartCause
+```
+
+### Chassis
+
+- Administer chassis power status using the following options:
+    - xyz.openbmc_project.State.Chassis.Transition.Off
+    - xyz.openbmc_project.State.Chassis.Transition.On
+    - xyz.openbmc_project.State.Chassis.Transition.PowerCycle
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.State.Chassis \
+  /xyz/openbmc_project/state/chassis0 \
+  org.freedesktop.DBus.Properties \
+  Set \
+  ssv \
+  xyz.openbmc_project.State.Chassis \
+  RequestedPowerTransition \
+  s \
+  xyz.openbmc_project.State.Chassis.Transition.Off
+```
+
+- Retrieve current chassis power status.
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.State.Chassis \
+  /xyz/openbmc_project/state/chassis0 \
+  org.freedesktop.DBus.Properties \
+  Get \
+  ss \
+  xyz.openbmc_project.State.Chassis \
+  CurrentPowerState
+```
+
+### OS
+
+- Verify the current status of 'post complete.
+
+```
+busctl call --verbose \
+  xyz.openbmc_project.State.OperatingSystem \
+  /xyz/openbmc_project/state/os \
+  org.freedesktop.DBus.Properties \
+  Get \
+  ss \
+  xyz.openbmc_project.State.OperatingSystem.Status \
+  OperatingSystemState
+```
 
 ## <a name="reference"></a> Reference
 
