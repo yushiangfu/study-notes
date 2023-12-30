@@ -12,7 +12,7 @@
 In the motherboard design, BMC GPIOs play a pivotal role in both receiving host power and button status, and conversely, they facilitate sending signals to the host. 
 The diagram below is derived from `config/power-config-host0.json` in the `x86-power-control` package, simplified for clarity by excluding SIO and NMI-related elements.
 
-<p align="center"><img src="images/x86-power-control/gpio.png" /></p>
+<p align="center"><img src="images/x86-power-control/gpio-layout.png" /></p>
 
 The `x86-power-control` package, leveraging hardware capabilities, offers DBus interfaces that empower users to exercise control over host/chassis power and query their status.
 It's worth noting that this package requests several service names, including some that are obsolete.
@@ -118,7 +118,21 @@ Notably, certain states are considered `off` in the host but `on` in the chassis
 
 ### State Flows
 
+<p align="center"><img src="images/x86-power-control/power-on-and-reset.png" /></p>
+
+<p align="center"><img src="images/x86-power-control/graceful-power-off-and-power-off.png" /></p>
+
+<p align="center"><img src="images/x86-power-control/graceful-power-cycle-and-power-cycle.png" /></p>
+
 ### Restore Policy
+
+Upon service initiation, it assesses the applicability of the restore policy when the host state is off. 
+Initially, it queries the restore policy from the `settings`, which can be either `AlwaysOn` or `Restore`. 
+If the policy is configured as `Restore`, the power control service proceeds to inspect the contents of the file `/var/lib/power-control/state.json`. 
+This file consistently reflects the latest power state due to continuous synchronization by the service.
+If the stored value is "power on," it signifies that the host power was interrupted during the service downtime and went unnoticed.
+
+<p align="center"><img src="images/x86-power-control/restore-flow.png" /></p>
 
 <details><summary> More Details </summary>
 
