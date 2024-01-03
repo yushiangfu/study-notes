@@ -1,15 +1,10 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Sensor Detection](#sensor-detection)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
-
-(TBD)
-
-## <a name="sensor-detection"></a> Sensor Detection
 
 In the context of physically detachable devices, such as backplanes, power supply units (PSUs), and PCIe cards, these devices are referred to as "entities." 
 One of the challenges with entities, specifically PCIe cards, is that they can be plugged into any available slot, requiring dynamic detection and identification.
@@ -24,14 +19,37 @@ If successful, it performs parsing of the FRU format to extract relevant informa
 Valid devices are then published to the D-Bus, a message bus system, allowing other components of the system to access and utilize this device information.
 
 ```
-# example from reference 'Entity Manager'
+service: "xyz.openbmc_project.FruDevice"
 
-root@romulus:~# busctl tree xyz.openbmc_project.FruDevice
-`-/xyz
-  `-/xyz/openbmc_project
-    `-/xyz/openbmc_project/FruDevice
-      |-/xyz/openbmc_project/FruDevice/Super_Great
-      |-/xyz/openbmc_project/FruDevice/Super_Great_0
+    obj: "/xyz/openbmc_project/FruDevice"
+        iface: "xyz.openbmc_project.FruDeviceManager"
+            method: "ReScan"     <-- Scan all I2C buses and install D-Bus objects for detected FRU devices.
+            method: "ReScanBus"  <-- Scan the specified I2C bus and install D-Bus objects for identified FRU devices.
+            method: "GetRawFru"  <-- Retrieve FRU data from the device on bus $bus and address $addr.
+            method: "WriteFru"   <-- Write FRU data to the device on bus $bus and address $addr.
+
+    obj: "/xyz/openbmc_project/FruDevice/$bus_$address"        -+
+        iface: "xyz.openbmc_project.Inventory.Item.I2CDevice"   | * (number of discovered I2C devices)
+            prop: "Bus"                                         |
+            prop: "Address"                                    -+
+
+    obj: /xyz/openbmc_project/FruDevice/$productName_$index    -+
+        iface: "xyz.openbmc_project.FruDevice"                  |
+            prop: $key0                                         |
+            prop: $key1                                         | * (number of identified FRUs)
+            ...                                                 |
+            prop: "Bus"                                         |
+            prop: "Address"                                    -+
+
+
+
+callback of match rule
+    service: "xyz.openbmc_project.State.Host"
+        obj: "/xyz/openbmc_project/state/host0"
+            iface: "org.freedesktop.DBus.Properties"
+
+inotify watch
+    "/dev"
 ```
 
 <details><summary> More Details </summary>
