@@ -265,3 +265,63 @@ drivers/thermal/thermal_core.c
        +--> | thermal_zone_device_update | (thermal zone related, skip)                                      
             +----------------------------+                                                                   
 ```
+
+```
+drivers/hwmon/tach-aspeed-ast2600.c                                                                         
++-------------------+                                                                                        
+| aspeed_tach_probe |                                                                                        
++-|-----------------+                                                                                        
+  |                                                                                                          
+  |--> alloc priv                                                                                            
+  |                                                                                                          
+  |    +-----------------------+                                                                             
+  |--> | syscon_node_to_regmap | read hw_reg info and do iomap (for later scu operation)                     
+  |    +-----------------------+                                                                             
+  |                                                                                                          
+  +--> for each child node (fan 0~15)                                                                        
+       |                                                                                                     
+       |    +------------------------+                                                                       
+       |--> | aspeed_tach_create_fan | read dt property to get channel, config its hw registers and enable it
+       |    +------------------------+                                                                       
+       |    +--------------------------------------+                                                         
+       +--> | devm_hwmon_device_register_with_info | setup hwmon_dev, register it, add to arg dev as resource
+            +--------------------------------------+                                                         
+```
+
+```
+drivers/hwmon/tach-aspeed-ast2600.c                                                               
++------------------------+                                                                         
+| aspeed_tach_create_fan | : read dt property to get channel, config its hw registers and enable it
++-|----------------------+                                                                         
+  |    +----------------------+                                                                    
+  |--> | of_property_read_u32 | read 'reg' property                                                
+  |    +----------------------+                                                                    
+  |    +--------------------------------+                                                          
+  +--> | aspeed_create_fan_tach_channel | config hw registers and enable this channel              
+       +--------------------------------+                                                          
+```
+
+```
+drivers/hwmon/tach-aspeed-ast2600.c                                            
++--------------------------------+                                              
+| aspeed_create_fan_tach_channel | : config hw registers and enable this channel
++-|------------------------------+                                              
+  |    +-------------------+                                                    
+  |--> | regmap_write_bits | write limited_inverse                              
+  |    +-------------------+                                                    
+  |    +-------------------+                                                    
+  |--> | regmap_write_bits | write tach_debounce                                
+  |    +-------------------+                                                    
+  |    +-------------------+                                                    
+  |--> | regmap_write_bits | write tach_edge                                    
+  |    +-------------------+                                                    
+  |    +-------------------+                                                    
+  |--> | regmap_write_bits | write tach_divisor                                 
+  |    +-------------------+                                                    
+  |    +-------------------+                                                    
+  |--> | regmap_write_bits | write threshold                                    
+  |    +-------------------+                                                    
+  |    +-----------------------+                                                
+  +--> | aspeed_tach_ch_enable | write reg to enable the tach channel           
+       +-----------------------+                                                
+```
