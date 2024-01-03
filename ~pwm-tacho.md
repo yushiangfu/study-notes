@@ -1,7 +1,7 @@
 ```
 drivers/hwmon/aspeed-g6-pwm-tach.c                                                                                 
 +-----------------------+                                                                                           
-| aspeed_pwm_tach_probe |                                                                                           
+| aspeed_pwm_tach_probe | : ioremap register base, install chip ops, setup hwmon_dev and register it
 +-|---------------------+                                                                                           
   |                                                                                                                 
   |--> alloc priv                                                                                                   
@@ -43,6 +43,25 @@ drivers/hwmon/aspeed-g6-pwm-tach.c
   |    +-------------------------+                                                                        
   +--> | aspeed_present_fan_tach | config registers and enable hardware                                   
        +-------------------------+                                                                        
+```
+
+```
+drivers/hwmon/aspeed-chassis.c                                                                           
++----------------------+                                                                                  
+| aspeed_chassis_probe | : ioremap register base, disable hw interrupts, setup hwmon_dev and register it  
++-|--------------------+                                                                                  
+  |                                                                                                       
+  |--> alloc priv                                                                                         
+  |                                                                                                       
+  |    +--------------------------------+                                                                 
+  |--> | devm_platform_ioremap_resource | ioremap register base                                           
+  |    +--------------------------------+                                                                 
+  |    +-------------------------+                                                                        
+  |--> | aspeed_chassis_int_ctrl | write reg to disalbe hw interrupt                                      
+  |    +-------------------------+                                                                        
+  |    +----------------------------------------+                                                         
+  +--> | devm_hwmon_device_register_with_groups | setup hwmon_dev, register it, add to arg dev as resource
+       +----------------------------------------+                                                         
 ```
 
 ```
