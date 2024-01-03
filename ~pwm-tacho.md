@@ -1,43 +1,4 @@
 ```
-drivers/pwm/pwm-aspeed-ast2600.c                                                       
-+------------------+                                                                    
-| aspeed_pwm_probe | : alloc and setup pwm-chip (install ops), register to 'pwms_chips' 
-+-|----------------+                                                                    
-  |                                                                                     
-  |--> alloc priv                                                                       
-  |                                                                                     
-  |    +-----------------------+                                                        
-  |--> | syscon_node_to_regmap | read hw_reg info and do iomap (for later scu operation)
-  |    +-----------------------+                                                        
-  |    +--------------------------+                                                     
-  |--> | devm_add_action_or_reset | add action as dev resource                          
-  |    +--------------------------+ +-------------------------+                         
-  |                                 | aspeed_pwm_reset_assert | assert reset            
-  |                                 +-------------------------+                         
-  |                                                                                     
-  |--> for each child node (not our case)                                               
-  |    |                                                                                
-  |    |    +---------------------------+                                               
-  |    +--> | aspeed_pwm_extend_feature |                                               
-  |         +---------------------------+                                               
-  |                                                                                     
-  |--> install 'aspeed_pwm_ops'                                                         
-  |    +------------------+                                                             
-  |    | aspeed_pwm_apply |                                                             
-  |    +----------------------+                                                         
-  |    | aspeed_pwm_get_state |                                                         
-  |    +----------------------+                                                         
-  |    +-------------+                                                                  
-  |--> | pwmchip_add | alloc pwm devs for chip, add chip to 'pwms_chips' list           
-  |    +-------------+                                                                  
-  |    +--------------------------+                                                     
-  +--> | devm_add_action_or_reset | add action as dev resource                          
-       +--------------------------+ +------------------------+                          
-                                    | aspeed_pwm_chip_remove | remove pwmchip           
-                                    +------------------------+                          
-```
-
-```
 drivers/pwm/core.c                                                     
 +-------------+                                                         
 | pwmchip_add | : alloc pwm devs for chip, add chip to 'pwms_chips' list
@@ -145,21 +106,6 @@ drivers/pwm/core.c
 ```
 
 ```
-drivers/pwm/pwm-aspeed-ast2600.c                           
-+------------------+                                        
-| aspeed_pwm_apply | : calculate duty cycle and write to reg
-+-|----------------+                                        
-  |                                                         
-  |--> calculate and determine div                          
-  |                                                         
-  |--> calculate duty with div                              
-  |                                                         
-  |    +--------------------+                               
-  +--> | regmap_update_bits | write duty to reg             
-       +--------------------+                               
-```
-
-```
 drivers/hwmon/hwmon.c                                                                                         
 +--------------------------------------+                                                                       
 | devm_hwmon_device_register_with_info | : setup hwmon_dev, register it, add to arg dev as resource            
@@ -264,64 +210,4 @@ drivers/thermal/thermal_core.c
        |    +----------------------------+                                                                   
        +--> | thermal_zone_device_update | (thermal zone related, skip)                                      
             +----------------------------+                                                                   
-```
-
-```
-drivers/hwmon/tach-aspeed-ast2600.c                                                                         
-+-------------------+                                                                                        
-| aspeed_tach_probe |                                                                                        
-+-|-----------------+                                                                                        
-  |                                                                                                          
-  |--> alloc priv                                                                                            
-  |                                                                                                          
-  |    +-----------------------+                                                                             
-  |--> | syscon_node_to_regmap | read hw_reg info and do iomap (for later scu operation)                     
-  |    +-----------------------+                                                                             
-  |                                                                                                          
-  +--> for each child node (fan 0~15)                                                                        
-       |                                                                                                     
-       |    +------------------------+                                                                       
-       |--> | aspeed_tach_create_fan | read dt property to get channel, config its hw registers and enable it
-       |    +------------------------+                                                                       
-       |    +--------------------------------------+                                                         
-       +--> | devm_hwmon_device_register_with_info | setup hwmon_dev, register it, add to arg dev as resource
-            +--------------------------------------+                                                         
-```
-
-```
-drivers/hwmon/tach-aspeed-ast2600.c                                                               
-+------------------------+                                                                         
-| aspeed_tach_create_fan | : read dt property to get channel, config its hw registers and enable it
-+-|----------------------+                                                                         
-  |    +----------------------+                                                                    
-  |--> | of_property_read_u32 | read 'reg' property                                                
-  |    +----------------------+                                                                    
-  |    +--------------------------------+                                                          
-  +--> | aspeed_create_fan_tach_channel | config hw registers and enable this channel              
-       +--------------------------------+                                                          
-```
-
-```
-drivers/hwmon/tach-aspeed-ast2600.c                                            
-+--------------------------------+                                              
-| aspeed_create_fan_tach_channel | : config hw registers and enable this channel
-+-|------------------------------+                                              
-  |    +-------------------+                                                    
-  |--> | regmap_write_bits | write limited_inverse                              
-  |    +-------------------+                                                    
-  |    +-------------------+                                                    
-  |--> | regmap_write_bits | write tach_debounce                                
-  |    +-------------------+                                                    
-  |    +-------------------+                                                    
-  |--> | regmap_write_bits | write tach_edge                                    
-  |    +-------------------+                                                    
-  |    +-------------------+                                                    
-  |--> | regmap_write_bits | write tach_divisor                                 
-  |    +-------------------+                                                    
-  |    +-------------------+                                                    
-  |--> | regmap_write_bits | write threshold                                    
-  |    +-------------------+                                                    
-  |    +-----------------------+                                                
-  +--> | aspeed_tach_ch_enable | write reg to enable the tach channel           
-       +-----------------------+                                                
 ```
