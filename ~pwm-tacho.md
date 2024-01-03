@@ -1,4 +1,51 @@
 ```
+drivers/hwmon/aspeed-g6-pwm-tach.c                                                                                 
++-----------------------+                                                                                           
+| aspeed_pwm_tach_probe |                                                                                           
++-|---------------------+                                                                                           
+  |                                                                                                                 
+  |--> alloc priv                                                                                                   
+  |                                                                                                                 
+  |    +--------------------------------+                                                                           
+  |--> | devm_platform_ioremap_resource | ioremap register base                                                     
+  |    +--------------------------------+                                                                           
+  |                                                                                                                 
+  |--> set chip ops = aspeed_pwm_ops                                                                                
+  |                                                                                                                 
+  |    +------------------+                                                                                         
+  |--> | devm_pwmchip_add | alloc pwm devs for chip, add chip to 'pwms_chips' list                                  
+  |    +------------------+                                                                                         
+  |                                                                                                                 
+  |--> for each chil  node (fan-0 ~ fan-15)                                                                         
+  |    |                                                                                                            
+  |    |    +------------------------+                                                                              
+  |    +--> | aspeed_tach_create_fan | read property 'tach-ch' to know channel, config registers and enable hardware
+  |         +------------------------+                                                                              
+  |    +--------------------------------------+                                                                     
+  +--> | devm_hwmon_device_register_with_info | setup hwmon_dev, register it, add to arg dev as resource            
+       +--------------------------------------+                                                                     
+```
+
+```
+drivers/hwmon/aspeed-g6-pwm-tach.c                                                                       
++------------------------+                                                                                
+| aspeed_tach_create_fan | : read property 'tach-ch' to know channel, config registers and enable hardware
++-|----------------------+                                                                                
+  |    +----------------------------+                                                                     
+  |--> | of_property_count_u8_elems | count how many elements are in property "tach-ch"                   
+  |    +----------------------------+                                                                     
+  |                                                                                                       
+  |--> alloc space for them                                                                               
+  |                                                                                                       
+  |    +---------------------------+                                                                      
+  |--> | of_property_read_u8_array | read property 'tach-ch' into allocated space                         
+  |    +---------------------------+                                                                      
+  |    +-------------------------+                                                                        
+  +--> | aspeed_present_fan_tach | config registers and enable hardware                                   
+       +-------------------------+                                                                        
+```
+
+```
 drivers/pwm/core.c                                                     
 +-------------+                                                         
 | pwmchip_add | : alloc pwm devs for chip, add chip to 'pwms_chips' list
