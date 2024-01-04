@@ -65,6 +65,41 @@ drivers/hwmon/aspeed-chassis.c
 ```
 
 ```
+drivers/hwmon/lm75.c                                                                                   
++------------+                                                                                          
+| lm75_probe | : get 'vs' regulator and enable, write config byte to lm75                               
++-|----------+                                                                                          
+  |                                                                                                     
+  |--> get type                                                                                         
+  |                                                                                                     
+  +--> alloc data for lm75                                                                              
+  |                                                                                                     
+  |    +--------------------+                                                                           
+  |--> | devm_regulator_get | get regulator with id 'vs'                                                
+  |    +--------------------+                                                                           
+  |    +----------------------+                                                                         
+  |--> | devm_regmap_init_i2c | (skip)                                                                  
+  |    +----------------------+                                                                         
+  |                                                                                                     
+  |--> ->params = device_params[lm75]                                                                   
+  |                                                                                                     
+  |    +------------------+                                                                             
+  |--> | regulator_enable | (skip)                                                                      
+  |    +------------------+                                                                             
+  |    +--------------------------+                                                                     
+  |--> | i2c_smbus_read_byte_data | read config byte from lm75                                          
+  |    +--------------------------+                                                                     
+  |    +-------------------+                                                                            
+  |--> | lm75_write_config | write adjusted config byte back to lm75                                    
+  |    +-------------------+                                                                            
+  |    +--------------------------------------+                                                         
+  |--> | devm_hwmon_device_register_with_info | setup hwmon_dev, register it, add to arg dev as resource
+  |    +--------------------------------------+                                                         
+  |                                                                                                     
+  +--> print lm75 8-004d: hwmon2: sensor 'lm75'                                                         
+```
+
+```
 drivers/pwm/core.c                                                     
 +-------------+                                                         
 | pwmchip_add | : alloc pwm devs for chip, add chip to 'pwms_chips' list
