@@ -312,3 +312,163 @@ drivers/thermal/thermal_core.c
        +--> | thermal_zone_device_update | (thermal zone related, skip)                                      
             +----------------------------+                                                                   
 ```
+
+```
+drivers/hwmon/iio_hwmon.c                                                                                
++-----------------+                                                                                       
+| iio_hwmon_probe | : alloc and setup channels, prepare hwmon_dev and register it                         
++-|---------------+                                                                                       
+  |    +--------------------------+                                                                       
+  |--> | devm_iio_channel_get_all | alloc channels and save iio_dev/map info in each channel              
+  |    +--------------------------+                                                                       
+  |                                                                                                       
+  |--> alloc state                                                                                        
+  |                                                                                                       
+  |--> save channels in state                                                                             
+  |                                                                                                       
+  |--> alloc attrs and save in state                                                                      
+  |                                                                                                       
+  |--> for each channel                                                                                   
+  |    |                                                                                                  
+  |    |--> alloc sensor_attr                                                                             
+  |    |                                                                                                  
+  |    |    +----------------------+                                                                      
+  |    |--> | iio_get_channel_type | get channel type, e.g., voltage, temp, current, ...                  
+  |    |    +----------------------+                                                                      
+  |    |                                                                                                  
+  |    |--> given type, determine prefix and update counting                                              
+  |    |                                                                                                  
+  |    |--> determine attr name, e.g., in0_input                                                          
+  |    |                                                                                                  
+  |    +--> install show()                                                                                
+  |         +--------------------+                                                                        
+  |         | iio_hwmon_read_val | read sensor value                                                      
+  |         +--------------------+                                                                        
+  |                                                                                                       
+  |--> determine name for dev, either "%pfwP" or "iio_hwmon"                                              
+  |                                                                                                       
+  |    +----------------------------------------+                                                         
+  +--> | devm_hwmon_device_register_with_groups | setup hwmon_dev, register it, add to arg dev as resource
+       +----------------------------------------+                                                         
+```
+
+```
+drivers/iio/inkern.c                                                                  
++--------------------------+                                                           
+| devm_iio_channel_get_all | : alloc channels and save iio_dev/map info in each channel
++-|------------------------+                                                           
+  |    +---------------------+                                                         
+  |--> | iio_channel_get_all | alloc channels and save iio_dev/map info in each channel
+  |    +---------------------+                                                         
+  |    +--------------------------+                                                    
+  +--> | devm_add_action_or_reset | register callback for device teardown              
+       +--------------------------+ +---------------------------+                      
+                                    | devm_iio_channel_free_all |                      
+                                    +---------------------------+                      
+```
+
+```
+drivers/iio/inkern.c                                                                                            
++---------------------+                                                                                          
+| iio_channel_get_all | : alloc channels and save iio_dev/map info in each channel                               
++-|-------------------+                                                                                          
+  |    +----------------------------+                                                                            
+  |--> | fwnode_iio_channel_get_all | count map#, alloc that many channels, find iio_dev and save in each channel
+  |    +----------------------------+                                                                            
+  |                                                                                                              
+  |--> traverse iio_map_list to count map# with name == arg name                                                 
+  |                                                                                                              
+  +--> for each map with name == arg name                                                                        
+       |                                                                                                         
+       |--> channel[i] = map info                                                                                
+       |                                                                                                         
+       +--> i++                                                                                                  
+```
+
+```
+drivers/iio/inkern.c                                                                                       
++----------------------------+                                                                              
+| fwnode_iio_channel_get_all | : count map#, alloc that many channels, find iio_dev and save in each channel
++-|--------------------------+                                                                              
+  |                                                                                                         
+  |--> count the number of maps                                                                             
+  |                                                                                                         
+  |--> alloc that many channels                                                                             
+  |                                                                                                         
+  +--> for each map                                                                                         
+       |                                                                                                    
+       |    +--------------------------+                                                                    
+       +--> | __fwnode_iio_channel_get | find target iio_dev from iio_bus_type, save it in channel          
+            +--------------------------+                                                                    
+```
+
+```
+drivers/iio/inkern.c                                                                   
++--------------------------+                                                            
+| __fwnode_iio_channel_get | : find target iio_dev from iio_bus_type, save it in channel
++-|------------------------+                                                            
+  |    +------------------------------------+                                           
+  |--> | fwnode_property_get_reference_args | given args, get target fw-node            
+  |    +------------------------------------+                                           
+  |    +---------------------------+                                                    
+  |--> | bus_find_device_by_fwnode | find target dev on iio_bus_type                    
+  |    +---------------------------+                                                    
+  |    +----------------+                                                               
+  |--> | dev_to_iio_dev | given dev, get outer iio-dev                                  
+  |    +----------------+                                                               
+  |                                                                                     
+  |--> save iio_dev in channel                                                          
+  |                                                                                     
+  +--> save iio_dev->channel in channel                                                 
+```
+
+```
+drivers/hwmon/iio_hwmon.c                      
++--------------------+                          
+| iio_hwmon_read_val | : read sensor value      
++-|------------------+                          
+  |    +----------------------------+           
+  |--> | iio_read_channel_processed | read value
+  |    +----------------------------+           
+  |                                             
+  +--> if type is power, do extra adjustment    
+```
+
+```
+drivers/iio/inkern.c                                                                               
++----------------------------+                                                                      
+| iio_read_channel_processed | : read value                                                         
++----------------------------------+                                                                
+| iio_read_channel_processed_scale | : read value                                                   
++-|--------------------------------+                                                                
+  |                                                                                                 
+  |--> if channel info is processed                                                                 
+  |    |                                                                                            
+  |    |    +------------------+                                                                    
+  |    +--> | iio_channel_read | call installed ops to read value                                   
+  |         +------------------+ (flag = processed)                                                 
+  |                                                                                                 
+  +--> else                                                                                         
+       |                                                                                            
+       |    +------------------+                                                                    
+       |--> | iio_channel_read | call installed ops to read value                                   
+       |    +------------------+ (flag = raw)                                                       
+       |    +---------------------------------------+                                               
+       +--> | iio_convert_raw_to_processed_unlocked | read offset and scale to convert the raw value
+            +---------------------------------------+                                               
+```
+
+```
+drivers/iio/inkern.c                                  
++------------------+                                   
+| iio_channel_read | : call installed ops to read value
++-|----------------+                                   
+  |                                                    
+  |--> if ->read_raw_multi() exists                    
+  |    -                                               
+  |    +--> call ->read_raw_multi()                    
+  |                                                    
+  +--> else                                            
+       -                                               
+       +--> call ->read_raw()                          
+```
