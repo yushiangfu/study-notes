@@ -470,5 +470,8 @@ drivers/iio/inkern.c
   |                                                    
   +--> else                                            
        -                                               
-       +--> call ->read_raw()                          
+       +--> call ->read_raw(), e.g.,                   
+            +---------------------+                    
+            | aspeed_adc_read_raw |                    
+            +---------------------+                    
 ```
