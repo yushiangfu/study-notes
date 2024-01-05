@@ -484,19 +484,27 @@ These attributes include details such as the entity's name, type, controller bus
 By exposing this information through the D-Bus hierarchy, other components and services in the system can access and utilize these attributes as needed.
 
 ```
-# example from reference 'Entity Manager'
+service: "xyz.openbmc_project.EntityManager"
+    obj: "/xyz/openbmc_project/inventory"
 
-root@romulus:~# busctl tree xyz.openbmc_project.EntityManager
-`-/xyz
-  `-/xyz/openbmc_project
-    |-/xyz/openbmc_project/EntityManager
-    `-/xyz/openbmc_project/inventory
-      `-/xyz/openbmc_project/inventory/system
-        `-/xyz/openbmc_project/inventory/system/board
-          |-/xyz/openbmc_project/inventory/system/board/18_Great_Card
-          | |-/xyz/openbmc_project/inventory/system/board/18_Great_Card/18_great_local
-          |-/xyz/openbmc_project/inventory/system/board/19_Great_Card
-          | |-/xyz/openbmc_project/inventory/system/board/19_Great_Card/19_great_local
+    obj: "/xyz/openbmc_project/EntityManager"
+        iface: "xyz.openbmc_project.EntityManager"
+            method: "ReScan"
+
+    obj: "/xyz/openbmc_project/inventory/system/$boardType/$boardKey"
+        iface: "xyz.openbmc_project.Inventory.Item"
+        iface: "xyz.openbmc_project.Inventory.Item.$boardType"
+        iface: "xyz.openbmc_project.AddObject"
+            method: "AddObject"
+
+    obj: "/xyz/openbmc_project/inventory/system/$boardType/$boardKey/$itemName"
+        iface: "xyz.openbmc_project.Configuration.$itemType"
+
+
+
+configuration path:
+/usr/share/entity-manager/configurations/    <-- our case
+/etc/entity-manager/configurations/
 ```
 
 When entity information is in readiness, a suite of sensor daemons dedicates to reading sensor values and updating the record. 
@@ -505,44 +513,52 @@ From the `fru device` and `entity manager` to sensor daemons, they don't talk to
 <details><summary> More Details </summary>
   
 ```
-from dbus perspective
-  
-entity_manager.cpp
-+------+                                                                                                                  
-| main |                                                                                                                  
-+-|----+                                                                                                                  
-  |                                                                                                                       
-  |--> set up service: xyz.openbmc_project.EntityManager                                                                  
-  |                                                                                                                       
-  |--> set up object: /xyz/openbmc_project/EntityManager                                                                  
-  |                                                                                                                       
-  |    +---------------------------+                                                                                      
-  +--> | propertiesChangedCallback |                                                                                      
-       +-|-------------------------+                                                                                      
-         |    +------------------+                                                                                        
-         |--> | PerformScan::run |                                                                                        
-         |    +-|----------------+                                                                                        
-         |      |    +-----------------+                                                                                  
-         |      +--> | findDbusObjects | call service: xyz.openbmc_project.ObjectMapper                                   
-         |           +-----------------+      object: /xyz/openbmc_project/object_mapper                                  
-         |                                    interface: xyz.openbmc_project.ObjectMapper                                 
-         |                                    method: GetSubTree                                                          
-         |                                                                                                                
-         |    +---------------------------+                                                                               
-         +--> | PerformScan::~PerformScan |                                                                               
-              +-|-------------------------+                                                                               
-                |    +------------+                                                                                       
-                +--> | postToDbus |                                                                                       
-                     +-|----------+                                                                                       
-                       |                                                                                                  
-                       |--> for each board                                                                                
-                       |                                                                                                  
-                       |------> set up object: /xyz/openbmc_project/inventory/system/$board_type/$board_key               
-                       |                                                                                                  
-                       |------> for each item                                                                             
-                       |                                                                                                  
-                       +----------> set up object: /xyz/openbmc_project/inventory/system/$board_type/$board_key/$item_name
-                                                                                                                          
+src/entity_manager.cpp                                                                                               xxx.json                             
++---------------------------+                                                                                  +---------------------+                     
+| propertiesChangedCallback |                                                                                  |  {                  |    <-- configuration
++-|-------------------------+                                                                                  |      Exposes: ...   |                     
+  |    +--------------------+                                                                                  |      Name: ...      |                     
+  |--> | loadConfigurations | load configurations from json files                                              |      Type: ...      |                     
+  |    +--------------------+ (/usr/share/entity-manager/configurations)                                       |  }                  |                     
+  |                                                                                                            |                     |                     
+  |--> alloc PerformScan                                                                                       |                     |                     
+  |                                                                                                            |                     |                     
+  |    +-------------------+                                                                                   |                     |                     
+  |--> | PerformScan::scan |                                                                                   |                     |                     
+  |    +-|-----------------+                                                                                   |                     |                     
+  |      |                                                                                                     |                     |                     
+  |      |--> for each configuration, alloc PerformProbe                                                       |                     |                     
+  |      |                                                                                                     +---------------------+                     
+  |      |    +---------------+                                                                                                                            
+  |      |--> | findProbeType | query obj mapper to get obj/service/iface hierarchy                                                                        
+  |      |    +---------------+                                                                                       ooo.json                             
+  |      |                                                                                                     +---------------------+                     
+  |      +--> for each allocated PerformProbe (implicitly)                                                     | [                   |                     
+  |           |                                                                                                |     {               |    <-- configuration
+  |           |    +-----------------------------+                                                             |         Exposes: ...|                     
+  |           +--> | PerformProbe::~PerformProbe |                                                             |         Name: ...   |                     
+  |                +-|---------------------------+                                                             |         Type: ...   |                     
+  |                  |    +-------+                                                                            |     }               |                     
+  |                  |--> | probe | check if 'Probe' condition (from configuration) is met                     |     {               |    <-- configuration
+  |                  |    +-------+                                                                            |         Exposes: ...|                     
+  |                  |                                                                                         |         Name: ...   |                     
+  |                  +--> if met                                                                               |         Type: ...   |                     
+  |                       |                                                                                    |     }               |                     
+  |                       |    +----------------------------------------+                                      | ]                   |                     
+  |                       +--> | PerformScan::updateSystemConfiguration | update internal configurations       |                     |                     
+  |                            +----------------------------------------+                                      +---------------------+                     
+  |    +---------------------------+                                                                                                                       
+  +--> | PerformScan::~PerformScan |                                                                                                                       
+       +-|-------------------------+                                                                                                                       
+         |    +-------------------------+                                                                                                                  
+         +--> | publishNewConfiguration |                                                                                                                  
+              +-|-----------------------+                                                                                                                  
+                |    +----------------+                                                                                                                    
+                |--> | writeJsonFiles | write internal configurations                                                                                      
+                |    +----------------+ (/var/configuration/system.json)                                                                                   
+                |    +------------+                                                                                                                        
+                +--> | postToDbus | given 'Exposes' from matched configuration, publish to dbus                                                            
+                     +------------+                                                                                                                                                                                                                                 
                                                                                                                           
   +------- main                                                                                                           
   |+------ name owner changed                                                                                             
