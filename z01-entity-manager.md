@@ -6,6 +6,8 @@
 
 ## <a name="introduction"></a> Introduction
 
+### Daemon `fru-device`
+
 In the context of physically detachable devices, such as backplanes, power supply units (PSUs), and PCIe cards, these devices are referred to as "entities." 
 One of the challenges with entities, specifically PCIe cards, is that they can be plugged into any available slot, requiring dynamic detection and identification.
 
@@ -51,6 +53,8 @@ callback of match rule
 inotify watch
     "/dev"
 ```
+
+<p align="center"><img src="images/entity-manager/fru-device.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -473,6 +477,8 @@ fru_device.cpp
   
 </details>
 
+### Daemon `entity-manager`
+
 The "entity-manager" daemon plays a crucial role in handling events related to entity addition and removal. 
 It registers callbacks to respond to these events, particularly when FRU devices are added to the system. Once an event occurs, the daemon takes charge and reads configuration files located in "/usr/share/entity-manager/configurations/".
 
@@ -482,6 +488,9 @@ When a supported entity is found, the "entity-manager" adds corresponding "Expos
 The "Exposes" attributes can be thought of as additional information associated with an entity. 
 These attributes include details such as the entity's name, type, controller bus, and address. 
 By exposing this information through the D-Bus hierarchy, other components and services in the system can access and utilize these attributes as needed.
+
+When entity information is in readiness, a suite of sensor daemons dedicates to reading sensor values and updating the record. 
+From the `fru device` and `entity manager` to sensor daemons, they don't talk to each other; instead, the D-Bus mechanism has them work sequentially.
 
 ```
 service: "xyz.openbmc_project.EntityManager"
@@ -507,8 +516,7 @@ configuration path:
 /etc/entity-manager/configurations/
 ```
 
-When entity information is in readiness, a suite of sensor daemons dedicates to reading sensor values and updating the record. 
-From the `fru device` and `entity manager` to sensor daemons, they don't talk to each other; instead, the D-Bus mechanism has them work sequentially.
+<p align="center"><img src="images/entity-manager/entity-manager.png" /></p>
 
 <details><summary> More Details </summary>
   
@@ -1028,8 +1036,6 @@ entity_manager.cpp
 ```
   
 </details>
-  
-<p align="center"><img src="images/openbmc/entity-manager.png" /></p>
   
 ## <a name="cheat-sheet"></a> Cheat Sheet
 
