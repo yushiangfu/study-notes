@@ -475,3 +475,269 @@ drivers/iio/inkern.c
             | aspeed_adc_read_raw |                    
             +---------------------+                    
 ```
+
+```
+drivers/iio/adc/aspeed_adc.c                                                                                            
++------------------+                                                                                                     
+| aspeed_adc_probe | : setup iio-dev, start channels, install ops, publish to debugfs/sysfs, register cdev               
++-|----------------+                                                                                                     
+  |    +-----------------------+                                                                                         
+  |--> | devm_iio_device_alloc | alloc iio_dev and setup (name, ...)                                                     
+  |    +-----------------------+                                                                                         
+  |    +--------------------------------+                                                                                
+  |--> | devm_platform_ioremap_resource | ioremap register base                                                          
+  |    +--------------------------------+                                                                                
+  |                                                                                                                      
+  |--> if prescaler is needed (probably not ast2600's case, skip)                                                        
+  |                                                                                                                      
+  |    +------------------------+                                                                                        
+  |--> | aspeed_adc_vref_config | get 'vref' regulator and save in iio_dev priv                                          
+  |    +------------------------+                                                                                        
+  |    +--------------------------+                                                                                      
+  |--> | aspeed_adc_set_trim_data | write register to set trim data                                                      
+  |    +--------------------------+                                                                                      
+  |                                                                                                                      
+  |--> if property "aspeed,battery-sensing" exists (not our case, skip)                                                  
+  |                                                                                                                      
+  |    +------------------------------+                                                                                  
+  |--> | aspeed_adc_set_sampling_rate |                                                                                  
+  |    +------------------------------+                                                                                  
+  |                                                                                                                      
+  |--> wait for init sequence to complete                            static const struct iio_info aspeed_adc_iio_info = {
+  |                                                                      .read_raw = aspeed_adc_read_raw,                
+  |--> write registers to start all channels in normal mode              .write_raw = aspeed_adc_write_raw,              
+  |                                                                      .debugfs_reg_access = aspeed_adc_reg_access,    
+  |--> install ops 'aspeed_adc_iio_info'  -------------------------  };                                                  
+  |                                                                                                                      
+  |    +--------------------------+                                                                                      
+  +--> | devm_iio_device_register | publish to debugfs/sysfs, init cdev and register it                                  
+       +--------------------------+                                                                                      
+```
+
+```
+drivers/iio/adc/aspeed_adc.c                                  
++-----------------------+                                      
+| devm_iio_device_alloc | : alloc iio_dev and setup (name, ...)
++------------------+----+                                      
+| iio_device_alloc |                                           
++-|----------------+                                           
+  |                                                            
+  |--> alloc iio_dev + extra buffer (opaque?)                  
+  |                                                            
+  |    +-----------+                                           
+  |--> | ida_alloc | get an available id                       
+  |    +-----------+                                           
+  |    +--------------+                                        
+  +--> | dev_set_name | "iio:device%d"                         
+       +--------------+                                        
+```
+
+```
+include/linux/iio/iio.h                                                                                 
++--------------------------+                                                                             
+| devm_iio_device_register | : publish to debugfs/sysfs, init cdev and register it                       
++----------------------------+                                                                           
+| __devm_iio_device_register | : publish to debugfs/sysfs, init cdev and register it                     
++-----------------------+----+                                                                           
+| __iio_device_register | : publish to debugfs/sysfs, init cdev and register it                          
++-|---------------------+                                                                                
+  |    +-----------------------------+                                                                   
+  |--> | iio_device_register_debugfs | create file in debugfs                                            
+  |    +-----------------------------+ e.g.,                                                             
+  |                                    /sys/kernel/debug/iio/iio:device0/direct_reg_access               
+  |                                    /sys/kernel/debug/iio/iio:device1/direct_reg_access               
+  |                                                                                                      
+  |    +----------------------------------+                                                              
+  |--> | iio_buffers_alloc_sysfs_and_mask | alloc attr & publish to sysfs, register handler to iio-dev   
+  |    +----------------------------------+                                                              
+  |    +---------------------------+                                                                     
+  |--> | iio_device_register_sysfs | add each channel to sysfs, register attr group to sysfs             
+  |    +---------------------------+                                                                     
+  |    +------------------------------+                                                                  
+  |--> | iio_device_register_eventset | alloc event iface & publish to sysfs, register handler to iio-dev
+  |    +------------------------------+                                                                  
+  |                                                                                                      
+  |--> if iio-dev has attached buffer                                                                    
+  |    |                                                                                                 
+  |    |    +-----------+                                                                                
+  |    +--> | cdev_init | install 'iio_buffer_fileops'                                                   
+  |         +-----------+                                                                                
+  |                                                                                                      
+  |--> elif iio-dev has event iface                                                                      
+  |    |                                                                                                 
+  |    |    +-----------+                                                                                
+  |    +--> | cdev_init | install 'iio_event_fileops'                                                    
+  |         +-----------+                                                                                
+  |    +-----------------+                                                                               
+  +--> | cdev_device_add | add cdev to kobj_map and register inner dev                                   
+       +-----------------+                                                                               
+```
+
+```
+drivers/iio/industrialio-buffer.c                                                                    
++----------------------------------+                                                                  
+| iio_buffers_alloc_sysfs_and_mask | : alloc attr & publish to sysfs, register handler to iio-dev     
++-|--------------------------------+                                                                  
+  |                                                                                                   
+  |--> traverse channels to determine mask length                                                     
+  |                                                                                                   
+  |--> for each attached buffer of iio-dev                                                            
+  |    |                                                                                              
+  |    |    +-----------------------------------+                                                     
+  |    +--> | __iio_buffer_alloc_sysfs_and_mask | alloc attr and register to sysfs                    
+  |         +-----------------------------------+                                                     
+  |                                                                                                   
+  |--> install handler                                                                                
+  |    +-------------------------+                                                                    
+  |    | iio_device_buffer_ioctl | given idx, get target attached buffer, prepare anon file, return fd
+  |    +-------------------------+                                                                    
+  |                                                                                                   
+  |    +-----------------------------------+                                                          
+  +--> | iio_device_ioctl_handler_register | register handler to iio-dev                              
+       +-----------------------------------+                                                          
+```
+
+```
+drivers/iio/industrialio-buffer.c                                                                       
++-----------------------------------+                                                                    
+| __iio_buffer_alloc_sysfs_and_mask | : alloc attr and register to sysfs                                 
++-|---------------------------------+                                                                    
+  |                                                                                                      
+  |--> if channel exists                                                                                 
+  |    -                                                                                                 
+  |    +--> for each channel                                                                             
+  |         |                                                                                            
+  |         |    +------------------------------+                                                        
+  |         +--> | iio_buffer_add_channel_sysfs | alloc channel dev attributes: 'index', 'type', and 'en'
+  |              +------------------------------+                                                        
+  |                                                                                                      
+  |--> alloc that many attr                                                                              
+  |                                                                                                      
+  |--> save attr in buffer                                                                               
+  |                                                                                                      
+  |--> for each attr                                                                                     
+  |    |                                                                                                 
+  |    |    +----------------------+                                                                     
+  |    +--> | iio_buffer_wrap_attr | ???                                                                 
+  |         +----------------------+                                                                     
+  |                                                                                                      
+  |--> set buffer name = "buffer%d"                                                                      
+  |                                                                                                      
+  |    +---------------------------------+                                                               
+  |--> | iio_device_register_sysfs_group | register attr group to iio-dev                                
+  |    +---------------------------------+                                                               
+  |                                                                                                      
+  |--> if index > 0, return (index 0 is for legacy group)                                                
+  |                                                                                                      
+  |    +-----------------------------------------+                                                       
+  +--> | iio_buffer_register_legacy_sysfs_groups | allo two attr, save in legacy group, register to sysfs
+       +-----------------------------------------+                                                       
+```
+
+```
+drivers/iio/industrialio-buffer.c                                                        
++------------------------------+                                                          
+| iio_buffer_add_channel_sysfs | : alloc channel dev attributes: 'index', 'type', and 'en'
++-|----------------------------+                                                          
+  |    +------------------------+                                                         
+  |--> | __iio_add_chan_devattr | alloc channel dev attr "index"                          
+  |    +------------------------+                                                         
+  |    +------------------------+                                                         
+  |--> | __iio_add_chan_devattr | alloc channel dev attr "type"                           
+  |    +------------------------+                                                         
+  |    +------------------------+                                                         
+  +--> | __iio_add_chan_devattr | alloc channel dev attr "en"                             
+       +------------------------+                                                         
+```
+
+```
+drivers/iio/industrialio-buffer.c                                                                  
++-----------------------------------------+                                                         
+| iio_buffer_register_legacy_sysfs_groups | : allo two attr, save in legacy group, register to sysfs
++-|---------------------------------------+                                                         
+  |                                                                                                 
+  |--> alloc attr, save in legacy buffer group                                                      
+  |                                                                                                 
+  |    +---------------------------------+                                                          
+  +--> | iio_device_register_sysfs_group | register attr group to iio-dev                           
+  |    +---------------------------------+                                                          
+  |                                                                                                 
+  |--> alloc attr, save in legacy scan-el group                                                     
+  |                                                                                                 
+  |    +---------------------------------+                                                          
+  +--> | iio_device_register_sysfs_group | register attr group to iio-dev                           
+       +---------------------------------+                                                          
+```
+
+```
+drivers/iio/industrialio-buffer.c                                                               
++-------------------------+                                                                      
+| iio_device_buffer_ioctl | : given idx, get target attached buffer, prepare anon file, return fd
++-------------------------+                                                                      
+| iio_device_buffer_getfd | : given idx, get target attached buffer, prepare anon file, return fd
++-|-----------------------+                                                                      
+  |    +----------------+                                                                        
+  |--> | copy_from_user | get idx from user space                                                
+  |    +----------------+                                                                        
+  |                                                                                              
+  |--> given idx, get target attached buffer                                                     
+  |                                                                                              
+  |--> set 'busy' flag of buffer                                                                 
+  |                                                                                              
+  |--> alloc ib (iio_dev_buffer_pair)                                                            
+  |                                                                                              
+  |--> save iio-dev and attached-buffer in ib                                                    
+  |                                                                                              
+  |    +------------------+                                                                      
+  |--> | anon_inode_getfd | prepare an anon file and install to fd table                         
+  |    +------------------+ name = "iio:buffer"                                                  
+  |                         fops = iio_buffer_chrdev_fileops                                     
+  |    +--------------+                                                                          
+  +--> | copy_to_user | copy fd to user space                                                    
+       +--------------+                                                                          
+```
+
+```
+drivers/iio/industrialio-core.c                                                       
++---------------------------+                                                          
+| iio_device_register_sysfs | : add each channel to sysfs, register attr group to sysfs
++-|-------------------------+                                                          
+  |                                                                                    
+  |--> count attr#                                                                     
+  |                                                                                    
+  |--> if channel exists                                                               
+  |    -                                                                               
+  |    +--> for each channel                                                           
+  |         |                                                                          
+  |         |    +------------------------------+                                      
+  |         +--> | iio_device_add_channel_sysfs | add channel to sysfs                 
+  |              +------------------------------+                                      
+  |    +---------------------------------+                                             
+  +--> | iio_device_register_sysfs_group | register attr group to iio-dev              
+       +---------------------------------+                                             
+```
+
+```
+drivers/iio/industrialio-event.c                                                                   
++------------------------------+                                                                    
+| iio_device_register_eventset | : alloc event iface & publish to sysfs, register handler to iio-dev
++-|----------------------------+                                                                    
+  |                                                                                                 
+  |--> alloc ev_int (event interface)                                                               
+  |                                                                                                 
+  |    +------------------------------+                                                             
+  |--> | __iio_add_event_config_attrs | for each channel, add event to sysfs                        
+  |    +------------------------------+                                                             
+  |    +---------------------------------+                                                          
+  |--> | iio_device_register_sysfs_group | register attr group to iio-dev                           
+  |    +---------------------------------+                                                          
+  |                                                                                                 
+  |--> install ops                                                                                  
+  |    +-----------------+                                                                          
+  |    | iio_event_ioctl | get event interface, prepare anon file, return fd                        
+  |    +-----------------+                                                                          
+  |                                                                                                 
+  |    +-----------------------------------+                                                        
+  +--> | iio_device_ioctl_handler_register | register handler to iio-dev                            
+       +-----------------------------------+                                                        
+```
