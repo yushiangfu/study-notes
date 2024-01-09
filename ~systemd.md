@@ -7864,3 +7864,211 @@ src/libsystemd/sd-bus/sd-bus.c
   |                                                                              
   +--> update rqueue_size                                                        
 ```
+
+```
+src/libsystemd/sd-device/device-monitor.c                              
++-----------------------+                                               
+| sd_device_monitor_new | : alloc and setup sd_device_monitor           
++-------------------------+                                             
+| device_monitor_new_full | : alloc and setup sd_device_monitor         
++-|-----------------------+                                             
+  |                                                                     
+  |--> if arg fd is invalid                                             
+  |    |                                                                
+  |    |    +--------+                                                  
+  |    +--> | socket |                                                  
+  |         +--------+                                                  
+  |                                                                     
+  |--> alloc and setup sd_device_monitor                                
+  |                                                                     
+  +--> if arg fd is valid                                               
+       |                                                                
+       |    +------------------------+                                  
+       +--> | monitor_set_nl_address | get sock name and save in monitor
+            +------------------------+                                  
+```
+
+```
+src/libsystemd/sd-device/device-monitor.c                                                                           
++-------------------------+                                                                                          
+| sd_device_monitor_start | : attach event to monitor, register callback (setup sd_device) to 'io' source            
++-|-----------------------+                                                                                          
+  |                                                                                                                  
+  |--> if monitor has no event yet                                                                                   
+  |    |                                                                                                             
+  |    |    +--------------------------------+                                                                       
+  |    +--> | sd_device_monitor_attach_event | ensure monitor has event                                              
+  |         +--------------------------------+                                                                       
+  |    +---------------------------------+                                                                           
+  |--> | device_monitor_enable_receiving | enable receiving in monitor                                               
+  |    +---------------------------------+                                                                           
+  |                                                                                                                  
+  |--> save callback/userdata in monitor                                                                             
+  |                                                                                                                  
+  |    +-----------------+                                                                                           
+  |--> | sd_event_add_io | prepare 'source' and add to arg 'event, register the source's io                          
+  |    +-----------------+ +------------------------------+                                                          
+  |                        | device_monitor_event_handler | receive data to setup sd_device, call monitor->callback()
+  |                        +------------------------------+                                                          
+  |    +---------------------------------+                                                                           
+  +--> | sd_event_source_set_description | "sd-device-monitor"                                                       
+       +---------------------------------+                                                                           
+```
+
+```
+src/libsystemd/sd-device/device-monitor.c                       
++---------------------------------+                              
+| device_monitor_enable_receiving | : enable receiving in monitor
++-|-------------------------------+                              
+  |    +---------------------------------+                       
+  |--> | sd_device_monitor_filter_update | update packet filter  
+  |    +---------------------------------+                       
+  |                                                              
+  +--> if monitor isn't bound yet                                
+       |                                                         
+       |    +------+                                             
+       |--> | bind |                                             
+       |    +------+                                             
+       |                                                         
+       |--> ->bound = true                                       
+       |                                                         
+       |    +------------------------+                           
+       +--> | monitor_set_nl_address | save pid in monitor       
+            +------------------------+                           
+```
+
+```
+src/libsystemd/sd-device/device-monitor.c                                                  
++------------------------------+                                                            
+| device_monitor_event_handler | : receive data to setup sd_device, call monitor->callback()
++-|----------------------------+                                                            
+  |    +-------------------------------+                                                    
+  |--> | device_monitor_receive_device | receive data to setup sd_device                    
+  |    +-------------------------------+                                                    
+  |                                                                                         
+  +--> if ->callback() exists                                                               
+       -                                                                                    
+       +--> call it, e.g.,                                                                  
+            +------------------------+                                                      
+            | manager_process_uevent | process uevent                                       
+            +------------------------+                                                      
+```
+
+```
+src/libsystemd/sd-device/device-monitor.c                         
++-------------------------------+                                  
+| device_monitor_receive_device | : receive data to setup sd_device
++-|-----------------------------+                                  
+  |    +-----------------------+                                   
+  |--> | next_datagram_size_fd | peek data size                    
+  |    +-----------------------+                                   
+  |                                                                
+  |--> prepare msg buf of that size                                
+  |                                                                
+  |    +---------+                                                 
+  |--> | recvmsg | receive data                                    
+  |    +---------+                                                 
+  |                                                                
+  |--> determine msg source, and get offset properly               
+  |                                                                
+  |    +------------------------+                                  
+  |--> | device_new_from_nulstr | alloc and setup sd_device        
+  |    +------------------------+                                  
+  |                                                                
+  |--> if is initialized (source == udev)                          
+  |    |                                                           
+  |    |    +---------------------------+                          
+  |    +--> | device_set_is_initialized |                          
+  |         +---------------------------+                          
+  |    +---------------+                                           
+  +--> | passes_filter | check if device should be dropped         
+       +---------------+                                           
+```
+
+```
+src/libsystemd/sd-device/device-private.c                                     
++------------------------+                                                     
+| device_new_from_nulstr | : alloc and setup sd_device                         
++-|----------------------+                                                     
+  |    +----------------+                                                      
+  |--> | device_new_aux | alloc and init sd_device                             
+  |    +----------------+                                                      
+  |                                                                            
+  |--> for each (key, value) pair                                              
+  |    |                                                                       
+  |    |    +---------------+                                                  
+  |    +--> | device_append | parse (key, value) pairs and get major/minor info
+  |         +---------------+                                                  
+  |                                                                            
+  |--> if we got the major                                                     
+  |    |                                                                       
+  |    |    +-------------------+                                              
+  |    +--> | device_set_devnum | add property to device                       
+  |         +-------------------+                                              
+  |    +---------------+                                                       
+  +--> | device_verify |                                                       
+       +---------------+                                                       
+```
+
+```
+src/libsystemd/sd-device/device-private.c                                          
++---------------+                                                                   
+| device_append | : parse (key, value) pairs and get major/minor info               
++-|-------------+                                                                   
+  |                                                                                 
+  |--> get value                                                                    
+  |                                                                                 
+  |--> if key is 'major'                                                            
+  |    -                                                                            
+  |    +--> major = value                                                           
+  |                                                                                 
+  |--> elif key is 'minor'                                                          
+  |    -                                                                            
+  |    +--> minor = value                                                           
+  |                                                                                 
+  +--> else                                                                         
+       |                                                                            
+       |    +--------------+                                                        
+       +--> | device_amend | given different key, add property to device accordingly
+            +--------------+                                                        
+```
+
+```
+src/shared/conf-parser.c                                                                
++--------------------------+                                                             
+| config_parse_many_nulstr | : collect related configs, parse them, add info to hashmap  
++-|------------------------+                                                             
+  |    +------------------------+                                                        
+  |--> | conf_files_list_nulstr | collect drop-in files in "systemd/networkd.conf.d"     
+  |    +------------------------+                                                        
+  |    +-------------------------+                                                       
+  +--> | config_parse_many_files | alloc hashmap, parse config(s) and add info to hashmap
+       +-------------------------+                                                       
+```
+
+```
+src/shared/conf-parser.c                                                           
++-------------------------+                                                         
+| config_parse_many_files | : alloc hashmap, parse config(s) and add info to hashmap
++-|-----------------------+                                                         
+  |                                                                                 
+  |    alloc hashmap                                                                
+  |                                                                                 
+  |--> for each config file found (in our case, only /etc/systemd/networkd.conf)    
+  |    |                                                                            
+  |    |    +--------------+                                                        
+  |    |--> | config_parse | parse config and get stats                             
+  |    |    +--------------+                                                        
+  |    |    +---------------------------+                                           
+  |    +--> | hashmap_put_stats_by_path | add stats to hashmap                      
+  |         +---------------------------+                                           
+  |                                                                                 
+  +--> for each drop-in file (not our case)                                         
+       |                                                                            
+       |    +--------------+                                                        
+       |--> | config_parse | parse config and get stats                             
+       |    +--------------+                                                        
+       |    +---------------------------+                                           
+       +--> | hashmap_put_stats_by_path | add stats to hashmap                      
+            +---------------------------+                                           
+```
