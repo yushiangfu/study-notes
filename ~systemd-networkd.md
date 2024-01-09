@@ -1264,3 +1264,419 @@ src/network/networkd-link.c
                              | link_reconfigure_handler| given iface name, reconfigure link
                              +-------------------------+                                   
 ```
+
+```
+src/network/networkd-manager.c                                                                                                 
++---------------+                                                                                                               
+| manager_setup | : register callback forr post source, connect rtnl, setup dbus, prepare 'resolve', alloc address pools        
++-|-------------+                                                                                                               
+  |    +------------------+                                                                                                     
+  |--> | sd_event_default |                                                                                                     
+  |    +------------------+                                                                                                     
+  |    +-----------------------+                                                                                                
+  |--> | sd_event_set_watchdog | given arg b, arm or unarm watchdog of event                                                    
+  |    +-----------------------+                                                                                                
+  |                                                                                                                             
+  |--> install signal handlers                                                                                                  
+  |                                                                                                                             
+  |    +-------------------+                                                                                                    
+  |--> | sd_event_add_post | prepare 'source' for post and add to event's hash table                                            
+  |    +-------------------+ +-----------------------+                                                                          
+  |                          | manager_dirty_handler | save states of manager to file, save state of dirty links to file        
+  |                          +-----------------------+                                                                          
+  |    +-------------------+                                                                                                    
+  |--> | sd_event_add_post | prepare 'source' for post and add to event's hash table                                            
+  |    +-------------------+ +--------------------------+                                                                       
+  |                          | manager_process_requests | for each request in manager: process and detatch from manager         
+  |                          +--------------------------+                                                                       
+  |                                                                                                                             
+  |    +--------------------+                                                                                                   
+  |--> | manager_listen_fds | look for rtnl_fd                                                                                  
+  |    +--------------------+                                                                                                   
+  |    +----------------------+                                                                                                 
+  |--> | manager_connect_rtnl | add match fules, attach filter table                                                            
+  |    +----------------------+                                                                                                 
+  |    +---------------------+                                                                                                  
+  +--> | manager_connect_bus | register vtables, request name "org.freedesktop.network1", register callbacks for match rules    
+  |    +---------------------+                                                                                                  
+  |    +----------------------+                                                                                                 
+  |--> | manager_connect_udev | prepare monitor, add net/ieee80211/rfkill to it, regisster call (setup sd_device) to 'io' source
+  |    +----------------------+                                                                                                 
+  |    +--------------------+                                                                                                   
+  |--> | sd_resolve_default | prepare default 'resolve'                                                                         
+  |    +--------------------+                                                                                                   
+  |    +-------------------------+                                                                                              
+  |--> | sd_resolve_attach_event | attach event to resolve, register callback of 'io' source                                    
+  |    +-------------------------+                                                                                              
+  |    +----------------------------+                                                                                           
+  |--> | address_pool_setup_default | alloc well-known address pools and add to manager                                         
+  |    +----------------------------+                                                                                           
+  |                                                                                                                             
+  +--> state file = "/run/systemd/netif/state"                                                                                  
+```
+
+```
+src/network/networkd-manager.c                                                                                                                               
++----------------------+                                                                                                                                      
+| manager_connect_rtnl | : add match fules, attach filter table                                                                                               
++-|--------------------+                                                                                                                                      
+  |                                                                                                                                                           
+  |--> if fd isn't valid                                                                                                                                      
+  |    -    +-----------------+                                                                                                                               
+  |    +--> | sd_netlink_open | open socket, alloc netlink and setup, bind socket to it                                                                       
+  |         +-----------------+                                                                                                                               
+  |--> else                                                                                                                                                   
+  |    -    +--------------------+                                                                                                                            
+  |    +--> | sd_netlink_open_fd | alloc netlink and setup, bind socket to it                                                                                 
+  |         +--------------------+                                                                                                                            
+  |    +-------------------------+                                                                                                                            
+  |--> | sd_netlink_attach_event | setup two sources: "netlink-receive-message" & "netlink-timer", add to event                                               
+  |    +-------------------------+                                                                                                                            
+  |    +-------------------+                                                                                                                                  
+  |--> | netlink_add_match | register callback for match newlink/dellink                                                                                      
+  |    +-------------------+ +---------------------------+                                                                                                    
+  |                          | manager_rtnl_process_link | given msg, get link/net_dev from manager, perform 'new link' or 'del link' accordingly             
+  |    +-------------------+ +---------------------------+                                                                                                    
+  |--> | netlink_add_match | register callback for match newqdisc/delqdisc                                                                                    
+  |    +-------------------+ +----------------------------+                                                                                                   
+  |                          | manager_rtnl_process_qdisc | given msg, get link from manager, alloc qdisc, perform 'add qdisc' or 'del qdisc' accordingly     
+  |    +-------------------+ +----------------------------+                                                                                                   
+  |--> | netlink_add_match | register callback for match newtclass/deltclass                                                                                  
+  |    +-------------------+ +-----------------------------+                                                                                                  
+  |                          | manager_rtnl_process_tclass | given msg, get link from manager, alloc tclass, perform 'add tclass' or 'del tclass' accordingly 
+  |    +-------------------+ +-----------------------------+                                                                                                  
+  |--> | netlink_add_match | register callback for match new_addr / del_addr                                                                                  
+  |    +-------------------+ +------------------------------+                                                                                                 
+  |                          | manager_rtnl_process_address | given msg, get link from manager, alloc address, perform 'add addr' or 'del addr' accordingly   
+  |    +-------------------+ +------------------------------+                                                                                                 
+  |--> | netlink_add_match | register callback for match new_neigh / del_neigh                                                                                
+  |    +-------------------+ +-------------------------------+                                                                                                
+  |                          | manager_rtnl_process_neighbor | given msg, get link from manager, alloc neigh, perform 'add addr' or 'del addr' accordingly    
+  |    +-------------------+ +-------------------------------+                                                                                                
+  |--> | netlink_add_match | register callback for match new_route / del_route                                                                                
+  |    +-------------------+ +----------------------------+                                                                                                   
+  |                          | manager_rtnl_process_route | given msg, get link from manager, alloc route, perform 'add route' or 'del route' accordingly     
+  |    +-------------------+ +----------------------------+                                                                                                   
+  |--> | netlink_add_match | register callback for match new_rule / del_rule                                                                                  
+  |    +-------------------+ +---------------------------+                                                                                                    
+  |                          | manager_rtnl_process_rule |  given msg, get link from manager, alloc rule, perform 'add rule' or 'del rule' accordingly        
+  |    +-------------------+ +---------------------------+                                                                                                    
+  |--> | netlink_add_match | register callback for match new_nexthop / del_nexthop                                                                            
+  |    +-------------------+ +------------------------------+                                                                                                 
+  |                          | manager_rtnl_process_nexthop | given msg, get link from manager, alloc rule, perform 'add nexthop' or 'del nexthop' accordingly
+  |                          +------------------------------+                                                                                                 
+  |    +---------------------------+                                                                                                                          
+  +--> | manager_setup_rtnl_filter | set socket option (attach filter table)                                                                                  
+       +---------------------------+                                                                                                                          
+```
+
+```
+src/network/tc/qdisc.c                                                                                                       
++----------------------------+                                                                                                
+| manager_rtnl_process_qdisc | : given msg, get link from manager, alloc qdisc, perform 'add qdisc' or 'del qdisc' accordingly
++-|--------------------------+                                                                                                
+  |    +-----------------------------+                                                                                        
+  |--> | sd_netlink_message_get_type | get type (newqdisc or delqdisc) from msg                                               
+  |    +-----------------------------+                                                                                        
+  |    +---------------------------------------------+                                                                        
+  |--> | sd_rtnl_message_traffic_control_get_ifindex | get iface idx                                                          
+  |    +---------------------------------------------+                                                                        
+  |    +-------------------+                                                                                                  
+  |--> | link_get_by_index | giiven iface idx, get link from manager                                                          
+  |    +-------------------+                                                                                                  
+  |    +-----------+                                                                                                          
+  |--> | qdisc_new | alloc qdisc                                                                                              
+  |    +-----------+                                                                                                          
+  |    +--------------------------------------------+                                                                         
+  |--> | sd_rtnl_message_traffic_control_get_handle | get handle from msg                                                     
+  |    +--------------------------------------------+                                                                         
+  |    +--------------------------------------------+                                                                         
+  |--> | sd_rtnl_message_traffic_control_get_parent | get parent from msg                                                     
+  |    +--------------------------------------------+                                                                         
+  |    +---------------------------------------+                                                                              
+  |--> | sd_netlink_message_read_string_strdup | get tca_kind from msg                                                        
+  |    +---------------------------------------+                                                                              
+  |                                                                                                                           
+  +--> switch type                                                                                                            
+       case newqdisc                                                                                                          
+       -    +-----------+                                                                                                     
+       +--> | qdisc_add | ensure qdisc is added to link                                                                       
+            +-----------+                                                                                                     
+       case delqdisc                                                                                                          
+       -     +------------+                                                                                                   
+       +-->  | qdisc_free | ensure qdisc is removed from link and released                                                    
+             +------------+                                                                                                   
+```
+
+```
+src/network/networkd-address.c                                                                                                 
++------------------------------+                                                                                                
+| manager_rtnl_process_address | : given msg, get link from manager, alloc address, perform 'add addr' or 'del addr' accordingly
++-|----------------------------+                                                                                                
+  |    +-----------------------------+                                                                                          
+  |--> | sd_netlink_message_get_type | get type (new_addr / del_addr) from msg                                                  
+  |    +-----------------------------+                                                                                          
+  |    +----------------------------------+                                                                                     
+  |--> | sd_rtnl_message_addr_get_ifindex | get iface idx from msg                                                              
+  |    +----------------------------------+                                                                                     
+  |    +-------------------+                                                                                                    
+  |--> | link_get_by_index | given iface idx, get link from manager                                                             
+  |    +-------------------+                                                                                                    
+  |    +-------------+                                                                                                          
+  |--> | address_new | alloc and setup address                                                                                  
+  |    +-------------+                                                                                                          
+  |    +---------------------------------+                                                                                      
+  |--> | sd_rtnl_message_addr_get_family | get family                                                                           
+  |    +---------------------------------+                                                                                      
+  |    +------------------------------------+                                                                                   
+  |--> | sd_rtnl_message_addr_get_prefixlen | get prefix len                                                                    
+  |    +------------------------------------+                                                                                   
+  |    +--------------------------------+                                                                                       
+  |--> | sd_rtnl_message_addr_get_scope | get scope                                                                             
+  |    +--------------------------------+                                                                                       
+  |    +-----------------------------+                                                                                          
+  |--> | sd_netlink_message_read_u32 | get flags                                                                                
+  |    +-----------------------------+                                                                                          
+  |                                                                                                                             
+  |--> switch familty                                                                                                           
+  |    case inet                                                                                                                
+  |    ---> get local/address/broadcast/label from msg                                                                          
+  |    case inet6                                                                                                               
+  |    ---> get local/address from msg                                                                                          
+  |                                                                                                                             
+  |    +-------------+                                                                                                          
+  |--> | address_get | get address from link                                                                                    
+  |    +-------------+                                                                                                          
+  |                                                                                                                             
+  +--> switch type                                                                                                              
+       case new_addr                                                                                                            
+       |--> if address isn't in link yet                                                                                        
+       |    -    +-------------+                                                                                                
+       |    +--> | address_add | add newly allocated address to link                                                            
+       |         +-------------+                                                                                                
+       |    +----------------+                                                                                                  
+       +--> | address_update |                                                                                                  
+            +----------------+                                                                                                  
+       case del_addr                                                                                                            
+       -    +--------------+                                                                                                    
+       +--> | address_drop |                                                                                                    
+            +--------------+                                                                                                    
+```
+
+```
+src/network/networkd-manager.c                                                                                               
++----------------------------+                                                                                                
+| manager_rtnl_process_route | : given msg, get link from manager, alloc route, perform 'add route' or 'del route' accordingly
++|---------------------------+                                                                                                
+ |    +-----------------------------+                                                                                         
+ |--> | sd_netlink_message_get_type | get type (add_route / del_route) from msg                                               
+ |    +-----------------------------+                                                                                         
+ |    +-----------------------------+                                                                                         
+ |--> | sd_netlink_message_read_u32 | get iface idx from msg                                                                  
+ |    +-----------------------------+                                                                                         
+ |    +-------------------+                                                                                                   
+ |--> | link_get_by_index | given iface idx, get link from manager                                                            
+ |    +-------------------+                                                                                                   
+ |    +-----------+                                                                                                           
+ |--> | route_new | alloc and setup route                                                                                     
+ |    +-----------+                                                                                                           
+ |                                                                                                                            
+ |--> from msg, get family/protocol/flags/dst/gateway/src/scope/type/table/priority/multi_path/cache_info                     
+ |                                                                                                                            
+ |    +-------------------+                                                                                                   
+ +--> | process_route_one | give type, perform add_route / del_route accordingly                                              
+      +-------------------+                                                                                                   
+```
+
+```
+src/network/networkd-manager.c                                            
++---------------------------+                                              
+| manager_setup_rtnl_filter | : set socket option (attach filter table)    
++-|-------------------------+                                              
+  |                                                                        
+  |--> prepare filter table                                                
+  |                                                                        
+  |    +--------------------------+                                        
+  +--> | sd_netlink_attach_filter | set socket option (attach filter table)
+       +--------------------------+                                        
+```
+
+```
+src/network/networkd-manager.c                                                                                                             
++---------------------+                                                                                                                     
+| manager_connect_bus | : register vtables, request name "org.freedesktop.network1", register callbacks for match rules                     
++-|-------------------+                                                                                                                     
+  |    +---------------------------------------------+                                                                                      
+  |--> | bus_open_system_watch_bind_with_description | get a bus, configure it and start                                                    
+  |    +---------------------------------------------+                                                                                      
+  |    +------------------------+                                                                                                           
+  |--> | bus_add_implementation | register manager_object and vtable to dbus                                                                
+  |    +------------------------+                                                                                                           
+  |    +------------------------------+                                                                                                     
+  |--> | bus_log_control_api_register | register log_control_object and vtable to dbus                                                      
+  |    +------------------------------+                                                                                                     
+  |    +---------------------------+                                                                                                        
+  |--> | sd_bus_request_name_async | "org.freedesktop.network1"                                                                             
+  |    +---------------------------+                                                                                                        
+  |    +---------------------+                                                                                                              
+  |--> | sd_bus_attach_event |                                                                                                              
+  |    +---------------------+                                                                                                              
+  |    +---------------------------+                                                                                                        
+  |--> | sd_bus_match_signal_async | register callback for match rule ("Connected", when a service starts running bus, it emits such signal)
+  |    +---------------------------+ +--------------+                                                                                       
+  |                                  | on_connected | set hostname, set timezone, request product uuid                                      
+  |                                  +--------------+                                                                                       
+  |    +---------------------------+                                                                                                        
+  +--> | sd_bus_match_signal_async | register callback for match rule ("PrepareForSleep")                                                   
+       +---------------------------+ +-------------------------+                                                                            
+                                     | match_prepare_for_sleep | configure each link in manager                                             
+                                     +-------------------------+                                                                            
+```
+
+```
+src/network/networkd-manager.c                                                                                            
++----------------------+                                                                                                   
+| manager_connect_udev | : prepare monitor, add net/ieee80211/rfkill to it, regisster call (setup sd_device) to 'io' source
++-|--------------------+                                                                                                   
+  |    +-----------------------+                                                                                           
+  |--> | sd_device_monitor_new | alloc and setup sd_device_monitor                                                         
+  |    +-----------------------+                                                                                           
+  |    +-------------------------------------------+                                                                       
+  |--> | sd_device_monitor_set_receive_buffer_size | set receive buffer size                                               
+  |    +-------------------------------------------+                                                                       
+  |    +------------------------------------------------------+                                                            
+  |--> | sd_device_monitor_filter_add_match_subsystem_devtype | add (key, val) = ('net', null) to hashmap in monitor       
+  |    +------------------------------------------------------+                                                            
+  |    +------------------------------------------------------+                                                            
+  |--> | sd_device_monitor_filter_add_match_subsystem_devtype | add (key, val) = ('ieee80211', null) to hashmap in monitor 
+  |    +------------------------------------------------------+                                                            
+  |    +------------------------------------------------------+                                                            
+  |--> | sd_device_monitor_filter_add_match_subsystem_devtype | add (key, val) = ('rfkill', null) to hashmap in monitor    
+  |    +------------------------------------------------------+                                                            
+  |    +--------------------------------+                                                                                  
+  |--> | sd_device_monitor_attach_event | ensure monitor has event                                                         
+  |    +--------------------------------+                                                                                  
+  |    +-------------------------+                                                                                         
+  +--> | sd_device_monitor_start | attach event to monitor, register callback (setup sd_device) to 'io' source             
+       +-------------------------+                                                                                         
+```
+
+```
+src/network/networkd-manager.c                                                                          
++------------------------+                                                                               
+| manager_process_uevent | : process uevent                                                              
++-|----------------------+                                                                               
+  |    +----------------------+                                                                          
+  |--> | sd_device_get_action | get action from device                                                   
+  |    +----------------------+                                                                          
+  |    +-------------------------+                                                                       
+  |--> | sd_device_get_subsystem | get action from subsystem                                             
+  |    +-------------------------+                                                                       
+  |                                                                                                      
+  |--> if subsystem is 'net'                                                                             
+  |    |                                                                                                 
+  |    |    +---------------------------+                                                                
+  |    +--> | manager_udev_process_link | given device, get link frrom monitor and send packet (get link)
+  |         +---------------------------+                                                                
+  |                                                                                                      
+  |--> elif subsystem is "ieee80211"                                                                     
+  |    -                                                                                                 
+  |    +--> (skip)                                                                                       
+  |                                                                                                      
+  +--> elif subsystem is "rfkill"                                                                        
+       -                                                                                                 
+       +--> (skip)                                                                                       
+```
+
+```
+src/network/networkd-link.c                                                                   
++---------------------------+                                                                  
+| manager_udev_process_link | : given device, get link frrom monitor and send packet (get link)
++-|-------------------------+                                                                  
+  |    +-----------------------+                                                               
+  |--> | sd_device_get_ifindex | get iface-index from device                                   
+  |    +-----------------------+                                                               
+  |    +-------------------+                                                                   
+  |--> | link_get_by_index | given iface-index, get link from monitor                          
+  |    +-------------------+                                                                   
+  |    +------------------+                                                                    
+  +--> | link_initialized | send rtnl packet (get link)                                        
+       +------------------+                                                                    
+```
+
+```
+src/network/networkd-link.c                                        
++------------------+                                                
+| link_initialized | : send rtnl packet (get link)                  
++-|----------------+                                                
+  |                                                                 
+  |--> if link is dhcp client                                       
+  |    |                                                            
+  |    |    +------------------------------+                        
+  |    +--> | sd_dhcp_client_attach_device | replace client's device
+  |         +------------------------------+                        
+  |    +---------------------------+                                
+  |--> | link_set_sr_iov_ifindices | (???)                          
+  |    +---------------------------+                                
+  |    +-------------------+                                        
+  +--> | link_call_getlink | send rtnl packet (get-link)            
+       +-------------------+                                        
+```
+
+```
+src/network/networkd-conf.c                                                               
++---------------------------+                                                              
+| manager_parse_config_file | : parse /etc/systemd/networkd.conf                           
++|--------------------------+                                                              
+ |    +--------------------------+                                                         
+ +--> | config_parse_many_nulstr | collect related configs, parse them, add info to hashmap
+      +--------------------------+ /etc/systemd/networkd.conf                              
+```
+
+```
+src/network/networkd-manager.c                                                    
++---------------------+                                                            
+| manager_load_config | : load *.netdev & *.network                                
++-|-------------------+                                                            
+  |    +-------------+                                                             
+  |--> | netdev_load | (probably not our case, I found no *.netdev file)           
+  |    +-------------+                                                             
+  |    +--------------+                                                            
+  +--> | network_load | for each *.network, alloc 'network' and add to arg networks
+       +--------------+                                                            
+```
+
+```
+src/network/networkd-network.c                                                                                 
++--------------+                                                                                                
+| network_load | : for each *.network, alloc 'network' and add to arg networks                                  
++-|------------+                                                                                                
+  |    +----------------------+                                                                                 
+  |--> | conf_files_list_strv | find *.network from predefined paths                                            
+  |    +----------------------+                                                                                 
+  |                                                                                                             
+  +--> for each found file                                                                                      
+       |                                                                                                        
+       |    +------------------+                                                                                
+       +--> | network_load_one | alloc 'network', parse '*.network', add default static route, add to 'networks'
+            +------------------+                                                                                
+```
+
+```
+src/network/networkd-network.c                                                                       
++------------------+                                                                                  
+| network_load_one | : alloc 'network', parse '*.network', add default static route, add to 'networks'
++-|----------------+                                                                                  
+  |                                                                                                   
+  |--> alloc 'network'                                                                                
+  |                                                                                                   
+  |    +-------------------+                                                                          
+  |--> | config_parse_many | parse *.network                                                          
+  |    +-------------------+                                                                          
+  |    +-------------------------------------+                                                        
+  |--> | network_add_default_route_on_device | add default static route                               
+  |    +-------------------------------------+                                                        
+  |    +----------------------------+                                                                 
+  +--> | ordered_hashmap_ensure_put | put 'network' in 'networks'                                     
+       +----------------------------+                                                                 
+```
