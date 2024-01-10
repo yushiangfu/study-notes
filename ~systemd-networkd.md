@@ -1,4 +1,47 @@
 ```
+src/network/networkd.c                                                                                                     
++-----+                                                                                                                     
+| run | send all kinds of requests and add links/qdisk/tclass/addresses/neighbors/nexthop/routes/rules                      
++|----+                                                                                                                     
+ |    +--------------------+                                                                                                
+ |--> | service_parse_argv | (skip, no argument passed in our scenario)                                                     
+ |    +--------------------+                                                                                                
+ |    +------------------+                                                                                                  
+ |--> | mkdir_safe_label | "/run/systemd/netif"                                                                             
+ |    +------------------+                                                                                                  
+ |    +------------------+                                                                                                  
+ |--> | mkdir_safe_label | "/run/systemd/netif/links"                                                                       
+ |    +------------------+                                                                                                  
+ |    +------------------+                                                                                                  
+ |--> | mkdir_safe_label | "/run/systemd/netif/leases"                                                                      
+ |    +------------------+                                                                                                  
+ |    +------------------+                                                                                                  
+ |--> | mkdir_safe_label | "/run/systemd/netif/lldp"                                                                        
+ |    +------------------+                                                                                                  
+ |    +-------------+                                                                                                       
+ |--> | manager_new | alloc and setup manager                                                                               
+ |    +-------------+                                                                                                       
+ |    +---------------+                                                                                                     
+ |--> | manager_setup | register callback forr post source, connect rtnl, setup dbus, prepare 'resolve', alloc address pools
+ |    +---------------+                                                                                                     
+ |    +---------------------------+                                                                                         
+ |--> | manager_parse_config_file | parse /etc/systemd/networkd.conf                                                        
+ |    +---------------------------+                                                                                         
+ |    +---------------------+                                                                                               
+ |--> | manager_load_config | load *.netdev & *.network                                                                     
+ |    +---------------------+                                                                                               
+ |    +-------------------+                                                                                                 
+ |--> | manager_enumerate | send all kinds of requests and add links/qdisk/tclass/addresses/neighbors/nexthop/routes/rules  
+ |    +-------------------+                                                                                                 
+ |    +---------------+                                                                                                     
+ |--> | manager_start | start speed meter, save manager and links                                                           
+ |    +---------------+                                                                                                     
+ |    +---------------+                                                                                                     
+ +--> | sd_event_loop |                                                                                                     
+      +---------------+                                                                                                     
+```
+
+```
 src/network/networkd-manager.c                                                                                
 +-----------------------+                                                                                      
 | manager_dirty_handler | : save states of manager to file, save state of dirty links to file                  
