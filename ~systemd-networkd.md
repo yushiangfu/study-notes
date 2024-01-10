@@ -1723,3 +1723,95 @@ src/network/networkd-network.c
   +--> | ordered_hashmap_ensure_put | put 'network' in 'networks'                                     
        +----------------------------+                                                                 
 ```
+
+```
+src/network/networkd-manager.c                                                                                       
++-------------------+                                                                                                 
+| manager_enumerate | : send all kinds of requests and add links/qdisk/tclass/addresses/neighbors/nexthop/routes/rules
++-|-----------------+                                                                                                 
+  |    +-------------------------+                                                                                    
+  |--> | manager_enumerate_links | send requet (get link), receive reply and perform 'new link'                       
+  |    +-------------------------+                                                                                    
+  |    +-------------------------+                                                                                    
+  |--> | manager_enumerate_qdisc | send requet (get qdisc), receive reply and perform 'add qdisc'                     
+  |    +-------------------------+                                                                                    
+  |    +--------------------------+                                                                                   
+  |--> | manager_enumerate_tclass | send requet (get class), receive reply and perform 'add tclass'                   
+  |    +--------------------------+                                                                                   
+  |    +-----------------------------+                                                                                
+  |--> | manager_enumerate_addresses | send requet (get addr), receive reply and perform 'add addr'                   
+  |    +-----------------------------+                                                                                
+  |    +-----------------------------+                                                                                
+  |--> | manager_enumerate_neighbors | send requet (get neigh), receive reply and perform 'add neigh'                 
+  |    +-----------------------------+                                                                                
+  |    +---------------------------+                                                                                  
+  |--> | manager_enumerate_nexthop | send requet (get nexthop), receive reply and perform 'add nexthop'               
+  |    +---------------------------+                                                                                  
+  |    +--------------------------+                                                                                   
+  |--> | manager_enumerate_routes | send requet (get route), receive reply and perform 'add route'                    
+  |    +--------------------------+                                                                                   
+  |    +-------------------------+                                                                                    
+  |--> | manager_enumerate_rules | send requet (get rule), receive reply and perform 'add rule'                       
+  |    +-------------------------+                                                                                    
+  |    +---------------------------------+                                                                            
+  |--> | manager_enumerate_nl80211_wiphy | (skip)                                                                     
+  |    +---------------------------------+                                                                            
+  |    +----------------------------------+                                                                           
+  |--> | manager_enumerate_nl80211_config | (skip)                                                                    
+  |    +----------------------------------+                                                                           
+  |    +--------------------------------+                                                                             
+  +--> | manager_enumerate_nl80211_mlme | (skip)                                                                      
+       +--------------------------------+                                                                             
+```
+
+```
+src/network/networkd-manager.c                                                                                   
++-------------------------+                                                                                       
+| manager_enumerate_links | : send requet (get link), receive reply and perform 'new link'                        
++-|-----------------------+                                                                                       
+  |    +--------------------------+                                                                               
+  |--> | sd_rtnl_message_new_link | prepare msg (get link)                                                        
+  |    +--------------------------+                                                                               
+  |    +----------------------------+                                                                             
+  +--> | manager_enumerate_internal | send request & receive replies, perform 'new link' or 'del link' accordingly
+       +----------------------------+                                                                             
+```
+
+```
+src/network/networkd-manager.c                                                                                                 
++----------------------------+                                                                                                  
+| manager_enumerate_internal | : send request & receive replies, perform 'new link' or 'del link' accordingly                   
++-|--------------------------+                                                                                                  
+  |    +-------------------------------------+                                                                                  
+  |--> | sd_netlink_message_set_request_dump | set 'dump' flag                                                                  
+  |    +-------------------------------------+                                                                                  
+  |    +-----------------+                                                                                                      
+  |--> | sd_netlink_call | send packet and read reply                                                                           
+  |    +-----------------+                                                                                                      
+  |                                                                                                                             
+  +--> for each reply                                                                                                           
+       -                                                                                                                        
+       +--> call arg proces, e.g.,                                                                                              
+            +---------------------------+                                                                                       
+            | manager_rtnl_process_link | given msg, get link/net_dev from manager, perform 'new link' or 'del link' accordingly
+            +---------------------------+                                                                                       
+```
+
+```
+src/network/networkd-manager.c                                                                           
++---------------+                                                                                         
+| manager_start | : start speed meter, save manager and links                                             
++-|-------------+                                                                                         
+  |    +---------------------------+                                                                      
+  |--> | manager_start_speed_meter | add speed meter (register callback for 'time' source)                
+  |    +---------------------------+                                                                      
+  |    +--------------+                                                                                   
+  |--> | manager_save | save current manager settings to file, update manager settings, clear 'dirty' flag
+  |    +--------------+                                                                                   
+  |                                                                                                       
+  +--> for each link                                                                                      
+       |                                                                                                  
+       |    +-----------+                                                                                 
+       +--> | link_save | save link states to tmp file, rename to link->state_file                        
+            +-----------+                                                                                 
+```
