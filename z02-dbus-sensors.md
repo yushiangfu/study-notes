@@ -21,6 +21,39 @@ The ADC sensor task is a background daemon responsible for converting analog sig
 4. Sets up an ADC sensor for each matched pair of (descriptor, component) found during the search.
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
 
+```
+[service] xyz.openbmc_project.ADCSensor                                <-- main
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/voltage/$name                   <-- ADCSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- ADCSensor
+            [prop] Unit                                                <-- Sensor
+            [prop] MaxValue                                            <-- Sensor
+            [prop] MinValue                                            <-- Sensor
+            [prop] Value                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- ADCSensor
+            [prop] CriticalAlarmHigh                                   <-- Sensor
+            [prop] CriticalAlarmLow                                    <-- Sensor
+            [prop] CriticalHigh                                        <-- Sensor
+            [prop] CriticalLow                                         <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- ADCSensor
+            [prop] WarningAlarmHigh                                    <-- Sensor
+            [prop] WarningAlarmLow                                     <-- Sensor
+            [prop] WarningHigh                                         <-- Sensor
+            [prop] WarningLow                                          <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- ADCSensor
+            [prop] Associations                                        <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- Sensor
+            [prop] Available                                           <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
+            [prop] Functional                                          <-- Sensor
+```
+
 <p align="center"><img src="images/openbmc/dbus-sensors.png" /></p>
 
 <details><summary> More Details </summary>
@@ -63,7 +96,20 @@ from dbus perspective
 +---------------+                                                                                       
 | createSensors | <---- main                                                                            
 +---------------+ <---- property change (interface: "xyz.openbmc_project.Configuration.ADC")            
-                  <---- property change (interface: "xyz.openbmc_project.Inventory.Item")               
+                  <---- property change (interface: "xyz.openbmc_project.Inventory.Item")
+
+
+configuration:
+"Index"
+"Name"
+"CPURequired"
+"ScaleFactor"
+"PollRate"
+"PowerState"
+"BridgeGpio"
+    "Name"
+    "Polarity"
+    "SetupTime"
 ```
 
 ```
@@ -936,6 +982,60 @@ The fan sensor task is responsible for managing PWM and TACH sensors associated 
 3. Locates existing PWM and TACH components in the `/sys/class/hwmon/` directory, similar to the ADC sensor task.
 4. Sets up a PWM or TACH sensor for each matched pair of (descriptor, component), based on the type of sensor required.
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
+
+```
+[service] xyz.openbmc_project.FanSensor                                <-- main
+
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/fan_tach/$name                  <-- TachSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- TachSensor
+            [prop] Unit                                                <-- sensor
+            [prop] MaxValue                                            <-- sensor
+            [prop] MinValue                                            <-- sensor
+            [prop] Value                                               <-- sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- TachSensor
+            [prop] CriticalAlarmHigh                                   <-- sensor
+            [prop] CriticalAlarmLow                                    <-- sensor
+            [prop] CriticalHigh                                        <-- sensor
+            [prop] CriticalLow                                         <-- sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- TachSensor
+            [prop] WarningAlarmHigh                                    <-- sensor
+            [prop] WarningAlarmLow                                     <-- sensor
+            [prop] WarningHigh                                         <-- sensor
+            [prop] WarningLow                                          <-- sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- TachSensor
+            [prop] Associations                                        <-- sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- sensor
+            [prop] Available                                           <-- sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- sensor
+            [prop] Functional                                          <-- sensor
+
+    [obj] /xyz/openbmc_project/sensors/fan_pwm/$name                   <-- PwmSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- PwmSensor
+            [prop] Value                                               <-- PwmSensor
+            [prop] MaxValue                                            <-- PwmSensor
+            [prop] MinValue                                            <-- PwmSensor
+            [prop] Unit                                                <-- PwmSensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- PwmSensor
+            [prop] Associations                                        <-- PwmSensor
+
+    [obj] /xyz/openbmc_project/control                                 <-- main
+
+    [obj] /xyz/openbmc_project/control/fanpwm/$name                    <-- PwmSensor
+        [iface] xyz.openbmc_project.Control.FanPwm                     <-- PwmSensor
+            [prop] Target                                              <-- PwmSensor
+
+    [obj] /xyz/openbmc_project/inventory                               <-- main
+```
   
 <details><summary> More Details </summary>  
   
