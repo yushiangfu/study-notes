@@ -1815,3 +1815,309 @@ src/network/networkd-manager.c
        +--> | link_save | save link states to tmp file, rename to link->state_file                        
             +-----------+                                                                                 
 ```
+
+```
+src/libsystemd-network/sd-dhcp-client.c                                           
++--------------------+                                                             
+| sd_dhcp_client_new | : alloc and setup dhcp_client, add default options to client
++-|------------------+                                                             
+  |                                                                                
+  |--> alloc dhcp_client                                                           
+  |                                                                                
+  |--> get default options                                                         
+  |                                                                                
+  +--> for each option                                                             
+       |                                                                           
+       |    +-----------------------------------+                                  
+       +--> | sd_dhcp_client_set_request_option | ensure option is in client's set 
+            +-----------------------------------+                                  
+```
+
+```
+src/network/networkd-dhcp4.c                                                                            
++------------------+                                                                                     
+| dhcp4_lease_lost | : remove addr/routes, reset mtu/hostname, queue requests of nexthop/route to manager
++-|----------------+                                                                                     
+  |    +---------------------------------+                                                               
+  |--> | dhcp4_remove_address_and_routes | remove each route and address from link                       
+  |    +---------------------------------+                                                               
+  |    +----------------+                                                                                
+  |--> | dhcp_reset_mtu | prepare req (set link mtu) and add to queue of manager                         
+  |    +----------------+                                                                                
+  |    +---------------------+                                                                           
+  |--> | dhcp_reset_hostname | determine hostname, call method to set hostname                           
+  |    +---------------------+                                                                           
+  |    +------------+                                                                                    
+  |--> | link_dirty | label link as dirty, add to dirty list of manager                                  
+  |    +------------+                                                                                    
+  |    +------------------------------+                                                                  
+  |--> | link_request_static_nexthops | for each nexthop in network: queue a request to manager          
+  |    +------------------------------+                                                                  
+  |    +----------------------------+                                                                    
+  +--> | link_request_static_routes | for each route in network: queue a route request to manager        
+       +----------------------------+                                                                    
+```
+
+```
+src/network/networkd-dhcp4.c                                                                    
++---------------------------------+                                                              
+| dhcp4_remove_address_and_routes | : remove each route and address from link                    
++-|-------------------------------+                                                              
+  |                                                                                              
+  |--> for each route in link                                                                    
+  |    |                                                                                         
+  |    |    +--------------+                                                                     
+  |    |--> | route_remove | prepare rtnl msg (del route), setup and send out                    
+  |    |    +--------------+                                                                     
+  |    |    +----------------------+                                                             
+  |    +--> | route_cancel_request | remove route-type request from manager                      
+  |         +----------------------+                                                             
+  |                                                                                              
+  +--> for each address in link                                                                  
+       |                                                                                         
+       |    +----------------+                                                                   
+       |--> | address_remove | prepare rtnl msg (del route), setup and send out, update operstate
+       |    +----------------+                                                                   
+       |    +------------------------+                                                           
+       +--> | address_cancel_request | remove address-type request from manager                  
+            +------------------------+                                                           
+```
+
+```
+src/network/networkd-route.c                                      
++--------------+                                                   
+| route_remove | : prepare rtnl msg (del route), setup and send out
++-|------------+                                                   
+  |                                                                
+  |--> get link from route                                         
+  |                                                                
+  |    +---------------------------+                               
+  |--> | sd_rtnl_message_new_route | prepare rtnl msg (del route)  
+  |    +---------------------------+                               
+  |    +--------------------------------+                          
+  |--> | sd_rtnl_message_route_set_type |                          
+  |    +--------------------------------+                          
+  |    +---------------------------+                               
+  |--> | route_set_netlink_message | given route, setup msg        
+  |    +---------------------------+                               
+  |    +--------------------+                                      
+  +--> | netlink_call_async | send msg out                         
+       +--------------------+                                      
+```
+
+```
+src/network/networkd-dhcp4.c                                                          
++----------------+                                                                     
+| dhcp_reset_mtu | : prepare req (set link mtu) and add to queue of manager            
++-------------------------+                                                            
+| link_request_to_set_mtu | : prepare req (set link mtu) and add to queue of manager   
++-|-----------------------+                                                            
+  |                                                                                    
+  |--> determine mtu                                                                   
+  |                                                                                    
+  |    +-----------------------+                                                       
+  +--> | link_request_set_link | prepare req (set link mtu) and add to queue of manager
+       +-----------------------+                                                       
+```
+
+```
+src/network/networkd-dhcp4.c                                                   
++---------------------+                                                         
+| dhcp_reset_hostname | : determine hostname, call method to set hostname       
++-|-------------------+                                                         
+  |                                                                             
+  |--> try to get hostname from 'dhcp_hostname'                                 
+  |                                                                             
+  |--> if got nothing                                                           
+  |    |                                                                        
+  |    |    +----------------------------+                                      
+  |    +--> | sd_dhcp_lease_get_hostname | try to get hostname from 'dhcp_lease'
+  |         +----------------------------+                                      
+  |                                                                             
+  |--> if got nothing, return                                                   
+  |                                                                             
+  |    +----------------------+                                                 
+  +--> | manager_set_hostname | call method to set hostname                     
+       +----------------------+                                                 
+```
+
+```
+src/network/networkd-nexthop.c                                                              
++------------------------------+                                                             
+| link_request_static_nexthops | : for each nexthop in network: queue a request to manager   
++-|----------------------------+                                                             
+  |                                                                                          
+  |--> for each nexthop in network                                                           
+  |    |                                                                                     
+  |    |    +----------------------+                                                         
+  |    +--> | link_request_nexthop | ensure target nexthop exists, queue a request to manager
+  |         +----------------------+                                                         
+  |                                                                                          
+  +--> set link state to 'configured' or 'configuring'                                       
+```
+
+```
+src/network/networkd-nexthop.c                                                    
++----------------------+                                                           
+| link_request_nexthop | : ensure target nexthop exists, queue a request to manager
++-|--------------------+                                                           
+  |    +-------------+                                                             
+  |--> | nexthop_get | given arg 'in', get target netxhop                          
+  |    +-------------+                                                             
+  |                                                                                
+  |--> if got nothing                                                              
+  |    |                                                                           
+  |    |    +-------------+                                                        
+  |    |--> | nexthop_dup | duplicate 'src' to 'dest'                              
+  |    |    +-------------+                                                        
+  |    |    +--------------------+                                                 
+  |    |--> | nexthop_acquire_id | find an available id and save in nexthop        
+  |    |    +--------------------+                                                 
+  |    |    +-------------+                                                        
+  |    +--> | nexthop_add | add nexthop to either link or manager                  
+  |         +-------------+                                                        
+  |    +-------------------------+                                                 
+  +--> | link_queue_request_safe | prepare req and add to queue of manager         
+       +-------------------------+                                                 
+```
+
+```
+src/network/networkd-nexthop.c                                   
++-------------+                                                   
+| nexthop_get | : given arg 'in', get target netxhop              
++-|-----------+                                                   
+  |                                                               
+  |--> get set 'nexthops' from link or manager                    
+  |                                                               
+  |    +---------+                                                
+  |--> | set_get | given arg 'in', get nexthop from set 'nexthops'
+  |    +---------+                                                
+  |                                                               
+  |--> if found, return                                           
+  |                                                               
+  +--> for each nexthop in nexthops                               
+       |                                                          
+       |--> compare nexthop and arg 'in' without id               
+       |                                                          
+       +--> if found, return                                      
+```
+
+```
+src/network/networkd-nexthop.c            
++-------------+                            
+| nexthop_dup | : duplicate 'src' to 'dest'
++-|-----------+                            
+  |                                        
+  |--> duplicate 'src' nexthop to 'dest'   
+  |                                        
+  +--> for each nexthop_grp in 'src'       
+       -                                   
+       +--> duplicate and add to 'dest'    
+```
+
+```
+src/network/networkd-nexthop.c                                  
++--------------------+                                           
+| nexthop_acquire_id | : find an available id and save in nexthop
++-|------------------+                                           
+  |                                                              
+  |--> for each network in manager                               
+  |    -                                                         
+  |    +--> for each nexthop in network                          
+  |         -                                                    
+  |         +--> put nexthop->id in local 'ids'                  
+  |                                                              
+  |--> find an available (unused) id                             
+  |                                                              
+  +--> save in nexthop                                           
+```
+
+```
+src/network/networkd-nexthop.c                        
++-------------+                                        
+| nexthop_add | : add nexthop to either link or manager
++-|-----------+                                        
+  |                                                    
+  |--> if nexthop should be owned by link              
+  |    |                                               
+  |    |    +----------------+                         
+  |    +--> | set_ensure_put | add nexthop to link     
+  |         +----------------+                         
+  |                                                    
+  |--> else                                            
+  |    |                                               
+  |    |    +----------------+                         
+  |    +--> | set_ensure_put | add link to manager     
+  |         +----------------+                         
+  |                                                    
+  +--> add (id, nexthop) to manager                    
+```
+
+```
+src/network/networkd-route.c                                                               
++----------------------------+                                                              
+| link_request_static_routes | : for each route in network: queue a route request to manager
++-|--------------------------+                                                              
+  |                                                                                         
+  |--> for each route in network                                                            
+  |    |                                                                                    
+  |    |    +---------------------------+                                                   
+  |    +--> | link_request_static_route | queue a route request to manager                  
+  |         +---------------------------+                                                   
+  |    +-------------------------------+                                                    
+  |--> | link_request_wireguard_routes | (skip)                                             
+  |    +-------------------------------+                                                    
+  |                                                                                         
+  +--> set link state to 'configured' or 'configuring'                                      
+```
+
+```
+src/network/networkd-route.c                                                                                 
++---------------------------+                                                                                 
+| link_request_static_route | : queue a route request to manager                                              
++-|-------------------------+                                                                                 
+  |                                                                                                           
+  |--> if route needs no conversion                                                                           
+  |    |                                                                                                      
+  |    |    +--------------------+                                                                            
+  |    |--> | link_request_route | ensure route exists, setup existing accordingly, queue a request to manager
+  |    |    +--------------------+                                                                            
+  |    +--> return                                                                                            
+  |                                                                                                           
+  |    +-------------------------+                                                                            
+  +--> | link_queue_request_safe | prepare req and add to queue of manager                                    
+       +-------------------------+                                                                            
+```
+
+```
+src/network/networkd-route.c                                                                       
++--------------------+                                                                              
+| link_request_route | : ensure route exists, setup existing accordingly, queue a request to manager
++-|------------------+                                                                              
+  |    +-----------+                                                                                
+  |--> | route_get | given arg 'in', get route from manager or link                                 
+  |    +-----------+                                                                                
+  |                                                                                                 
+  |--> if route is outdated, remove it and return                                                   
+  |                                                                                                 
+  |--> if route doesn't exist                                                                       
+  |    |                                                                                            
+  |    |    +-----------+                                                                           
+  |    |--> | route_dup | duplicate arg 'route'                                                     
+  |    |    +-----------+                                                                           
+  |    |    +-----------+                                                                           
+  |    +--> | route_add | add route to manager or link                                              
+  |         +-----------+                                                                           
+  |                                                                                                 
+  |--> else (exist)                                                                                 
+  |    -                                                                                            
+  |    +--> setup 'existing' based on route                                                         
+  |                                                                                                 
+  |    +-------------------------+                                                                  
+  +--> | link_queue_request_safe | prepare req and add to queue of manager                          
+       +-------------------------+                                                                  
+```
+
+```
+
+```
