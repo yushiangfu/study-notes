@@ -1214,6 +1214,39 @@ The HwmonTemp sensor task is responsible for managing temperature sensors associ
 3. Locates existing temperature sensor components in the `/sys/bus/iio/devices` and `/sys/class/hwmon/` directories.
 4. Sets up a HwmonTemp sensor for each matched pair of (descriptor, component).
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest temperature values are accessible to other components and services.
+
+```
+[service] xyz.openbmc_project.HwmonTempSensor                          <-- main
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/temperature/Ambient_Temp        <-- HwmonTempSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- HwmonTempSensor
+            [prop] Unit                                                <-- Sensor
+            [prop] MaxValue                                            <-- Sensor
+            [prop] MinValue                                            <-- Sensor
+            [prop] Value                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- HwmonTempSensor
+            [prop] CriticalAlarmHigh                                   <-- Sensor
+            [prop] CriticalAlarmLow                                    <-- Sensor
+            [prop] CriticalHigh                                        <-- Sensor
+            [prop] CriticalLow                                         <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- HwmonTempSensor
+            [prop] WarningAlarmHigh                                    <-- Sensor
+            [prop] WarningAlarmLow                                     <-- Sensor
+            [prop] WarningHigh                                         <-- Sensor
+            [prop] WarningLow                                          <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- HwmonTempSensor
+            [prop] Associations                                        <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- Sensor
+            [prop] Available                                           <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
+            [prop] Functional                                          <-- Sensor
+```
   
 <details><summary> More Details </summary>  
   
