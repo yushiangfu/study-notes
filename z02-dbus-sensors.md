@@ -1012,7 +1012,7 @@ The fan sensor task is responsible for managing PWM and TACH sensors associated 
         [iface] xyz.openbmc_project.Association.Definitions            <-- TachSensor
             [prop] Associations                                        <-- sensor
 
-        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- sensor
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- sensor
             [prop] Available                                           <-- sensor
 
         [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- sensor
