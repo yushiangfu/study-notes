@@ -311,10 +311,51 @@ configuration:
 The CPU sensor task is responsible for monitoring properties such as temperature, power, and energy of the CPU and DIMM. It performs the following steps:
 
 1. Requests the service `xyz.openbmc_project.CPUSensor` to establish communication.
-2. Retrieves ADC descriptors from `xyz.openbmc_project.EntityManager` to obtain information about the available ADC hardware.
-3. Locates existing ADC hardware located in the `/sys/bus/peci/devices/` directory.
+2. Retrieves XeonCPU descriptors from `xyz.openbmc_project.EntityManager` to obtain information about the available ADC hardware.
+3. Locates existing XeonCPU hardware located in the `/sys/bus/peci/devices/` directory.
 4. Sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM.
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
+
+```
+[service] xyz.openbmc_project.IntelCPUSensor                                 <-- main
+    [obj] /xyz/openbmc_project/sensors                                       <-- main
+
+    [obj] /xyz/openbmc_project/sensors/temperature/$name                     <-- IntelCPUSensor
+    (or
+    [obj] /xyz/openbmc_project/sensors/power/$name)
+
+        [iface] xyz.openbmc_project.Sensor.Value                             <-- IntelCPUSensor
+            [prop] Unit                                                      <-- Sensor
+            [prop] MaxValue                                                  <-- Sensor
+            [prop] MinValue                                                  <-- Sensor
+            [prop] Value                                                     <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical                <-- IntelCPUSensor
+            [prop] CriticalAlarmHigh                                         <-- Sensor
+            [prop] CriticalAlarmLow                                          <-- Sensor
+            [prop] CriticalHigh                                              <-- Sensor
+            [prop] CriticalLow                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning                 <-- IntelCPUSensor
+            [prop] WarningAlarmHigh                                          <-- Sensor
+            [prop] WarningAlarmLow                                           <-- Sensor
+            [prop] WarningHigh                                               <-- Sensor
+            [prop] WarningLow                                                <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions                  <-- IntelCPUSensor
+            [prop] Associations                                              <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability             <-- Sensor
+            [prop] Available                                                 <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus        <-- Sensor
+            [prop] Functional                                                <-- Sensor
+
+    [obj] /xyz/openbmc_project/inventory/system/chassis/motherboard/$name    <-- main
+        [iface] xyz.openbmc_project.Inventory.Item                           <-- main
+            [prop] PrettyName                                                <-- main
+            [prop] Present                                                   <-- main
+```
   
 <details><summary> More Details </summary>  
   
@@ -1405,6 +1446,15 @@ The Intrusion sensor task is responsible for monitoring and reporting intrusion 
 3. Obtains fan descriptors from `xyz.openbmc_project.EntityManager` to gather information about the associated fan components.
 4. The sensor periodically reads values related to intrusion events.
 5. Updates the intrusion status to the D-Bus periodically, ensuring that the latest information about intrusion events is available to other components and services.
+
+```
+[service] xyz.openbmc_project.IntrusionSensor            <-- main
+    [obj] /xyz/openbmc_project/Chassis                   <-- main
+
+    [obj] /xyz/openbmc_project/Chassis/Intrusion         <-- ChassisIntrusionSensor
+        [iface] xyz.openbmc_project.Chassis.Intrusion    <-- ChassisIntrusionSensor
+            [prop] Status                                <-- ChassisIntrusionSensor
+```
   
 <details><summary> More Details </summary>  
   
