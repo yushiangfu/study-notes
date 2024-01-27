@@ -3,7 +3,7 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Cheat Sheet](#cheat-sheet)
+- [Table](#table)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -11,11 +11,58 @@
 The `phosphor-host-ipmid` package includes `ipmid` and associated libraries for implementing core IPMI functionalities like sensors, storage, and user commands. 
 The `ipmid` dynamically loads libraries from `/usr/lib/ipmid-providers/` calling functions with the `constructor` attribute to register diverse handlers. 
 This directory serves as a plugin repository, allowing other packages to add their libraries, automatically loaded by `ipmid` to extend OEM functionalities. 
-Once the handler table is set, `ipmid` exposes the D-Bus method `execute`, enabling D-Bus peers to send message calls and receive responses.
+
+- Providers
+  - libdynamiccmds.so.0.1
+    - registerStorageFunctions
+    - registerSensorFunctions
+  - libipmi20.so.0.1
+    - register_netfn_sen_functions
+    - register_netfn_transport_functions
+    - register_netfn_app_functions
+    - registerChannelFunctions
+    - register_netfn_groupext_functions
+    - register_netfn_storage_functions
+    - register_netfn_dcmi_functions
+    - register_netfn_global_functions
+    - register_netfn_chassis_functions
+  - libmanualcmds.so.1.0.0
+    - provided by `phosphor-pid-control`
+  - libstrgfnhandler.so.1.0
+    - provided by `phosphor-ipmi-fru`
+  - libsysintfcmds.so.0.1
+    - register_netfn_app_functions
+  - libusercmds.so.0.1
+    - registerUserIpmiFunctions
+  - libwhitelist.so.0.1
+    - not for handler registration
 
 <p align="center"><img src="images/phosphor-host-ipmid/providers.png" /></p>
 
-<p align="center"><img src="images/phosphor-host-ipmid/execute-flow" /></p>
+Once the handler table is set, `ipmid` exposes the D-Bus method `execute`, enabling D-Bus peers to send message calls and receive responses.
+
+<p align="center"><img src="images/phosphor-host-ipmid/execute-flow.png" /></p>
+
+## <a name="table"></a> Table
+
+```
+[service] xyz.openbmc_project.Ipmi.Host                       <-- main
+
+    [obj] /xyz/openbmc_project/Ipmi                           <-- main
+        [iface] xyz.openbmc_project.Ipmi.Server               <-- main
+            [method] execute                                  <-- main
+
+[service] xyz.openbmc_project.Control.Host                    <-- register_netfn_app_functions
+
+    [obj] /xyz/openbmc_project/control/host0                  <-- register_netfn_app_functions
+
+        [iface] xyz.openbmc_project.Condition.HostFirmware    <-- phosphor-dbus-interfaces
+            [prop] CurrentFirmwareCondition                   <-- phosphor-dbus-interfaces
+
+        [iface] xyz.openbmc_project.Control.Host              <-- phosphor-dbus-interfaces
+            [method] Execute                                  <-- phosphor-dbus-interfaces
+            [signal] CommandComplete                          <-- phosphor-dbus-interfaces
+```
 
 ### registerSensorFunctions()
 
