@@ -2,6 +2,17 @@
 
 - [Introduction](#introduction)
 - [Sensor Daemons](#sensor-daemons)
+    - [ADC Sensor](#adcsensor)
+    - [Intel CPU Sensor](#cpusensor)
+    - [Exit Air Temp Sensor](#exitairtempsensor)
+    - [External Sensor](#externalsensor)
+    - [Fan Sensor](#fansensor)
+    - [Hwmon Temp Sensor](#hwmontempsensor)
+    - [Intrusion Sensor](#intrusionsensor)
+    - [IPMB Sensor](#ipmbsensor)
+    - [MCU Temp Sensor](#mcutempsensor)
+    - [NVMe Sensor](#nvmesensor)
+    - [PSU Sensor](#psusensor)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
 
@@ -11,7 +22,7 @@
 
 ## <a name="sensor-daemons"></a> Sensor Daemons
 
-## adcsensor
+### <a name="adcsensor"></a> ADC Sensor
 
 The ADC sensor task is a background daemon responsible for converting analog signals into digital values. It performs the following steps:
 
@@ -306,7 +317,7 @@ configuration:
                     
 </details>
 
-## cpusensor
+### <a name="cpusensor"></a> Intel CPU Sensor
   
 The CPU sensor task is responsible for monitoring properties such as temperature, power, and energy of the CPU and DIMM. It performs the following steps:
 
@@ -650,6 +661,7 @@ from dbus perspective
 </details>
   
 ## exitairtempsensor
+### <a name="eexitairtempsensor"></a> Exit Air Temp Sensor
 
 (TBD)
   
@@ -952,7 +964,7 @@ ExitAirTempSensor.cpp
   
 </details>
 
-## externalsensor
+### <a name="externalsensor"></a> External Sensor
 
 (TBD)
   
@@ -1014,7 +1026,7 @@ ExternalSensorMain.cpp
   
 </details>
 
-## fansensor
+### <a name="fansensor"></a> Fan Sensor
 
 The fan sensor task is responsible for managing PWM and TACH sensors associated with the fan components. It follows the following steps:
 
@@ -1246,7 +1258,7 @@ FanMain.cpp
 
 </details>
   
-## hwmontempsensor
+### <a name="hwmontempsensor"></a> Hwmon Temp Sensor
 
 The HwmonTemp sensor task is responsible for managing temperature sensors associated with hardware components. It follows the following steps:
 
@@ -1437,7 +1449,7 @@ HwmonTempMain.cpp
 
 </details>
   
-## intrusionsensor
+### <a name="intrusionsensor"></a> Intrusion Sensor
 
 The Intrusion sensor task is responsible for monitoring and reporting intrusion events. It follows the following steps:
 
@@ -1703,7 +1715,7 @@ src/IntrusionSensorMain.cpp
   
 </details>
 
-## ipmbsensor
+### <a name="ipmbsensor"></a> IPMB Sensor
 
 The Ipmb sensor task is responsible for monitoring and reporting IPMB (Intelligent Platform Management Bus) sensor values. It follows the following steps:
 
@@ -1712,6 +1724,39 @@ The Ipmb sensor task is responsible for monitoring and reporting IPMB (Intellige
 3. Sets up an Ipmb sensor to monitor IPMB sensor values.
 4. The sensor periodically reads values from the IPMB sensors.
 5. Updates the IPMB sensor values to the D-Bus periodically, ensuring that the latest information is available to other components and services.
+
+```
+[service] xyz.openbmc_project.IpmbSensor                               <-- main
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/temperature/$name               <-- IpmbSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- IpmbSensor
+            [prop] Unit                                                <-- Sensor
+            [prop] MaxValue                                            <-- Sensor
+            [prop] MinValue                                            <-- Sensor
+            [prop] Value                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- IpmbSensor
+            [prop] CriticalAlarmHigh                                   <-- Sensor
+            [prop] CriticalAlarmLow                                    <-- Sensor
+            [prop] CriticalHigh                                        <-- Sensor
+            [prop] CriticalLow                                         <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- IpmbSensor
+            [prop] WarningAlarmHigh                                    <-- Sensor
+            [prop] WarningAlarmLow                                     <-- Sensor
+            [prop] WarningHigh                                         <-- Sensor
+            [prop] WarningLow                                          <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- IpmbSensor
+            [prop] Associations                                        <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- Sensor
+            [prop] Available                                           <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
+            [prop] Functional                                          <-- Sensor
+```
   
 <details><summary> More Details </summary>  
   
@@ -1847,7 +1892,7 @@ src/IpmbSensor.cpp
 
 </details>
   
-## mcutempsensor
+### <a name="mcutempsensor"></a> MCU Temp Sensor
 
 (TBD)
   
@@ -2044,7 +2089,7 @@ src/IpmbSensor.cpp
   
 </details>
 
-## nvmesensor
+### <a name="nvmesensor"></a> NVMe Sensor
 
 (TBD)
   
@@ -2271,7 +2316,7 @@ src/IpmbSensor.cpp
   
 </details>
 
-## psusensor
+### <a name="psusensor"></a> PSU Sensor
   
 The PSU sensor task is responsible for monitoring and reporting PSU (Power Supply Unit) sensor values. It follows the following steps:
 
