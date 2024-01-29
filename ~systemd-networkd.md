@@ -2119,5 +2119,433 @@ src/network/networkd-route.c
 ```
 
 ```
+src/network/networkd-dhcp4.c                                                           
++-----------------+                                                                     
+| dhcp4_configure | : alloc client, configure and install 'dhcp4_handler'               
++-|---------------+                                                                     
+  |    +--------------------+                                                           
+  |--> | sd_dhcp_client_new | alloc and setup dhcp_client, add default options to client
+  |    +--------------------+                                                           
+  |    +-----------------------------+                                                  
+  |--> | sd_dhcp_client_attach_event | attach event to dhcp_client                      
+  |    +-----------------------------+                                                  
+  |    +------------------------------+                                                 
+  |--> | sd_dhcp_client_attach_device | attach link dev to dhcp_client                  
+  |    +------------------------------+                                                 
+  |    +------------------------+                                                       
+  |--> | sd_dhcp_client_set_mac | set hw mac in dhcp_client                             
+  |    +------------------------+                                                       
+  |    +----------------------------+                                                   
+  |--> | sd_dhcp_client_set_ifindex | set iface index in dhcp_client                    
+  |    +----------------------------+                                                   
+  |    +-----------------------------+                                                  
+  |--> | sd_dhcp_client_set_callback | install callback in dhcp_client                  
+  |    +-----------------------------+ +---------------+                                
+  |                                    | dhcp4_handler | handle dhcp events             
+  |                                    +---------------+                                
+  |    +------------------------+                                                       
+  |--> | sd_dhcp_client_set_mtu | set mtu of client                                     
+  |    +------------------------+                                                       
+  |                                                                                     
+  |--> if not anonymize                                                                 
+  |    |                                                                                
+  |    |--> set options (mtu, routes, domains, ntp, timezone)                           
+  |    |                                                                                
+  |    |    +--------------------+                                                      
+  |    +--> | dhcp4_set_hostname |                                                      
+  |         +--------------------+                                                      
+  |                                                                                     
+  |--> set options (client port, max attempts, service type, socket priority, )         
+  |                                                                                     
+  |    +---------------------------+                                                    
+  |--> | dhcp4_set_request_address | find dynamic addr from link, save it client        
+  |    +---------------------------+                                                    
+  |    +-----------------------------+                                                  
+  +--> | dhcp4_set_client_identifier | set client id                                    
+       +-----------------------------+                                                  
+```
 
+```
+src/network/networkd-dhcp4.c                                                                                           
++---------------+                                                                                                       
+| dhcp4_handler | : handle dhcp events                                                                                  
++-|-------------+                                                                                                       
+  |                                                                                                                     
+  +--> switch event                                                                                                     
+       case stop                                                                                                        
+       ---> (skip ipv4ll)                                                                                               
+       +--> if link->dhcp_lease                                                                                         
+            |--> if ->dhcp_send_release is set                                                                          
+            |    -    +-----------------------------+                                                                   
+            |    +--> | sd_dhcp_client_send_release | prepare client msg (dhcp release), send out                       
+            |         +-----------------------------+                                                                   
+            |    +------------------+                                                                                   
+            +--> | dhcp4_lease_lost | remove addr/routes, reset mtu/hostname, queue requests of nexthop/route to manager
+                 +------------------+                                                                                   
+       case expired                                                                                                     
+       +--> if link->dhcp_lease                                                                                         
+            -    +------------------+                                                                                   
+            +--> | dhcp4_lease_lost | remove addr/routes, reset mtu/hostname, queue requests of nexthop/route to manager
+                 +------------------+                                                                                   
+       case ip_change                                                                                                   
+       -    +----------------------+                                                                                    
+       +--> | dhcp_lease_ip_change | get lease, mark dirty on link, set hostname/timezone, request addrs/routes         
+            +----------------------+                                                                                    
+       case renew                                                                                                       
+       -    +------------------+                                                                                        
+       +--> | dhcp_lease_renew | get lease, mark dirty on link, request addrs/routes                                    
+            +------------------+                                                                                        
+       case ip_acquire                                                                                                  
+       -    +---------------------+                                                                                     
+       +--> | dhcp_lease_acquired | get lease, mark dirty on link, set hostname/timezone, request addrs/routes          
+            +---------------------+                                                                                     
+       case selecting                                                                                                   
+       -    +-------------------------+                                                                                 
+       +--> | dhcp_server_is_filtered | get lease and get server addr                                                   
+            +-------------------------+                                                                                 
+       case transient_failure                                                                                           
+```
+
+```
+src/network/networkd-dhcp4.c                                                                        
++----------------------+                                                                             
+| dhcp_lease_ip_change | : get lease, mark dirty on link, set hostname/timezone, request addrs/routes
++---------------------++                                                                             
+| dhcp_lease_acquired | : get lease, mark dirty on link, set hostname/timezone, request addrs/routes 
++-|-------------------+                                                                              
+  |    +--------------------------+                                                                  
+  |--> | sd_dhcp_client_get_lease | get lease                                                        
+  |    +--------------------------+                                                                  
+  |    +------------+                                                                                
+  |--> | link_dirty | label link as dirty, add to dirty list of manager                              
+  |    +------------+                                                                                
+  |                                                                                                  
+  |--> if ->dhcp_use_mtu is true                                                                     
+  |    |                                                                                             
+  |    |    +-----------------------+                                                                
+  |    |--> | sd_dhcp_lease_get_mtu | get mtu from lease                                             
+  |    |    +-----------------------+                                                                
+  |    |    +-------------------------+                                                              
+  |    +--> | link_request_to_set_mtu | set rtnl request to set mtu                                  
+  |         +-------------------------+                                                              
+  |                                                                                                  
+  |--> if ->dhcp_use_hostname is true                                                                
+  |    |                                                                                             
+  |    |--> get hostname from network or lease                                                       
+  |    |                                                                                             
+  |    +--> if got hostname                                                                          
+  |         |                                                                                        
+  |         |    +----------------------+                                                            
+  |         +--> | manager_set_hostname | call bus method to set hostname                            
+  |              +----------------------+                                                            
+  |                                                                                                  
+  |--> if ->dhcp_use_timezone is true                                                                
+  |    |                                                                                             
+  |    |    +----------------------------+                                                           
+  |    |--> | sd_dhcp_lease_get_timezone | get timezone from lease                                   
+  |    |    +----------------------------+                                                           
+  |    |    +----------------------+                                                                 
+  |    +--> | manager_set_timezone | call bus method to set timezone                                 
+  |         +----------------------+                                                                 
+  |    +----------------------------------+                                                          
+  +--> | dhcp4_request_address_and_routes | mark 'dhcp' on addrs/routes, request addrs/routes        
+       +----------------------------------+                                                          
+```
+
+```
+src/network/networkd-dhcp4.c                                                                                         
++----------------------------------+                                                                                  
+| dhcp4_request_address_and_routes | : mark 'dhcp' on addrs/routes, request addrs/routes                              
++-|--------------------------------+                                                                                  
+  |    +---------------------+                                                                                        
+  |--> | link_mark_addresses | dhcp4                                                                                  
+  |    +---------------------+                                                                                        
+  |    +------------------+                                                                                           
+  |--> | link_mark_routes | dhcp4                                                                                     
+  |    +------------------+                                                                                           
+  |    +-----------------------+                                                                                      
+  |--> | dhcp4_request_address | get params from lease, setup 'address', add to link, queue a req (address) to manager
+  |    +-----------------------+                                                                                      
+  |    +----------------------+                                                                                       
+  +--> | dhcp4_request_routes | request all kinds of rroutes (prefix/static/dns/ntp)                                  
+       +----------------------+                                                                                       
+```
+
+```
+src/network/networkd-dhcp4.c                                                                                     
++-----------------------+                                                                                         
+| dhcp4_request_address |  : get params from lease, setup 'address', add to link, queue a req (address) to manager
++-|---------------------+                                                                                         
+  |    +---------------------------+                                                                              
+  |--> | sd_dhcp_lease_get_address | get address from lease                                                       
+  |    +---------------------------+                                                                              
+  |    +---------------------------+                                                                              
+  |--> | sd_dhcp_lease_get_netmask | get netmask from lease                                                       
+  |    +---------------------------+                                                                              
+  |    +-------------------------------------+                                                                    
+  |--> | sd_dhcp_lease_get_server_identifier | get server addr from lease                                         
+  |    +-------------------------------------+                                                                    
+  |                                                                                                               
+  |--> if arg 'announce' is true                                                                                  
+  |    |                                                                                                          
+  |    |    +--------------------------+                                                                          
+  |    |--> | sd_dhcp_lease_get_router | get router addr from lease                                               
+  |    |    +--------------------------+                                                                          
+  |    |                                                                                                          
+  |    +--> log                                                                                                   
+  |                                                                                                               
+  |    +-------------+                                                                                            
+  |--> | address_new | alloc 'address'                                                                            
+  |    +-------------+                                                                                            
+  |                                                                                                               
+  |--> setup 'address'                                                                                            
+  |                                                                                                               
+  |    +----------------------+                                                                                   
+  +--> | link_request_address | prepare 'address', add it to link, queue a request (address) to manager           
+       +----------------------+                                                                                   
+```
+
+```
+src/network/networkd-address.c                                                                     
++----------------------+                                                                            
+| link_request_address | : prepare 'address', add it to link, queue a request (address) to manager  
++-|--------------------+                                                                            
+  |    +-----------------+                                                                          
+  |--> | address_acquire | prepare 'address' from arg 'original', with new prefix & ipaddr          
+  |    +-----------------+                                                                          
+  |                                                                                                 
+  |--> if address needs to set broadcast                                                            
+  |    |                                                                                            
+  |    |    +-----------------------+                                                               
+  |    +--> | address_set_broadcast | prepare bcast addr, save in arg address                       
+  |         +-----------------------+                                                               
+  |    +-------------+                                                                              
+  |--> | address_get | given 'address', get existing one from link                                  
+  |    +-------------+                                                                              
+  |                                                                                                 
+  |--> if there's no existing one                                                                   
+  |    |                                                                                            
+  |    |    +-------------+                                                                         
+  |    |--> | address_dup | duplicate 'address' to 'tmp'                                            
+  |    |    +-------------+                                                                         
+  |    |    +-------------+                                                                         
+  |    +--> | address_add | add newly allocated address to link                                     
+  |         +-------------+                                                                         
+  |                                                                                                 
+  |--> else (there's existing one)                                                                  
+  |    -                                                                                            
+  |    +--> setup 'existing' based on 'address'                                                     
+  |                                                                                                 
+  |    +-------------------+                                                                        
+  |--> | ipv4acd_configure | (skip)                                                                 
+  |    +-------------------+                                                                        
+  |    +-------------------------+                                                                  
+  +--> | link_queue_request_safe | prepare req and add to queue of manager                          
+       +-------------------------+ +-------------------------+                                      
+                                   | address_process_request | prepare rtnl msg (new addr), send out
+                                   +-------------------------+                                      
+                                                                                                    
+```
+
+```
+src/network/networkd-address.c                                                      
++-----------------+                                                                  
+| address_acquire | : prepare 'address' from arg 'original', with new prefix & ipaddr
++-|---------------+                                                                  
+  |    +----------------------+                                                      
+  |--> | address_pool_acquire | get a random prefix from manager's pool              
+  |    +----------------------+                                                      
+  |                                                                                  
+  |--> pick the first ip addr in range                                               
+  |                                                                                  
+  |    +-------------+                                                               
+  |--> | address_dup | duplicate address from 'original'                             
+  |    +-------------+                                                               
+  |                                                                                  
+  +--> save the first ip addr in duplicated address                                  
+```
+
+```
+src/network/networkd-address-pool.c                              
++----------------------+                                          
+| address_pool_acquire | : get a random prefix from manager's pool
++-|--------------------+                                          
+  |                                                               
+  +--> for each pool in manager                                   
+       |                                                          
+       |    +--------------------------+                          
+       |--> | address_pool_acquire_one | get a random prefix      
+       |    +--------------------------+                          
+       |                                                          
+       +--> if got, return                                        
+```
+
+```
+src/network/networkd-dhcp4.c                                                                       
++----------------------+                                                                            
+| dhcp4_request_routes | : request all kinds of rroutes (prefix/static/dns/ntp)                     
++-|--------------------+                                                                            
+  |    +----------------------------+                                                               
+  |--> | dhcp4_request_prefix_route | prepare 'route', queue a request to manager                   
+  |    +----------------------------+                                                               
+  |    +-----------------------------+                                                              
+  |--> | dhcp4_request_static_routes | setup rout3es, queue a request to manager                    
+  |    +-----------------------------+                                                              
+  |    +----------------------------------+                                                         
+  |--> | dhcp4_request_semi_static_routes | for each route, setup route & queue a request to manager
+  |    +----------------------------------+                                                         
+  |    +-----------------------------+                                                              
+  |--> | dhcp4_request_routes_to_dns | request routes to dns servers                                
+  |    +-----------------------------+                                                              
+  |    +-----------------------------+                                                              
+  +--> | dhcp4_request_routes_to_ntp | request routes to ntp servers                                
+       +-----------------------------+                                                              
+```
+
+```
+src/network/networkd-dhcp4.c                                                                             
++----------------------------+                                                                            
+| dhcp4_request_prefix_route | : prepare 'route', queue a request to manager                              
++-|--------------------------+                                                                            
+  |    +---------------------------+                                                                      
+  |--> | sd_dhcp_lease_get_address | get addr from lease                                                  
+  |    +---------------------------+                                                                      
+  |    +---------------------------+                                                                      
+  |--> | sd_dhcp_lease_get_netmask | get netmask from lease                                               
+  |    +---------------------------+                                                                      
+  |    +-----------+                                                                                      
+  |--> | route_new | alloc route                                                                          
+  |    +-----------+                                                                                      
+  |                                                                                                       
+  |--> setup route                                                                                        
+  |                                                                                                       
+  |    +---------------------+                                                                            
+  +--> | dhcp4_request_route | ensure route exists, setup existing accordingly, queue a request to manager
+       +---------------------+                                                                            
+```
+
+```
+src/network/networkd-dhcp4.c                                                                            
++---------------------+                                                                                  
+| dhcp4_request_route | : ensure route exists, setup existing accordingly, queue a request to manager    
++-|-------------------+                                                                                  
+  |    +-------------------------------------+                                                           
+  |--> | sd_dhcp_lease_get_server_identifier | get server addr from lease                                
+  |    +-------------------------------------+                                                           
+  |                                                                                                      
+  |--> ensure 'route' is setup                                                                           
+  |                                                                                                      
+  |    +-----------+                                                                                     
+  |--> | route_get | get route from manager or link                                                      
+  |    +-----------+                                                                                     
+  |    +--------------------+                                                                            
+  +--> | link_request_route | ensure route exists, setup existing accordingly, queue a request to manager
+       +--------------------+                                                                            
+```
+
+```
+src/network/networkd-dhcp4.c                                                            
++-----------------------------+                                                          
+| dhcp4_request_static_routes | : setup rout3es, queue a request to manager              
++-|---------------------------+                                                          
+  |    +---------------------------------+                                               
+  |--> | sd_dhcp_lease_get_static_routes | alloc buf to save static route addresses      
+  |    +---------------------------------+                                               
+  |    +------------------------------------+                                            
+  |--> | sd_dhcp_lease_get_classless_routes | alloc buf to save classless route addresses
+  |    +------------------------------------+                                            
+  |                                                                                      
+  |--> if ->dhcp_use_routes isn't set                                                    
+  |    |                                                                                 
+  |    |--> try to find a valid route                                                    
+  |    |                                                                                 
+  |    +--> return                                                                       
+  |                                                                                      
+  |--> determine routes (static or classless)                                            
+  |                                                                                      
+  +--> for each route                                                                    
+       |                                                                                 
+       |--> alloc route                                                                  
+       |                                                                                 
+       |--> get gateway/prefixLen/destination from route                                 
+       |                                                                                 
+       |    +--------------------------+                                                 
+       +--> | dhcp4_request_route_auto | setup route, queue a request to manager         
+            +--------------------------+                                                 
+```
+
+```
+src/libsystemd-network/sd-dhcp-lease.c                                
++---------------------------------+                                    
+| sd_dhcp_lease_get_static_routes | : alloc buf to save route addresses
++-----------------------+---------+                                    
+| dhcp_lease_get_routes | : alloc buf to save route addresses          
++-|---------------------+                                              
+  |                                                                    
+  |--> alloc buf for route_ptr[]                                       
+  |                                                                    
+  +--> save addresses of each route from arg                           
+```
+
+```
+src/network/networkd-dhcp4.c                                                                             
++--------------------------+                                                                              
+| dhcp4_request_route_auto | : setup route, queue a request to manager                                    
++-|------------------------+                                                                              
+  |                                                                                                       
+  |--> get address & route from lease                                                                     
+  |                                                                                                       
+  +--> determine scope/family/gw of route                                                                 
+  |                                                                                                       
+  |    +---------------------+                                                                            
+  +--> | dhcp4_request_route | ensure route exists, setup existing accordingly, queue a request to manager
+       +---------------------+                                                                            
+```
+
+```
+src/network/networkd-dhcp4.c                                                                                  
++----------------------------------+                                                                           
+| dhcp4_request_semi_static_routes | : for each route, setup route & queue a request to manager                
++-|--------------------------------+                                                                           
+  |                                                                                                            
+  +--> for each route in network                                                                               
+       |                                                                                                       
+       |    +--------------------------------+                                                                 
+       |--> | dhcp4_request_route_to_gateway | setup route, queue a request to manager                         
+       |    +--------------------------------+                                                                 
+       |    +-----------+                                                                                      
+       |--> | route_dup | duplicate route                                                                      
+       |    +-----------+                                                                                      
+       |    +---------------------+                                                                            
+       +--> | dhcp4_request_route | ensure route exists, setup existing accordingly, queue a request to manager
+            +---------------------+                                                                            
+```
+
+```
+src/network/networkd-dhcp4.c                                                                
++------------------+                                                                         
+| dhcp_lease_renew | : get lease, mark dirty on link, request addrs/routes                   
++-|----------------+                                                                         
+  |    +--------------------------+                                                          
+  |--> | sd_dhcp_client_get_lease | get lease                                                
+  |    +--------------------------+                                                          
+  |    +------------+                                                                        
+  |--> | link_dirty | label link as dirty, add to dirty list of manager                      
+  |    +------------+                                                                        
+  |    +----------------------------------+                                                  
+  +--> | dhcp4_request_address_and_routes | mark 'dhcp' on addrs/routes, request addrs/routes
+       +----------------------------------+                                                  
+```
+
+```
+src/network/networkd-dhcp4.c                                              
++---------------------------+                                              
+| dhcp4_set_request_address | : find dynamic addr from link, save it client
++-|-------------------------+                                              
+  |                                                                        
+  |--> find dynamic addr from link                                         
+  |                                                                        
+  |    +------------------------------------+                              
+  +--> | sd_dhcp_client_set_request_address | set addr in client           
+       +------------------------------------+                              
 ```
