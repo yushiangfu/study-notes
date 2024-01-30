@@ -1893,7 +1893,39 @@ src/IpmbSensor.cpp
   
 ### <a name="mcutempsensor"></a> MCU Temp Sensor
 
-(TBD)
+```
+[service] xyz.openbmc_project.MCUTempSensor                            <-- main
+
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/temperature/$name               <-- MCUTempSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- MCUTempSensor
+            [prop] Unit                                                <-- Sensor
+            [prop] MaxValue                                            <-- Sensor
+            [prop] MinValue                                            <-- Sensor
+            [prop] Value                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- MCUTempSensor
+            [prop] CriticalAlarmHigh                                   <-- Sensor
+            [prop] CriticalAlarmLow                                    <-- Sensor
+            [prop] CriticalHigh                                        <-- Sensor
+            [prop] CriticalLow                                         <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- MCUTempSensor
+            [prop] WarningAlarmHigh                                    <-- Sensor
+            [prop] WarningAlarmLow                                     <-- Sensor
+            [prop] WarningHigh                                         <-- Sensor
+            [prop] WarningLow                                          <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- MCUTempSensor
+            [prop] Associations                                        <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- Sensor
+            [prop] Available                                           <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
+            [prop] Functional                                          <-- Sensor
+```
   
 <details><summary> More Details </summary>  
   
@@ -2325,6 +2357,46 @@ The PSU sensor task is responsible for monitoring and reporting PSU (Power Suppl
 4. Sets up a PSU sensor for each matched pair of (descriptor, component).
 5. The sensors periodically read values from the PSU sensors.
 6. Updates the PSU sensor values to the D-Bus periodically, ensuring that the latest information is available to other components and services.
+
+```
+[service] xyz.openbmc_project.PSUSensor                                <-- main
+
+    [obj] /xyz/openbmc_project/control                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/$unit/$name                     <-- PSUSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- PSUSensor
+            [prop] Unit                                                <-- Sensor
+            [prop] MaxValue                                            <-- Sensor
+            [prop] MinValue                                            <-- Sensor
+            [prop] Value                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- PSUSensor
+            [prop] CriticalAlarmHigh                                   <-- Sensor
+            [prop] CriticalAlarmLow                                    <-- Sensor
+            [prop] CriticalHigh                                        <-- Sensor
+            [prop] CriticalLow                                         <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- PSUSensor
+            [prop] WarningAlarmHigh                                    <-- Sensor
+            [prop] WarningAlarmLow                                     <-- Sensor
+            [prop] WarningHigh                                         <-- Sensor
+            [prop] WarningLow                                          <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- PSUSensor
+            [prop] Associations                                        <-- PSUSensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- Sensor
+            [prop] Available                                           <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
+            [prop] Functional                                          <-- Sensor
+
+    [obj] /xyz/openbmc_project/State/Decorator/$name_$event            <-- PSUCombineEvent
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- PSUCombineEvent
+            [prop] functional                                          <-- PSUCombineEvent
+```
 
 <details><summary> More Details </summary>  
   
