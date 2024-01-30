@@ -3,11 +3,11 @@
 - [Introduction](#introduction)
 - [Sensor Daemons](#sensor-daemons)
     - [ADC Sensor](#adcsensor)
-    - [Intel CPU Sensor](#cpusensor)
     - [Exit Air Temp Sensor](#exitairtempsensor)
     - [External Sensor](#externalsensor)
     - [Fan Sensor](#fansensor)
     - [Hwmon Temp Sensor](#hwmontempsensor)
+    - [Intel CPU Sensor](#cpusensor)
     - [Intrusion Sensor](#intrusionsensor)
     - [IPMB Sensor](#ipmbsensor)
     - [MCU Temp Sensor](#mcutempsensor)
@@ -317,351 +317,7 @@ configuration:
                     
 </details>
 
-### <a name="cpusensor"></a> Intel CPU Sensor
-  
-The CPU sensor task is responsible for monitoring properties such as temperature, power, and energy of the CPU and DIMM. It performs the following steps:
-
-1. Requests the service `xyz.openbmc_project.CPUSensor` to establish communication.
-2. Retrieves XeonCPU descriptors from `xyz.openbmc_project.EntityManager` to obtain information about the available ADC hardware.
-3. Locates existing XeonCPU hardware located in the `/sys/bus/peci/devices/` directory.
-4. Sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM.
-5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
-
-```
-[service] xyz.openbmc_project.IntelCPUSensor                                 <-- main
-    [obj] /xyz/openbmc_project/sensors                                       <-- main
-
-    [obj] /xyz/openbmc_project/sensors/temperature/$name                     <-- IntelCPUSensor
-    (or
-    [obj] /xyz/openbmc_project/sensors/power/$name)
-
-        [iface] xyz.openbmc_project.Sensor.Value                             <-- IntelCPUSensor
-            [prop] Unit                                                      <-- Sensor
-            [prop] MaxValue                                                  <-- Sensor
-            [prop] MinValue                                                  <-- Sensor
-            [prop] Value                                                     <-- Sensor
-
-        [iface] xyz.openbmc_project.Sensor.Threshold.Critical                <-- IntelCPUSensor
-            [prop] CriticalAlarmHigh                                         <-- Sensor
-            [prop] CriticalAlarmLow                                          <-- Sensor
-            [prop] CriticalHigh                                              <-- Sensor
-            [prop] CriticalLow                                               <-- Sensor
-
-        [iface] xyz.openbmc_project.Sensor.Threshold.Warning                 <-- IntelCPUSensor
-            [prop] WarningAlarmHigh                                          <-- Sensor
-            [prop] WarningAlarmLow                                           <-- Sensor
-            [prop] WarningHigh                                               <-- Sensor
-            [prop] WarningLow                                                <-- Sensor
-
-        [iface] xyz.openbmc_project.Association.Definitions                  <-- IntelCPUSensor
-            [prop] Associations                                              <-- Sensor
-
-        [iface] xyz.openbmc_project.State.Decorator.Availability             <-- Sensor
-            [prop] Available                                                 <-- Sensor
-
-        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus        <-- Sensor
-            [prop] Functional                                                <-- Sensor
-
-    [obj] /xyz/openbmc_project/inventory/system/chassis/motherboard/$name    <-- main
-        [iface] xyz.openbmc_project.Inventory.Item                           <-- main
-            [prop] PrettyName                                                <-- main
-            [prop] Present                                                   <-- main
-```
-  
-<details><summary> More Details </summary>  
-  
-```
-from dbus perspective                                                                                                            
-                                                                                                                                  
-+------+                                                                                                                          
-| main |                                                                                                                          
-+-|----+                                                                                                                          
-  |                                                                                                                               
-  |--> request service: "xyz.openbmc_project.CPUSensor"                                                                           
-  |                                                                                                                               
-  |    +--------------+                                                                                                           
-  |--> | getCpuConfig |                                                                                                           
-  |    +-|------------+                                                                                                           
-  |      |    +------------------------+                                                                                          
-  |      +--> | getSensorConfiguration | arg = "XeonCPU"                                                                          
-  |           +-|----------------------+                                                                                          
-  |             |                                                                                                                 
-  |             +--> call service: "xyz.openbmc_project.EntityManager"                                                            
-  |                       object: "/"                                                                                             
-  |                       interface: "org.freedesktop.DBus.ObjectManager"                                                         
-  |                       method: "GetManagedObjects"                                                                             
-  |    +-----------------+                             +-------------------+                                                      
-  +--> | detectCpuAsync  |                             |+--------------+   | <--main                                              
-       +-|---------------+                             || getCpuConfig |   | <--property change ("/xyz/openbmc_project/inventory")
-         |    +-----------+                            |+--------------+   |                                                      
-         +--> | detectCpu |                            |+-----------------+|                                                      
-              +-|---------+                            || detectCpuAsync  ||                                                      
-                |                                      |+-----------------+|                                                      
-                |--> for each cpu_config               +-------------------+                                                      
-                |                                                                                                                 
-                |------> try get info from /dev/peci-*                                                                            
-                |                                                                                                                 
-                |------> if cpu is 'on' or 'ready'                                                                                
-                |                                                                                                                 
-                |            +---------------+                                                                                    
-                |----------> | createSensors |---+                                                                                
-                |            +---------------+   |                                                                                
-                |                                |                                                                                
-                |------> else (keep pinging)     |-->for each cpu_config                                                          
-                |                                |                                                                                
-                |            +----------------+  |------> object: "/xyz/openbmc_project/inventory/system/chassis/motherboard"+name 
-                +----------> | detectCpuAsync |  |                                                                                
-                             +----------------+  |-->for each file (/sys/bus/peci/devices/peci-*/*-*/peci-*/hwmon/hwmon*/name)    
-                                                 |                                                                                
-                                                 |------>for each (temp|power|energy)*_(input|average|cap) files                  
-                                                 |                                                                                
-                                                 +---------->prepare CPUSensor                                                    
-                                                             +---------------------+                                              
-                                                             | CPUSensor::CPUSensor|                                              
-                                                             +-|-------------------+                                              
-                                                               |                                                                  
-                                                               +--> object: "/xyz/openbmc_project/sensors/power/" + name   
-                                                                         or "/xyz/openbmc_project/sensors/energy/" + name   
-                                                                         or "/xyz/openbmc_project/sensors/temperature/" + name   
-```
-  
-```
-+------+
-| main | : create cpu sensors
-+-|----+ CPUSensorMain.cpp
-  |
-  |--> .async_wait
-  |
-  |        +--------------+
-  |------> | getCpuConfig | create sensors, read peci adapter name(s) from file to cpu_configs
-  |        +--------------+
-  |
-  |------> if it gets nothing in the above func
-  |
-  |            +----------------+
-  +----------> | detectCpuAsync | : try to get dimm temp and cpu id, create sensors
-  |            +---|------------+
-  |                |
-  |                +--> timer.async_wait
-  |                        +--------------------------------------------------------------+
-  |                        |+-----------+                                                 |
-  |                        || detectCpu | try to get dimm temp and cpu id, create sensors |
-  |                        |+-----------+                                                 |
-  |                        +--------------------------------------------------------------+
-  |
-  |--> prepare event handler
-  |       +-----------------------------------------------------------------------------------------+
-  |       |timer.async_wait                                                                         |
-  |       |   +------------------------------------------------------------------------------------+|
-  |       |   |+--------------+                                                                    ||
-  |       |   || getCpuConfig | create sensors, read peci adapter name(s) from file to cpu_configs ||
-  |       |   |+--------------+                                                                    ||
-  |       |   |+----------------+                                                                  ||
-  |       |   || detectCpuAsync | try to get dimm temp and cpu id, create sensors                  ||
-  |       |   |+----------------+                                                                  ||
-  |       |   +------------------------------------------------------------------------------------+|
-  |       +-----------------------------------------------------------------------------------------+
-  |
-  |--> for each sensor type
-  |
-  |------> register the handler
-  |
-  |--> ->request_name("xyz.openbmc_project.CPUSensor")
-  |
-  |    +-----------------------------+
-  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match
-  |    +-----------------------------+
-  |    +--------+
-  +--> | io.run |
-       +--------+
-```
-
-```
-+--------------+                                                                                                    
-| getCpuConfig | : create sensors, read peci adapter name(s) from file to cpu_configs                               
-+---|----------+                                                                                                    
-    |                                                                                                               
-    |--> for each sensor types                                                                                      
-    |                                                                                                               
-    |        +------------------------+                                                                             
-    |------> | getSensorConfiguration | update cache if needed, find type-matched one and add to arg                
-    |        +------------------------+                                                                             
-    |                                                                                                               
-    |--> for each sensor types                                                                                      
-    |                                                                                                               
-    |------> for each sensor in config                                                                              
-    |                                                                                                               
-    |----------> for each base_conf in sensor                                                                       
-    |                                                                                                               
-    |--------------> handle 'Name' from base_conf                                                                   
-    |                                                                                                               
-    |--------------> check if cpu is present through gpio                                                           
-    |                                                                                                               
-    |--------------> if inventory iface && present                                                                  
-    |                                                                                                               
-    |------------------> .add_interface("xyz.openbmc_project.Inventory.Item")                                       
-    |                                                                                                               
-    |------------------> ->register_property("PrettyName")                                                          
-    |                                                                                                               
-    |------------------> ->register_property("Present")                                                             
-    |                                                                                                               
-    |------------------> move iface to inventoryIfaces[name]                                                        
-    |                                                                                                               
-    |------------------> if present                                                                                 
-    |                                                                                                               
-    |----------------------> under /sys/, find hwmon sensor name with 'input'                                       
-    |                                                                                                               
-    |                        +------------------+                                                                   
-    |----------------------> | createSensorName |                                                                   
-    |                        +------------------+                                                                   
-    |                                                                                                               
-    |----------------------> create a sensor and save it in 'gCpuSensors'                                           
-    |                                                                                                               
-    |----------------------> find (bus, addr) from config and save them to cpu_config                               
-    |                                                                                                               
-    |                        +--------------------------------+                                                     
-    +----------------------> | addConfigsForOtherPeciAdapters | read peci adapter name from file, add to cpu_configs
-    |                        +--------------------------------+                                                     
-    |                                                                                                               
-    |--> if we did parse something                                                                                  
-    |                                                                                                               
-    +------> print 'CPU config is parsed' or 'CPU configs are parsed'                                               
-```
-
-```
-+------------------------+                                                               
-| getSensorConfiguration | : update cache if needed, find type-matched one and add to arg
-+-----|------------------+                                                               
-      |                                                                                  
-      |--> if not use cache                                                              
-      |                                                                                  
-      |------> ->new_method_call("GetManagedObjects")                                    
-      |                                                                                  
-      |------> ->call(arg is the output of the above func)                               
-      |                                                                                  
-      |------> read reply                                                                
-      |                                                                                  
-      |--> for each path_pair in managed_obj                                             
-      |                                                                                  
-      |------> find type-matched one                                                     
-      |                                                                                  
-      +------> if found, add to arg 'response' and break                                 
-```
-
-```
-+--------------------------------+                                                       
-| addConfigsForOtherPeciAdapters | : read peci adapter name from file, add to cpu_configs
-+-------|------------------------+                                                       
-        |    +-----------+                                                               
-        |--> | findFiles | find files with name 'peci' (peci adapter)                    
-        |    +-----------+                                                               
-        |                                                                                
-        |--> for each peci adapter                                                       
-        |                                                                                
-        |        +-----------------------------+                                         
-        |------> | readPeciAdapterNameFromFile | read adapter name from file             
-        |        +-----------------------------+                                         
-        |                                                                                
-        +------> add to cpu_configs                                                      
-```
-
-```
-+-----------+                                                   
-| detectCpu | : try to get dimm temp and cpu id, create sensors 
-+-|---------+                                                   
-  |                                                             
-  |--> for each cpu config                                      
-  |                                                             
-  |------> continue if it's aleady 'ready'                      
-  |                                                             
-  |------> open peci dev file                                   
-  |                                                             
-  |------> ioctl(ping)                                          
-  |                                                             
-  |------> if normal                                            
-  |                                                             
-  |----------> get dimm temp and set state = 'ready'            
-  |                                                             
-  |------> else                                                 
-  |                                                             
-  |----------> set state = 'off'                                
-  |                                                             
-  |------> if state changes                                     
-  |                                                             
-  +----------> if it's 'off' to 'ready' or 'on'                 
-  |                                                             
-  |--------------> if old state is 'off'                        
-  |                                                             
-  |------------------> ioctl: get cpu id                        
-  |                                                             
-  +--------------> determine rescan delay                       
-  |                                                             
-  |----------> save new state in config                         
-  |                                                             
-  |--> if rescan_delay is set                                   
-  |                                                             
-  |------> timer.async_wait                                     
-  |           +---------------------------------+               
-  |           |+---------------+                |               
-  |           || createSensors | create sensors |               
-  |           |+---------------+                |               
-  |           +---------------------------------+               
-  |                                                             
-  |--> if not yet all cpu are pinged                            
-  |                                                             
-  |        +----------------+                                   
-  +------> | detectCpuAsync | recursive call                    
-           +----------------+                                   
-```
-
-```
-+-----------------------------+                                                          
-| setupManufacturingModeMatch | : prepare handlers for manufacturing mode match          
-+-------|---------------------+                                                          
-        |                                                                                
-        |--> special mode intf = "xyz.openbmc_project.Security.SpecialMode"              
-        |                                                                                
-        |--> prepare handler for special mode intf add                                   
-        |    +------------------------------------------------------------------------+  
-        |    | +--------+                                                             |  
-        |    | | m.read | read msg into path and interfaces                           |  
-        |    | +--------+                                                             |  
-        |    | +---------------------+                                                |  
-        |    | | interfaceAdded.find | find special mode intf from interfaces         |  
-        |    | +---------------------+                                                |  
-        |    | +-------------------+                                                  |  
-        |    | | propertyList.find | find "SpecialMode" from property of interface    |  
-        |    | +-------------------+                                                  |  
-        |    | +-------------------------+                                            |  
-        |    | | handleSpecialModeChange | determine 'manufacturingMode' (global var) |  
-        |    | +-------------------------+                                            |  
-        |    +------------------------------------------------------------------------+  
-        |                                                                                
-        |-->  prepare handler for mode change                                            
-        |     +-------------------------------------------------------------------------+
-        |     |+--------+                                                               |
-        |     || m.read | read msg into interface and property                          |
-        |     |+--------+                                                               |
-        |     |+------------------------+                                               |
-        |     || propertiesChanged.find | find "SpecialMode" from property of interface |
-        |     |+------------------------+                                               |
-        |     |+-------------------------+                                              |
-        |     || handleSpecialModeChange | determine 'manufacturingMode' (global var)   |
-        |     |+-------------------------+                                              |
-        |     +-------------------------------------------------------------------------+
-        |                                                                                
-        +--> prepare handler for manufacturing mode                                      
-             +-----------------------------------------------------------------------+   
-             |+-------------------------+                                            |   
-             || handleSpecialModeChange | determine 'manufacturingMode' (global var) |   
-             |+-------------------------+                                            |   
-             +-----------------------------------------------------------------------+   
-```
-
-</details>
-  
-## exitairtempsensor
-### <a name="eexitairtempsensor"></a> Exit Air Temp Sensor
+### <a name="exitairtempsensor"></a> Exit Air Temp Sensor
 
 (TBD)
   
@@ -1445,6 +1101,349 @@ HwmonTempMain.cpp
      |--> for each sensor                           
      |                                              
      +------> erase sensor                          
+```
+
+</details>
+
+### <a name="cpusensor"></a> Intel CPU Sensor
+  
+The CPU sensor task is responsible for monitoring properties such as temperature, power, and energy of the CPU and DIMM. It performs the following steps:
+
+1. Requests the service `xyz.openbmc_project.CPUSensor` to establish communication.
+2. Retrieves XeonCPU descriptors from `xyz.openbmc_project.EntityManager` to obtain information about the available ADC hardware.
+3. Locates existing XeonCPU hardware located in the `/sys/bus/peci/devices/` directory.
+4. Sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM.
+5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
+
+```
+[service] xyz.openbmc_project.IntelCPUSensor                                 <-- main
+    [obj] /xyz/openbmc_project/sensors                                       <-- main
+
+    [obj] /xyz/openbmc_project/sensors/temperature/$name                     <-- IntelCPUSensor
+    (or
+    [obj] /xyz/openbmc_project/sensors/power/$name)
+
+        [iface] xyz.openbmc_project.Sensor.Value                             <-- IntelCPUSensor
+            [prop] Unit                                                      <-- Sensor
+            [prop] MaxValue                                                  <-- Sensor
+            [prop] MinValue                                                  <-- Sensor
+            [prop] Value                                                     <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical                <-- IntelCPUSensor
+            [prop] CriticalAlarmHigh                                         <-- Sensor
+            [prop] CriticalAlarmLow                                          <-- Sensor
+            [prop] CriticalHigh                                              <-- Sensor
+            [prop] CriticalLow                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning                 <-- IntelCPUSensor
+            [prop] WarningAlarmHigh                                          <-- Sensor
+            [prop] WarningAlarmLow                                           <-- Sensor
+            [prop] WarningHigh                                               <-- Sensor
+            [prop] WarningLow                                                <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions                  <-- IntelCPUSensor
+            [prop] Associations                                              <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability             <-- Sensor
+            [prop] Available                                                 <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus        <-- Sensor
+            [prop] Functional                                                <-- Sensor
+
+    [obj] /xyz/openbmc_project/inventory/system/chassis/motherboard/$name    <-- main
+        [iface] xyz.openbmc_project.Inventory.Item                           <-- main
+            [prop] PrettyName                                                <-- main
+            [prop] Present                                                   <-- main
+```
+  
+<details><summary> More Details </summary>  
+  
+```
+from dbus perspective                                                                                                            
+                                                                                                                                  
++------+                                                                                                                          
+| main |                                                                                                                          
++-|----+                                                                                                                          
+  |                                                                                                                               
+  |--> request service: "xyz.openbmc_project.CPUSensor"                                                                           
+  |                                                                                                                               
+  |    +--------------+                                                                                                           
+  |--> | getCpuConfig |                                                                                                           
+  |    +-|------------+                                                                                                           
+  |      |    +------------------------+                                                                                          
+  |      +--> | getSensorConfiguration | arg = "XeonCPU"                                                                          
+  |           +-|----------------------+                                                                                          
+  |             |                                                                                                                 
+  |             +--> call service: "xyz.openbmc_project.EntityManager"                                                            
+  |                       object: "/"                                                                                             
+  |                       interface: "org.freedesktop.DBus.ObjectManager"                                                         
+  |                       method: "GetManagedObjects"                                                                             
+  |    +-----------------+                             +-------------------+                                                      
+  +--> | detectCpuAsync  |                             |+--------------+   | <--main                                              
+       +-|---------------+                             || getCpuConfig |   | <--property change ("/xyz/openbmc_project/inventory")
+         |    +-----------+                            |+--------------+   |                                                      
+         +--> | detectCpu |                            |+-----------------+|                                                      
+              +-|---------+                            || detectCpuAsync  ||                                                      
+                |                                      |+-----------------+|                                                      
+                |--> for each cpu_config               +-------------------+                                                      
+                |                                                                                                                 
+                |------> try get info from /dev/peci-*                                                                            
+                |                                                                                                                 
+                |------> if cpu is 'on' or 'ready'                                                                                
+                |                                                                                                                 
+                |            +---------------+                                                                                    
+                |----------> | createSensors |---+                                                                                
+                |            +---------------+   |                                                                                
+                |                                |                                                                                
+                |------> else (keep pinging)     |-->for each cpu_config                                                          
+                |                                |                                                                                
+                |            +----------------+  |------> object: "/xyz/openbmc_project/inventory/system/chassis/motherboard"+name 
+                +----------> | detectCpuAsync |  |                                                                                
+                             +----------------+  |-->for each file (/sys/bus/peci/devices/peci-*/*-*/peci-*/hwmon/hwmon*/name)    
+                                                 |                                                                                
+                                                 |------>for each (temp|power|energy)*_(input|average|cap) files                  
+                                                 |                                                                                
+                                                 +---------->prepare CPUSensor                                                    
+                                                             +---------------------+                                              
+                                                             | CPUSensor::CPUSensor|                                              
+                                                             +-|-------------------+                                              
+                                                               |                                                                  
+                                                               +--> object: "/xyz/openbmc_project/sensors/power/" + name   
+                                                                         or "/xyz/openbmc_project/sensors/energy/" + name   
+                                                                         or "/xyz/openbmc_project/sensors/temperature/" + name   
+```
+  
+```
++------+
+| main | : create cpu sensors
++-|----+ CPUSensorMain.cpp
+  |
+  |--> .async_wait
+  |
+  |        +--------------+
+  |------> | getCpuConfig | create sensors, read peci adapter name(s) from file to cpu_configs
+  |        +--------------+
+  |
+  |------> if it gets nothing in the above func
+  |
+  |            +----------------+
+  +----------> | detectCpuAsync | : try to get dimm temp and cpu id, create sensors
+  |            +---|------------+
+  |                |
+  |                +--> timer.async_wait
+  |                        +--------------------------------------------------------------+
+  |                        |+-----------+                                                 |
+  |                        || detectCpu | try to get dimm temp and cpu id, create sensors |
+  |                        |+-----------+                                                 |
+  |                        +--------------------------------------------------------------+
+  |
+  |--> prepare event handler
+  |       +-----------------------------------------------------------------------------------------+
+  |       |timer.async_wait                                                                         |
+  |       |   +------------------------------------------------------------------------------------+|
+  |       |   |+--------------+                                                                    ||
+  |       |   || getCpuConfig | create sensors, read peci adapter name(s) from file to cpu_configs ||
+  |       |   |+--------------+                                                                    ||
+  |       |   |+----------------+                                                                  ||
+  |       |   || detectCpuAsync | try to get dimm temp and cpu id, create sensors                  ||
+  |       |   |+----------------+                                                                  ||
+  |       |   +------------------------------------------------------------------------------------+|
+  |       +-----------------------------------------------------------------------------------------+
+  |
+  |--> for each sensor type
+  |
+  |------> register the handler
+  |
+  |--> ->request_name("xyz.openbmc_project.CPUSensor")
+  |
+  |    +-----------------------------+
+  |--> | setupManufacturingModeMatch | prepare handlers for manufacturing mode match
+  |    +-----------------------------+
+  |    +--------+
+  +--> | io.run |
+       +--------+
+```
+
+```
++--------------+                                                                                                    
+| getCpuConfig | : create sensors, read peci adapter name(s) from file to cpu_configs                               
++---|----------+                                                                                                    
+    |                                                                                                               
+    |--> for each sensor types                                                                                      
+    |                                                                                                               
+    |        +------------------------+                                                                             
+    |------> | getSensorConfiguration | update cache if needed, find type-matched one and add to arg                
+    |        +------------------------+                                                                             
+    |                                                                                                               
+    |--> for each sensor types                                                                                      
+    |                                                                                                               
+    |------> for each sensor in config                                                                              
+    |                                                                                                               
+    |----------> for each base_conf in sensor                                                                       
+    |                                                                                                               
+    |--------------> handle 'Name' from base_conf                                                                   
+    |                                                                                                               
+    |--------------> check if cpu is present through gpio                                                           
+    |                                                                                                               
+    |--------------> if inventory iface && present                                                                  
+    |                                                                                                               
+    |------------------> .add_interface("xyz.openbmc_project.Inventory.Item")                                       
+    |                                                                                                               
+    |------------------> ->register_property("PrettyName")                                                          
+    |                                                                                                               
+    |------------------> ->register_property("Present")                                                             
+    |                                                                                                               
+    |------------------> move iface to inventoryIfaces[name]                                                        
+    |                                                                                                               
+    |------------------> if present                                                                                 
+    |                                                                                                               
+    |----------------------> under /sys/, find hwmon sensor name with 'input'                                       
+    |                                                                                                               
+    |                        +------------------+                                                                   
+    |----------------------> | createSensorName |                                                                   
+    |                        +------------------+                                                                   
+    |                                                                                                               
+    |----------------------> create a sensor and save it in 'gCpuSensors'                                           
+    |                                                                                                               
+    |----------------------> find (bus, addr) from config and save them to cpu_config                               
+    |                                                                                                               
+    |                        +--------------------------------+                                                     
+    +----------------------> | addConfigsForOtherPeciAdapters | read peci adapter name from file, add to cpu_configs
+    |                        +--------------------------------+                                                     
+    |                                                                                                               
+    |--> if we did parse something                                                                                  
+    |                                                                                                               
+    +------> print 'CPU config is parsed' or 'CPU configs are parsed'                                               
+```
+
+```
++------------------------+                                                               
+| getSensorConfiguration | : update cache if needed, find type-matched one and add to arg
++-----|------------------+                                                               
+      |                                                                                  
+      |--> if not use cache                                                              
+      |                                                                                  
+      |------> ->new_method_call("GetManagedObjects")                                    
+      |                                                                                  
+      |------> ->call(arg is the output of the above func)                               
+      |                                                                                  
+      |------> read reply                                                                
+      |                                                                                  
+      |--> for each path_pair in managed_obj                                             
+      |                                                                                  
+      |------> find type-matched one                                                     
+      |                                                                                  
+      +------> if found, add to arg 'response' and break                                 
+```
+
+```
++--------------------------------+                                                       
+| addConfigsForOtherPeciAdapters | : read peci adapter name from file, add to cpu_configs
++-------|------------------------+                                                       
+        |    +-----------+                                                               
+        |--> | findFiles | find files with name 'peci' (peci adapter)                    
+        |    +-----------+                                                               
+        |                                                                                
+        |--> for each peci adapter                                                       
+        |                                                                                
+        |        +-----------------------------+                                         
+        |------> | readPeciAdapterNameFromFile | read adapter name from file             
+        |        +-----------------------------+                                         
+        |                                                                                
+        +------> add to cpu_configs                                                      
+```
+
+```
++-----------+                                                   
+| detectCpu | : try to get dimm temp and cpu id, create sensors 
++-|---------+                                                   
+  |                                                             
+  |--> for each cpu config                                      
+  |                                                             
+  |------> continue if it's aleady 'ready'                      
+  |                                                             
+  |------> open peci dev file                                   
+  |                                                             
+  |------> ioctl(ping)                                          
+  |                                                             
+  |------> if normal                                            
+  |                                                             
+  |----------> get dimm temp and set state = 'ready'            
+  |                                                             
+  |------> else                                                 
+  |                                                             
+  |----------> set state = 'off'                                
+  |                                                             
+  |------> if state changes                                     
+  |                                                             
+  +----------> if it's 'off' to 'ready' or 'on'                 
+  |                                                             
+  |--------------> if old state is 'off'                        
+  |                                                             
+  |------------------> ioctl: get cpu id                        
+  |                                                             
+  +--------------> determine rescan delay                       
+  |                                                             
+  |----------> save new state in config                         
+  |                                                             
+  |--> if rescan_delay is set                                   
+  |                                                             
+  |------> timer.async_wait                                     
+  |           +---------------------------------+               
+  |           |+---------------+                |               
+  |           || createSensors | create sensors |               
+  |           |+---------------+                |               
+  |           +---------------------------------+               
+  |                                                             
+  |--> if not yet all cpu are pinged                            
+  |                                                             
+  |        +----------------+                                   
+  +------> | detectCpuAsync | recursive call                    
+           +----------------+                                   
+```
+
+```
++-----------------------------+                                                          
+| setupManufacturingModeMatch | : prepare handlers for manufacturing mode match          
++-------|---------------------+                                                          
+        |                                                                                
+        |--> special mode intf = "xyz.openbmc_project.Security.SpecialMode"              
+        |                                                                                
+        |--> prepare handler for special mode intf add                                   
+        |    +------------------------------------------------------------------------+  
+        |    | +--------+                                                             |  
+        |    | | m.read | read msg into path and interfaces                           |  
+        |    | +--------+                                                             |  
+        |    | +---------------------+                                                |  
+        |    | | interfaceAdded.find | find special mode intf from interfaces         |  
+        |    | +---------------------+                                                |  
+        |    | +-------------------+                                                  |  
+        |    | | propertyList.find | find "SpecialMode" from property of interface    |  
+        |    | +-------------------+                                                  |  
+        |    | +-------------------------+                                            |  
+        |    | | handleSpecialModeChange | determine 'manufacturingMode' (global var) |  
+        |    | +-------------------------+                                            |  
+        |    +------------------------------------------------------------------------+  
+        |                                                                                
+        |-->  prepare handler for mode change                                            
+        |     +-------------------------------------------------------------------------+
+        |     |+--------+                                                               |
+        |     || m.read | read msg into interface and property                          |
+        |     |+--------+                                                               |
+        |     |+------------------------+                                               |
+        |     || propertiesChanged.find | find "SpecialMode" from property of interface |
+        |     |+------------------------+                                               |
+        |     |+-------------------------+                                              |
+        |     || handleSpecialModeChange | determine 'manufacturingMode' (global var)   |
+        |     |+-------------------------+                                              |
+        |     +-------------------------------------------------------------------------+
+        |                                                                                
+        +--> prepare handler for manufacturing mode                                      
+             +-----------------------------------------------------------------------+   
+             |+-------------------------+                                            |   
+             || handleSpecialModeChange | determine 'manufacturingMode' (global var) |   
+             |+-------------------------+                                            |   
+             +-----------------------------------------------------------------------+   
 ```
 
 </details>
