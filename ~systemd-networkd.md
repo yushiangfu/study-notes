@@ -2549,3 +2549,255 @@ src/network/networkd-dhcp4.c
   +--> | sd_dhcp_client_set_request_address | set addr in client           
        +------------------------------------+                              
 ```
+
+```
+src/network/networkd-dhcp4.c                                                                         
++---------------------------+                                                                         
+| link_request_dhcp4_client | : queue a request to start dhcp4 client                                 
++-|-------------------------+                                                                         
+  |                                                                                                   
+  |--> if dhcp4 isn't enabled yet, return                                                             
+  |                                                                                                   
+  |--> if link has dhcp_client already, return                                                        
+  |                                                                                                   
+  |    +--------------------+                                                                         
+  +--> | link_queue_request | prepare req and add to queue of manager                                 
+       +--------------------+ +-----------------------+                                               
+                              | dhcp4_process_request | request dev_uid, configure client and start it
+                              +-----------------------+                                               
+```
+
+```
+src/network/networkd-dhcp4.c                                                                    
++-----------------------+                                                                        
+| dhcp4_process_request | : request dev_uid, configure client and start it                       
++-|---------------------+                                                                        
+  |    +----------------------+                                                                  
+  |--> | dhcp4_configure_duid | request dev uid                                                  
+  |    +----------------------+                                                                  
+  |    +-----------------+                                                                       
+  |--> | dhcp4_configure | alloc client, configure and install 'dhcp4_handler'                   
+  |    +-----------------+                                                                       
+  |    +-------------+                                                                           
+  +--> | dhcp4_start | setup client, prepare raw socket for client, install callback for io event
+       +-------------+                                                                           
+```
+
+```
+src/network/networkd-dhcp4.c                                                                        
++-------------+                                                                                      
+| dhcp4_start | : setup client, prepare raw socket for client, install callback for io event         
++----------------------+                                                                             
+| sd_dhcp_client_start | : setup client, prepare raw socket for client, install callback for io event
++-|--------------------+                                                                             
+  |    +-------------------+                                                                         
+  |--> | client_initialize |                                                                         
+  |    +-------------------+                                                                         
+  |    +--------------+                                                                              
+  +--> | client_start | setup raw socket and bind it, install callback for io event                  
+       +--------------+                                                                              
+```
+
+```
+src/libsystemd-network/sd-dhcp-client.c                                                             
++--------------+                                                                                     
+| client_start | : setup raw socket and bind it, install callback for io event                       
++----------------------+                                                                             
+| client_start_delayed | : setup raw socket and bind it, install callback for io event               
++-|--------------------+                                                                             
+  |    +------------------------------+                                                              
+  |--> | dhcp_network_bind_raw_socket | given arp_type, setup raw socket and bind it                 
+  |    +------------------------------+                                                              
+  |                                                                                                  
+  |--> save socket fd in client                                                                      
+  |                                                                                                  
+  |    +--------------------------+                                                                  
+  +--> | client_initialize_events | install io_callback to event                                     
+       +--------------------------+ +----------------------------+                                   
+                                    | client_receive_message_raw | receive msg, handle it accordingly
+                                    +----------------------------+                                   
+```
+
+```
+src/libsystemd-network/dhcp-network.c                                         
++------------------------------+                                               
+| dhcp_network_bind_raw_socket | : given arp_type, setup raw socket and bind it
++-|----------------------------+                                               
+  |                                                                            
+  +--> switch arp_type                                                         
+                                                                               
+       case ether                                                              
+       |                                                                       
+       |    +------------------+                                               
+       +--> | _bind_raw_socket | setup raw socket and bind it                  
+            +------------------+                                               
+                                                                               
+       case infiniband                                                         
+       |                                                                       
+       |    +------------------+                                               
+       +--> | _bind_raw_socket | setup raw socket and bind it                  
+            +------------------+                                               
+```
+
+```
+src/libsystemd-network/dhcp-network.c             
++------------------+                               
+| _bind_raw_socket | : setup raw socket and bind it
++-|----------------+                               
+  |                                                
+  |--> setup filter                                
+  |                                                
+  |    +--------+                                  
+  |--> | socket |                                  
+  |    +--------+                                  
+  |    +------------+                              
+  |--> | setsockopt | attach filter to socket      
+  |    +------------+                              
+  |    +------+                                    
+  +--> | bind | bind socket to addr                
+       +------+                                    
+```
+
+```
+src/libsystemd-network/sd-dhcp-client.c                                   
++----------------------------+                                             
+| client_receive_message_raw | : receive msg, handle it accordingly        
++-|--------------------------+                                             
+  |                                                                        
+  |--> get packet size and alloc buffer                                    
+  |                                                                        
+  |    +--------------+                                                    
+  |--> | recvmsg_safe |                                                    
+  |    +--------------+                                                    
+  |    +-----------------------+                                           
+  +--> | client_handle_message | given client state, handle msg accordingly
+       +-----------------------+                                           
+```
+
+```
+src/libsystemd-network/sd-dhcp-client.c                                                  
++-----------------------+                                                                 
+| client_handle_message | : given client state, handle msg accordingly                    
++-|---------------------+                                                                 
+  |                                                                                       
+  +--> switch client state                                                                
+       case selecting                                                                     
+       |    +---------------------+                                                       
+       |--> | client_handle_offer | parse options and save in lease, save lease in clientt
+       |    +---------------------+                                                       
+       +--> client state = requesting                                                     
+       case rebooting                                                                     
+       case requesting                                                                    
+       case renewing                                                                      
+       case rebinding                                                                     
+       |    +-------------------+                                                         
+       |--> | client_handle_ack | alloc lease, parse 'ack', save lease in client          
+       |    +-------------------+                                                         
+       |                                                                                  
+       |--> close client->fd                                                              
+       |                                                                                  
+       |--> client state = bound                                                          
+       |                                                                                  
+       |    +---------------------------+                                                 
+       |--> | client_set_lease_timeouts |                                                 
+       |    +---------------------------+                                                 
+       |    +------------------------------+                                              
+       |--> | dhcp_network_bind_udp_socket | prepare socket, bind to src addr             
+       |    +------------------------------+                                              
+       |                                                                                  
+       |--> save fd in client                                                             
+       |                                                                                  
+       +--> install callback for io event                                                 
+       case bound                                                                         
+       -    +--------------------------+                                                  
+       +--> | client_handle_forcerenew | parse options but do nothing then                
+            +--------------------------+                                                  
+```
+
+```
+src/libsystemd-network/sd-dhcp-client.c                                                                     
++---------------------+                                                                                      
+| client_handle_offer | : parse options and save in lease, save lease in clientt                             
++-|-------------------+                                                                                      
+  |                                                                                                          
+  |--> alloc 'lease'                                                                                         
+  |                                                                                                          
+  |    +-------------------+                                                                                 
+  |--> | dhcp_option_parse | parse options and save in lease, return msg_type                                
+  |    +-------------------+ +--------------------------+                                                    
+  |                          | dhcp_lease_parse_options | given code, parse option accordingly, save in lease
+  |                          +--------------------------+                                                    
+  |                                                                                                          
+  |--> save lease in client                                                                                  
+  |                                                                                                          
+  |    +---------------+                                                                                     
+  +--> | client_notify | notify (event = selecting)                                                          
+       +---------------+                                                                                     
+```
+
+```
+src/libsystemd-network/dhcp-option.c                                 
++-------------------+                                                 
+| dhcp_option_parse | parse options and save in lease, return msg_type
++-|-----------------+                                                 
+  |    +---------------+                                              
+  +--> | parse_options | parse options and save in lease              
+       +---------------+                                              
+```
+
+```
+src/libsystemd-network/dhcp-option.c              
++---------------+                                  
+| parse_options | : parse options and save in lease
++-|-------------+                                  
+  |                                                
+  +--> while traversing options                    
+       |                                           
+       |--> get (code, len, option) from options   
+       |                                           
+       |--> if end, return                         
+       |                                           
+       +--> switch code                            
+            -                                      
+            +--> parse option accordingly          
+```
+
+```
+src/libsystemd-network/sd-dhcp-client.c                                     
++-------------------+                                                        
+| client_handle_ack | : alloc lease, parse 'ack', save lease in client       
++-|-----------------+                                                        
+  |    +----------------+                                                    
+  |--> | dhcp_lease_new | alloc lease                                        
+  |    +----------------+                                                    
+  |    +-------------------+                                                 
+  |--> | dhcp_option_parse | parse options and save in lease, return msg_type
+  |    +-------------------+                                                 
+  |                                                                          
+  |--> get server/addr from ack                                              
+  |                                                                          
+  |--> determine event (ip_acquire / renew / ip_change)                      
+  |                                                                          
+  +--> save lease in client                                                  
+```
+
+```
+src/libsystemd-network/dhcp-network.c                                     
++------------------------------+                                           
+| dhcp_network_bind_udp_socket | : prepare socket, bind to src addr        
++-|----------------------------+                                           
+  |    +--------+                                                          
+  |--> | socket |                                                          
+  |    +--------+                                                          
+  |                                                                        
+  |--> set socket options                                                  
+  |                                                                        
+  |--> if ifindex is provided                                              
+  |    |                                                                   
+  |    |    +------------------------+                                     
+  |    +--> | socket_bind_to_ifindex | set socket option to bind to ifindex
+  |         +------------------------+                                     
+  |    +------+                                                            
+  +--> | bind | bind socket to src_addr                                    
+       +------+                                                            
+```
