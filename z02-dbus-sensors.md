@@ -18,7 +18,20 @@
 
 ## <a name="introduction"></a> Introduction
 
-(TBD)
+| Path                          | Attribute        | Read                   | Write                   | User              |
+| ---                           | ---              | ---                    | ---                     | --                |
+| /sys/class/hwmon/hwmon0/      | fan[1-16]_div    | aspeed_tach_hwmon_read | aspeed_tach_hwmon_write | Fan Sensor        |
+| /sys/class/hwmon/hwmon0/      | fan[1-16]_input  | aspeed_tach_hwmon_read | (nil)                   | Fan Sensor        |
+| /sys/class/hwmon/hwmon1/      | core_power       | intrusion_show         | (nil)                   | Intrusion Sensor  |
+| /sys/class/hwmon/hwmon1/      | intrusion0_alarm | intrusion_show         | (nil)                   | Intrusion Sensor  |
+| /sys/class/hwmon/hwmon1/      | io_power         | intrusion_show         | intrusion_store         | Intrusion Sensor  |
+| /sys/class/hwmon/hwmon2/      | temp[1]_input    | lm75_read              | (nil)                   | Hwmon Temp Sensor |
+| /sys/class/hwmon/hwmon2/      | temp[1]_max      | lm75_read              | lm75_write              | Hwmon Temp Sensor |
+| /sys/class/hwmon/hwmon2/      | temp[1]_max_hyst | lm75_read              | lm75_write              | Hwmon Temp Sensor |
+| /sys/class/hwmon/hwmon2/      | update_interval  | lm75_read              | lm75_write              | Hwmon Temp Sensor |
+| /sys/class/hwmon/hwmon[3-17]/ | pwm[1]           | pwm_fan_read           | pwm_fan_write           | Fan Sensor        |
+| /sys/class/hwmon/hwmon[3-17]/ | pwm[1]_enable    | pwm_fan_read           | pwm_fan_write           | Fan Sensor        |
+| /sys/class/hwmon/hwmon18/     | in[1-16]_input   | iio_hwmon_read_val     | (nil)                   | ADC Sensor        |
 
 ## <a name="sensor-daemons"></a> Sensor Daemons
 
