@@ -18,6 +18,8 @@
 
 ## <a name="introduction"></a> Introduction
 
+<p align="center"><img src="images/dbus-sensors/sensors.png" /></p>
+
 | Path                          | Attribute        | Read                   | Write                   | User              |
 | ---                           | ---              | ---                    | ---                     | --                |
 | /sys/class/hwmon/hwmon0/      | fan[1-16]_div    | aspeed_tach_hwmon_read | aspeed_tach_hwmon_write | Fan Sensor        |
@@ -44,6 +46,8 @@ The ADC sensor task is a background daemon responsible for converting analog sig
 3. Searches for existing ADC hardware located in the `/sys/class/hwmon/` directory.
 4. Sets up an ADC sensor for each matched pair of (descriptor, component) found during the search.
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
+
+<p align="center"><img src="images/dbus-sensors/adcsensor.png" /></p>
 
 ```
 [service] xyz.openbmc_project.ADCSensor                                <-- main
@@ -77,8 +81,6 @@ The ADC sensor task is a background daemon responsible for converting analog sig
         [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
             [prop] Functional                                          <-- Sensor
 ```
-
-<p align="center"><img src="images/openbmc/dbus-sensors.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -705,6 +707,8 @@ The fan sensor task is responsible for managing PWM and TACH sensors associated 
 4. Sets up a PWM or TACH sensor for each matched pair of (descriptor, component), based on the type of sensor required.
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
 
+<p align="center"><img src="images/dbus-sensors/fansensor.png" /></p>
+
 ```
 [service] xyz.openbmc_project.FanSensor                                <-- main
 
@@ -937,6 +941,8 @@ The HwmonTemp sensor task is responsible for managing temperature sensors associ
 4. Sets up a HwmonTemp sensor for each matched pair of (descriptor, component).
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest temperature values are accessible to other components and services.
 
+<p align="center"><img src="images/dbus-sensors/hwmontempsensor.png" /></p>
+
 ```
 [service] xyz.openbmc_project.HwmonTempSensor                          <-- main
     [obj] /xyz/openbmc_project/sensors                                 <-- main
@@ -1127,6 +1133,8 @@ The CPU sensor task is responsible for monitoring properties such as temperature
 3. Locates existing XeonCPU hardware located in the `/sys/bus/peci/devices/` directory.
 4. Sets up a sensor for each valid property (e.g., temperature, power, energy) of the CPU and DIMM.
 5. Periodically reads values from the sensors and updates them to the D-Bus, ensuring the latest values are accessible to other components and services.
+
+<p align="center"><img src="images/dbus-sensors/cpusensor.png" /></p>
 
 ```
 [service] xyz.openbmc_project.IntelCPUSensor                                 <-- main
@@ -1471,6 +1479,8 @@ The Intrusion sensor task is responsible for monitoring and reporting intrusion 
 4. The sensor periodically reads values related to intrusion events.
 5. Updates the intrusion status to the D-Bus periodically, ensuring that the latest information about intrusion events is available to other components and services.
 
+<p align="center"><img src="images/dbus-sensors/intrusionsensor.png" /></p>
+
 ```
 [service] xyz.openbmc_project.IntrusionSensor            <-- main
     [obj] /xyz/openbmc_project/Chassis                   <-- main
@@ -1737,6 +1747,8 @@ The Ipmb sensor task is responsible for monitoring and reporting IPMB (Intellige
 4. The sensor periodically reads values from the IPMB sensors.
 5. Updates the IPMB sensor values to the D-Bus periodically, ensuring that the latest information is available to other components and services.
 
+<p align="center"><img src="images/dbus-sensors/ipmbsensor.png" /></p>
+
 ```
 [service] xyz.openbmc_project.IpmbSensor                               <-- main
     [obj] /xyz/openbmc_project/sensors                                 <-- main
@@ -1905,6 +1917,8 @@ src/IpmbSensor.cpp
 </details>
   
 ### <a name="mcutempsensor"></a> MCU Temp Sensor
+
+<p align="center"><img src="images/dbus-sensors/mcutempsensor.png" /></p>
 
 ```
 [service] xyz.openbmc_project.MCUTempSensor                            <-- main
@@ -2135,7 +2149,7 @@ src/IpmbSensor.cpp
 
 ### <a name="nvmesensor"></a> NVMe Sensor
 
-(TBD)
+<p align="center"><img src="images/dbus-sensors/nvmesensor.png" /></p>
   
 <details><summary> More Details </summary>  
   
@@ -2370,6 +2384,8 @@ The PSU sensor task is responsible for monitoring and reporting PSU (Power Suppl
 4. Sets up a PSU sensor for each matched pair of (descriptor, component).
 5. The sensors periodically read values from the PSU sensors.
 6. Updates the PSU sensor values to the D-Bus periodically, ensuring that the latest information is available to other components and services.
+
+<p align="center"><img src="images/dbus-sensors/nvmesensor.png" /></p>
 
 ```
 [service] xyz.openbmc_project.PSUSensor                                <-- main
