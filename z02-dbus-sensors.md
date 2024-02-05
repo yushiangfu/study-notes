@@ -2150,6 +2150,39 @@ src/IpmbSensor.cpp
 ### <a name="nvmesensor"></a> NVMe Sensor
 
 <p align="center"><img src="images/dbus-sensors/nvmesensor.png" /></p>
+
+```
+[service] xyz.openbmc_project.NVMeSensor                               <-- main
+    [obj] /xyz/openbmc_project/sensors                                 <-- main
+
+    [obj] /xyz/openbmc_project/sensors/temperature/$name               <-- NVMeSensor
+        [iface] xyz.openbmc_project.Sensor.Value                       <-- NVMeSensor
+            [prop] Unit                                                <-- Sensor
+            [prop] MaxValue                                            <-- Sensor
+            [prop] MinValue                                            <-- Sensor
+            [prop] Value                                               <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Critical          <-- NVMeSensor
+            [prop] CriticalAlarmHigh                                   <-- Sensor
+            [prop] CriticalAlarmLow                                    <-- Sensor
+            [prop] CriticalHigh                                        <-- Sensor
+            [prop] CriticalLow                                         <-- Sensor
+
+        [iface] xyz.openbmc_project.Sensor.Threshold.Warning           <-- NVMeSensor
+            [prop] WarningAlarmHigh                                    <-- Sensor
+            [prop] WarningAlarmLow                                     <-- Sensor
+            [prop] WarningHigh                                         <-- Sensor
+            [prop] WarningLow                                          <-- Sensor
+
+        [iface] xyz.openbmc_project.Association.Definitions            <-- NVMeSensor
+            [prop] Associations                                        <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.Availability       <-- Sensor
+            [prop] Available                                           <-- Sensor
+
+        [iface] xyz.openbmc_project.State.Decorator.OperationalStatus  <-- Sensor
+            [prop] Functional                                          <-- Sensor
+```
   
 <details><summary> More Details </summary>  
   
