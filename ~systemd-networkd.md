@@ -2801,3 +2801,104 @@ src/libsystemd-network/dhcp-network.c
   +--> | bind | bind socket to src_addr                                    
        +------+                                                            
 ```
+
+```
+src/libsystemd/sd-netlink/sd-netlink.c                                                          
++-------------+                                                                                  
+| io_callback | : dispatch 1st msg from rqueue, find matched entry from netlink and run it       
++--------------------+                                                                           
+| sd_netlink_process | : dispatch 1st msg from rqueue, find matched entry from netlink and run it
++-----------------+--+                                                                           
+| process_running |                                                                              
++-|---------------+                                                                              
+  |    +-----------------+                                                                       
+  |--> | process_timeout | run the first reply_callback in queue if it's timeout                 
+  |    +-----------------+                                                                       
+  |    +-----------------+                                                                       
+  |--> | dispatch_rqueue | dispatch first msg from rqueue                                        
+  |    +-----------------+                                                                       
+  |                                                                                              
+  |--> if msg is broadcast                                                                       
+  |    |                                                                                         
+  |    |    +---------------+                                                                    
+  |    +--> | process_match | find type/cmd matched entry in netlink, call ->callback()          
+  |         +---------------+                                                                    
+  |                                                                                              
+  +--> else                                                                                      
+       |                                                                                         
+       |    +---------------+                                                                    
+       +--> | process_reply | given serial from msg, remove target entry from netlink, run it    
+            +---------------+                                                                    
+```
+
+```
+src/libsystemd/sd-netlink/sd-netlink.c                                    
++-----------------+                                                        
+| process_timeout | : run the first reply_callback in queue if it's timeout
++-|---------------+                                                        
+  |    +------------+                                                      
+  |--> | prioq_peek | peek the 1st reply_callback in queue                 
+  |    +------------+                                                      
+  |                                                                        
+  |-->  if its not timeout yet, return                                     
+  |                                                                        
+  |    +-----------------------------+                                     
+  |    | message_new_synthetic_error | prepare msg of error code           
+  |    +-----------------------------+                                     
+  |    +----------------+                                                  
+  |--> | hashmap_remove | remove that reply_callback from queue            
+  |    +----------------+                                                  
+  |    +--------------+                                                    
+  |--> | container_of | get outer slot                                     
+  |    +--------------+                                                    
+  |                                                                        
+  +--> call ->callback()                                                   
+```
+
+```
+src/libsystemd/sd-netlink/sd-netlink.c                                                                                         
++---------------+                                                                                                               
+| process_match | : find type/cmd matched entry in netlink, call ->callback()                                                   
++-|-------------+                                                                                                               
+  |    +-----------------------------+                                                                                          
+  |--> | sd_netlink_message_get_type | get type (e.g., new link) from msg                                                       
+  |    +-----------------------------+                                                                                          
+  |                                                                                                                             
+  |--> if msg protocol is 'generic'                                                                                             
+  |    |                                                                                                                        
+  |    |    +-----------------------------+                                                                                     
+  |    +--> | sd_genl_message_get_command | get cmd (?) from msg                                                                
+  |         +-----------------------------+                                                                                     
+  |                                                                                                                             
+  +--> for each callback in netlink                                                                                             
+       |                                                                                                                        
+       |--> if type or cmd isn't matched, continue                                                                              
+       |                                                                                                                        
+       |--> check if msg aims for any group in callback                                                                         
+       |                                                                                                                        
+       +--> cal ->callback(), e.g.,                                                                                             
+            +---------------------------+                                                                                       
+            | manager_rtnl_process_link | given msg, get link/net_dev from manager, perform 'new link' or 'del link' accordingly
+            +---------------------------+                                                                                       
+```
+
+```
+src/libsystemd/sd-netlink/sd-netlink.c                                                                                    
++---------------+                                                                                                          
+| process_reply | : given serial from msg, remove target entry from netlink, run it                                        
++-|-------------+                                                                                                          
+  |    +--------------------+                                                                                              
+  |--> | message_get_serial | get serial from msg                                                                          
+  |    +--------------------+                                                                                              
+  |    +----------------+                                                                                                  
+  |--> | hashmap_remove | given serial, remove target reply_callback from netlink                                          
+  |    +----------------+                                                                                                  
+  |    +-----------------------------+                                                                                     
+  |--> | sd_netlink_message_get_type | get type (e.g., new link) from msg                                                  
+  |    +-----------------------------+                                                                                     
+  |                                                                                                                        
+  +--> cal ->callback(), e.g.,                                                                                             
+       +---------------------------+                                                                                       
+       | manager_rtnl_process_link | given msg, get link/net_dev from manager, perform 'new link' or 'del link' accordingly
+       +---------------------------+                                                                                       
+```
