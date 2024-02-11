@@ -2902,3 +2902,64 @@ src/libsystemd/sd-netlink/sd-netlink.c
        | manager_rtnl_process_link | given msg, get link/net_dev from manager, perform 'new link' or 'del link' accordingly
        +---------------------------+                                                                                       
 ```
+
+```
+src/libsystemd/sd-device/device-monitor.c                                    
++------------------------------+                                              
+| device_monitor_event_handler | : receive msg to setup device, process uevent
++-|----------------------------+                                              
+  |    +-------------------------------+                                      
+  |--> | device_monitor_receive_device | receive msg, setup device accordingly
+  |    +-------------------------------+                                      
+  |                                                                           
+  +--> if ->callback exists                                                   
+       -                                                                      
+       +--> call it, e.g.,                                                    
+            +------------------------+                                        
+            | manager_process_uevent | process uevent                         
+            +------------------------+                                        
+```
+
+```
+src/libsystemd/sd-device/device-monitor.c                               
++-------------------------------+                                        
+| device_monitor_receive_device | : receive msg, setup device accordingly
++-|-----------------------------+                                        
+  |    +-----------------------+                                         
+  |--> | next_datagram_size_fd | peek data size                          
+  |    +-----------------------+                                         
+  |                                                                      
+  |--> alloc buffer                                                      
+  |                                                                      
+  |    +---------+                                                       
+  |--> | recvmsg |                                                       
+  |    +---------+                                                       
+  |                                                                      
+  |--> determine offset                                                  
+  |                                                                      
+  |    +------------------------+                                        
+  +--> | device_new_from_nulstr | given msg, alloc and setup 'device'    
+       +------------------------+                                        
+```
+
+```
+src/libsystemd/sd-device/device-private.c                             
++------------------------+                                             
+| device_new_from_nulstr | : given msg, alloc and setup 'device'       
++-|----------------------+                                             
+  |    +----------------+                                              
+  |--> | device_new_aux | alloc device                                 
+  |    +----------------+                                              
+  |                                                                    
+  |--> for each info in msg                                            
+  |    |                                                               
+  |    |    +---------------+                                          
+  |    +--> | device_append | save info in device                      
+  |         +---------------+                                          
+  |                                                                    
+  +--> if major/minor are found                                        
+       |                                                               
+       |    +------------------------------+                           
+       +--> | device_add_property_internal | save major/minor in device
+            +------------------------------+                           
+```
