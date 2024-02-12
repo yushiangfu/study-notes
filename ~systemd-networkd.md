@@ -2963,3 +2963,239 @@ src/libsystemd/sd-device/device-private.c
        +--> | device_add_property_internal | save major/minor in device
             +------------------------------+                           
 ```
+
+```
+src/network/wait-online/wait-online.c                                       
++-----+                                                                      
+| run |                                                                      
++-|---+                                                                      
+  |    +-------------+                                                       
+  |--> | manager_new | setup manager, register callbacks for inotify and rtnl
+  |    +-------------+                                                       
+  |    +--------------------+                                                
+  |--> | manager_configured | traverse links, and check if they are online   
+  |    +--------------------+                                                
+  |                                                                          
+  |--> if condition met, return                                              
+  |                                                                          
+  |    +---------------+                                                     
+  +--> | sd_event_loop |                                                     
+       +---------------+                                                     
+```
+
+```
+src/network/wait-online/manager.c                                                                 
++-------------+                                                                                    
+| manager_new | : setup manager, register callbacks for inotify and rtnl                           
++-|-----------+                                                                                    
+  |                                                                                                
+  |--> alloc manager                                                                               
+  |                                                                                                
+  |    +------------------+                                                                        
+  |--> | sd_event_default |                                                                        
+  |    +------------------+                                                                        
+  |    +-----------------------+                                                                   
+  |--> | sd_event_set_watchdog | given arg b, arm or unarm watchdog of event                       
+  |    +-----------------------+                                                                   
+  |    +--------------------------------+                                                          
+  |--> | manager_network_monitor_listen | register callback of inotify to check if links are online
+  |    +--------------------------------+                                                          
+  |    +---------------------+                                                                     
+  +--> | manager_rtnl_listen | listen to rtnl to check if links are online                         
+       +---------------------+                                                                     
+```
+
+```
+src/network/wait-online/manager.c                                                                               
++--------------------------------+                                                                               
+| manager_network_monitor_listen | : register callback of inotify to check if links are online                   
++-|------------------------------+                                                                               
+  |    +------------------------+                                                                                
+  |--> | sd_network_monitor_new | setup inotify watching "/run/systemd/netif/links/"                             
+  |    +------------------------+                                                                                
+  |    +---------------------------+                                                                             
+  |--> | sd_network_monitor_get_fd | get inotify fd                                                              
+  |    +---------------------------+                                                                             
+  |    +-------------------------------+                                                                         
+  |--> | sd_network_monitor_get_events | return 'pollin'                                                         
+  |    +-------------------------------+                                                                         
+  |    +-----------------+                                                                                       
+  +--> | sd_event_add_io |                                                                                       
+       +-----------------+ +------------------+                                                                  
+                           | on_network_event | update links from files, check if 'online', exit if condition met
+                           +------------------+                                                                  
+```
+
+```
+src/network/wait-online/manager.c                                                         
++------------------+                                                                       
+| on_network_event | : update links from files, check if 'online', exit if condition met   
++-|----------------+                                                                       
+  |    +--------------------------+                                                        
+  |--> | sd_network_monitor_flush | given inotify events, add or remove watch              
+  |    +--------------------------+                                                        
+  |                                                                                        
+  |--> for each link in manager                                                            
+  |    |                                                                                   
+  |    |    +---------------------+                                                        
+  |    +--> | link_update_monitor | update link from, e.g., /run/systemd/netif/links/$index
+  |         +---------------------+                                                        
+  |    +--------------------+                                                              
+  |--> | manager_configured | traverse links, and check if they are online                 
+  |    +--------------------+                                                              
+  |                                                                                        
+  +--> if condition met                                                                    
+       |                                                                                   
+       |    +---------------+                                                              
+       +--> | sd_event_exit |                                                              
+            +---------------+                                                              
+```
+
+```
+src/libsystemd/sd-network/sd-network.c                                 
++--------------------------+                                            
+| sd_network_monitor_flush | : given inotify events, add or remove watch
++-|------------------------+                                            
+  |                                                                     
+  +--> read from inotify fd                                             
+       -                                                                
+       +--> for each event                                              
+            -                                                           
+            +--> add or remove watch                                    
+```
+
+```
+src/network/wait-online/manager.c                                   
++--------------------+                                               
+| manager_configured | : traverse links, and check if they are online
++-|------------------+                                               
+  |                                                                  
+  |--> if hashmap isn't empty                                        
+  |    |                                                             
+  |    |--> for each iface in hashmap                                
+  |    |    |                                                        
+  |    |    |    +-------------+                                     
+  |    |    |--> | hashmap_get | given iface name, get link          
+  |    |    |    +-------------+                                     
+  |    |    |                                                        
+  |    |    |--> if no link, continue                                
+  |    |    |                                                        
+  |    |    |    +------------------------+                          
+  |    |    +--> | manager_link_is_online | check if link is online  
+  |    |    |    +------------------------+                          
+  |    |    |                                                        
+  |    |    +--> if iface is online, return true                     
+  |    |                                                             
+  |    +--> return anyway                                            
+  |                                                                  
+  |--> for each link in manager                                      
+  |    |                                                             
+  |    |    +------------------------+                               
+  |    |--> | manager_link_is_online | check if link is online       
+  |    |    +------------------------+                               
+  |    |                                                             
+  |    +--> if iface is online, return true                          
+  |                                                                  
+  +--> return anyway                                                 
+```
+
+```
+src/network/wait-online/manager.c                                                                                 
++---------------------+                                                                                            
+| manager_rtnl_listen | : listen to rtnl to check if links are online                                              
++-|-------------------+                                                                                            
+  |    +-----------------+                                                                                         
+  |--> | sd_netlink_open |                                                                                         
+  |    +-----------------+                                                                                         
+  |    +-------------------------+                                                                                 
+  |--> | sd_netlink_attach_event |                                                                                 
+  |    +-------------------------+                                                                                 
+  |    +----------------------+                                                                                    
+  +--> | sd_netlink_add_match | 'new link'                                                                         
+  |    +----------------------+ +---------------+                                                                  
+  |                             | on_rtnl_event | update links from files, check if 'online', exit if condition met
+  |                             +---------------+                                                                  
+  |    +----------------------+                                                                                    
+  |--> | sd_netlink_add_match | 'new link'                                                                         
+  |    +----------------------+                                                                                    
+  |    +--------------------------+                                                                                
+  |--> | sd_rtnl_message_new_link | prepare msg (get all links)                                                    
+  |    +--------------------------+                                                                                
+  |    +-----------------+                                                                                         
+  |--> | sd_netlink_call | set request and get replies                                                             
+  |    +-----------------+                                                                                         
+  |                                                                                                                
+  +--> for each reply                                                                                              
+       |                                                                                                           
+       |    +----------------------+                                                                               
+       +--> | manager_process_link | given msg, get link from manager, perform update or free                      
+            +----------------------+                                                                               
+```
+
+```
+src/network/wait-online/manager.c                                                      
++---------------+                                                                       
+| on_rtnl_event | : update links from files, check if 'online', exit if condition met   
++-|-------------+                                                                       
+  |    +----------------------+                                                         
+  |--> | manager_process_link | given msg, get link from manager, perform update or free
+  |    +----------------------+                                                         
+  |    +--------------------+                                                           
+  |--> | manager_configured | traverse links, and check if they are online              
+  |    +--------------------+                                                           
+  |                                                                                     
+  +--> if condition met                                                                 
+       |                                                                                
+       |    +---------------+                                                           
+       +--> | sd_event_exit |                                                           
+            +---------------+                                                           
+```
+
+```
+src/network/wait-online/manager.c                                                         
++----------------------+                                                                   
+| manager_process_link | : given msg, get link from manager, perform update or free        
++-|--------------------+                                                                   
+  |    +----------------------+                                                            
+  |--> | manager_process_link | get type ('new link' or 'del link') from msg               
+  |    +----------------------+                                                            
+  |    +----------------------------------+                                                
+  |--> | sd_rtnl_message_link_get_ifindex | get ifindex from msg                           
+  |    +----------------------------------+                                                
+  |    +--------------------------------+                                                  
+  |--> | sd_netlink_message_read_string | get ifname from msg                              
+  |    +--------------------------------+                                                  
+  |    +-------------+                                                                     
+  |--> | hashmap_get | given ifindex, get link from manager                                
+  |    +-------------+                                                                     
+  |                                                                                        
+  +--> switch type                                                                         
+       case 'new link'                                                                     
+       |--> if no link yet, alloc one                                                      
+       |    +------------------+                                                           
+       |--> | link_update_rtnl | given msg, update link's flags/name                       
+       |    +------------------+                                                           
+       |    +---------------------+                                                        
+       +--> | link_update_monitor | update link from, e.g., /run/systemd/netif/links/$index
+            +---------------------+                                                        
+       case 'del link'                                                                     
+       -    +-----------+                                                                  
+       +--> | link_free |                                                                  
+            +-----------+                                                                  
+```
+
+```
+src/network/wait-online/link.c                                                
++------------------+                                                           
+| link_update_rtnl | : given msg, update link's flags/name                     
++-|----------------+                                                           
+  |    +--------------------------------+                                      
+  |--> | sd_rtnl_message_link_get_flags | given msg, get flags                 
+  |    +--------------------------------+                                      
+  |    +------------------+                                                    
+  |--> | link_update_name | get ifname from msg, update to link in manager     
+  |    +------------------+                                                    
+  |    +----------------------+                                                
+  +--> | link_update_altnames | get altname from msg, update to link in manager
+       +----------------------+                                                
+```
