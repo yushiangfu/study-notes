@@ -1,4 +1,55 @@
 ```
++-----+                                                                                                                                                                                   
+| run |                                                                                                                                                                                   
++-|---+                                                                                                                                                                                   
+  |    +-------------------+                                                                                                                                                              
+  |--> | manager_enumerate |                                                                                                                                                              
+  |    +-|-----------------+                                                                                                                                                              
+  |      |    +-------------------------+                                                                                                                                                 
+  |      +--> | manager_enumerate_links |                                                                                                                                                 
+  |           +-|-----------------------+                                                                                                                                                 
+  |             |    +----------------------------+                                                                                                                                       
+  |             +--> | manager_enumerate_internal |                                                                                                                                       
+  |                  +-|--------------------------+                                                                                                                                       
+  |                    |                                                                                                                                                                  
+  |                    |--> send request                                                                                                                                                  
+  |                    |                                                                                                                                                                  
+  |                    +--> for each reply                                                                                                                                                
+  |                         -                                                                                                                                                             
+  |                         +--> call arg proces, e.g.,                                                                                                                                   
+  |                              +---------------------------+                                                                                                                            
+  |                              | manager_rtnl_process_link |                                                                                                                            
+  |                              +-|-------------------------+                                                                                                                            
+  |                                |    +-------------+                                                                                                                                   
+  |                                +--> | link_update |                                                                                                                                   
+  |                                     +-|-----------+                                                                                                                                   
+  |                                       |    +-------------------+                                                                                                                      
+  |                                       +--> | link_update_flags |                                                                                                                      
+  |                                            +-|-----------------+                                                                                                                      
+  |                                              |                                                                                                                                        
+  |                                              |--> print 'lo: Link UP'                                                                                                                 
+  |                                              +--> print 'lo: Gained carrier'                                                                                                          
+  |                                                                                                                                                                                       
+  |--> print 'Enumeration completed'                                                                                                                                                      
+  |                                                                                                                                                                                       
+  |    +---------------+                                                                                                                                                                  
+  +--> | sd_event_loop |                                                                                                                                                                  
+       +|--------------+                                                                                                                                                                  
+        |              +---------------+---------------------------+-----------------------+                                                                                              
+        |--> callback: | process_reply | manager_rtnl_process_link | link_reconfigure_impl | print 'eth*: Configuring with /usr/lib/systemd/network/60-phosphor-networkd-default.network.'
+        |              +---------------+---------------------------+-----------------------+                                                                                              
+        |              +---------------+---------------------------+-------------+                                                                                                        
+        |--> callback: | process_match | manager_rtnl_process_link | link_update | print '*: Link UP'                                                                                     
+        |              +---------------+---------------------------+-------------+ print '*: Gained carrier'                                                                              
+        |              +----------------------------+---------------+                                                                                                                     
+        |--> callback: | client_receive_message_raw | dhcp4_handler | print 'DHCPv4 address 10.0.2.16/24, gateway 10.0.2.2 acquired from 10.0.2.2'                                        
+        |              +----------------------------+---------------+                                                                                                                     
+        |              +---------------+------------------------------+----------------+                                                                                                  
+        +--> callback: | process_match | manager_rtnl_process_address | address_update | print 'eth*: Gained IPv6LL'                                                                      
+                       +---------------+------------------------------+----------------+                                                                                                  
+```
+
+```
 src/network/networkd.c                                                                                                     
 +-----+                                                                                                                     
 | run | send all kinds of requests and add links/qdisk/tclass/addresses/neighbors/nexthop/routes/rules                      
