@@ -1,4 +1,14 @@
-### 
+> Study case: Aspeed OpenBMC (commit 742fec782ef6c34c9fcd866116631e1d7aeedf8c)
+
+## Index
+
+- [Introduction](#introduction)
+- [Code Flow](#code-flow)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+<details><summary> More Details </summary>
 
 ```
 src/webserver_main.cpp
@@ -736,3 +746,15 @@ redfish-core/lib/update_service.hpp
                            iface: org.freedesktop.DBus.Properties
                            Set "RequestedActivation" = "xyz.openbmc_project.Software.Activation.RequestedActivations.Active"
 ```
+
+</details>
+
+## <a name="code-flow"></a> Code Flow
+
+- Request Handling
+
+<p align="center"><img src="images/bmcweb/request-handling.png" /></p>
+
+## <a name="reference"></a> Reference
+
+- [OpenBMC webserver](https://github.com/openbmc/bmcweb)
