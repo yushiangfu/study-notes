@@ -8,6 +8,21 @@
 
 ## <a name="introduction"></a> Introduction
 
+Redfish is a standard that specifies RESTful APIs, enabling users to access various types of information and perform actions such as power operations and firmware updates.
+The `bmcweb` package serves as an implementation of this standard, where handlers are registered for each predefined URL, internally referred to as `rules`. There are four main types of rules:
+
+1. Dynamic rules:
+   - Handle static assets like `.js` and `.html`, as well as web page-related resources provided by another package, `webui-vue`.
+2. Tagged rules:
+   - Cover the majority of URLs defined by Redfish.
+3. WebSocket rules:
+   - Allocate a WebSocket, functioning as a proxy for iKVM service towards clients.
+4. SSE (Server-Sent Events) socket rules:
+   - Facilitate server-sent events for real-time updates to clients.
+ 
+Here are their registration flows during `bmcweb` initialization.
+
+
 <details><summary> More Details </summary>
 
 ```
