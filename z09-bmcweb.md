@@ -3,7 +3,6 @@
 ## Index
 
 - [Introduction](#introduction)
-- [Code Flow](#code-flow)
 - [Reference](#reference)
 
 ## <a name="introduction"></a> Introduction
@@ -22,6 +21,26 @@ The `bmcweb` package serves as an implementation of this standard, where handler
  
 Here are their registration flows during `bmcweb` initialization.
 
+- Dynamic rules
+
+<p align="center"><img src="images/bmcweb/dynamic-rule.png" /></p>
+
+- Tagged rules
+
+<p align="center"><img src="images/bmcweb/tagged-rule.png" /></p>
+
+- WebSocket rules:
+
+<p align="center"><img src="images/bmcweb/websocket-rule.png" /></p>
+
+- SSE (Server-Sent Events) socket rules:
+
+<p align="center"><img src="images/bmcweb/ssesocket-rule.png" /></p>
+
+When a client sends a request to the BMC web server (potentially managed by systemd), the request is forwarded to `bmcweb`. 
+Upon receiving the URL from the request, `bmcweb` identifies the appropriate rule handler, executes it, and returns the response.
+
+<p align="center"><img src="images/bmcweb/request-handling.png" /></p>
 
 <details><summary> More Details </summary>
 
@@ -763,12 +782,6 @@ redfish-core/lib/update_service.hpp
 ```
 
 </details>
-
-## <a name="code-flow"></a> Code Flow
-
-- Request Handling
-
-<p align="center"><img src="images/bmcweb/request-handling.png" /></p>
 
 ## <a name="reference"></a> Reference
 
