@@ -303,3 +303,399 @@ drivers/i3c/master/ast2600-i3c-master.c
             +--> | complete |                                                         
                  +----------+                                                         
 ```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                                                                     
++-------------------------------+                                                                                            
+| aspeed_i3c_master_irq_handler | : handle interrupt as a master or slave, clear reg                                         
++-|-----------------------------+                                                                                            
+  |                                                                                                                          
+  |--> read status from register                                                                                             
+  |                                                                                                                          
+  |--> if we are secondary master                                                                                            
+  |    |                                                                                                                     
+  |    |--> if response ready                                                                                                
+  |    |    |                                                                                                                
+  |    |    |    +-------------------------------+                                                                           
+  |    |    +--> | aspeed_i3c_slave_resp_handler | for each response, call slave callback or complete                        
+  |    |         +-------------------------------+                                                                           
+  |    |                                                                                                                     
+  |    +--> if ccc updated                                                                                                   
+  |         |                                                                                                                
+  |         |    +--------------------------------+                                                                          
+  |         +--> | aspeed_i3c_slave_event_handler | read event from reg, write to another reg                                
+  |              +--------------------------------+                                                                          
+  |                                                                                                                          
+  |--> else                                                                                                                  
+  |    |                                                                                                                     
+  |    |--> if ibi threshold                                                                                                 
+  |    |    |                                                                                                                
+  |    |    |    +------------------------------+                                                                            
+  |    |    +--> | aspeed_i3c_master_demux_ibis | handle each ibi (e.g., save statue in slott, or assign addr & register dev)
+  |    |         +------------------------------+                                                                            
+  |    |                                                                                                                     
+  |    +--> if the master bus is in halt state                                                                               
+  |         |                                                                                                                
+  |         |    +------------------------------+                                                                            
+  |         |--> | aspeed_i3c_master_reset_ctrl |                                                                            
+  |         |    +------------------------------+                                                                            
+  |         |    +--------------------------+                                                                                
+  |         +--> | aspeed_i3c_master_resume |                                                                                
+  |              +--------------------------+                                                                                
+  |                                                                                                                          
+  +--> write status to reg to clear                                                                                          
+```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                                                                                   
++------------------------------+                                                                                                           
+| aspeed_i3c_master_demux_ibis | : handle each ibi (e.g., save statue in slott, or assign addr & register dev)                             
++-|----------------------------+                                                                                                           
+  |                                                                                                                                        
+  |--> read ibi info from register                                                                                                         
+  |                                                                                                                                        
+  +--> for each ibi                                                                                                                        
+       |                                                                                                                                   
+       |--> read queue status, and get ibi addr from it                                                                                    
+       |                                                                                                                                   
+       |--> if 'sir' type                                                                                                                  
+       |    |                                                                                                                              
+       |    |    +-------------------------------+                                                                                         
+       |    +--> | aspeed_i3c_master_sir_handler | get a free slot, copy ibi status/data to it, queue work to handle payload               
+       |         +-------------------------------+                                                                                         
+       |                                                                                                                                   
+       +--> if 'high-speed job' type                                                                                                       
+            |                                                                                                                              
+            |    +------------+                                                                                                            
+            +--> | queue_work | add work to queue                                                                                          
+                 +------------+ +----------------------+                                                                                   
+                                | aspeed_i3c_master_hj | communiate with dev if required, dynamically assign addrs, register each found dev
+                                +----------------------+                                                                                   
+```
+
+```
+drivers/i3c/master.c                                                                                                        
++----------------------+                                                                                                     
+| aspeed_i3c_master_hj | : communiate with dev if required, dynamically assign addrs, register each found dev                
++-------------------+--+                                                                                                     
+| i3c_master_do_daa | : communiate with dev if required, dynamically assign addrs, register each found dev                   
++-------------------+                                                                                                        
+  |                                                                                                                          
+  |--> if master has jdec_spd                                                                                                
+  |    |                                                                                                                     
+  |    |    +--------------------------+                                                                                     
+  |    |--> | i3c_master_sethid_locked | broadcast 'set hid' cmd                                                             
+  |    |    +--------------------------+                                                                                     
+  |    |    +---------------------------+                                                                                    
+  |    +--> | i3c_master_setaasa_locked | broadcast 'set aasa' cmd                                                           
+  |         +---------------------------+                                                                                    
+  |                                                                                                                          
+  |--> else                                                                                                                  
+  |    -                                                                                                                     
+  |    +--> call ->do_daa(), e.g.,                                                                                           
+  |         +-----------------------+                                                                                        
+  |         | aspeed_i3c_master_daa | send cmd 'addr assign' & get response, set group dat and alloc i3c_dev for each set bit
+  |         +-----------------------+                                                                                        
+  |    +----------------------------------+                                                                                  
+  +--> | i3c_master_register_new_i3c_devs | for each desc in master bus, register dev                                        
+       +----------------------------------+                                                                                  
+```
+
+```
+drivers/i3c/master.c                                                           
++----------------------------------+                                            
+| i3c_master_register_new_i3c_devs | : for each desc in master bus, register dev
++-|--------------------------------+                                            
+  |                                                                             
+  +--> for each desc in master bus                                              
+       |                                                                        
+       |--> alloc i3c_dev                                                       
+       |                                                                        
+       |--> setup dev (type, bus, ...)                                          
+       |                                                                        
+       |    +-----------------+                                                 
+       +--> | device_register |                                                 
+            +-----------------+                                                 
+```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                                                                     
++-----------------------+                                                                                                    
+| aspeed_i3c_master_daa | send cmd 'addr assign' & get response, set group dat and alloc i3c_dev for each set bit
++-|---------------------+                                                                                                    
+  |                                                                                                                          
+  |--> for each pos in master                                                                                                
+  |    |                                                                                                                     
+  |    |    +--------------------------+                                                                                     
+  |    |--> | i3c_master_get_free_addr |                                                                                     
+  |    |    +--------------------------+                                                                                     
+  |    |                                                                                                                     
+  |    +--> save addr in master, and write to reg                                                                            
+  |                                                                                                                          
+  |    +------------------------------+                                                                                      
+  |--> | aspeed_i3c_master_alloc_xfer | alloc xfer                                                                           
+  |    +------------------------------+                                                                                      
+  |    +--------------------------------+                                                                                    
+  |--> | aspeed_i3c_master_get_free_pos | get first free pos in master                                                       
+  |    +--------------------------------+                                                                                    
+  |                                                                                                                          
+  |--> setup cmd[0] in transfer                                                                                              
+  |                                                                                                                          
+  |    +--------------------------------+                                                                                    
+  |--> | aspeed_i3c_master_enqueue_xfer | queue transfer and send out thru hw                                                
+  |    +--------------------------------+                                                                                    
+  |                                                                                                                          
+  |--> wait for completion                                                                                                   
+  |                                                                                                                          
+  |--> calculate newdev (?)                                                                                                  
+  |                                                                                                                          
+  |--> for each pos in master                                                                                                
+  |    |                                                                                                                     
+  |    |--> if it's for newdev                                                                                               
+  |    |    |                                                                                                                
+  |    |    |    +---------------------------------+                                                                         
+  |    |    |--> | aspeed_i3c_master_set_group_dat | alloc or release group dat resource                                     
+  |    |    |    +---------------------------------+                                                                         
+  |    |    |    +-------------------------------+                                                                           
+  |    |    +--> | i3c_master_add_i3c_dev_locked | alloc i3c_dev, attach to master, send cmds to collect dev info, handle ibi
+  |    |         +-------------------------------+                                                                           
+  |    |                                                                                                                     
+  |    +--> write reg to clean up free hw dat (becomes occupied?)                                                            
+  |                                                                                                                          
+  +--> free xfer                                                                                                             
+```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                                                      
++-------------------------------+                                                                             
+| i3c_master_add_i3c_dev_locked | : alloc i3c_dev, attach to master, send cmds to collect dev info, handle ibi
++-|-----------------------------+                                                                             
+  |    +--------------------------+                                                                           
+  |--> | i3c_master_alloc_i3c_dev | alloc newdev                                                              
+  |    +--------------------------+                                                                           
+  |    +---------------------------+                                                                          
+  |--> | i3c_master_attach_i3c_dev | save dev addr in master, append dev to master i3c list                   
+  |    +---------------------------+                                                                          
+  |    +------------------------------+                                                                       
+  |--> | i3c_master_retrieve_dev_info | send cmds to collect device config                                    
+  |    +------------------------------+                                                                       
+  |    +-----------------------------+                                                                        
+  |--> | i3c_master_attach_boardinfo | find matched board info from master, save in arg                       
+  |    +-----------------------------+                                                                        
+  |    +-------------------------------------+                                                                
+  |--> | i3c_master_search_i3c_dev_duplicate | search if there's old dev sharing the same pid with new one    
+  |    +-------------------------------------+                                                                
+  |                                                                                                           
+  |--> if found                                                                                               
+  |    |                                                                                                      
+  |    |--> copy config from old to new                                                                       
+  |    |                                                                                                      
+  |    |--> send cmd to set mrl/mwl if necessary                                                              
+  |    |                                                                                                      
+  |    |                                                                                                      
+  |    +--> detach i3c_dev from master, release resources, free i3c_dev                                       
+  |                                                                                                           
+  |--> determine expected addr                                                                                
+  |                                                                                                           
+  |--> if old addr != new addr                                                                                
+  |    |                                                                                                      
+  |    |    +----------------------------+                                                                    
+  |    |--> | i3c_master_setnewda_locked | send cmd ('set dada' or 'set newda') to dst                        
+  |    |    +----------------------------+                                                                    
+  |    |    +-----------------------------+                                                                   
+  |    +--> | i3c_master_reattach_i3c_dev | update slot status, set group dat, save addr in master            
+  |         +-----------------------------+                                                                   
+  |                                                                                                           
+  +--> if ibi handler exists                                                                                  
+       |                                                                                                      
+       |    +----------------------------+                                                                    
+       |--> | i3c_dev_request_ibi_locked | prepare ibi, alloc pool/slots, save dev in master                  
+       |    +----------------------------+                                                                    
+       |                                                                                                      
+       +--> if enable_ibi is set                                                                              
+            |                                                                                                 
+            |    +---------------------------+                                                                
+            +--> | i3c_dev_enable_ibi_locked | send cmd 'enec' to dst, enable ibi interrupt                   
+                 +---------------------------+                                                                
+                                                                                                              
+```
+
+```
+drivers/i3c/master.c                                                               
++---------------------------+                                                       
+| i3c_dev_enable_ibi_locked | : send cmd 'enec' to dst, enable ibi interrupt        
++-|-------------------------+                                                       
+  |                                                                                 
+  +--> call ->enable_ibi, e.g.,                                                     
+       +------------------------------+                                             
+       | aspeed_i3c_master_enable_ibi | send cmd 'enec' to dst, enable ibi interrupt
+       +------------------------------+                                             
+```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                            
++------------------------------+                                                    
+| aspeed_i3c_master_enable_ibi | : send cmd 'enec' to dst, enable ibi interrupt     
++-|----------------------------+                                                    
+  |    +------------------------+                                                   
+  |--> | i3c_master_enec_locked | send cmd 'extended native error correction' to dst
+  |    +------------------------+                                                   
+  |                                                                                 
+  +--> enable/disable the ibi interrupt accordingly                                 
+```
+
+```
+drivers/i3c/master.c                                                             
++----------------------------+                                                    
+| i3c_dev_request_ibi_locked | : prepare ibi, alloc pool/slots, save dev in master
++-|--------------------------+                                                    
+  |                                                                               
+  |--> alloc ibi                                                                  
+  |                                                                               
+  |--> given arg req, setup ibi                                                   
+  |                                                                               
+  +--> call ->request_ibi, e.g.,                                                  
+       +-------------------------------+                                          
+       | aspeed_i3c_master_request_ibi | alloc pool/slots, save dev in master     
+       +-------------------------------+                                          
+```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                
++-------------------------------+                                       
+| aspeed_i3c_master_request_ibi | : alloc pool/slots, save dev in master
++-|-----------------------------+                                       
+  |    +----------------------------+                                   
+  |--> | i3c_generic_ibi_alloc_pool | alloc pool and slots              
+  |    +----------------------------+                                   
+  |                                                                     
+  +--> save dev in master                                               
+```
+
+```
+drivers/i3c/master.c                                                                                          
++----------------------------+                                                                                 
+| i3c_generic_ibi_alloc_pool | : alloc pool and slots                                                          
++-|--------------------------+                                                                                 
+  |                                                                                                            
+  |--> alloc pool                                                                                              
+  |                                                                                                            
+  |--> alloc that many slots                                                                                   
+  |                                                                                                            
+  |--> if payload len is given                                                                                 
+  |    -                                                                                                       
+  |    +--> alloc payload buf for pool                                                                         
+  |                                                                                                            
+  +--> for each slot in pool                                                                                   
+       |                                                                                                       
+       |    +--------------------------+                                                                       
+       |--> | i3c_master_init_ibi_slot | init work with handler                                                
+       |    +--------------------------+ +-----------------------+                                             
+       |                                 | i3c_master_handle_ibi | run callback on payload, return slot to pool
+       |                                 +-----------------------+                                             
+       |                                                                                                       
+       |--> point to somewhere in the allocated buf                                                            
+       |                                                                                                       
+       |    +---------------+                                                                                  
+       +--> | list_add_tail | append to free_slots list of pool                                                
+            +---------------+                                                                                  
+```
+
+```
+drivers/i3c/master.c                                                                   
++-----------------------------+                                                         
+| i3c_master_reattach_i3c_dev | : update slot status, set group dat, save addr in master
++-|---------------------------+                                                         
+  |                                                                                     
+  |--> if addrs mismatch between old/new                                                
+  |    |                                                                                
+  |    |    +------------------------------+                                            
+  |    |--> | i3c_bus_get_addr_slot_status | given new addr, get slot status from master
+  |    |    +------------------------------+                                            
+  |    |    +------------------------------+                                            
+  |    |--> | i3c_bus_set_addr_slot_status | set status (i3c dev) to slot of addr       
+  |    |    +------------------------------+                                            
+  |    |                                                                                
+  |    +--> if old addr is given                                                        
+  |         |                                                                           
+  |         |    +------------------------------+                                       
+  |         +--> | i3c_bus_set_addr_slot_status | set status (free) to slot of addr     
+  |              +------------------------------+                                       
+  |                                                                                     
+  +--> if ->reattach_i3c_dev exists                                                     
+       |                                                                                
+       +--> call it, e.g.,                                                              
+            +------------------------------------+                                      
+            | aspeed_i3c_master_reattach_i3c_dev | set group dat, save addr in master   
+            +------------------------------------+                                      
+```
+
+```
+drivers/i3c/master.c                                                                  
++---------------------------+                                                          
+| i3c_master_detach_i3c_dev | : detach i3c dev from master, release resources          
++-|-------------------------+                                                          
+  |                                                                                    
+  |--> if ->detach_i3c_dev exists                                                      
+  |    -                                                                               
+  |    +--> call it, e.g.,                                                             
+  |         +----------------------------------+                                       
+  |         | aspeed_i3c_master_detach_i3c_dev | detach dev from master                
+  |         +----------------------------------+                                       
+  |    +--------------------------+                                                    
+  |--> | i3c_master_put_i3c_addrs | for both static/dynamic, set 'free' to slot of addr
+  |    +--------------------------+                                                    
+  |    +----------+                                                                    
+  +--> | list_del | remove dev from list (master?)                                     
+       +----------+                                                                    
+```
+
+```
+drivers/i3c/master.c                                                             
++-----------------------------+                                                   
+| i3c_master_attach_boardinfo | : find matched board info from master, save in arg
++-|---------------------------+                                                   
+  |                                                                               
+  +--> for each board_info in master                                              
+       |                                                                          
+       |--> if it doesn't match arg dev id, continue                              
+       |                                                                          
+       +--> save board_info and static_addr in arg                                
+```
+
+```
+drivers/i3c/master.c                                                                      
++------------------------------+                                                           
+| i3c_master_retrieve_dev_info | : send cmds to collect device config                      
++-|----------------------------+                                                           
+  |    +------------------------------+                                                    
+  |--> | i3c_bus_get_addr_slot_status | given addr, get slot status from master            
+  |    +------------------------------+                                                    
+  |    +--------------------------+                                                        
+  |--> | i3c_master_getpid_locked | send 'get peripheral id' cmd to dst                    
+  |    +--------------------------+                                                        
+  |    +--------------------------+                                                        
+  |--> | i3c_master_getbcr_locked | send 'get bus configuration register' cmd to dst       
+  |    +--------------------------+                                                        
+  |    +--------------------------+                                                        
+  |--> | i3c_master_getdcr_locked | send 'get device configuration register' cmd to dst    
+  |    +--------------------------+                                                        
+  |                                                                                        
+  |--> if read-back bcr shows there's speed limit                                          
+  |    |                                                                                   
+  |    |    +---------------------------+                                                  
+  |    +--> | i3c_master_getmxds_locked | send 'get maximum extended data size' cmd to dst 
+  |         +---------------------------+                                                  
+  |    +--------------------------+                                                        
+  |--> | i3c_master_getmrl_locked | send 'master read limit' cmd to dst                    
+  |    +--------------------------+                                                        
+  |    +--------------------------+                                                        
+  |--> | i3c_master_getmwl_locked | send 'master write limit' cmd to dst                   
+  |    +--------------------------+                                                        
+  |                                                                                        
+  +--> if read-back bcr shows there's high-data-rate capability                            
+       |                                                                                   
+       |    +-----------------------------+                                                
+       +--> | i3c_master_gethdrcap_locked | send 'get high-data-rate capability' cmd to dst
+            +-----------------------------+                                                
+```
