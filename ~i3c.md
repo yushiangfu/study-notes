@@ -1,4 +1,332 @@
 ```
+drivers/i3c/master/ast2600-i3c-master.c                                                                                                                  
++------------------+                                                                                                                                      
+| aspeed_i3c_probe | : iomap regs, request isr, init work (handle newly found devs), register master/i2c_adapter, register clients                        
++-|----------------+                                                                                                                                      
+  |                                                                                                                                                       
+  |--> alloc master                                                                                                                                       
+  |                                                                                                                                                       
+  |    +---------------------------------+                                                                                                                
+  |--> | syscon_regmap_lookup_by_phandle | get i3c-global regmap                                                                                          
+  |    +---------------------------------+                                                                                                                
+  |    +--------------------------------+                                                                                                                 
+  |--> | devm_platform_ioremap_resource | iomap registers                                                                                                 
+  |    +--------------------------------+                                                                                                                 
+  |    +------------------+                                                                                                                               
+  |--> | platform_get_irq |                                                                                                                               
+  |    +------------------+                                                                                                                               
+  |    +------------------+                                                                                                                               
+  |--> | devm_request_irq | register isr                                                                                                                  
+  |    +------------------+ +-------------------------------+                                                                                             
+  |                         | aspeed_i3c_master_irq_handler | handle interrupt as a master or slave, clear reg                                            
+  |                         +-------------------------------+                                                                                             
+  |    +---------------------------------+                                                                                                                
+  |--> | aspeed_i3c_master_timing_config | config timing                                                                                                  
+  |    +---------------------------------+                                                                                                                
+  |    +----------------------------------+                                                                                                               
+  |--> | aspeed_i3c_master_init_group_dat | init group dat and write to reg                                                                               
+  |    +----------------------------------+                                                                                                               
+  |    +-----------+----------------------+                                                                                                               
+  |--> | INIT_WORK | aspeed_i3c_master_hj | communiate with dev if required, dynamically assign addrs, register each found dev                            
+  |    +-----------+----------------------+                                                                                                               
+  |    +---------------------+                                                                                                                            
+  +--> | i3c_master_register | setup master dev, collect board info, attach i2c/i3c devs, re-do daa, register master/i2c_adapter, register i2c/i3c clients
+       +---------------------+                                                                                                                            
+```
+
+```
+drivers/i3c/master.c                                                                                                                                
++---------------------+                                                                                                                              
+| i3c_master_register | : setup master dev, collect board info, attach i2c/i3c devs, re-do daa, register master/i2c_adapter, register i2c/i3c clients
++-|-------------------+                                                                                                                              
+  |                                                                                                                                                  
+  |--> setup master dev                                                                                                                              
+  |                                                                                                                                                  
+  |    +--------------+                                                                                                                              
+  |--> | i3c_bus_init | init sw struct                                                                                                               
+  |    +--------------+                                                                                                                              
+  |    +---------------------+                                                                                                                       
+  |--> | of_populate_i3c_bus | get prop 'jdec-spd', for each child dt node: prepare board info & append to list in master                            
+  |    +---------------------+                                                                                                                       
+  |    +------------------+                                                                                                                          
+  |--> | i3c_bus_set_mode | determine i2c/i3c rate                                                                                                   
+  |    +------------------+                                                                                                                          
+  |    +-----------------+                                                                                                                           
+  |--> | alloc_workqueue |                                                                                                                           
+  |    +-----------------+                                                                                                                           
+  |    +---------------------+                                                                                                                       
+  |--> | i3c_master_bus_init | attach i2c devices, init hw, reset all dynamic addrs, attach i3c devices, do dynamic addr assignment                  
+  |    +---------------------+                                                                                                                       
+  |    +------------+                                                                                                                                
+  |--> | device_add | register dev to framework                                                                                                      
+  |    +------------+                                                                                                                                
+  |    +-----------------------------+                                                                                                               
+  |--> | i3c_master_i2c_adapter_init | register i2c adapter, for each i2c_board info: register i2c_client                                            
+  |    +-----------------------------+                                                                                                               
+  |    +----------------------------------+                                                                                                          
+  +--> | i3c_master_register_new_i3c_devs | for each desc in master bus, register dev                                                                
+       +----------------------------------+                                                                                                          
+```
+
+```
+drivers/i3c/master.c                                                                                                   
++---------------------+                                                                                                 
+| of_populate_i3c_bus | : get prop 'jdec-spd', for each child dt node: prepare board info & append to list in master    
++-|-------------------+                                                                                                 
+  |                                                                                                                     
+  |--> get property "jdec-spd" and save in master                                                                       
+  |                                                                                                                     
+  +--> for each child node                                                                                              
+       |                                                                                                                
+       |    +-----------------------+                                                                                   
+       +--> | of_i3c_master_add_dev | parse dt node, prepare i2c or i3c board info accordingly, append to list in master
+            +-----------------------+                                                                                   
+```
+
+```
+drivers/i3c/master.c                                                                                         
++-----------------------+                                                                                     
+| of_i3c_master_add_dev | : parse dt node, prepare i2c or i3c board info accordingly, append to list in master
++-|---------------------+                                                                                     
+  |                                                                                                           
+  +--> read prop 'reg'                                                                                        
+       |                                                                                                      
+       |--> if reg[1] == 0 (i2c dev)                                                                          
+       |    |                                                                                                 
+       |    |    +---------------------------------+                                                          
+       |    +--> | of_i3c_master_add_i2c_boardinfo | prepare i2c board info and append to list in master      
+       |         +---------------------------------+                                                          
+       |                                                                                                      
+       +--> else (i3c dev)                                                                                    
+            |                                                                                                 
+            |    +---------------------------------+                                                          
+            +--> | of_i3c_master_add_i3c_boardinfo | prepare i3c board info and append to list in master      
+                 +---------------------------------+                                                          
+```
+
+```
+drivers/i3c/master.c                                                                    
++---------------------------------+                                                      
+| of_i3c_master_add_i2c_boardinfo | : prepare i2c board info and append to list in master
++-|-------------------------------+                                                      
+  |                                                                                      
+  |--> alloc board_info                                                                  
+  |                                                                                      
+  |    +-----------------------+                                                         
+  |--> | of_i2c_get_board_info | parse dt node to setup arg info                         
+  |    +-----------------------+                                                         
+  |    +---------------+                                                                 
+  +--> | list_add_tail | append info to i2c_info_list of master                          
+       +---------------+                                                                 
+```
+
+```
+drivers/i2c/i2c-core-of.c                                 
++-----------------------+                                  
+| of_i2c_get_board_info | : parse dt node to setup arg info
++-|---------------------+                                  
+  |                                                        
+  |--> read prop 'reg' (addr)                              
+  |                                                        
+  +--> read other props and setup arg info                 
+```
+
+```
+drivers/i3c/master.c                                                                        
++---------------------------------+                                                          
+| of_i3c_master_add_i3c_boardinfo | : prepare i3c board info and append to list in master    
++-|-------------------------------+                                                          
+  |                                                                                          
+  |--> alloc board_info                                                                      
+  |                                                                                          
+  |--> if reg[0] (static addr)                                                               
+  |    |                                                                                     
+  |    |    +------------------------------+                                                 
+  |    +--> | i3c_bus_get_addr_slot_status | given addr, get slot status ('free' is expected)
+  |         +------------------------------+                                                 
+  |                                                                                          
+  |--> get prop "assigned-address" (dynamic addr)                                            
+  |                                                                                          
+  |--> if got                                                                                
+  |    |                                                                                     
+  |    |    +------------------------------+                                                 
+  |    +--> | i3c_bus_get_addr_slot_status | given addr, get slot status ('free' is expected)
+  |         +------------------------------+                                                 
+  |                                                                                          
+  |--> interpret peripheral id from reg[1] & reg[2]                                          
+  |                                                                                          
+  |--> get prop 'dcr' and 'bcr' and save                                                     
+  |                                                                                          
+  |    +---------------+                                                                     
+  +--> | list_add_tail | append info to i3c_info_list of master                              
+       +---------------+                                                                     
+```
+
+```
+drivers/i3c/master.c                                                                                                                    
++---------------------+                                                                                                                  
+| i3c_master_bus_init | : attach i2c devices, init hw, reset all dynamic addrs, attach i3c devices, do dynamic addr assignment           
++-|-------------------+                                                                                                                  
+  |                                                                                                                                      
+  |--> for each i2c board info in master                                                                                                 
+  |    |                                                                                                                                 
+  |    |    +------------------------------+                                                                                             
+  |    |--> | i3c_bus_get_addr_slot_status | given addr, get slot status                                                                 
+  |    |    +------------------------------+                                                                                             
+  |    |    ('free' is expected)                                                                                                         
+  |    |                                                                                                                                 
+  |    |    +------------------------------+                                                                                             
+  |    |--> | i3c_bus_set_addr_slot_status | given addr, set slot status = arg (i2c_dev)                                                 
+  |    |    +------------------------------+                                                                                             
+  |    |    +--------------------------+                                                                                                 
+  |    |--> | i3c_master_alloc_i2c_dev | alloc i2c_dev                                                                                   
+  |    |    +--------------------------+                                                                                                 
+  |    |    +---------------------------+                                                                                                
+  |    +--> | i3c_master_attach_i2c_dev | attach i2c dev to i3c master                                                                   
+  |         +---------------------------+                                                                                                
+  |                                                                                                                                      
+  |--> call ->bus_init, e.g.,                                                                                                            
+  |    +----------------------------+                                                                                                    
+  |    | aspeed_i3c_master_bus_init | write regs to config role/clock/threshld/interrupt/addr, prep self i3c_dev & attatch, enable master
+  |    +----------------------------+                                                                                                    
+  |                                                                                                                                      
+  |    +--------------------------+                                                                                                      
+  |--> | i3c_master_rstdaa_locked | send cmd 'reset dynamic addr assignment' to dst (everyone)                                           
+  |    +--------------------------+                                                                                                      
+  |    +-------------------------+                                                                                                       
+  |--> | i3c_master_disec_locked | send cmd 'disable event c?' to dst (everyone)                                                         
+  |    +-------------------------+                                                                                                       
+  |                                                                                                                                      
+  |--> for each i3c board info in master                                                                                                 
+  |    |                                                                                                                                 
+  |    |    +------------------------------+                                                                                             
+  |    |--> | i3c_bus_get_addr_slot_status | given addr, get its slot status (should be 'free')                                          
+  |    |    +------------------------------+                                                                                             
+  |    |    +------------------------------+                                                                                             
+  |    |--> | i3c_bus_set_addr_slot_status | set status[addr] = i3c_dev                                                                  
+  |    |    +------------------------------+                                                                                             
+  |    |                                                                                                                                 
+  |    +--> if curr board_info has specified static addr                                                                                 
+  |         |                                                                                                                            
+  |         |    +------------------------------+                                                                                        
+  |         +--> | i3c_master_early_i3c_dev_add | alloc i3c_dev, attach to master, set static addr, retrieve dev info                    
+  |              +------------------------------+                                                                                        
+  |    +-------------------+                                                                                                             
+  +--> | i3c_master_do_daa | communiate with dev if required, dynamically assign addrs, register each found dev                          
+       +-------------------+                                                                                                             
+```
+
+```
+drivers/i3c/master.c                                                                                      
++---------------------------+                                                                              
+| i3c_master_attach_i2c_dev | : attach i2c dev to i3c master                                               
++-|-------------------------+                                                                              
+  |                                                                                                        
+  |--> if ->attach_i2c_dev exists                                                                          
+  |    -                                                                                                   
+  |    +--> call it, e.g.,                                                                                 
+  |         +----------------------------------+                                                           
+  |         | aspeed_i3c_master_attach_i2c_dev | set group dat, save dev_addr in master, save hw_idx in dev
+  |         +----------------------------------+                                                           
+  |                                                                                                        
+  +--> append dev to i2c_list in master                                                                    
+```
+
+```
+drivers/i3c/master/ast2600-i3c-master.c                                                                                            
++----------------------------+                                                                                                      
+| aspeed_i3c_master_bus_init | : write regs to config role/clock/threshld/interrupt/addr, prep self i3c_dev & attatch, enable master
++-|--------------------------+                                                                                                      
+  |    +----------------------------+                                                                                               
+  |--> | aspeed_i3c_master_set_role | determine master/slave, write to reg                                                          
+  |    +----------------------------+                                                                                               
+  |                                                                                                                                 
+  |--> given mode, write reg to configure i2c or i3c clock                                                                          
+  |                                                                                                                                 
+  |--> write reg to set threshold                                                                                                   
+  |                                                                                                                                 
+  |--> clear intrrupt regs                                                                                                          
+  |                                                                                                                                 
+  |--> get a free addr for master, write to reg                                                                                     
+  |                                                                                                                                 
+  |    +---------------------+                                                                                                      
+  |--> | i3c_master_set_info | prepare i3c_dev with info, attach to master                                                          
+  |    +---------------------+                                                                                                      
+  |    +--------------------------+                                                                                                 
+  +--> | aspeed_i3c_master_enable | write reg to enable master                                                                      
+       +--------------------------+                                                                                                 
+```
+
+```
+drivers/i3c/master.c                                                                      
++---------------------+                                                                    
+| i3c_master_set_info | : prepare i3c_dev with info, attach to master                      
++-|-------------------+                                                                    
+  |    +--------------------------+                                                        
+  |--> | i3c_master_alloc_i3c_dev | alloc and setup i3c_dev (info, master, ...)            
+  |    +--------------------------+                                                        
+  |    +---------------------------+                                                       
+  +--> | i3c_master_attach_i3c_dev | save dev addr in master, append dev to master i3c list
+       +---------------------------+                                                       
+```
+
+```
+drivers/i3c/master.c                                                         
++--------------------------+                                                  
+| i3c_master_rstdaa_locked | : send cmd 'reset dynamic addr assignment' to dst
++-|------------------------+                                                  
+  |    +------------------------------+                                       
+  |--> | i3c_bus_get_addr_slot_status | given addr, get its slot status       
+  |    +------------------------------+                                       
+  |                                                                           
+  +--> send cmd 'reset dynamic addr assignment' to dst                        
+```
+
+```
+drivers/i3c/master.c                                                                                 
++------------------------------+                                                                      
+| i3c_master_early_i3c_dev_add | : alloc i3c_dev, attach to master, set static addr, retrieve dev info
++-|----------------------------+                                                                      
+  |    +--------------------------+                                                                   
+  |--> | i3c_master_alloc_i3c_dev | alloc i3c_dev                                                     
+  |    +--------------------------+                                                                   
+  |    +---------------------------+                                                                  
+  |--> | i3c_master_attach_i3c_dev | save dev addr in master, append dev to master i3c list           
+  |    +---------------------------+                                                                  
+  |    +---------------------------+                                                                  
+  |--> | i3c_master_setdasa_locked | send cmd 'dynamic address static address' to dst                 
+  |    +---------------------------+                                                                  
+  |    +-----------------------------+                                                                
+  |--> | i3c_master_reattach_i3c_dev | update slot status, set group dat, save addr in master         
+  |    +-----------------------------+                                                                
+  |    +------------------------------+                                                               
+  +--> | i3c_master_retrieve_dev_info | send cmds to collect device config                            
+       +------------------------------+                                                               
+```
+
+```
+drivers/i3c/master.c                                                                               
++-----------------------------+                                                                     
+| i3c_master_i2c_adapter_init | : register i2c adapter, for each i2c_board info: register i2c_client
++-|---------------------------+                                                                     
+  |                                                                                                 
+  |--> setup i2c_adapter (parent, algo, ...)                                                        
+  |                                                                                                 
+  |    +-----------------+                                                                          
+  |--> | i2c_add_adapter | determine adapter id and register it                                     
+  |    +-----------------+                                                                          
+  |                                                                                                 
+  +--> for each i2c_boardinfo in master                                                             
+       |                                                                                            
+       |    +---------------------------------+                                                     
+       |--> | i3c_master_find_i2c_dev_by_addr | given addr, find i2c_dev from master                
+       |    +---------------------------------+                                                     
+       |    +-----------------------+                                                               
+       +--> | i2c_new_client_device | prepare 'i2c client' and register device                      
+            +-----------------------+ (which potentially triggers other i2c driver probe)           
+```
+
+```
 drivers/i3c/master.c                                                                       
 +---------------------------+                                                               
 | i3c_master_attach_i3c_dev | : save dev addr in master, append dev to master i3c list      
