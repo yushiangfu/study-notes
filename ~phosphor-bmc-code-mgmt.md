@@ -1,3 +1,40 @@
+> Study case: Aspeed OpenBMC (commit 742fec782ef6c34c9fcd866116631e1d7aeedf8c)
+
+## Index
+
+- [Introduction](#introduction)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+This package includes several services, with the two most important ones being `Version` and `Updater`.
+
+- `xyz.openbmc_project.Software.Version.service`
+  - Implemented in `image_manager_main.cpp`
+- `xyz.openbmc_project.Software.BMC.Updater.service`
+  - Implemented in `item_updater_main.cpp` along with several shell scripts
+
+The `image manager` service sets up a watcher to monitor `/tmp/images/`, and upon detection of new images, performs basic checks and generates a DBus object called `Version`. 
+Each newly generated `Version` triggers the match handler in the `item updater` service, which generates the `Activation` DBus object, waiting to be activated.
+When the `RequestedActivation` property, defined in the `phosphor-dbus-interfaces` package, is set, the `item updater` service proceeds with the following steps:
+
+1. Optionally verify the signature.
+2. Subscribe to system signals to be informed when a service unit finishes.
+3. Write to flash memory:
+   - For static updates, copy images to `/run/initramfs/`.
+   - For UBI and MMC updates, call `obmc-flash-bmc` to perform the flashing.
+4. Delete the `Version` object in the `image manager`.
+5. If the apply time is immediate, reboot the BMC:
+   - Note: This process involves multiple steps before the actual hardware reset, including executing the `shutdown` script and assisting with flashing images in `/run/initramfs/`.
+
+<p align="center"><img src="images/phosphor-bmc-code-mgmt/service-flows.png" /></p>
+
+Each storage type has its own `flashWrite()` implementation, which calls the corresponding wrappers and ultimately utilizes the helper `obmc-flash-bmc` to perform the actual tasks.
+
+<p align="center"><img src="images/phosphor-bmc-code-mgmt/function-elaborations.png" /></p>
+
+<details><summary> More Details </summary>
+
 ### obmc-flash-bmc
 
 ```
@@ -880,3 +917,10 @@ busctl call --verbose \
   1 \
   xyz.openbmc_project.Inventory.Item.Bmc
 ```
+
+</details>
+
+## <a name="reference"></a> Reference
+
+- [phosphor-bmc-code-mgmt](https://github.com/openbmc/phosphor-bmc-code-mgmt)
+- [Software Version Management and Image Update](https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/xyz/openbmc_project/Software/README.md)
