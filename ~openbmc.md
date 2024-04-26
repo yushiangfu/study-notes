@@ -1,3 +1,11 @@
+```
+$OPENBMC/build/ast2600-default/conf/local.conf
+
+
+DL_DIR ?= "/home/bobfu/workspace/obmc-share/bitbake_downloads"
+SSTATE_DIR ?= "/home/bobfu/workspace/obmc-share/bitbake_sharedstatecache"
+```
+
 - 'setup' flow 
 
 Comparison
