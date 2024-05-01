@@ -21,11 +21,11 @@ docker run \
 ```
 
 ```
-docker exec \
-    -w $PWD \
-    -u $(id -u):$(id -g) \
-    -it \
-    my-container bash
+docker exec \                                                                   
+    -w $PWD \                                                                   
+    -u root \                                                                   
+    -it \                                                                       
+    my-container bash -c "su - $USER"
 
 -w: working dir
 -u: user and group
