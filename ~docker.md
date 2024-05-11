@@ -1,3 +1,5 @@
+- my-dockerob
+
 ```
 ONTAINER_USER=$1                                                                  
                                                                                    
@@ -7,6 +9,8 @@ fi
                                                                                    
 my-docker openbmc/ubuntu2404:latest $CONTAINER_USER-$RANDOM $CONTAINER_USER   
 ```
+
+- my-docker
 
 ```
 #!/bin/bash                                                                        
@@ -47,7 +51,7 @@ docker run \
 # -d: detach
 ```
 
-- docker file
+- docker-file.txt
 
 ```
 FROM ubuntu:24.04                                                                  
@@ -83,4 +87,16 @@ RUN locale-gen en_US.UTF-8
 ENV LANG en_US.UTF-8                                                               
 ENV LANGUAGE en_US:en                                                              
 ENV LC_ALL en_US.UTF-8                                            
+```
+
+- build docker image
+
+```
+#!/bin/bash                                                                        
+                                                                                   
+docker build \                                                                     
+    --network=host \                                                               
+    -t openbmc/ubuntu2404:v2024.05.10 \                                            
+    -f docker-file.txt \                                                           
+    /   
 ```
