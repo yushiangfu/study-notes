@@ -80,7 +80,11 @@ RUN apt-get update && apt-get install -yy \
   vim \                                                                            
   wget \                                                                           
   zstd \                                                                           
-  sudo                                                                             
+  sudo \
+  python3-distutils-extra
+# sudo: sometimes I need it
+# python3-distutils-extra: to pass the sanity check of older openbmc?
+
                                                                                    
 # Set the locale                                                                   
 RUN locale-gen en_US.UTF-8                                                         
