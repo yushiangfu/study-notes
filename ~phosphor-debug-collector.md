@@ -1,3 +1,27 @@
+~> Study case: Aspeed OpenBMC (commit 8994be955087a76690d61daabe1834a5a2241992)
+
+## Index
+
+- [Introduction](#introduction)
+- [Cheat Sheet](#cheat-sheet)
+- [Reference](#reference)
+
+## <a name="introduction"></a> Introduction
+
+<p align="center"><img src="images/phosphor-debug-collector/flow.png" /></p>
+
+1. Unexpectedly, a service crashes.
+2. The kernel captures the exception, and `kthreadd` forks the initial `systemd-coredump`.
+    - This behavior is dictated by the `/proc/sys/kernel/core_pattern`, configured by `50-coredump.conf`.
+3. The kernel generates core data and sends it to the initial `systemd-coredump` via standard input, which then writes it to a socket monitored by `systemd`.
+4. Leveraging the socket activation mechanism, `systemd` starts a second `systemd-coredump` instance.
+5. This second instance receives the data from the socket and writes it to the filesystem at `/var/lib/systemd/coredump`.
+6. `phosphor-dump-monitor` detects the creation of the core file and notifies `phosphor-dump-manager`.
+7. `phosphor-dump-manager` forks `dreport`, which collects additional information and compresses it along with the core file, saving it to `/var/lib/phosphor-debug-collector/dumps`.
+
+
+
+
 ### phosphor-dump-manager
 
 ```
