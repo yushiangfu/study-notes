@@ -239,10 +239,21 @@ gdb-multiarch
 (gdb) core-file obmcdump_31_1717709354/core.my-test.0.25fc9e2f99794302a107e0e7aafa1100.454.1717709350000000
 ```
 
+- Related Paths
+
 ```
+/var/lib/systemd/coredump
 /var/lib/phosphor-debug-collector/dumps/
+```
+
+- ARM gdb build
+
+```
+# Add this line to build/conf/local.conf
+EXTRA_IMAGE_FEATURES:append = " tools-debug"
 ```
 
 ## <a name="reference"></a> Reference
 
 - [phosphor-debug-collector](https://github.com/openbmc/phosphor-debug-collector)
+- [Debugging Tools and Techniques](https://docs.yoctoproject.org/dev-manual/debugging.html?highlight=launching+gdb+host+computer)
