@@ -8,6 +8,8 @@
 
 ## <a name="introduction"></a> Introduction
 
+### Work Flow
+
 <p align="center"><img src="images/phosphor-debug-collector/work-flow.png" /></p>
 
 1. Unexpectedly, a service crashes.
@@ -18,6 +20,8 @@
 5. This second instance receives the data from the socket and writes it to the filesystem at `/var/lib/systemd/coredump`.
 6. `phosphor-dump-monitor` detects the creation of the core file and notifies `phosphor-dump-manager`.
 7. `phosphor-dump-manager` forks `dreport`, which collects additional information and compresses it along with the core file, saving it to `/var/lib/phosphor-debug-collector/dumps`.
+
+### Code Flow
 
 <p align="center"><img src="images/phosphor-debug-collector/code-flow.png" /></p>
 
@@ -195,6 +199,45 @@ core_manager_main.cpp
 </details>
 
 ## <a name="cheat-sheet"></a> Cheat Sheet
+
+- Build
+
+```
+# Add this line to my-test.bb
+CXXFLAGS += " -no-pie"
+
+# Add this line to build/conf/local.conf
+IMAGE_INSTALL += "my-test"
+```
+
+- Debug
+
+```
+cd build
+
+# The libraries for opkg are located here
+export LD_LIBRARY_PATH=./tmp/work/x86_64-linux/opkg-native/0.6.2/recipe-sysroot-native/usr/lib/
+
+MY_DEBUG_ROOT=tmp/rootfs-debug
+
+# Retrieve the latest information for all packages.
+./tmp/sysroots-components/x86_64/opkg-native/usr/bin/opkg -f ./tmp/work/ast2600_default-openbmc-linux-gnueabi/obmc-phosphor-image/1.0/opkg.conf -o $MY_DEBUG_ROOT update
+
+# Install the target package to the local root filesystem for debugging.
+fakeroot ./tmp/sysroots-components/x86_64/opkg-native/usr/bin/opkg -f ./tmp/work/ast2600_default-openbmc-linux-gnueabi/obmc-phosphor-image/1.0/opkg.conf -o $MY_DEBUG_ROOT install my-test my-test-dbg
+
+gdb-multiarch
+
+# When GDB interprets absolute paths, it prepends the specified prefix before searching.
+(gdb) set solib-absolute-prefix .../tmp/rootfs-debug
+
+# Add a search path for auto-load scripts.
+(gdb) add-auto-load-safe-path .../tmp/rootfs-debug
+
+(gdb) file tmp/rootfs-debug/usr/bin/my-test
+
+(gdb) core-file obmcdump_31_1717709354/core.my-test.0.25fc9e2f99794302a107e0e7aafa1100.454.1717709350000000
+```
 
 ```
 /var/lib/phosphor-debug-collector/dumps/
