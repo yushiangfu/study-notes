@@ -8,7 +8,7 @@
 
 ## <a name="introduction"></a> Introduction
 
-<p align="center"><img src="images/phosphor-debug-collector/flow.png" /></p>
+<p align="center"><img src="images/phosphor-debug-collector/work-flow.png" /></p>
 
 1. Unexpectedly, a service crashes.
 2. The kernel captures the exception, and `kthreadd` forks the initial `systemd-coredump`.
@@ -19,8 +19,9 @@
 6. `phosphor-dump-monitor` detects the creation of the core file and notifies `phosphor-dump-manager`.
 7. `phosphor-dump-manager` forks `dreport`, which collects additional information and compresses it along with the core file, saving it to `/var/lib/phosphor-debug-collector/dumps`.
 
+<p align="center"><img src="images/phosphor-debug-collector/code-flow.png" /></p>
 
-
+<details><summary> More Details </summary>
 
 ### phosphor-dump-manager
 
@@ -191,8 +192,14 @@ dump_manager_main.cpp
 core_manager_main.cpp
 ```
 
-## Cheat Sheet
+</details>
+
+## <a name="cheat-sheet"></a> Cheat Sheet
 
 ```
 /var/lib/phosphor-debug-collector/dumps/
 ```
+
+## <a name="reference"></a> Reference
+
+- [phosphor-debug-collector](https://github.com/openbmc/phosphor-debug-collector)
