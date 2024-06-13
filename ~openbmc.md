@@ -6,6 +6,19 @@ DL_DIR ?= "/home/bobfu/workspace/obmc-share/bitbake_downloads"
 SSTATE_DIR ?= "/home/bobfu/workspace/obmc-share/bitbake_sharedstatecache"
 ```
 
+- Build `netstat` with option p and w support.
+
+```
+openbmc/poky/meta/recipes-core/busybox/busybox_1.36.1.bb
+SRC_URI = ... \
+           file://netstat.cfg \
+           ...
+
+openbmc/poky/meta/recipes-core/busybox/busybox/netstat.cfg
+CONFIG_FEATURE_NETSTAT_WIDE=y                                                      
+CONFIG_FEATURE_NETSTAT_PRG=y
+```
+
 - 'setup' flow 
 
 Comparison
