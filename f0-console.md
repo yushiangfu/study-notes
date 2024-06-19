@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [TTY & PTY](#tty-and-pty)
 - [Console](#console)
+- [Serial over Lan (SOL)](#sol)
 - [System Startup](#system-startup)
 - [Cheat Sheet](#cheat-sheet)
 - [Reference](#reference)
@@ -968,6 +969,10 @@ kernel/printk/printk.c
 ```
     
 </details>
+
+## <a name="sol"></a> Serial over Lan (SOL)
+
+<p align="center"><img src="images/console/uart-routing.png" /></p>
 
 ## <a name="system-startup"></a> System Startup
 
