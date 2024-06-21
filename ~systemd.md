@@ -8072,3 +8072,46 @@ src/shared/conf-parser.c
        +--> | hashmap_put_stats_by_path | add stats to hashmap                      
             +---------------------------+                                           
 ```
+
+```
+ src/libsystemd/sd-journal/sd-journal.c                       
+ [sd_journal_open] : alloc journal, add search paths          
+ [sd_journal_open_namespace] : alloc journal, add search paths
+ |                                                            
+ |--> [journal_new] alloc and setup 'journal'                 
+ |                                                            
+ +--> [add_search_paths] add search paths to journal          
+```
+
+```
+ src/libsystemd/sd-journal/sd-journal.c                            
+ [journal_new] : alloc and setup 'journal'                         
+ |                                                                 
+ |--> alloc 'journal'                                              
+ |                                                                 
+ |--> setup 'journal'                                              
+ |                                                                 
+ |--> for file handling, alloc hashmap and cache, save in 'journal'
+ |                                                                 
+ |--> for folders, alloc hashmap, save in 'journal'                
+ |                                                                 
+ +--> alloc mmap cache, save in 'journal'                          
+```
+
+```
+ src/libsystemd/sd-journal/sd-journal.c                                         
+ [add_search_paths] : add search paths to journal                               
+ -                                                                              
+ +--> for each predefined path                                                  
+      -                                                                         
+      +--> [add_root_directory] open folder, ensure it's in hashmap of 'journal'
+```
+
+```
+ src/libsystemd/sd-journal/sd-journal.c                                 
+ [add_root_directory] : open folder, ensure it's in hashmap of 'journal'
+ |                                                                      
+ |--> [directory_open]                                                  
+ |                                                                      
+ +--> add the directory to hashmap in 'journal'                         
+```
