@@ -490,6 +490,28 @@ http/http_server.hpp
 ```
 
 ```
+ http/http_server.hpp                                                               
+ [Server::loadCertificate] : ensure we have a valid cert, and save it in 'App' obj  
+ |                                                                                  
+ |--> [ensuressl::ensureOpensslKeyPresentAndValid] ensure a valid certificate exists
+ |                                                                                  
+ |--> [ensuressl::getSslContext] given certificate, generate a ssl-context          
+ |                                                                                  
+ +--> [App::ssl] save the ssl-context in object                                     
+```
+
+```
+ include/ssl_key_handler.hpp                                                     
+ [ensuressl::ensureOpensslKeyPresentAndValid] : ensure a valid certificate exists
+ |                                                                               
+ |--> [ensuressl::verifyOpensslKeyCert] verify if it's a valid certificate       
+ |                                                                               
+ +--> if not valid                                                               
+      -                                                                          
+      +--> [ensuressl::generateSslCertificate] generate a certificate            
+```
+
+```
 http/http_server.hpp                                                     
 +----------+                                                              
 | doAccept | : prepare connection, authenticate, handle url               
