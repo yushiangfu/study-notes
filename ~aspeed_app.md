@@ -220,3 +220,45 @@
       |                             
       +--> print timestamp and data 
 ```
+
+### i2c-test
+
+```
+ i2c-test/i2c-test.c                                                                
+ [main]                                                                             
+ |                                                                                  
+ |--> handle arguments                                                              
+ |        h: help                                                                   
+ |        a: slave addr                                                             
+ |        m: master dev name                                                        
+ |        s: slave dev name                                                         
+ |        c: loop count                                                             
+ |        l: transfer len                                                           
+ |        r: fill buffer with random data                                           
+ |        d: debug                                                                  
+ |                                                                                  
+ |--> if master info is provided                                                    
+ |    -                                                                             
+ |    +--> [pthread_create]                                                         
+ |         [i2c_master_thread] write data to master dev (transfer to slave)         
+ |                                                                                  
+ +--> if slave info is provided                                                     
+      -                                                                             
+      +--> [pthread_create]                                                         
+           [i2c_slave_thread] receive data from slave dev, compare with ground truth
+```
+
+```
+ i2c-test/i2c-test.c                                               
+ [i2c_master_thread] : write data to master dev (transfer to slave)
+ |                                                                 
+ |--> open master dev file                                         
+ |                                                                 
+ |--> ioctl to set slave addr                                      
+ |                                                                 
+ +--> endless loop                                                 
+      |                                                            
+      |--> write data to dev file                                  
+      |                                                            
+      +--> if anything goes wrong, break                           
+```
