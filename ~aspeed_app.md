@@ -153,3 +153,51 @@
            -                                                 
            +--> ioctl to queue 'buf'                         
 ```
+
+### hid_gadget_app
+
+```
+ usb/hid_gadget_test.c                                                          
+ [main]                                                                         
+ |                                                                              
+ |--> open dev file                                                             
+ |                                                                              
+ +--> endless loop                                                              
+      |                                                                         
+      |--> [select]                                                             
+      |                                                                         
+      +--> if input is from dev file                                            
+      |    -                                                                    
+      |    +--> read report (?)                                                 
+      |                                                                         
+      +--> if input is from stdin                                               
+           |                                                                    
+           |--> if keyboard                                                     
+           |    -                                                               
+           |    +--> [keyboard_fill_report] convert buffer data to keyboard code
+           |                                                                    
+           |--> elif mouse                                                      
+           |    -                                                               
+           |    +--> [mouse_fill_report] convert buffer data to mouse code      
+           |                                                                    
+           |--> elif joystick                                                   
+           |    -                                                               
+           |    +--> [joystick_fill_report] convert buffer data to joystick code
+           |                                                                    
+           |--> write report to dev file                                        
+           |                                                                    
+           +--> if no hold, clear report and write again                        
+```
+
+```
+ usb/hid_gadget_test.c                                        
+ [keyboard_fill_report] : convert buffer data to keyboard code
+ -                                                            
+ +--> for each token                                          
+      |                                                       
+      |--> if option, convert to code                         
+      |                                                       
+      |--> if data, convert to code                           
+      |                                                       
+      +--> if modifier, convert to code                       
+```
