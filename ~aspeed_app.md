@@ -1,0 +1,155 @@
+### ast-video
+
+```
+ video/main.cc                                                            
+ [main]                                                                   
+ |                                                                        
+ |--> [get_driver_version] get version (in our case: v2)                  
+ |                                                                        
+ +--> [main_v2] parse arguments, get frame, send to client or save to file
+```
+
+```
+ video/main2.cc                                                           
+ [main_v2] : parse arguments, get frame, send to client or save to file   
+ |                                                                        
+ |--> alloc 'Video'                                                       
+ |                                                                        
+ |--> handle argumetns                                                    
+ |       m: mode                                                          
+ |       a: format                                                        
+ |       q: quality                                                       
+ |       p: sampling                                                      
+ |       f: fps                                                           
+ |       s: streaming                                                     
+ |       c: times                                                         
+ |       h: help                                                          
+ |       t: test                                                          
+ |       i: id                                                            
+ |                                                                        
+ +--> if streaming                                                        
+ |    |                                                                   
+ |    |--> [net_setup] setup socket, listen and accept                    
+ |    |                                                                   
+ |    |--> [Video::start] configure the video device                      
+ |    |                                                                   
+ |    |--> endless loop                                                   
+ |    |    |                                                              
+ |    |    |--> [Video::getFrame] dequeue buf, enqueue other available buf
+ |    |    |                                                              
+ |    |    +--> [transfer] send frames to client                          
+ |    |    |                                                              
+ |    |    +--> resize if needed                                          
+ |    |                                                                   
+ |    +--> [Video::stop] turn off streaming, reest structure              
+ |                                                                        
+ +--> else (not streaming)                                                
+      |                                                                   
+      |--> [Video::start] configure the video device                      
+      |                                                                   
+      |--> [Video::getFrame] dequeue buf, enqueue other available buf     
+      |                                                                   
+      |--> [save2file] save frame to 'capture%d.jpg'                      
+      |                                                                   
+      +--> [Video::stop] turn off streaming, reest structure              
+```
+
+```
+ video/main.cc                                
+ [net_setup] : setup socket, listen and accept
+ |                                            
+ |--> alloc buffer                            
+ |                                            
+ |--> alloc socket                            
+ |                                            
+ |--> [setsockopt] set size of send-buffer    
+ |                                            
+ |--> [bind] bind socket to addr              
+ |                                            
+ |--> [listen]                                
+ |                                            
+ +--> [accept]                                                             
+ video/main.cc                                
+ [net_setup] : setup socket, listen and accept
+ |                                            
+ |--> alloc buffer                            
+ |                                            
+ |--> alloc socket                            
+ |                                            
+ |--> [setsockopt] set size of send-buffer    
+ |                                            
+ |--> [bind] bind socket to addr              
+ |                                            
+ |--> [listen]                                
+ |                                            
+ +--> [accept]                                
+```
+
+```
+ video/ikvm_video.cpp                                 
+ [Video::start] : configure the video device          
+ |                                                    
+ |--> open '/dev/video0'                              
+ |                                                    
+ |--> ioctl to get capability                         
+ |                                                    
+ |--> ioctl to get video format                       
+ |                                                    
+ |--> ioctl to set video format                       
+ |                                                    
+ |--> ioctl to set video parameters (type, frame rate)
+ |                                                    
+ |--> ioctl to set video control (compression quality)
+ |                                                    
+ |--> ioctl to set video control (sampling)           
+ |                                                    
+ |--> ioctl to set video control (mode, quality)      
+ |                                                    
+ +--> [resize]                                        
+```
+
+```
+ video/ikvm_video.cpp                                    
+ [Video::resize] : get buffer and queue it back          
+ |                                                       
+ |--> if any buffer contains data, set need_resize = true
+ |                                                       
+ |--> if need_resize, ioctl to turn off stream           
+ |                                                       
+ |--> reset buffer (unmap, init structure)               
+ |                                                       
+ |--> if need_resize, ioctl to set timing (?)            
+ |                                                       
+ |--> ioctl to request streaming buffers                 
+ |                                                       
+ |--> for each buffer                                    
+ |    |                                                  
+ |    |--> setup 'buf' to query video data               
+ |    |                                                  
+ |    |--> buffer[i] = mmap(buf)                         
+ |    |                                                  
+ |    +--> ioctl to queue buf (?)                        
+ |                                                       
+ +--> ioctl to turn on streaming                         
+```
+
+```
+ video/ikvm_video.cpp                                        
+ [Video::getFrame] : dequeue buf, enqueue other available buf
+ |                                                           
+ |--> [select]                                               
+ |                                                           
+ |--> ioctl to dequeue buf                                   
+ |    |                                                      
+ |    |--> update last_frame_index                           
+ |    |                                                      
+ |    +--> update buffers[i]                                 
+ |                                                           
+ +--> for each buffer                                        
+      |                                                      
+      |--> if i == last_frame_idx, continue                  
+      |                                                      
+      +--> if buffers[i] isn't queued                        
+           -                                                 
+           +--> ioctl to queue 'buf'                         
+```
