@@ -201,3 +201,22 @@
       |                                                       
       +--> if modifier, convert to code                       
 ```
+
+### i2c-slave-mqueue
+
+```
+ i2c-slave-mqueue/i2c-slave-mqueue.c
+ [main]                             
+ |                                  
+ |--> open dev file                 
+ |                                  
+ +--> endless loop                  
+      |                             
+      |--> [poll]                   
+      |                             
+      |--> [read]                   
+      |                             
+      |--> [clock_gettime]          
+      |                             
+      +--> print timestamp and data 
+```
