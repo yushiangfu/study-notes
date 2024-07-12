@@ -262,3 +262,82 @@
       |                                                            
       +--> if anything goes wrong, break                           
 ```
+
+### mctp-i3c
+
+```
+ mctp-i3c/mctp-i3c.c                                        
+ [main] : setup 'xfer', transfer data                       
+ |                                                          
+ |--> handle arguments                                      
+ |        h: help                                           
+ |        d: device                                         
+ |        p: calculate pec                                  
+ |        r: read                                           
+ |        w: write                                          
+ |                                                          
+ |--> open device                                           
+ |                                                          
+ |--> handle arguments                                      
+ |    |                                                     
+ |    |--> case read                                        
+ |    |                                                     
+ |    |    [rx_args_to_xfer] alloc buffer, save in xfer     
+ |    |                                                     
+ |    +--> case write                                       
+ |                                                          
+ |         [w_args_to_xfer] handle write data, finalize xfer
+ |                                                          
+ +--> for each xfer                                         
+      -                                                     
+      +--> [i3c_mctp_priv_xfer] transfer data               
+```
+
+```
+ mctp-i3c/mctp-i3c.c                                      
+ [w_args_to_xfer] : handle write data, finalize xfer      
+ |                                                        
+ |--> save write data into array                          
+ |                                                        
+ |--> if pec is specified                                 
+ |    |                                                   
+ |    |--> alloc buffer                                   
+ |    |                                                   
+ |    |--> convert string (in array) to number (in buffer)
+ |    |                                                   
+ |    +--> calculate pec, append to buffer                
+ |                                                        
+ |--> else                                                
+ |    |                                                   
+ |    |--> alloc buffer                                   
+ |    |                                                   
+ |    +--> convert string (in array) to number (in buffer)
+ |                                                        
+ +--> finalize xfer                                       
+```
+
+```
+ mctp-i3c/mctp-i3c.c                             
+ [i3c_mctp_priv_xfer] : transfer data            
+ |                                               
+ |--> if read_no_write                           
+ |    |                                          
+ |    |--> [wait_for_message] wait for input data
+ |    |                                          
+ |    +--> [i3c_mctp_recv] read from dev         
+ |                                               
+ +--> else                                       
+      -                                          
+      +--> [i3c_mctp_send] write to dev          
+```
+
+```
+ mctp-i3c/mctp-i3c.c                     
+ [wait_for_message] : wait for input data
+ -                                       
+ +--> whlie received == false            
+      |                                  
+      |--> [i3c_mctp_poll] poll for input
+      |                                  
+      +--> received = true               
+```
