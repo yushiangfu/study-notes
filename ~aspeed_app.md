@@ -341,3 +341,41 @@
       |                                  
       +--> received = true               
 ```
+
+### mctp-ast
+
+```
+ mctp/mctp.c                                                                       
+ [main]                                                                            
+ |                                                                                 
+ |--> handle arguments                                                             
+ |        h: help                                                                  
+ |        n: dev nme                                                               
+ |        t: transfer                                                              
+ |        r: receive                                                               
+ |        i: eid                                                                   
+ |        b: bus                                                                   
+ |        d: dev                                                                   
+ |        f: func                                                                  
+ |        o: routing                                                               
+ |        l: len                                                                   
+ |        c: loop count                                                            
+ |        s: som                                                                   
+ |        e: eom                                                                   
+ |                                                                                 
+ |--> [aspeed_mctp_init] alloc astpcie and open dev                                
+ |                                                                                 
+ |--> [aspeed_mctp_register_default_handler] register default handler              
+ |                                                                                 
+ |--> [aspeed_mctp_get_mtu] ioctl to get mtu                                       
+ |                                                                                 
+ +--> endless loop                                                                 
+      |                                                                            
+      |--> if transfer                                                             
+      |    -                                                                       
+      |    +--> [aspeed_mctp_tx] setup xfer and write to dev                       
+      |                                                                            
+      +--> else (receive)                                                          
+           -                                                                       
+           +--> [aspeed_mctp_rx] read packet from dev, check if payload is expected
+```
