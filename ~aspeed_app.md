@@ -263,6 +263,12 @@
       +--> if anything goes wrong, break                           
 ```
 
+### i3c-test
+
+```
+skip
+```
+
 ### mctp-ast
 
 ```
@@ -480,4 +486,47 @@
  |--> calc target virt_addr              
  |                                       
  +--> [print_buffer]                     
+```
+
+### mw
+
+```
+skip
+```
+
+### oob-pch-test
+
+```
+ espi_test/oob-pch-test.c                                     
+ [main]                                                       
+ |                                                            
+ |--> handle arguments                                        
+ |        h: help                                             
+ |        d: dev path                                         
+ |        t: temp                                             
+ |        r: rtc                                              
+ |                                                            
+ |--> alloc packet                                            
+ |                                                            
+ |--> open dev file                                           
+ |                                                            
+ +--> switch request                                          
+      case temp                                               
+      -                                                       
+      +--> [oob_req_pch_temp] fill req, send out, receive resp
+                                                              
+      case rtc                                                
+      -                                                       
+      +--> [oob_req_pch_rtc] fill req, send out, receive resp 
+```
+
+```
+ espi_test/oob-pch-test.c                             
+ [oob_req_pch_temp] : fill req, send out, receive resp
+ |                                                    
+ |--> fill request                                    
+ |                                                    
+ |--> ioctl to send request                           
+ |                                                    
+ +--> ioctl to receive response                       
 ```
