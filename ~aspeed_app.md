@@ -434,3 +434,33 @@
       |                                           
       +--> [sendto] echo msg back                 
 ```
+
+### mctp-skt-req
+
+```
+ mctp-socket/mctp-req.c                                                        
+ [main]                                                                        
+ |                                                                             
+ |--> handle arguments: eid, net, ifindex, len, type, data, lladdr, skip, debug
+ |                                                                             
+ +--> [mctp_req] prepare socket, send req, receive resp                        
+```
+
+```
+ mctp-socket/mctp-req.c                             
+ [mctp_req] : prepare socket, send req, receive resp
+ |                                                  
+ |--> alloc socket and setup addr                   
+ |                                                  
+ |--> alloc rx buffer                               
+ |                                                  
+ |--> if arg 'lladdrlen' is provided                
+ |    -                                             
+ |    +--> adjust addr and set socket opt           
+ |                                                  
+ |--> [sendto]                                      
+ |                                                  
+ |--> peek incoming data, ensure rx buffer is enough
+ |                                                  
+ +--> [recvfrom]                                    
+```
