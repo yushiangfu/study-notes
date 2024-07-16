@@ -411,3 +411,26 @@
       |                                  
       +--> received = true               
 ```
+
+### mctp-skt-recv
+
+```
+ mctp-socket/mctp-recv.c                          
+ [main]                                           
+ |                                                
+ |--> handle arguments: debug, skip, type         
+ |                                                
+ |--> allock socket, setup addr and bind to socket
+ |                                                
+ +--> endless loop                                
+      |                                           
+      |--> peek and ensure buffer is enough       
+      |                                           
+      |--> [recvfrom]                             
+      |                                           
+      |--> if 'skip' is specified, continue       
+      |                                           
+      |--> unset 'tag owner'                      
+      |                                           
+      +--> [sendto] echo msg back                 
+```
