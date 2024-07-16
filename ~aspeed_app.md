@@ -464,3 +464,20 @@
  |                                                  
  +--> [recvfrom]                                    
 ```
+
+### md
+
+```
+ mem_utils/md.c                          
+ [main]                                  
+ |                                       
+ |--> open /dev/mem                      
+ |                                       
+ |--> handle arguments: phy_addr and size
+ |                                       
+ |--> [mmap]                             
+ |                                       
+ |--> calc target virt_addr              
+ |                                       
+ +--> [print_buffer]                     
+```
