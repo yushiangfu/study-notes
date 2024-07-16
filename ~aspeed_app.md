@@ -301,6 +301,38 @@
            +--> [aspeed_mctp_rx] read packet from dev, check if payload is expected
 ```
 
+```
+ mctp/mctp.c                                      
+ [aspeed_mctp_tx] : setup xfer and write to dev   
+ |                                                
+ |--> alloc xfer buffer                           
+ |                                                
+ |--> setup header and fill payload               
+ |                                                
+ |--> while we have remaining len of data > mtu   
+ |    |                                           
+ |    |--> adjust xfer fields                     
+ |    |                                           
+ |    +--> [aspeed_mctp_send] write xfer to dev   
+ |                                                
+ +--> while there are still remaining len (<= mtu)
+      |                                           
+      |--> adjust xfer fields                     
+      |                                           
+      +--> [aspeed_mctp_send] write xfer to dev   
+```
+
+```
+ mctp/mctp.c                                                          
+ [aspeed_mctp_rx] : read packet from dev, check if payload is expected
+ |                                                                    
+ |--> [wait_for_message] poll                                         
+ |                                                                    
+ |--> [aspeed_mctp_recv] read data from dev                           
+ |                                                                    
+ +--> check if payload is expected                                    
+```
+
 ### mctp-i3c
 
 ```
