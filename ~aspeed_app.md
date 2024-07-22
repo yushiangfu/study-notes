@@ -530,3 +530,322 @@ skip
  |                                                    
  +--> ioctl to receive response                       
 ```
+
+### otp
+
+```
+ otp/otp.c                                                              
+ [main]                                                                 
+ |                                                                      
+ |--> open /dev/aspeed-otp                                              
+ |                                                                      
+ |--> [chip_version] get chip version                                   
+ |                                                                      
+ |--> init info_cb accordingly                                          
+ |                                                                      
+ |--> [otp_read_conf]                                                   
+ |                                                                      
+ |--> fill protection_status based on config                            
+ |                                                                      
+ |--> if subcmd is 'read'                                               
+ |    +--> [do_otpread] given arg (conf, data, or strap), read and print
+ |                                                                      
+ |--> elif subcmd is 'info'                                             
+ |    +--> [do_otpinfo] given arg, read target info and print           
+ |                                                                      
+ |--> elif subcmd is 'pb'                                               
+ |    +--> [do_otppb] given mode (conf, strap, or data), perform otp    
+ |                                                                      
+ |--> elif subcmd is 'protect'                                          
+ |    +--> [do_otpprotect] program the conf                             
+ |                                                                      
+ |--> elif subcmd is 'scuprotect'                                       
+ |    +--> [do_otp_scuprotect] program the conf                         
+ |                                                                      
+ |--> elif subcmd is 'prog'                                             
+ |    +--> [do_otpprog] read image file, check and program image to otp 
+ |                                                                      
+ |--> elif subcmd is 'update'                                           
+ |    +--> [do_otpupdate] update rev_id                                 
+ |                                                                      
+ |--> elif subcmd is 'rid'                                              
+ |    +--> [do_otprid] print sw rev_id & otp rev_id                     
+ |                                                                      
+ |--> elif subcmd is 'retire'                                           
+ |    +--> [do_otpretire] program retire_id to otp, verify              
+ |                                                                      
+ |--> elif subcmd is 'verify'                                           
+ |    +--> [do_otpverify] try different keys to verify the image        
+ |                                                                      
+ +--> elif subcmd is 'invalid'                                          
+      +--> [do_otpinvalid] invalidate a key                             
+```
+
+```
+ otp/otp.c                                                      
+ [do_otpread] : given arg (conf, data, or strap), read and print
+ |                                                              
+ |--> parse args to determine offset/count                      
+ |                                                              
+ |--> if arg[1] is 'conf'                                       
+ |    -                                                         
+ |    +--> [otp_print_conf] read conf and print                 
+ |                                                              
+ |--> elif arg[1] is 'data'                                     
+ |    -                                                         
+ |    +--> [otp_print_data] read data and print                 
+ |                                                              
+ +--> elif arg[1] is 'strap'                                    
+      -                                                         
+      +--> [otp_print_strap] read strap and print               
+```
+
+```
+ otp/otp.c                                  
+ [otp_print_conf] : read conf and print     
+ |                                          
+ |--> [otp_read_conf_buf] ioctl to read conf
+ |                                          
+ +--> print conf                            
+```
+
+```
+ otp/otp.c                                          
+ [otp_print_strap] : read strap and print           
+ |                                                  
+ |--> [otp_read_strap] read conf and fill 'otpstrap'
+ |                                                  
+ +--> print info                                    
+```
+
+```
+ otp/otp.c                                       
+ [otp_read_strap] : read conf and fill 'otpstrap'
+ |                                               
+ |--> init arg 'otpstrap'                        
+ |                                               
+ |--> [otp_read_conf_buf] ioctl to read conf     
+ |                                               
+ +--> fill 'otpstrap' accordingly                
+```
+
+```
+ otp/otp.c                                            
+ [do_otpinfo] : given arg, read target info and print 
+ |                                                    
+ |--> if arg is 'conf'                                
+ |    -                                               
+ |    +--> [otp_print_conf_info] read conf and print  
+ |                                                    
+ |--> elif arg is 'strap'                             
+ |    -                                               
+ |    +--> [otp_print_strap_info] read strap and print
+ |                                                    
+ |--> elif arg is 'scu'                               
+ |    -                                               
+ |    +--> [otp_print_scu_info] read conf and print   
+ |                                                    
+ +--> elif arg is 'key'                               
+      -                                               
+      +--> [otp_print_key_info] read data and print   
+```
+
+```
+ otp/otp.c                                  
+ [otp_print_conf_info] : read conf and print
+ |                                          
+ |--> [otp_read_conf_buf] ioctl to read conf
+ |                                          
+ +--> print                                 
+```
+
+```
+ otp/otp.c                                                
+ [do_otpprotect] : program the conf                       
+ |                                                        
+ |--> determine program addr                              
+ |                                                        
+ |--> [otp_read_conf] ioctl to read conf from program addr
+ |                                                        
+ +--> [otp_prog_conf_b] program the conf                  
+```
+
+```
+ otp/otp.c                                                     
+ [do_otpprog] : read image file, check and program image to otp
+ |                                                             
+ |--> handle arguments: path, force                            
+ |                                                             
+ |--> alloc buffer, read file into it                          
+ |                                                             
+ +--> [otp_prog_image] check and program image to otp          
+```
+
+```
+ otp/otp.c                                                                                  
+ [otp_prog_image] : check and program image to otp                                          
+ |                                                                                          
+ |--> parse header to setup image_layout                                                    
+ |                                                                                          
+ |--> [otp_verify_image] calculate digest, compare to know if it matches                    
+ |                                                                                          
+ |--> if image has 'data'                                                                   
+ |    |                                                                                     
+ |    |--> [otp_read_data_buf] read data                                                    
+ |    |                                                                                     
+ |    +--> [otp_check_data_image] given 'data', check if image can be programmed into otp   
+ |                                                                                          
+ |--> if image has 'conf'                                                                   
+ |    |                                                                                     
+ |    |--> [otp_read_conf] read conf                                                        
+ |    |                                                                                     
+ |    +--> [otp_check_conf_image] given 'conf', check if image can be programmed into otp   
+ |                                                                                          
+ |--> if image has 'strap'                                                                  
+ |    |                                                                                     
+ |    |--> [otp_read_strap] read strap                                                      
+ |    |                                                                                     
+ |    +--> [otp_check_strap_image] given 'strap', check if image can be programmed into otp 
+ |                                                                                          
+ |--> if image has 'scu pro'                                                                
+ |    |                                                                                     
+ |    |--> [otp_read_conf] read scu_pro                                                     
+ |    |                                                                                     
+ |    +--> [otp_check_scu_image] given ' scu pro', check if image can be programmed into otp
+ |                                                                                          
+ |--> if specified, print data/strap/conf/scu_pro                                           
+ |                                                                                          
+ +--> program data/strap/scu_pro/conf sequentially                                          
+```
+
+```
+ otp/otp.c                                                           
+ [otp_verify_image] : calculate digest, compare to know if it matches
+ |                                                                   
+ |--> given version, calculate digest accordingly                    
+ |                                                                   
+ +--> compare the calculated digest with pass-in one                 
+```
+
+```
+ otp/otp.c                                     
+ [do_otpupdate] : update rev_id                
+ |                                             
+ |--> parse arguments: force, update_num       
+ |                                             
+ +--> [otp_update_rid] update rev_id and verify
+```
+
+```
+ otp/otp.c                                      
+ [otp_update_rid] : update rev_id and verify    
+ |                                              
+ |--> [otp_read_conf_buf] read otp rev_id       
+ |                                              
+ |--> [sw_revid] get sw rev_id                  
+ |                                              
+ |--> [otp_print_revid] print otp rev_id        
+ |                                              
+ |--> for target range [rid_num, update_num)    
+ |    -                                         
+ |    +--> [otp_prog_conf_b] program conf to otp
+ |                                              
+ |--> [otp_read_conf_buf] read otp rev_id       
+ |                                              
+ +--> [otp_print_revid] print otp rev_id        
+```
+
+```
+ otp/otp.c                                 
+ [do_otprid] : print sw rev_id & otp rev_id
+ |                                         
+ |--> [otp_read_conf_buf] read otp rev_id  
+ |                                         
+ |--> [sw_revid] read sw rev_id            
+ |                                         
+ |--> print sw rev_id                      
+ |                                         
+ +--> [otp_print_revid] print otp rev_id   
+```
+
+```
+ otp/otp.c                                             
+ [do_otpretire] : program retire_id to otp, verify     
+ |                                                     
+ |--> handle arguments: force, retire_id               
+ |                                                     
+ +--> [otp_retire_key] program retire_id to otp, verify
+```
+
+```
+ otp/otp.c                                          
+ [otp_retire_key] : program retire_id to otp, verify
+ |                                                  
+ |--> [otp_read_conf] read otp_cfg                  
+ |                                                  
+ |--> [sec_key_num] get key num                     
+ |                                                  
+ |--> [otp_prog_conf_b] program retire_id to otp    
+ |                                                  
+ +--> verify if it's retired                        
+```
+
+```
+ otp/otp.c                                                          
+ [do_otpverify] : try different keys to verify the image            
+ |                                                                  
+ |--> parse arguments: path                                         
+ |                                                                  
+ |--> open file                                                     
+ |                                                                  
+ |--> alloc buffer and read file into it                            
+ |                                                                  
+ +--> [otp_verify_boot_image] try different keys to verify the image
+```
+
+```
+ otp/otp.c                                                         
+ [otp_verify_boot_image] : try different keys to verify the image  
+ |                                                                 
+ |--> [otp_read_data_buf] read 'data'                              
+ |                                                                 
+ |--> [parse_config] read config to setup sb_info                  
+ |                                                                 
+ |--> [parse_data] read data to setup key_list                     
+ |                                                                 
+ |--> read otp rev_id                                              
+ |                                                                 
+ |--> check rev_id                                                 
+ |                                                                 
+ |--> [sb_sha] calculate digest                                    
+ |                                                                 
+ +--> for each key                                                 
+      |                                                            
+      |--> [mode2_verify] decrypt signature and compare with digest
+      |                                                            
+      +--> if pass, break                                          
+```
+
+```
+ otp/otp.c                                  
+ [do_otpinvalid] : invalidate a key         
+ |                                          
+ |--> handle arguments: force, header_offset
+ |                                          
+ +--> [otp_invalid_key] invalidate a key    
+```
+
+```
+ otp/otp.c                           
+ [otp_invalid_key] : invalidate a key
+ |                                   
+ |--> [otp_read_data] read header    
+ |                                   
+ |--> [_otp_print_key] print key info
+ |                                   
+ |--> determine value to program     
+ |                                   
+ +--> for bit_offset in [14, 17]     
+      -                              
+      +--> [otp_prog_data_b] program 
+```
