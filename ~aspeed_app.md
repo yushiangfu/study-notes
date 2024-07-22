@@ -881,3 +881,47 @@ skip
       |                                                  
       +--> advance 'addr', update remaining 'count'      
 ```
+
+### spw
+
+### svf
+
+```
+ svf/main.c                                                          
+ [main]                                                              
+ |                                                                   
+ |--> parse argumetns:                                               
+ |        h: help                                                    
+ |        d: debug                                                   
+ |        n: dev name                                                
+ |        f: freq                                                    
+ |        p: svf name                                                
+ |        s: sw mode                                                 
+ |                                                                   
+ |--> [ast_jtag_open] open jtag dev                                  
+ |                                                                   
+ |--> [ast_set_jtag_mode] ioctl to set jtag mode                     
+ |                                                                   
+ |--> [ast_get_jtag_freq] get jtag freq                              
+ |                                                                   
+ |--> if arg 'freq' is provided                                      
+ |    -                                                              
+ |    +--> [ast_set_jtag_freq] ioctl to set freq                     
+ |                                                                   
+ +--> if arg 'svf' is provided                                       
+      -                                                              
+      +--> [handle_svf_command] given file, read and run each command
+```
+
+```
+ svf/svf.c                                                     
+ [handle_svf_command] : given file, read and run each command  
+ |                                                             
+ |--> open file                                                
+ |                                                             
+ |--> alloc buffer                                             
+ |                                                             
+ +--> while [svf_read_command_from_file] read command from file
+      -                                                        
+      +--> [svf_run_command] run command                       
+```
