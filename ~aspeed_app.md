@@ -849,3 +849,35 @@ skip
       -                              
       +--> [otp_prog_data_b] program 
 ```
+
+### spd
+
+```
+ mem_utils/spd.c                                                     
+ [main]                                                              
+ |                                                                   
+ |--> open /dev/mem                                                  
+ |                                                                   
+ |--> parse arguments: addr, size, ...                               
+ |                                                                   
+ |--> [mmap] map spi base (0x1e620000) to virtual addr               
+ |                                                                   
+ |--> [spim_init] given chip_select, init spi controller, map spi mem
+ |                                                                   
+ +--> [print_buffer] print spi data within specified range           
+```
+
+```
+ mem_utils/spd.c                                         
+ [print_buffer] : print spi data within specified range  
+ -                                                       
+ +--> while count                                        
+      |                                                  
+      |--> for line size                                 
+      |    |                                             
+      |    |--> [spim_read] read data thru spi controller
+      |    |                                             
+      |    +--> print out                                
+      |                                                  
+      +--> advance 'addr', update remaining 'count'      
+```
