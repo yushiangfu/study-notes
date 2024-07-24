@@ -925,3 +925,239 @@ skip
       -                                                        
       +--> [svf_run_command] run command                       
 ```
+
+### vtest
+
+```
+ ast_rvas/vtest.c                                                                                       
+ [main]                                                                                                 
+ |                                                                                                      
+ |--> [Initialize] open /dev/rvas & /dev/mem                                                            
+ |                                                                                                      
+ |--> [GetVideoGeometry] ioctl to get video geometry                                                    
+ |                                                                                                      
+ |--> print video attr                                                                                  
+ |                                                                                                      
+ +--> while old command is valid                                                                        
+      |                                                                                                 
+      |--> get next command                                                                             
+      |                                                                                                 
+      |--> switch command                                                                               
+      |                                                                                                 
+      |--> case 0                                                                                       
+      |    +--> [testGRCERegister] get grce reg and print                                               
+      |                                                                                                 
+      |--> case 1                                                                                       
+      |    +--> [testTextMode] fetch text data and print                                                
+      |                                                                                                 
+      |--> case 2                                                                                       
+      |    +--> [testVideoFetchMode] fetch video data and print                                         
+      |                                                                                                 
+      |--> case 3                                                                                       
+      |    +--> [testVideoSlicing] fetch video slices and print                                         
+      |                                                                                                 
+      |--> case 4                                                                                       
+      |    +--> [testMode13] fetch mode13 data and print                                                
+      |                                                                                                 
+      |--> case 6                                                                                       
+      |    +--> [testMultiVideoSlicing] fetch multi video slices and print                              
+      |                                                                                                 
+      +--> case 7                                                                                       
+           +--> [testVideoJPEG] reset video engine and set config, get video data and save to jpeg  file
+```
+
+```
+ ast_rvas/vtest.c                            
+ [testGRCERegister] : get grce reg and print 
+ |                                           
+ |--> [Alloc] alloc buffer, managed by pmm   
+ |                                           
+ |--> [GetGRCRegisters] ioctl to get grc_regs
+ |                                           
+ +--> print reg info                         
+```
+
+```                                                                     
+ ast_rvas/rvas_lib/rvas.c                                            
+ [Alloc] : alloc buffer, managed by pmm                              
+ |                                                                   
+ |--> ioctl to alloc buffer (save in ri)                             
+ |                                                                   
+ |--> aBufferPtr = ri.rvb.pv                                         
+ |                                                                   
+ |--> [NewMemMap] ensure table exists, alloc pmm and install to table
+ |                                                                   
+ +--> setup pmm                                                      
+```
+
+```                                                                  
+ ast_rvas/rvas_lib/rvas.c                                         
+ [NewMemMap] : ensure table exists, alloc pmm and install to table
+ |                                                                
+ |--> try to find an empty slot in ppmmMemoryMap                  
+ |                                                                
+ |--> if not found                                                
+ |    |                                                           
+ |    |--> alloc a larger ppmm_new_table                          
+ |    |                                                           
+ |    |--> if ppmmMemoryMap (old) exists, copy to ppmm_new_table  
+ |    |                                                           
+ |    +--> update ppmmMemoryMap/dwMemMapSize with new info        
+ |                                                                
+ +--> alloc pmm, install to an empty slot in ppmmMemoryMap        
+```
+
+```                                               
+ ast_rvas/rvas_lib/rvas.c                      
+ [GetGRCRegisters] : ioctl to get grc_regs     
+ |                                             
+ |--> [GetMemMap] given 'crmh', get target mmap
+ |                                             
+ |--> setup rvas_ioctl                         
+ |                                             
+ +--> ioctl to get grc_regs                    
+```
+
+```                                                                
+ ast_rvas/vtest.c                                               
+ [testTextMode] : fetch text data and print                     
+ |                                                              
+ |--> [NewContext] ioctl to get new context                     
+ |                                                              
+ |--> [GetVideoGeometry] ioctl to get video geometry            
+ |                                                              
+ |--> [Alloc] alloc buffer, managed by pmm                      
+ |                                                              
+ |--> if enable_rle                                             
+ |    -                                                         
+ |    +--> [Alloc] alloc buffer, managed by pmm                 
+ |                                                              
+ |--> given command, set mode (attr, front_fetch, or ascii_only)
+ |                                                              
+ |--> [FetchTextData] ioctl to fetch text data                  
+ |                                                              
+ +--> print data                                                
+```
+
+```                                               
+ ast_rvas/rvas_lib/rvas.c                      
+ [FetchTextData] : ioctl to fetch text data    
+ |                                             
+ |--> [GetMemMap] given 'crmh', get target mmap
+ |                                             
+ |--> setup ri                                 
+ |                                             
+ |--> ioctl to fetch text data                 
+ |                                             
+ +--> given ioctl response, setup arg paTextMap
+```
+
+```                                                    
+ ast_rvas/vtest.c                                   
+ [testVideoFetchMode] : fetch video data and print  
+ |                                                  
+ |--> [NewContext] ioctl to get new context         
+ |                                                  
+ |--> [Alloc] alloc buffer, managed by pmm          
+ |                                                  
+ |--> [Alloc] alloc buffer, managed by pmm          
+ |                                                  
+ |--> [Alloc] alloc buffer, managed by pmm          
+ |                                                  
+ |--> setup pfvt (pointing to first allocation)     
+ |                                                  
+ |--> [GetVideoGeometry] ioctl to get video geometry
+ |                                                  
+ |--> [FetchVideoTiles] ioctl to fetch video tiles  
+ |                                                  
+ +--> print info                                    
+```
+
+```                                                    
+ ast_rvas/vtest.c                                   
+ [testVideoSlicing] : fetch video slices and print  
+ |                                                  
+ |--> [NewContext] ioctl to get new context         
+ |                                                  
+ |--> [Alloc] alloc buffer, managed by pmm          
+ |                                                  
+ |--> [Alloc] alloc buffer, managed by pmm          
+ |                                                  
+ |--> [Alloc] alloc buffer, managed by pmm          
+ |                                                  
+ |--> [GetVideoGeometry] ioctl to get video geometry
+ |                                                  
+ |--> [FetchVideoSlices] ioctl to fetch video slices
+ |                                                  
+ +--> print info                                    
+```
+
+```                                                       
+ ast_rvas/vtest.c                                      
+ [testMode13] : fetch mode13 data and print            
+ |                                                     
+ |--> [NewContext] ioctl to get new context            
+ |                                                     
+ |--> [GetVideoGeometry] ioctl to get video geometry   
+ |                                                     
+ |--> setup tfm (with or without rle)                  
+ |                                                     
+ |--> [Alloc] alloc buffer, managed by pmm             
+ |                                                     
+ |--> if rle is enabled                                
+ |    -                                                
+ |    +--> [Alloc] alloc buffer, managed by pmm        
+ |                                                     
+ |--> [FetchVGAGraphicsData] ioctl to fetch mode13 data
+ |                                                     
+ +--> print info                                       
+```
+
+```                                                             
+ ast_rvas/vtest.c                                            
+ [testMultiVideoSlicing] : fetch multi video slices and print
+ |                                                           
+ |--> [NewContext] ioctl to get new context                  
+ |                                                           
+ |--> [Alloc] alloc buffer, managed by pmm                   
+ |                                                           
+ |--> [Alloc] alloc buffer, managed by pmm                   
+ |                                                           
+ |--> [Alloc] alloc buffer, managed by pmm                   
+ |                                                           
+ |--> while we should fetch (iter_num = 2)                   
+ |                                                           
+ |--> [GetVideoGeometry] ioctl to get video geometry         
+ |                                                           
+ |--> [FetchVideoSlices] ioctl to fetch video slices         
+ |                                                           
+ +--> print info                                             
+```
+
+```                                                                                           
+ ast_rvas/vtest.c                                                                          
+ [testVideoJPEG] : reset video engine and set config, get video data and save to jpeg  file
+ |                                                                                         
+ |--> [ResetVideoEngine] ioctl to reset video engine                                       
+ |                                                                                         
+ |--> [video_init] setup config, ioctl to set config into driver                           
+ |                                                                                         
+ |--> [get_video_engine_config] ioctl to get config and print                              
+ |                                                                                         
+ +--> while we can retry compression                                                       
+      -                                                                                    
+      +--> [multi_jpeg_compression] ioctl to get video engine data, save to jpeg file      
+```
+
+```                                                                             
+ ast_rvas/vtest.c                                                            
+ [multi_jpeg_compression] : ioctl to get video engine data, save to jpeg file
+ |                                                                           
+ |--> [Alloc] alloc buffer, managed by pmm                                   
+ |                                                                           
+ |--> setup 'multi_jpeg'                                                     
+ |                                                                           
+ |--> [GetVideoEngineJPEGData] ioctl to get video engine data                
+ |                                                                           
+ +--> print info and save jpeg file                                          
+```
