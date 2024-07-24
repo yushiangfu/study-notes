@@ -850,6 +850,105 @@ skip
       +--> [otp_prog_data_b] program 
 ```
 
+### rvas_test
+
+```                                                             
+ ast_rvas/rvas_test.c                                        
+ [main]                                                      
+ |                                                           
+ |--> [Initialize] open /dev/rvas and /dev/mem               
+ |                                                           
+ |--> [NewContext] ioctl to get new context                  
+ |                                                           
+ |--> [Alloc] alloc buffer, managed by pmm                   
+ |                                                           
+ |--> [TEST_SNOOP] test snoop                                
+ |                                                           
+ |--> [TEST_MONITOR_STATUS] test monitor status              
+ |                                                           
+ |--> [TEST_WAIT_FOR_VIDEO_EVENT] test 'wait for video event'
+ |                                                           
+ +--> [TEST_TSE_COUNTER] test tse counter                    
+```
+
+```                                                             
+ ast_rvas/rvas_test.c                                        
+ [TEST_SNOOP] : test snoop                                   
+ |                                                           
+ |--> switch ts_state                                        
+ |                                                           
+ +--> case TS_SNOOPMAP_NO_CLEAR                              
+ |    case TS_SNOOPMAP_CLEAR                                 
+ |    +--> [ReadSnoopMap] ioctl to read snoop map            
+ |                                                           
+ |--> case TS_SNOOP_AGGREGATE_NO_CLEAR                       
+ |    case TS_SNOOP_AGGREGATE_CLEAR                          
+ |    +--> [ReadSnoopAggregate] ioctl to read snoop aggregate
+ |                                                           
+ |--> case TS_MEMORY                                         
+ |    +--> [Alloc] alloc buffer, managed by pmm              
+ |    +--> [DisplayBuffer] print buffer                      
+ |                                                           
+ +--> case TS_RESET                                          
+      +--> [ResetVideoEngine] ioctl to reset video engine    
+```
+
+```                                                               
+ ast_rvas/rvas_test.c                                          
+ [TEST_MONITOR_STATUS] : test monitor status                   
+ |                                                             
+ |--> switch command                                           
+ |                                                             
+ |--> case 0                                                   
+ |    ---> [LocalMonitorOff] ioctl to turn local monitor off   
+ |                                                             
+ |--> case 1                                                   
+ |    ---> [LocalMonitorOn] ioctl to turn local monitor on     
+ |                                                             
+ +--> case 2                                                   
+      ---> [IsLocalMonitorOn] query if local monitor is enabled
+```
+
+```                                                            
+ ast_rvas/rvas_test.c                                       
+ [TEST_WAIT_FOR_VIDEO_EVENT] : test 'wait for video event'  
+ |                                                          
+ |--> switch command                                        
+ |                                                          
+ |--> case 0                                                
+ |    ---> [WaitForVideoEvent] ioctl to wait for video event
+ |                                                          
+ |--> case 1                                                
+ |    ---> [WaitForVideoEvent] ioctl to wait for video event
+ |                                                          
+ |--> case 2                                                
+ |    ---> parse mask                                       
+ |                                                          
+ |--> case 3                                                
+ |    ---> parse timeout                                    
+ |                                                          
+ +--> case 4                                                
+      ---> print request                                    
+      ---> print response                                   
+```
+
+```                                                                 
+ ast_rvas/rvas_test.c                                            
+ [TEST_TSE_COUNTER] : test tse counter                           
+ -                                                               
+ +--> while count > 0                                            
+      |                                                          
+      |--> [SetTSECounter] ioctl to set tse counter              
+      |                                                          
+      +--> while not timeout                                     
+      |    -                                                     
+      |    +--> [WaitForVideoEvent] ioctl to wait for video event
+      |                                                          
+      |--> print info                                            
+      |                                                          
+      +--> input 'count'                                         
+```
+
 ### spd
 
 ```
