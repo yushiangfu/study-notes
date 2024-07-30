@@ -31,3 +31,29 @@ ncsi_probe_channel
         
 
 ```
+
+
+### mdio-tool
+
+```                                                                                                                                                
+ mdio-tool.c                                                                                                                                    
+ [main]                                                                                                                                         
+ |                                                                                                                                              
+ |--> [socket] open a dgram socket                                                                                                              
+ |                                                                                                                                              
+ |--> given iface name (from arg), save to ifr                                                                                                  
+ |                                                                                                                                              
+ |--> [ioctl] get_mii_phy                                                                                                                       
+ |                                                                                                                                              
+ |--> if 'read' is specified                                                                                                                    
+ |    |                                                                                                                                         
+ |    |--> parse addr from arg                                                                                                                 -
+ |    |                                                                                                                                         
+ |    +--> [mdio_read] given addr, get mii register value                                                                                       
+ |                                                                                                                                              
+ +--> elif 'write' is specified                                                                                                                 
+      |                                                                                                                                         
+      |--> parse addr/val from arg                                                                                                              
+      |                                                                                                                                         
+      +--> [mdio_write] given addr/val, set mii register value                                                                                  
+```
