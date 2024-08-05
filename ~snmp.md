@@ -1,3 +1,22 @@
+```                                                                       
+ agent/snmpd.c                                                         
+ [main]                                                                
+ |                                                                     
+ |--> [netsnmp_sd_listen_fds] check if systemd has sockets ready for us
+ |                                                                     
+ |--> register signal handlers                                         
+ |                                                                     
+ |--> configure self flags                                             
+ |                                                                     
+ |--> parse arguments                                                  
+ |                                                                     
+ |--> [init_agent] register all kinds of handlers and callbacks        
+ |                                                                     
+ |--> [init_mib_modules] register callback for mib modules             
+ |                                                                     
+ +--> [init_snmp] (abort tracing)
+```
+
 ```                                                                                                            
  agent/snmp_vars.c                                                                                          
  [init_agent] : register all kinds of handlers and callbacks                                                
@@ -326,4 +345,43 @@
  |--> [netsnmp_container_register_with_compare] register 'string' handler             
  |                                                                                    
  +--> [netsnmp_container_register_with_compare] register 'string_binary_array' handler
+```
+
+```                                                                  
+ snmplib/snmp_api.c                                               
+ [init_snmp]                                                      
+ |                                                                
+ |--> [_init_snmp] (do nothing bc of re-entry)                    
+ |                                                                
+ |--> [snmp_debug_init]                                           
+ |                                                                
+ |--> [snmp_debug_init] register mib handlers for debug           
+ |                                                                
+ |--> [netsnmp_container_init_list] (do nothing bc of re-entry)   
+ |                                                                
+ |--> [init_callbacks]                                            
+ |                                                                
+ |--> [init_snmp_logging] register mib handler for logging        
+ |                                                                
+ |--> [snmp_init_statistics] (do nothing bc of disabled config)   
+ |                                                                
+ |--> [register_mib_handlers] register mib handlers for types     
+ |                                                                
+ |--> [register_default_handlers] register config/premib handlers 
+ |                                                                
+ |--> [init_snmp_transport] register config handlers for transport
+ |                                                                
+ |--> [init_snmpv3] register callbacks for snmp_v3                
+ |                                                                
+ |--> [init_snmp_alarm] register callback for alarm               
+ |                                                                
+ |--> [init_snmp_enum] setup enum list and register config handler
+ |                                                                
+ |--> [init_vacm] add vacm pairs to list                          
+ |                                                                
+ |--> [netsnmp_certs_init] add cert pairs to list                 
+ |                                                                
+ |--> [read_premib_configs]                                       
+ |                                                                
+ +--> [netsnmp_init_mib] (abort tracing)
 ```
