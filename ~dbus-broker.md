@@ -3,6 +3,20 @@
 - [Cheat Sheet](#cheat-sheet)
 
 ```
+dbus-monitor --system "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged'"
+   string <- name
+   string <- old owner
+   string <- new owner
+
+dbus-monitor --system "type='signal',interface='org.freedesktop.DBus.ObjectManager',member='InterfacesAdded'"
+
+dbus-monitor --system "type='signal',interface='org.freedesktop.DBus.ObjectManager',member='InterfacesRemoved'"
+
+
+
+```
+
+```
 src/launch/main.c                                                                           
 +------+                                                                                     
 | main |                                                                                     
