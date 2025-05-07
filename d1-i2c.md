@@ -2108,6 +2108,12 @@ echo adapter_nr==11 >/sys/kernel/debug/tracing/events/i2c/filter
 # read trace
 cat /sys/kernel/debug/tracing/trace
 ```
+
+- Enable dynamic debug.
+
+```
+echo "file i2c-ast2600.c +p" >> /sys/kernel/debug/dynamic_debug/control
+```
   
 ## <a name="reference"></a> Reference
 
